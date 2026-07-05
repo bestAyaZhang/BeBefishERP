@@ -63,4 +63,25 @@ describe('LoginView', () => {
       smsCode: '123456'
     });
   });
+
+  it('renders the illustrated ERP login scene with operational signals', () => {
+    const wrapper = mount(LoginView);
+
+    expect(wrapper.get('[data-testid="login-character-stage"]').text()).toContain('库存');
+    expect(wrapper.text()).toContain('平台汇总');
+    expect(wrapper.text()).toContain('财务');
+  });
+
+  it('toggles password visibility and updates the character scene state', async () => {
+    const wrapper = mount(LoginView);
+    const passwordInput = wrapper.get('[data-testid="password-input"]');
+
+    expect(passwordInput.attributes('type')).toBe('password');
+    expect(wrapper.get('[data-testid="login-character-stage"]').attributes('data-password-visible')).toBe('false');
+
+    await wrapper.get('[data-testid="password-visibility-toggle"]').trigger('click');
+
+    expect(passwordInput.attributes('type')).toBe('text');
+    expect(wrapper.get('[data-testid="login-character-stage"]').attributes('data-password-visible')).toBe('true');
+  });
 });
