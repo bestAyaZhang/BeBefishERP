@@ -18,3 +18,55 @@ button,
 input {
   font: inherit;
 }
+
+@keyframes login-character-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -10px;
+  }
+}
+
+@keyframes login-character-blink {
+  0%,
+  88%,
+  100% {
+    scale: 1 1;
+  }
+  92%,
+  94% {
+    scale: 1 0.12;
+  }
+}
+
+@keyframes login-character-peek {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  45%,
+  60% {
+    translate: -12px -6px;
+  }
+}
+
+.login-character-float {
+  animation: login-character-float 5.5s ease-in-out infinite;
+}
+
+.login-character-blink .login-eye {
+  animation: login-character-blink 5.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.login-character-peek {
+  animation:
+    login-character-float 5.5s ease-in-out infinite,
+    login-character-peek 1.2s ease-in-out infinite;
+}
+
+.login-pupil {
+  transition: transform 120ms ease-out;
+}

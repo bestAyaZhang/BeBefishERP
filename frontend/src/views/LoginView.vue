@@ -11,7 +11,7 @@ import {
   Smartphone,
   Sparkles
 } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { loginWithPassword, loginWithSms, logout, sendSmsCode } from '../services/auth';
 import type { LoginResult } from '../types/auth';
 
@@ -26,6 +26,10 @@ const password = ref('');
 const smsCode = ref('');
 const showPassword = ref(false);
 const activeField = ref<ActiveField>('none');
+const lookX = ref(0);
+const lookY = ref(0);
+const lookingAtEachOther = ref(false);
+const peeking = ref(false);
 const loading = ref(false);
 const sendingCode = ref(false);
 const errorMessage = ref('');
@@ -36,9 +40,63 @@ const accessToken = ref(localStorage.getItem(TOKEN_KEY) ?? '');
 const primaryButtonText = computed(() => (mode.value === 'password' ? '密码登录' : '验证码登录'));
 const passwordState = computed(() => `${password.value ? 'filled' : 'empty'}-${showPassword.value ? 'visible' : 'hidden'}`);
 const charactersAreWatchingForm = computed(() => activeField.value !== 'none' || (mode.value === 'password' && password.value.length > 0));
+const stageMotionStyle = computed(() => ({
+  '--look-x': `${lookX.value}px`,
+  '--look-y': `${lookY.value}px`
+}));
+
+let lookingTimer: number | undefined;
+let peekingTimer: number | undefined;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function handleMouseMove(event: MouseEvent) {
+  const viewportWidth = window.innerWidth || 1;
+  const viewportHeight = window.innerHeight || 1;
+  lookX.value = Math.round(clamp((event.clientX - viewportWidth / 2) / 45, -8, 8));
+  lookY.value = Math.round(clamp((event.clientY - viewportHeight / 2) / 55, -6, 6));
+}
+
+function triggerLookingAtEachOther() {
+  window.clearTimeout(lookingTimer);
+  lookingAtEachOther.value = true;
+  lookingTimer = window.setTimeout(() => {
+    lookingAtEachOther.value = false;
+  }, 850);
+}
+
+function triggerPeeking() {
+  window.clearTimeout(peekingTimer);
+  peeking.value = true;
+  peekingTimer = window.setTimeout(() => {
+    peeking.value = false;
+  }, 1200);
+}
+
+function getPupilStyle(scale = 1) {
+  let x = lookX.value * scale;
+  let y = lookY.value * scale;
+
+  if (lookingAtEachOther.value) {
+    x = 4 * scale;
+    y = 3 * scale;
+  }
+
+  if (mode.value === 'password' && password.value && showPassword.value) {
+    x = peeking.value ? 4 * scale : -4 * scale;
+    y = peeking.value ? 5 * scale : -4 * scale;
+  }
+
+  return {
+    transform: `translate(${Math.round(x)}px, ${Math.round(y)}px)`
+  };
+}
 
 function setActiveField(field: ActiveField) {
   activeField.value = field;
+  triggerLookingAtEachOther();
 }
 
 function clearActiveField(field: ActiveField) {
@@ -50,7 +108,49 @@ function clearActiveField(field: ActiveField) {
 function selectMode(nextMode: LoginMode) {
   mode.value = nextMode;
   activeField.value = 'none';
+  peeking.value = false;
 }
+
+function togglePasswordVisibility() {
+  showPassword.value = !showPassword.value;
+  setActiveField('password');
+  if (showPassword.value && password.value) {
+    triggerPeeking();
+  } else {
+    peeking.value = false;
+  }
+}
+
+watch(password, (newValue, oldValue) => {
+  if (newValue !== oldValue && activeField.value === 'password') {
+    triggerLookingAtEachOther();
+  }
+  if (newValue && showPassword.value) {
+    triggerPeeking();
+  }
+  if (!newValue) {
+    peeking.value = false;
+  }
+});
+
+watch(showPassword, (visible) => {
+  if (visible && password.value) {
+    triggerPeeking();
+  }
+  if (!visible) {
+    peeking.value = false;
+  }
+});
+
+onMounted(() => {
+  window.addEventListener('mousemove', handleMouseMove);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('mousemove', handleMouseMove);
+  window.clearTimeout(lookingTimer);
+  window.clearTimeout(peekingTimer);
+});
 
 async function submitLogin() {
   loading.value = true;
@@ -118,9 +218,14 @@ async function handleLogout() {
           <div
             data-testid="login-character-stage"
             :data-active-field="activeField"
+            :data-look-x="lookX"
+            :data-look-y="lookY"
+            :data-looking-at-each-other="String(lookingAtEachOther)"
+            :data-peeking="String(peeking)"
             :data-password-state="passwordState"
             :data-password-visible="String(showPassword)"
             class="relative h-[360px] w-[520px] origin-bottom scale-[0.62] sm:scale-[0.58] md:scale-[0.72] lg:scale-100"
+            :style="stageMotionStyle"
           >
             <div
               class="absolute right-10 top-4 rounded-md border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-white/80 backdrop-blur"
@@ -130,14 +235,15 @@ async function handleLogout() {
 
             <div
               data-testid="animated-character-purple"
-              class="absolute bottom-0 left-[70px] z-10 w-[180px] rounded-t-[10px] bg-[#6C3FF5] shadow-2xl transition-all duration-700 ease-in-out"
-              :class="
+              class="login-character-blink login-character-float absolute bottom-0 left-[70px] z-10 w-[180px] rounded-t-[10px] bg-[#6C3FF5] shadow-2xl transition-all duration-700 ease-in-out"
+              :class="[
                 password && !showPassword
                   ? 'h-[440px] translate-x-10 -skew-x-12'
                   : charactersAreWatchingForm
                     ? 'h-[430px] translate-x-6 -skew-x-6'
-                    : 'h-[400px] translate-x-0 skew-x-0'
-              "
+                    : 'h-[400px] translate-x-0 skew-x-0',
+                { 'login-character-peek': peeking }
+              ]"
             >
               <div
                 class="absolute flex gap-8 transition-all duration-700 ease-in-out"
@@ -149,11 +255,11 @@ async function handleLogout() {
                       : 'left-12 top-10'
                 "
               >
-                <span class="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-white">
-                  <span class="block h-[7px] w-[7px] rounded-full bg-[#2D2D2D] transition-transform" :class="showPassword ? '-translate-x-1 -translate-y-1' : 'translate-x-1 translate-y-0.5'"></span>
+                <span class="login-eye flex h-[18px] w-[18px] items-center justify-center rounded-full bg-white">
+                  <span class="login-pupil block h-[7px] w-[7px] rounded-full bg-[#2D2D2D]" :style="getPupilStyle(0.9)"></span>
                 </span>
-                <span class="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-white">
-                  <span class="block h-[7px] w-[7px] rounded-full bg-[#2D2D2D] transition-transform" :class="showPassword ? '-translate-x-1 -translate-y-1' : 'translate-x-1 translate-y-0.5'"></span>
+                <span class="login-eye flex h-[18px] w-[18px] items-center justify-center rounded-full bg-white">
+                  <span class="login-pupil block h-[7px] w-[7px] rounded-full bg-[#2D2D2D]" :style="getPupilStyle(0.9)"></span>
                 </span>
               </div>
             </div>
@@ -179,11 +285,11 @@ async function handleLogout() {
                       : 'left-7 top-8'
                 "
               >
-                <span class="flex h-4 w-4 items-center justify-center rounded-full bg-white">
-                  <span class="block h-1.5 w-1.5 rounded-full bg-[#2D2D2D] transition-transform" :class="showPassword ? '-translate-x-1 -translate-y-1' : 'translate-y-0'"></span>
+                <span class="login-eye flex h-4 w-4 items-center justify-center rounded-full bg-white">
+                  <span class="login-pupil block h-1.5 w-1.5 rounded-full bg-[#2D2D2D]" :style="getPupilStyle(0.75)"></span>
                 </span>
-                <span class="flex h-4 w-4 items-center justify-center rounded-full bg-white">
-                  <span class="block h-1.5 w-1.5 rounded-full bg-[#2D2D2D] transition-transform" :class="showPassword ? '-translate-x-1 -translate-y-1' : 'translate-y-0'"></span>
+                <span class="login-eye flex h-4 w-4 items-center justify-center rounded-full bg-white">
+                  <span class="login-pupil block h-1.5 w-1.5 rounded-full bg-[#2D2D2D]" :style="getPupilStyle(0.75)"></span>
                 </span>
               </div>
             </div>
@@ -197,8 +303,8 @@ async function handleLogout() {
                 class="absolute flex gap-8 transition-all duration-300 ease-out"
                 :class="password && showPassword ? 'left-12 top-[85px]' : charactersAreWatchingForm ? 'left-24 top-[92px]' : 'left-20 top-[90px]'"
               >
-                <span class="block h-3 w-3 rounded-full bg-[#2D2D2D]" :class="showPassword ? '-translate-x-1 -translate-y-1' : ''"></span>
-                <span class="block h-3 w-3 rounded-full bg-[#2D2D2D]" :class="showPassword ? '-translate-x-1 -translate-y-1' : ''"></span>
+                <span class="login-pupil block h-3 w-3 rounded-full bg-[#2D2D2D]" :style="getPupilStyle(0.65)"></span>
+                <span class="login-pupil block h-3 w-3 rounded-full bg-[#2D2D2D]" :style="getPupilStyle(0.65)"></span>
               </div>
             </div>
 
@@ -211,8 +317,8 @@ async function handleLogout() {
                 class="absolute flex gap-6 transition-all duration-300 ease-out"
                 :class="password && showPassword ? 'left-5 top-9' : charactersAreWatchingForm ? 'left-14 top-10' : 'left-[52px] top-10'"
               >
-                <span class="block h-3 w-3 rounded-full bg-[#2D2D2D]" :class="showPassword ? '-translate-x-1 -translate-y-1' : ''"></span>
-                <span class="block h-3 w-3 rounded-full bg-[#2D2D2D]" :class="showPassword ? '-translate-x-1 -translate-y-1' : ''"></span>
+                <span class="login-pupil block h-3 w-3 rounded-full bg-[#2D2D2D]" :style="getPupilStyle(0.65)"></span>
+                <span class="login-pupil block h-3 w-3 rounded-full bg-[#2D2D2D]" :style="getPupilStyle(0.65)"></span>
               </div>
               <div
                 class="absolute h-1 w-20 rounded-full bg-[#2D2D2D] transition-all duration-300"
@@ -285,6 +391,7 @@ async function handleLogout() {
                 inputmode="tel"
                 placeholder="请输入员工手机号"
                 @focus="setActiveField('mobile')"
+                @input="setActiveField('mobile')"
                 @blur="clearActiveField('mobile')"
               />
             </label>
@@ -301,6 +408,7 @@ async function handleLogout() {
                   autocomplete="current-password"
                   placeholder="请输入密码"
                   @focus="setActiveField('password')"
+                  @input="setActiveField('password')"
                   @blur="clearActiveField('password')"
                 />
                 <button
@@ -308,7 +416,7 @@ async function handleLogout() {
                   data-testid="password-visibility-toggle"
                   class="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 outline-none transition hover:bg-slate-100 hover:text-pine focus:ring-2 focus:ring-pine/20"
                   :aria-label="showPassword ? '隐藏密码' : '显示密码'"
-                  @click="showPassword = !showPassword; setActiveField('password')"
+                  @click="togglePasswordVisibility"
                 >
                   <EyeOff v-if="showPassword" class="h-5 w-5" aria-hidden="true" />
                   <Eye v-else class="h-5 w-5" aria-hidden="true" />
@@ -327,6 +435,7 @@ async function handleLogout() {
                   inputmode="numeric"
                   placeholder="6 位验证码"
                   @focus="setActiveField('sms')"
+                  @input="setActiveField('sms')"
                   @blur="clearActiveField('sms')"
                 />
               </label>
