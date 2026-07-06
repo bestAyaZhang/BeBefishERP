@@ -64,12 +64,16 @@ describe('LoginView', () => {
     });
   });
 
-  it('renders the illustrated ERP login scene with operational signals', () => {
+  it('renders the animated characters login template structure', () => {
     const wrapper = mount(LoginView);
 
-    expect(wrapper.get('[data-testid="login-character-stage"]').text()).toContain('库存');
-    expect(wrapper.text()).toContain('平台汇总');
-    expect(wrapper.text()).toContain('财务');
+    expect(wrapper.find('[data-testid="template-login-shell"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="animated-characters-panel"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="login-form-panel"]').text()).toContain('欢迎回来');
+    expect(wrapper.find('[data-testid="animated-character-purple"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="animated-character-black"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="animated-character-orange"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="animated-character-yellow"]').exists()).toBe(true);
   });
 
   it('toggles password visibility and updates the character scene state', async () => {
@@ -78,10 +82,31 @@ describe('LoginView', () => {
 
     expect(passwordInput.attributes('type')).toBe('password');
     expect(wrapper.get('[data-testid="login-character-stage"]').attributes('data-password-visible')).toBe('false');
+    expect(wrapper.get('[data-testid="login-character-stage"]').attributes('data-password-state')).toBe('empty-hidden');
 
+    await passwordInput.setValue('Admin@123456');
+    expect(wrapper.get('[data-testid="login-character-stage"]').attributes('data-password-state')).toBe('filled-hidden');
     await wrapper.get('[data-testid="password-visibility-toggle"]').trigger('click');
 
     expect(passwordInput.attributes('type')).toBe('text');
     expect(wrapper.get('[data-testid="login-character-stage"]').attributes('data-password-visible')).toBe('true');
+    expect(wrapper.get('[data-testid="login-character-stage"]').attributes('data-password-state')).toBe('filled-visible');
+    expect(wrapper.get('[data-testid="login-character-stage"]').text()).toContain('密码可见');
+  });
+
+  it('marks the character scene with the active input field', async () => {
+    const wrapper = mount(LoginView);
+    const stage = wrapper.get('[data-testid="login-character-stage"]');
+
+    expect(stage.attributes('data-active-field')).toBe('none');
+
+    await wrapper.get('[data-testid="mobile-input"]').trigger('focus');
+    expect(stage.attributes('data-active-field')).toBe('mobile');
+
+    await wrapper.get('[data-testid="password-input"]').trigger('focus');
+    expect(stage.attributes('data-active-field')).toBe('password');
+
+    await wrapper.get('[data-testid="password-input"]').trigger('blur');
+    expect(stage.attributes('data-active-field')).toBe('none');
   });
 });
