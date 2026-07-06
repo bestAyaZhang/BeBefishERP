@@ -98,6 +98,16 @@ describe('LoginView', () => {
     expect(wrapper.get('[data-testid="login-form-panel"]').classes()).toContain('bg-white');
   });
 
+  it('keeps status and decorative layers from covering the animated characters', () => {
+    const wrapper = mountLoginView();
+    const stage = wrapper.get('[data-testid="login-character-stage"]');
+
+    expect(stage.text()).not.toContain('等待输入');
+    expect(wrapper.get('[data-testid="login-status-indicator"]').text()).toContain('等待输入');
+    expect(wrapper.get('[data-testid="login-stage-ground"]').classes()).toContain('z-0');
+    expect(wrapper.get('[data-testid="login-stage-ground"]').classes()).not.toContain('z-50');
+  });
+
   it('toggles password visibility and updates the character scene state', async () => {
     const wrapper = mountLoginView();
     const passwordInput = wrapper.get('[data-testid="password-input"]');
@@ -113,7 +123,7 @@ describe('LoginView', () => {
     expect(passwordInput.attributes('type')).toBe('text');
     expect(wrapper.get('[data-testid="login-character-stage"]').attributes('data-password-visible')).toBe('true');
     expect(wrapper.get('[data-testid="login-character-stage"]').attributes('data-password-state')).toBe('filled-visible');
-    expect(wrapper.get('[data-testid="login-character-stage"]').text()).toContain('密码可见');
+    expect(wrapper.get('[data-testid="login-status-indicator"]').text()).toContain('密码可见');
   });
 
   it('marks the character scene with the active input field', async () => {

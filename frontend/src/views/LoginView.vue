@@ -208,11 +208,19 @@ async function handleLogout() {
         data-testid="animated-characters-panel"
         class="relative flex min-h-[420px] flex-col justify-between overflow-hidden bg-black p-6 text-white sm:min-h-screen lg:p-12"
       >
-        <div class="relative z-20 flex items-center gap-2 text-lg font-semibold">
-          <div class="flex h-9 w-9 items-center justify-center rounded-md bg-white/10 backdrop-blur">
-            <Sparkles class="h-4 w-4" aria-hidden="true" />
+        <div class="relative z-20 flex items-center justify-between gap-4 text-lg font-semibold">
+          <div class="flex min-w-0 items-center gap-2">
+            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white/10 backdrop-blur">
+              <Sparkles class="h-4 w-4" aria-hidden="true" />
+            </div>
+            <span class="truncate">BeBefish ERP</span>
           </div>
-          <span>BeBefish ERP</span>
+          <div
+            data-testid="login-status-indicator"
+            class="shrink-0 rounded-md border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-white/80 backdrop-blur"
+          >
+            {{ showPassword ? '密码可见' : password ? '密码已隐藏' : '等待输入' }}
+          </div>
         </div>
 
         <div class="relative z-20 flex flex-1 items-end justify-center py-8">
@@ -228,12 +236,6 @@ async function handleLogout() {
             class="relative h-[360px] w-[520px] origin-bottom scale-[0.62] sm:scale-[0.58] md:scale-[0.72] lg:scale-100"
             :style="stageMotionStyle"
           >
-            <div
-              class="absolute right-10 top-4 rounded-md border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-white/80 backdrop-blur"
-            >
-              {{ showPassword ? '密码可见' : password ? '密码已隐藏' : '等待输入' }}
-            </div>
-
             <div
               data-testid="animated-character-purple"
               class="login-character-blink login-character-float absolute bottom-0 left-[70px] z-10 w-[180px] rounded-t-[10px] bg-[#6C3FF5] shadow-2xl transition-all duration-700 ease-in-out"
@@ -328,8 +330,9 @@ async function handleLogout() {
             </div>
 
             <div
-              class="absolute bottom-0 left-1/2 z-50 h-8 w-40 -translate-x-1/2 rounded-t-md bg-white/20 backdrop-blur transition-all duration-700"
-              :class="password && !showPassword ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-70'"
+              data-testid="login-stage-ground"
+              class="pointer-events-none absolute bottom-0 left-1/2 z-0 h-6 w-36 -translate-x-1/2 rounded-t-md bg-white/10 blur-[1px] transition-all duration-700"
+              :class="password && !showPassword ? 'translate-y-3 opacity-60' : 'translate-y-5 opacity-40'"
             ></div>
           </div>
         </div>
