@@ -98,14 +98,41 @@ describe('LoginView', () => {
     expect(wrapper.get('[data-testid="login-form-panel"]').classes()).toContain('bg-white');
   });
 
-  it('keeps status and decorative layers from covering the animated characters', () => {
+  it('keeps the illustration panel free of auxiliary overlay text', () => {
     const wrapper = mountLoginView();
     const stage = wrapper.get('[data-testid="login-character-stage"]');
+    const panel = wrapper.get('[data-testid="animated-characters-panel"]');
 
     expect(stage.text()).not.toContain('等待输入');
-    expect(wrapper.get('[data-testid="login-status-indicator"]').text()).toContain('等待输入');
+    expect(wrapper.find('[data-testid="login-status-indicator"]').exists()).toBe(false);
+    expect(panel.text()).not.toContain('等待输入');
+    expect(panel.text()).not.toContain('库存');
+    expect(panel.text()).not.toContain('线下开单');
+    expect(panel.text()).not.toContain('财务看板');
+    expect(panel.text()).not.toContain('平台数据');
     expect(wrapper.get('[data-testid="login-stage-ground"]').classes()).toContain('z-0');
     expect(wrapper.get('[data-testid="login-stage-ground"]').classes()).not.toContain('z-50');
+  });
+
+  it('places password and sms tabs below the credential field at opposite ends', () => {
+    const wrapper = mountLoginView();
+    const form = wrapper.get('form');
+    const credentialFields = wrapper.get('[data-testid="login-credential-fields"]');
+    const modeTabs = wrapper.get('[data-testid="login-mode-tabs"]');
+    const formChildren = Array.from(form.element.children);
+
+    expect(formChildren.indexOf(credentialFields.element)).toBeLessThan(formChildren.indexOf(modeTabs.element));
+    expect(modeTabs.classes()).toContain('justify-between');
+    expect(wrapper.get('[data-testid="login-mode-password-tab"]').text()).toContain('密码');
+    expect(wrapper.get('[data-testid="login-mode-sms-tab"]').text()).toContain('验证码');
+    expect(modeTabs.find('svg').exists()).toBe(false);
+  });
+
+  it('uses uppercase English labels for mobile and password fields', () => {
+    const wrapper = mountLoginView();
+
+    expect(wrapper.get('[data-testid="login-mobile-label"]').text()).toBe('MOBILE');
+    expect(wrapper.get('[data-testid="login-password-label"]').text()).toBe('PASSWORD');
   });
 
   it('toggles password visibility and updates the character scene state', async () => {
@@ -123,7 +150,7 @@ describe('LoginView', () => {
     expect(passwordInput.attributes('type')).toBe('text');
     expect(wrapper.get('[data-testid="login-character-stage"]').attributes('data-password-visible')).toBe('true');
     expect(wrapper.get('[data-testid="login-character-stage"]').attributes('data-password-state')).toBe('filled-visible');
-    expect(wrapper.get('[data-testid="login-status-indicator"]').text()).toContain('密码可见');
+    expect(wrapper.get('[data-testid="animated-characters-panel"]').text()).not.toContain('密码可见');
   });
 
   it('marks the character scene with the active input field', async () => {

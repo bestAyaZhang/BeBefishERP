@@ -3,12 +3,10 @@ import {
   BadgeCheck,
   Eye,
   EyeOff,
-  KeyRound,
   LogIn,
   LogOut,
   Send,
   ShieldCheck,
-  Smartphone,
   Sparkles
 } from 'lucide-vue-next';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -208,18 +206,12 @@ async function handleLogout() {
         data-testid="animated-characters-panel"
         class="relative flex min-h-[420px] flex-col justify-between overflow-hidden bg-black p-6 text-white sm:min-h-screen lg:p-12"
       >
-        <div class="relative z-20 flex items-center justify-between gap-4 text-lg font-semibold">
+        <div class="relative z-20 flex items-center gap-2 text-lg font-semibold">
           <div class="flex min-w-0 items-center gap-2">
             <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white/10 backdrop-blur">
               <Sparkles class="h-4 w-4" aria-hidden="true" />
             </div>
             <span class="truncate">BeBefish ERP</span>
-          </div>
-          <div
-            data-testid="login-status-indicator"
-            class="shrink-0 rounded-md border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-white/80 backdrop-blur"
-          >
-            {{ showPassword ? '密码可见' : password ? '密码已隐藏' : '等待输入' }}
           </div>
         </div>
 
@@ -337,13 +329,6 @@ async function handleLogout() {
           </div>
         </div>
 
-        <div class="relative z-20 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-white/65">
-          <span>库存</span>
-          <span>线下开单</span>
-          <span>财务看板</span>
-          <span>平台数据</span>
-        </div>
-
         <div class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:22px_22px]"></div>
         <div class="absolute left-10 top-24 h-36 w-36 rounded-full bg-white/10 blur-3xl"></div>
         <div class="absolute bottom-24 right-12 h-48 w-48 rounded-full bg-white/5 blur-3xl"></div>
@@ -363,30 +348,9 @@ async function handleLogout() {
             <p class="mt-2 text-sm text-slate-500">使用员工手机号进入 ERP 工作台</p>
           </div>
 
-          <div class="mb-6 grid grid-cols-2 rounded-md bg-slate-100 p-1.5">
-            <button
-              type="button"
-              class="flex h-10 items-center justify-center gap-2 rounded px-3 text-sm font-medium transition"
-              :class="mode === 'password' ? 'bg-white text-pine shadow-sm' : 'text-slate-500'"
-              @click="selectMode('password')"
-            >
-              <KeyRound class="h-4 w-4" aria-hidden="true" />
-              密码
-            </button>
-            <button
-              type="button"
-              class="flex h-10 items-center justify-center gap-2 rounded px-3 text-sm font-medium transition"
-              :class="mode === 'sms' ? 'bg-white text-pine shadow-sm' : 'text-slate-500'"
-              @click="selectMode('sms')"
-            >
-              <Smartphone class="h-4 w-4" aria-hidden="true" />
-              验证码
-            </button>
-          </div>
-
           <form class="space-y-5" @submit.prevent="submitLogin">
             <label class="block space-y-2">
-              <span class="block text-sm font-medium text-slate-700">手机号</span>
+              <span data-testid="login-mobile-label" class="block text-sm font-medium uppercase text-slate-700">MOBILE</span>
               <input
                 v-model.trim="mobile"
                 data-testid="mobile-input"
@@ -400,8 +364,10 @@ async function handleLogout() {
               />
             </label>
 
-            <div v-if="mode === 'password'" class="space-y-2">
-              <label class="block text-sm font-medium text-slate-700" for="login-password">密码</label>
+            <div v-if="mode === 'password'" data-testid="login-credential-fields" class="space-y-2">
+              <label data-testid="login-password-label" class="block text-sm font-medium uppercase text-slate-700" for="login-password">
+                PASSWORD
+              </label>
               <div class="relative">
                 <input
                   id="login-password"
@@ -429,9 +395,9 @@ async function handleLogout() {
               </div>
             </div>
 
-            <div v-else class="grid grid-cols-[1fr_auto] gap-3">
+            <div v-else data-testid="login-credential-fields" class="grid grid-cols-[1fr_auto] gap-3">
               <label class="block space-y-2">
-                <span class="block text-sm font-medium text-slate-700">短信验证码</span>
+                <span class="block text-sm font-medium uppercase text-slate-700">SMS CODE</span>
                 <input
                   v-model.trim="smsCode"
                   data-testid="sms-code-input"
@@ -452,6 +418,27 @@ async function handleLogout() {
               >
                 <Send class="h-4 w-4" aria-hidden="true" />
                 {{ sendingCode ? '发送中' : '发送' }}
+              </button>
+            </div>
+
+            <div data-testid="login-mode-tabs" class="flex items-center justify-between pt-1 text-sm">
+              <button
+                type="button"
+                data-testid="login-mode-password-tab"
+                class="inline-flex h-9 items-center gap-2 rounded px-1.5 font-medium transition"
+                :class="mode === 'password' ? 'text-pine' : 'text-slate-500 hover:text-pine'"
+                @click="selectMode('password')"
+              >
+                密码
+              </button>
+              <button
+                type="button"
+                data-testid="login-mode-sms-tab"
+                class="inline-flex h-9 items-center gap-2 rounded px-1.5 font-medium transition"
+                :class="mode === 'sms' ? 'text-pine' : 'text-slate-500 hover:text-pine'"
+                @click="selectMode('sms')"
+              >
+                验证码
               </button>
             </div>
 
