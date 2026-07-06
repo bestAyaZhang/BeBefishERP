@@ -201,11 +201,12 @@ async function handleLogout() {
   <main class="min-h-screen bg-white text-ink">
     <div
       data-testid="template-login-shell"
+      data-color-scheme="black-white"
       class="grid min-h-screen grid-cols-1 sm:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]"
     >
       <section
         data-testid="animated-characters-panel"
-        class="relative flex min-h-[420px] flex-col justify-between overflow-hidden bg-[#5b36e8] p-6 text-white sm:min-h-screen lg:p-12"
+        class="relative flex min-h-[420px] flex-col justify-between overflow-hidden bg-black p-6 text-white sm:min-h-screen lg:p-12"
       >
         <div class="relative z-20 flex items-center gap-2 text-lg font-semibold">
           <div class="flex h-9 w-9 items-center justify-center rounded-md bg-white/10 backdrop-blur">
@@ -342,7 +343,7 @@ async function handleLogout() {
 
         <div class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:22px_22px]"></div>
         <div class="absolute left-10 top-24 h-36 w-36 rounded-full bg-white/10 blur-3xl"></div>
-        <div class="absolute bottom-24 right-12 h-48 w-48 rounded-full bg-black/10 blur-3xl"></div>
+        <div class="absolute bottom-24 right-12 h-48 w-48 rounded-full bg-white/5 blur-3xl"></div>
       </section>
 
       <section

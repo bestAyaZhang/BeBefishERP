@@ -90,6 +90,14 @@ describe('LoginView', () => {
     expect(wrapper.find('[data-testid="animated-character-yellow"]').exists()).toBe(true);
   });
 
+  it('uses a black and white background palette for the login page', () => {
+    const wrapper = mountLoginView();
+
+    expect(wrapper.get('[data-testid="template-login-shell"]').attributes('data-color-scheme')).toBe('black-white');
+    expect(wrapper.get('[data-testid="animated-characters-panel"]').classes()).toContain('bg-black');
+    expect(wrapper.get('[data-testid="login-form-panel"]').classes()).toContain('bg-white');
+  });
+
   it('toggles password visibility and updates the character scene state', async () => {
     const wrapper = mountLoginView();
     const passwordInput = wrapper.get('[data-testid="password-input"]');
