@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import LoginView from './views/LoginView.vue';
+import WorkspacePrototype from './views/WorkspacePrototype.vue';
 </script>
 
 <template>
-  <LoginView />
+  <WorkspacePrototype />
 </template>

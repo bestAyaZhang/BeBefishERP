@@ -54,3 +54,6 @@ backups/
 .worktrees/
 worktrees/
 
+
+# Local tooling
+.tools/
