@@ -27,10 +27,26 @@ import {
   Warehouse,
   X
 } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 type SectionKey = 'dashboard' | 'products' | 'tasks' | 'calendar';
 type ProductStatus = '全部状态' | '在售' | '待完善' | '低库存' | '已停用';
+type ProductFilterKey = 'brand' | 'supplier' | 'category';
+type ProductViewMode = 'list' | 'create';
+type CreateProductField = {
+  label: string;
+  testId: string;
+  placeholder: string;
+  span?: string;
+  type?: string;
+  kind?: 'input' | 'upload' | 'select';
+  options?: string[];
+};
+type CreateProductFormSection = {
+  title: string;
+  description: string;
+  fields: CreateProductField[];
+};
 type TaskStage = 'Developing' | 'Designing' | 'Wireframe';
 
 const activeSection = ref<SectionKey>('products');
@@ -43,6 +59,20 @@ const activeRange = ref('本周');
 const activeProductStatus = ref<ProductStatus>('全部状态');
 const selectedProductSku = ref('BBF-FEED-001');
 const isProductDrawerOpen = ref(false);
+const productViewMode = ref<ProductViewMode>('list');
+const allProductBrandOption = '全部品牌';
+const allProductSupplierOption = '全部供应商';
+const allProductCategoryOption = '全部分类';
+const productArticleNoQuery = ref('');
+const selectedProductBrand = ref(allProductBrandOption);
+const selectedProductSupplier = ref(allProductSupplierOption);
+const selectedProductCategory = ref(allProductCategoryOption);
+const activeProductFilterMenu = ref<ProductFilterKey | null>(null);
+const activeCreateProductSelect = ref<string | null>(null);
+const createProductSelectValues = ref<Record<string, string>>({});
+const productPageSizes = [2, 10, 20, 50];
+const productPageSize = ref(10);
+const currentProductPage = ref(1);
 
 const navItems = [
   { key: 'dashboard', label: '工作台', icon: LayoutDashboard },
@@ -106,7 +136,10 @@ const pageHeaders: Record<SectionKey, { group: string; title: string }> = {
   calendar: { group: 'Calendar', title: 'Schedule' }
 };
 
-const currentPageHeader = computed(() => pageHeaders[activeSection.value]);
+const currentPageHeader = computed(() => {
+  if (activeSection.value === 'products' && productViewMode.value === 'create') return { group: 'Products', title: 'New Product' };
+  return pageHeaders[activeSection.value];
+});
 
 const productStats = [
   { label: 'SKU 总数', value: '328', caption: '+18 本月新增', icon: PackageOpen, tone: 'bg-blue-50 text-[#536dff]' },
@@ -117,6 +150,59 @@ const productStats = [
 
 const productStatuses: ProductStatus[] = ['全部状态', '在售', '待完善', '低库存', '已停用'];
 
+const createProductSteps = ['基础信息', '渠道价格', '规格包装', '图片资料'];
+
+const createProductFormSections: CreateProductFormSection[] = [
+  {
+    title: '基础信息',
+    description: '先确定商品身份，便于后续入库、开单和渠道上架共用同一套 SKU。',
+    fields: [
+      { label: '产品图片', testId: 'create-product-image', placeholder: '上传产品主图，支持 JPG / PNG', span: 'md:col-span-2', kind: 'upload' },
+      { label: '商品名称', testId: 'create-product-name', placeholder: '例如：静音增氧泵 Pro' },
+      { label: 'SKU 编号', testId: 'create-product-sku', placeholder: '例如：BBF-PUMP-021' },
+      { label: '货号', testId: 'create-product-article-no', placeholder: '例如：OP-PUMP-PRO-21' },
+      { label: '规格', testId: 'create-product-spec', placeholder: '颜色 / 型号 / 功率 / 容量' },
+      { label: '品牌', testId: 'create-product-brand', placeholder: '请选择品牌', kind: 'select', options: ['BeBefish', 'AquaLab', 'OceanPure'] },
+      { label: '分类', testId: 'create-product-category', placeholder: '请选择分类', kind: 'select', options: ['鱼粮 / 组合装', '鱼缸 / 智能设备', '清洁 / 套装', '设备 / 增氧泵', '护理 / 水质'] }
+    ]
+  },
+  {
+    title: '渠道与价格',
+    description: '记录渠道商、供应商和销售价格，方便后续按平台维护报价。',
+    fields: [
+      { label: '单价', testId: 'create-product-unit-price', placeholder: '例如：129.00', type: 'number' },
+      { label: '成本价', testId: 'create-product-cost-price', placeholder: '例如：61.20', type: 'number' },
+      { label: '供应商', testId: 'create-product-supplier', placeholder: '请选择供应商', kind: 'select', options: ['广州海悦宠物用品', '深圳蓝境科技', '宁波清氧电器', 'OceanPure 工厂'] },
+      { label: '渠道商', testId: 'create-product-distributor', placeholder: '请选择渠道商', kind: 'select', options: ['1688', '抖音', '微信', '全部渠道', '线下经销商'] }
+    ]
+  },
+  {
+    title: '规格包装',
+    description: '集中录入外箱、内盒和条码信息，减少采购入库与仓库复核时来回确认。',
+    fields: [
+      { label: '外箱长度', testId: 'create-product-outer-length', placeholder: '长 cm', type: 'number' },
+      { label: '外箱宽度', testId: 'create-product-outer-width', placeholder: '宽 cm', type: 'number' },
+      { label: '外箱高度', testId: 'create-product-outer-height', placeholder: '高 cm', type: 'number' },
+      { label: '内盒包装', testId: 'create-product-inner-packaging', placeholder: '请选择内盒包装', kind: 'select', options: ['泡沫内托 + 彩盒', '彩盒 + 防潮袋', '吸塑托盘 + 彩卡', '牛皮盒 + 说明书', '自封袋 + 防潮盒'] },
+      { label: '单杯条码', testId: 'create-product-cup-barcode', placeholder: '扫描或输入条码' },
+      { label: '内盒长度', testId: 'create-product-inner-length', placeholder: '长 cm', type: 'number' },
+      { label: '内盒宽度', testId: 'create-product-inner-width', placeholder: '宽 cm', type: 'number' },
+      { label: '内盒高度', testId: 'create-product-inner-height', placeholder: '高 cm', type: 'number' },
+      { label: '内盒重量', testId: 'create-product-inner-weight', placeholder: 'kg', type: 'number' }
+    ]
+  },
+  {
+    title: '图片与重量',
+    description: '补充箱规图片和重量数据，支撑平台资料审核与物流计费。',
+    fields: [
+      { label: '外箱图片', testId: 'create-product-outer-box-image', placeholder: '上传外箱实拍或包装图', span: 'md:col-span-2', kind: 'upload' },
+      { label: '内盒包装图', testId: 'create-product-inner-packaging-image', placeholder: '上传内盒包装图', span: 'md:col-span-2', kind: 'upload' },
+      { label: '克重', testId: 'create-product-gram-weight', placeholder: '例如：500g' },
+      { label: '净重', testId: 'create-product-net-weight', placeholder: 'kg', type: 'number' },
+      { label: '毛重', testId: 'create-product-gross-weight', placeholder: 'kg', type: 'number' }
+    ]
+  }
+];
 const products = [
   {
     sku: 'BBF-FEED-001',
@@ -270,14 +356,31 @@ const groupedTasks = computed(() =>
 
 const filteredProducts = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
+  const articleQuery = productArticleNoQuery.value.trim().toLowerCase();
   return products.filter((product) => {
+    const details = productDetailFor(product.sku);
     const matchesStatus = activeProductStatus.value === '全部状态' || product.status === activeProductStatus.value;
-    const matchesQuery = !query || [product.sku, product.name, product.spu, product.category, product.brand, product.channel, product.supplier, product.status, product.audit].some((value) =>
+    const matchesQuery = !query || [product.sku, product.name, product.spu, details.articleNo, product.category, product.brand, product.channel, product.supplier, product.status, product.audit].some((value) =>
       value.toLowerCase().includes(query)
     );
-    return matchesStatus && matchesQuery;
+    const matchesArticle = !articleQuery || details.articleNo.toLowerCase().includes(articleQuery) || product.sku.toLowerCase().includes(articleQuery);
+    const matchesBrand = selectedProductBrand.value === allProductBrandOption || product.brand === selectedProductBrand.value;
+    const matchesSupplier = selectedProductSupplier.value === allProductSupplierOption || product.supplier === selectedProductSupplier.value;
+    const matchesCategory = selectedProductCategory.value === allProductCategoryOption || product.category === selectedProductCategory.value;
+    return matchesStatus && matchesQuery && matchesArticle && matchesBrand && matchesSupplier && matchesCategory;
   });
 });
+const productTotalPages = computed(() => Math.max(1, Math.ceil(filteredProducts.value.length / productPageSize.value)));
+const productPaginationItems = computed<Array<number | 'ellipsis'>>(() => {
+  const totalPages = productTotalPages.value;
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1);
+  return [1, 2, 3, 4, 5, 'ellipsis', totalPages];
+});
+const paginatedProducts = computed(() => {
+  const startIndex = (currentProductPage.value - 1) * productPageSize.value;
+  return filteredProducts.value.slice(startIndex, startIndex + productPageSize.value);
+});
+
 
 const selectedProduct = computed(() => products.find((product) => product.sku === selectedProductSku.value) ?? products[0]);
 
@@ -371,7 +474,77 @@ const productDetailBySku = {
   }
 };
 
-const selectedProductDetails = computed(() => productDetailBySku[selectedProduct.value.sku as keyof typeof productDetailBySku] ?? productDetailBySku['BBF-FEED-001']);
+function uniqueProductOptions(values: string[]) {
+  return Array.from(new Set(values));
+}
+
+function productDetailFor(sku: string) {
+  return productDetailBySku[sku as keyof typeof productDetailBySku] ?? productDetailBySku['BBF-FEED-001'];
+}
+
+const productBrandOptions = computed(() => [allProductBrandOption, ...uniqueProductOptions(products.map((product) => product.brand))]);
+const productSupplierOptions = computed(() => [allProductSupplierOption, ...uniqueProductOptions(products.map((product) => product.supplier))]);
+const productCategoryOptions = computed(() => [allProductCategoryOption, ...uniqueProductOptions(products.map((product) => product.category))]);
+
+const selectedProductDetails = computed(() => productDetailFor(selectedProduct.value.sku));
+
+watch([searchQuery, activeProductStatus, productArticleNoQuery, selectedProductBrand, selectedProductSupplier, selectedProductCategory], () => {
+  currentProductPage.value = 1;
+});
+
+watch(productTotalPages, (totalPages) => {
+  if (currentProductPage.value > totalPages) currentProductPage.value = totalPages;
+});
+
+function toggleProductFilterMenu(key: ProductFilterKey) {
+  activeProductFilterMenu.value = activeProductFilterMenu.value === key ? null : key;
+}
+
+function selectProductFilter(key: ProductFilterKey, value: string) {
+  if (key === 'brand') selectedProductBrand.value = value;
+  if (key === 'supplier') selectedProductSupplier.value = value;
+  if (key === 'category') selectedProductCategory.value = value;
+  activeProductFilterMenu.value = null;
+}
+
+function resetProductFilters() {
+  productArticleNoQuery.value = '';
+  selectedProductBrand.value = allProductBrandOption;
+  selectedProductSupplier.value = allProductSupplierOption;
+  selectedProductCategory.value = allProductCategoryOption;
+  activeProductFilterMenu.value = null;
+}
+
+function toggleCreateProductSelect(testId: string) {
+  activeCreateProductSelect.value = activeCreateProductSelect.value === testId ? null : testId;
+}
+
+function selectCreateProductOption(testId: string, option: string) {
+  createProductSelectValues.value = { ...createProductSelectValues.value, [testId]: option };
+  activeCreateProductSelect.value = null;
+}
+
+function createProductSelectLabel(field: CreateProductField) {
+  return createProductSelectValues.value[field.testId] ?? field.placeholder;
+}
+
+function setProductPage(page: number) {
+  currentProductPage.value = Math.min(Math.max(page, 1), productTotalPages.value);
+}
+
+function goToPreviousProductPage() {
+  setProductPage(currentProductPage.value - 1);
+}
+
+function goToNextProductPage() {
+  setProductPage(currentProductPage.value + 1);
+}
+
+function updateProductPageSize(event: Event) {
+  const nextPageSize = Number((event.target as HTMLSelectElement).value);
+  productPageSize.value = nextPageSize;
+  currentProductPage.value = 1;
+}
 function productStatusClass(status: string) {
   if (status === '在售') return 'bg-emerald-50 text-emerald-500';
   if (status === '低库存') return 'bg-cyan-50 text-[#36bee3]';
@@ -388,6 +561,7 @@ function productAuditClass(audit: string) {
 function productStockRatio(stock: number, safetyStock: number) {
   return `${Math.min(100, Math.round((stock / Math.max(safetyStock * 2, 1)) * 100))}%`;
 }
+
 function openProductDrawer(sku: string) {
   selectedProductSku.value = sku;
   isProductDrawerOpen.value = true;
@@ -397,12 +571,24 @@ function closeProductDrawer() {
   isProductDrawerOpen.value = false;
 }
 
+function openProductCreateForm() {
+  productViewMode.value = 'create';
+  activeProductFilterMenu.value = null;
+  activeCreateProductSelect.value = null;
+  closeProductDrawer();
+}
+
+function closeProductCreateForm() {
+  productViewMode.value = 'list';
+  activeCreateProductSelect.value = null;
+}
+
 function selectNav(key: string) {
   if (key === 'dashboard' || key === 'products' || key === 'tasks' || key === 'calendar') {
     activeSection.value = key;
-    if (key !== 'products') {
-      closeProductDrawer();
-    }
+    productViewMode.value = 'list';
+    activeCreateProductSelect.value = null;
+    closeProductDrawer();
   }
 }
 </script>
@@ -702,6 +888,7 @@ function selectNav(key: string) {
         </div>
 
         <div v-else-if="activeSection === 'products'" class="space-y-6">
+          <template v-if="productViewMode === 'list'">
           <div class="min-w-0 space-y-6">
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 min-[1180px]:grid-cols-4">
               <article v-for="stat in productStats" :key="stat.label" class="rounded-[18px] border border-slate-200 bg-white p-5 shadow-[0_14px_40px_rgba(31,45,74,0.04)]">
@@ -727,9 +914,101 @@ function selectNav(key: string) {
                     <Filter class="h-4 w-4" aria-hidden="true" />
                     筛选
                   </button>
-                  <button class="inline-flex h-10 items-center gap-2 rounded-xl bg-[#536dff] px-4 text-sm font-bold text-white shadow-lg shadow-blue-200" type="button">
+                  <button data-testid="add-product-button" class="inline-flex h-10 items-center gap-2 rounded-xl bg-[#536dff] px-4 text-sm font-bold text-white shadow-lg shadow-blue-200" type="button" @click="openProductCreateForm">
                     <Plus class="h-4 w-4" aria-hidden="true" />
                     新增商品
+                  </button>
+                </div>
+              </div>
+
+              <div class="border-b border-slate-100 bg-slate-50/45 px-6 py-4">
+                <div class="grid gap-3 md:grid-cols-2 min-[1280px]:grid-cols-[1.1fr_0.9fr_1fr_1fr_auto]">
+                  <label class="min-w-0">
+                    <span class="mb-2 block text-xs font-black text-slate-400">货号</span>
+                    <input
+                      v-model="productArticleNoQuery"
+                      data-testid="product-filter-article"
+                      class="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#25314d] outline-none transition placeholder:text-slate-300 focus:border-[#536dff]"
+                      placeholder="输入货号 / SKU"
+                    />
+                  </label>
+                  <label class="relative min-w-0">
+                    <span class="mb-2 block text-xs font-black text-slate-400">品牌</span>
+                    <button
+                      data-testid="product-filter-brand-button"
+                      class="flex h-10 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 text-left text-sm font-bold text-[#25314d] shadow-sm shadow-slate-100 transition hover:border-[#536dff]/45 hover:bg-slate-50"
+                      type="button"
+                      @click="toggleProductFilterMenu('brand')"
+                    >
+                      <span class="truncate">{{ selectedProductBrand }}</span>
+                      <ChevronDown class="h-4 w-4 text-slate-400" aria-hidden="true" />
+                    </button>
+                    <div v-if="activeProductFilterMenu === 'brand'" data-testid="product-filter-brand-menu" class="absolute left-0 right-0 top-[calc(100%+8px)] z-40 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(31,45,74,0.16)]">
+                      <button
+                        v-for="brand in productBrandOptions"
+                        :key="brand"
+                        :data-testid="brand === allProductBrandOption ? 'product-filter-brand-option-all' : brand === 'AquaLab' ? 'product-filter-brand-option-AquaLab' : 'product-filter-brand-option'"
+                        class="flex h-9 w-full items-center rounded-lg px-3 text-left text-sm font-bold transition"
+                        :class="selectedProductBrand === brand ? 'bg-blue-50 text-[#536dff]' : 'text-slate-600 hover:bg-slate-50 hover:text-[#25314d]'"
+                        type="button"
+                        @click="selectProductFilter('brand', brand)"
+                      >
+                        {{ brand }}
+                      </button>
+                    </div>
+                  </label>
+                  <label class="relative min-w-0">
+                    <span class="mb-2 block text-xs font-black text-slate-400">供应商</span>
+                    <button
+                      data-testid="product-filter-supplier-button"
+                      class="flex h-10 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 text-left text-sm font-bold text-[#25314d] shadow-sm shadow-slate-100 transition hover:border-[#536dff]/45 hover:bg-slate-50"
+                      type="button"
+                      @click="toggleProductFilterMenu('supplier')"
+                    >
+                      <span class="truncate">{{ selectedProductSupplier }}</span>
+                      <ChevronDown class="h-4 w-4 text-slate-400" aria-hidden="true" />
+                    </button>
+                    <div v-if="activeProductFilterMenu === 'supplier'" data-testid="product-filter-supplier-menu" class="absolute left-0 right-0 top-[calc(100%+8px)] z-40 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(31,45,74,0.16)]">
+                      <button
+                        v-for="supplier in productSupplierOptions"
+                        :key="supplier"
+                        :data-testid="supplier === allProductSupplierOption ? 'product-filter-supplier-option-all' : 'product-filter-supplier-option'"
+                        class="flex h-9 w-full items-center rounded-lg px-3 text-left text-sm font-bold transition"
+                        :class="selectedProductSupplier === supplier ? 'bg-blue-50 text-[#536dff]' : 'text-slate-600 hover:bg-slate-50 hover:text-[#25314d]'"
+                        type="button"
+                        @click="selectProductFilter('supplier', supplier)"
+                      >
+                        {{ supplier }}
+                      </button>
+                    </div>
+                  </label>
+                  <label class="relative min-w-0">
+                    <span class="mb-2 block text-xs font-black text-slate-400">分类</span>
+                    <button
+                      data-testid="product-filter-category-button"
+                      class="flex h-10 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 text-left text-sm font-bold text-[#25314d] shadow-sm shadow-slate-100 transition hover:border-[#536dff]/45 hover:bg-slate-50"
+                      type="button"
+                      @click="toggleProductFilterMenu('category')"
+                    >
+                      <span class="truncate">{{ selectedProductCategory }}</span>
+                      <ChevronDown class="h-4 w-4 text-slate-400" aria-hidden="true" />
+                    </button>
+                    <div v-if="activeProductFilterMenu === 'category'" data-testid="product-filter-category-menu" class="absolute left-0 right-0 top-[calc(100%+8px)] z-40 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(31,45,74,0.16)]">
+                      <button
+                        v-for="category in productCategoryOptions"
+                        :key="category"
+                        :data-testid="category === allProductCategoryOption ? 'product-filter-category-option-all' : 'product-filter-category-option'"
+                        class="flex h-9 w-full items-center rounded-lg px-3 text-left text-sm font-bold transition"
+                        :class="selectedProductCategory === category ? 'bg-blue-50 text-[#536dff]' : 'text-slate-600 hover:bg-slate-50 hover:text-[#25314d]'"
+                        type="button"
+                        @click="selectProductFilter('category', category)"
+                      >
+                        {{ category }}
+                      </button>
+                    </div>
+                  </label>
+                  <button class="mt-6 h-10 rounded-xl border border-slate-200 px-4 text-sm font-black text-slate-500 transition hover:bg-white hover:text-[#25314d]" type="button" @click="resetProductFilters">
+                    重置
                   </button>
                 </div>
               </div>
@@ -766,7 +1045,7 @@ function selectNav(key: string) {
 
                   <div v-if="filteredProducts.length" class="divide-y divide-slate-100">
                     <div
-                      v-for="product in filteredProducts"
+                      v-for="product in paginatedProducts"
                       :key="product.sku"
                       class="grid min-h-[76px] grid-cols-[1.35fr_0.9fr_0.65fr_0.65fr_0.7fr_0.6fr] items-center px-5 text-sm transition hover:bg-slate-50"
                       :class="selectedProductSku === product.sku ? 'bg-blue-50/45' : 'bg-white'"
@@ -777,7 +1056,7 @@ function selectNav(key: string) {
                         </span>
                         <span class="min-w-0">
                           <span class="block truncate font-black text-[#25314d]">{{ product.name }}</span>
-                          <span class="mt-1 block truncate text-xs font-bold text-slate-400">{{ product.sku }} · {{ product.spu }}</span>
+                          <span class="mt-1 block truncate text-xs font-bold text-slate-400">{{ product.sku }} · {{ productDetailFor(product.sku).articleNo }} · {{ product.spu }}</span>
                         </span>
                       </button>
                       <div class="min-w-0">
@@ -809,8 +1088,186 @@ function selectNav(key: string) {
                     暂无匹配商品
                   </div>
                 </div>
+
+                <div data-testid="product-pagination" class="mt-4 flex min-w-[900px] flex-wrap items-center justify-end gap-2 rounded-2xl border border-slate-100 bg-white px-4 py-3 text-sm font-bold text-slate-500">
+                  <span class="mr-auto whitespace-nowrap text-slate-600">&#20849;{{ filteredProducts.length }}&#26465;</span>
+                  <button
+                    data-testid="product-page-prev"
+                    class="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 transition enabled:hover:border-[#536dff] enabled:hover:text-[#536dff] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-300"
+                    type="button"
+                    aria-label="Previous page"
+                    :disabled="currentProductPage === 1"
+                    @click="goToPreviousProductPage"
+                  >
+                    <ChevronLeft class="h-4 w-4" aria-hidden="true" />
+                  </button>
+                  <template v-for="(item, index) in productPaginationItems" :key="`${item}-${index}`">
+                    <span v-if="item === 'ellipsis'" class="flex h-8 min-w-8 items-center justify-center px-1 text-slate-400">...</span>
+                    <button
+                      v-else
+                      data-testid="product-page-number"
+                      class="flex h-8 min-w-8 items-center justify-center rounded-lg border px-2 transition"
+                      :class="currentProductPage === item ? 'border-[#536dff] bg-blue-50 text-[#536dff] shadow-sm shadow-blue-100' : 'border-slate-200 bg-white text-slate-600 hover:border-[#536dff] hover:text-[#536dff]'"
+                      type="button"
+                      :aria-current="currentProductPage === item ? 'page' : undefined"
+                      @click="setProductPage(Number(item))"
+                    >
+                      {{ item }}
+                    </button>
+                  </template>
+                  <button
+                    data-testid="product-page-next"
+                    class="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 transition enabled:hover:border-[#536dff] enabled:hover:text-[#536dff] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-300"
+                    type="button"
+                    aria-label="Next page"
+                    :disabled="currentProductPage === productTotalPages"
+                    @click="goToNextProductPage"
+                  >
+                    <ChevronRight class="h-4 w-4" aria-hidden="true" />
+                  </button>
+                  <label class="relative ml-2 inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white pl-3 pr-2 text-slate-600 transition hover:border-[#536dff]">
+                    <select data-testid="product-page-size" class="h-full appearance-none bg-transparent pr-7 text-sm font-bold outline-none" :value="productPageSize" @change="updateProductPageSize">
+                      <option v-for="size in productPageSizes" :key="size" :value="size">{{ size }} &#26465;/&#39029;</option>
+                    </select>
+                    <ChevronDown class="pointer-events-none absolute right-2 h-4 w-4 text-slate-400" aria-hidden="true" />
+                  </label>
+                </div>
               </div>
             </article>
+          </div>
+          </template>
+
+          <div v-else data-testid="product-create-form" class="space-y-6">
+            <article class="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_14px_40px_rgba(31,45,74,0.04)]">
+              <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 px-6 py-5">
+                <div class="flex min-w-0 items-center gap-4">
+                  <button data-testid="back-to-product-list" class="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-500 transition hover:bg-slate-50 hover:text-[#25314d]" type="button" @click="closeProductCreateForm">
+                    <ChevronLeft class="h-4 w-4" aria-hidden="true" />
+                    返回列表
+                  </button>
+                  <div class="min-w-0">
+                    <p class="text-xs font-black uppercase text-[#536dff]">Product master data</p>
+                    <h1 class="mt-1 text-2xl font-black">新增商品</h1>
+                    <p class="mt-1 text-sm font-medium text-slate-400">补全 SKU、包装、价格、渠道和图片资料，提交后进入资料审核。</p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button class="h-10 rounded-xl border border-slate-200 px-4 text-sm font-black text-slate-500 transition hover:bg-slate-50" type="button">保存草稿</button>
+                  <button class="inline-flex h-10 items-center gap-2 rounded-xl bg-[#536dff] px-4 text-sm font-black text-white shadow-lg shadow-blue-200" type="button">
+                    <PackageCheck class="h-4 w-4" aria-hidden="true" />
+                    提交审核
+                  </button>
+                </div>
+              </div>
+
+              <div class="grid gap-3 border-b border-slate-100 bg-slate-50/45 px-6 py-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div v-for="(step, index) in createProductSteps" :key="step" class="flex min-h-16 items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3">
+                  <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-sm font-black" :class="index === 0 ? 'bg-[#536dff] text-white' : 'bg-slate-50 text-slate-400'">{{ index + 1 }}</span>
+                  <span>
+                    <span class="block text-sm font-black text-[#25314d]">{{ step }}</span>
+                    <span class="mt-0.5 block text-xs font-bold text-slate-400">{{ index === 0 ? '当前填写' : '待完善' }}</span>
+                  </span>
+                </div>
+              </div>
+            </article>
+
+            <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+              <form class="rounded-[22px] border border-slate-200 bg-white px-6 py-6 shadow-[0_14px_40px_rgba(31,45,74,0.04)]" @submit.prevent>
+                <div class="space-y-8">
+                  <section v-for="section in createProductFormSections" :key="section.title" class="border-b border-slate-100 pb-7 last:border-b-0 last:pb-0">
+                    <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 class="text-lg font-black text-[#25314d]">{{ section.title }}</h2>
+                        <p class="mt-1 max-w-2xl text-sm font-medium text-slate-400">{{ section.description }}</p>
+                      </div>
+                      <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#536dff]">必填资料</span>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                      <div v-for="field in section.fields" :key="field.testId" class="min-w-0" :class="field.span">
+                        <span class="mb-2 block text-xs font-black text-slate-400">{{ field.label }}</span>
+                        <label v-if="field.kind === 'upload'" class="group flex min-h-[112px] cursor-pointer items-center gap-4 rounded-2xl border border-dashed border-blue-200 bg-blue-50/45 px-4 py-4 transition hover:border-[#536dff] hover:bg-blue-50">
+                          <input :data-testid="field.testId" class="sr-only" type="file" accept="image/*" />
+                          <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-[#536dff] shadow-sm shadow-blue-100">
+                            <Plus class="h-5 w-5" aria-hidden="true" />
+                          </span>
+                          <span class="min-w-0">
+                            <span class="block text-sm font-black text-[#25314d]">点击上传图片</span>
+                            <span class="mt-1 block truncate text-xs font-bold text-slate-400">{{ field.placeholder }}</span>
+                          </span>
+                        </label>
+                        <div v-else-if="field.kind === 'select'" class="relative">
+                          <button
+                            :data-testid="field.testId"
+                            class="flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 text-left text-sm font-bold text-[#25314d] shadow-sm shadow-slate-100 transition hover:border-[#536dff]/45 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-50"
+                            type="button"
+                            aria-haspopup="listbox"
+                            :aria-expanded="activeCreateProductSelect === field.testId"
+                            :aria-controls="`${field.testId}-menu`"
+                            @click="toggleCreateProductSelect(field.testId)"
+                          >
+                            <span class="truncate" :class="createProductSelectValues[field.testId] ? 'text-[#25314d]' : 'text-slate-400'">
+                              {{ createProductSelectLabel(field) }}
+                            </span>
+                            <ChevronDown class="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+                          </button>
+                          <div
+                            v-if="activeCreateProductSelect === field.testId"
+                            :id="`${field.testId}-menu`"
+                            :data-testid="`${field.testId}-menu`"
+                            class="absolute left-0 right-0 top-[calc(100%+8px)] z-40 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_42px_rgba(31,45,74,0.16)]"
+                            role="listbox"
+                          >
+                            <button
+                              v-for="option in field.options ?? []"
+                              :key="option"
+                              :data-testid="`${field.testId}-option`"
+                              class="flex min-h-9 w-full items-center rounded-lg px-3 py-2 text-left text-sm font-bold transition"
+                              :class="createProductSelectValues[field.testId] === option ? 'bg-blue-50 text-[#536dff]' : 'text-slate-600 hover:bg-slate-50 hover:text-[#25314d]'"
+                              type="button"
+                              role="option"
+                              :aria-selected="createProductSelectValues[field.testId] === option"
+                              @click="selectCreateProductOption(field.testId, option)"
+                            >
+                              {{ option }}
+                            </button>
+                          </div>
+                        </div>
+                        <input
+                          v-else
+                          :data-testid="field.testId"
+                          class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#25314d] outline-none transition placeholder:text-slate-300 focus:border-[#536dff] focus:ring-4 focus:ring-blue-50"
+                          :placeholder="field.placeholder"
+                          :type="field.type ?? 'text'"
+                        />
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </form>
+
+              <aside class="h-fit rounded-[22px] border border-slate-200 bg-white p-6 shadow-[0_14px_40px_rgba(31,45,74,0.04)]">
+                <div class="mb-5 flex items-center justify-between">
+                  <h2 class="text-lg font-black">资料预检</h2>
+                  <span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-500">草稿</span>
+                </div>
+                <div class="space-y-4">
+                  <div class="rounded-2xl border border-dashed border-blue-200 bg-blue-50/50 p-4">
+                    <PackageOpen class="mb-3 h-7 w-7 text-[#536dff]" aria-hidden="true" />
+                    <p class="text-sm font-black text-[#25314d]">主图与包装图</p>
+                    <p class="mt-1 text-xs font-bold leading-5 text-slate-400">建议先补产品图片、外箱图片和内盒包装图，便于平台资料审核。</p>
+                  </div>
+                  <div class="space-y-3 text-sm font-bold text-slate-500">
+                    <div class="flex items-center justify-between"><span>基础字段</span><span class="text-[#536dff]">0/8</span></div>
+                    <div class="h-2 overflow-hidden rounded-full bg-slate-100"><span class="block h-full w-1/5 rounded-full bg-[#536dff]"></span></div>
+                    <div class="flex items-center justify-between"><span>包装规格</span><span class="text-[#36bee3]">0/9</span></div>
+                    <div class="h-2 overflow-hidden rounded-full bg-slate-100"><span class="block h-full w-1/6 rounded-full bg-[#36bee3]"></span></div>
+                    <div class="flex items-center justify-between"><span>图片资料</span><span class="text-rose-500">0/3</span></div>
+                    <div class="h-2 overflow-hidden rounded-full bg-slate-100"><span class="block h-full w-1/12 rounded-full bg-rose-400"></span></div>
+                  </div>
+                  <button class="mt-2 h-10 w-full rounded-xl border border-slate-200 text-sm font-black text-slate-500 transition hover:bg-slate-50" type="button">查看填写规范</button>
+                </div>
+              </aside>
+            </div>
           </div>
 
         </div>
