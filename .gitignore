@@ -57,3 +57,4 @@ worktrees/
 
 # Local tooling
 .tools/
+.superpowers/

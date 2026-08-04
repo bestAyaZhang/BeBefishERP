@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import router from '../router';
 import LoginView from './LoginView.vue';
 import { loginWithPassword, loginWithSms, sendSmsCode } from '../services/auth';
 
@@ -14,7 +15,11 @@ describe('LoginView', () => {
   let activeWrapper: ReturnType<typeof mount> | null = null;
 
   function mountLoginView() {
-    activeWrapper = mount(LoginView);
+    activeWrapper = mount(LoginView, {
+      global: {
+        plugins: [router]
+      }
+    });
     return activeWrapper;
   }
 
@@ -43,13 +48,19 @@ describe('LoginView', () => {
     await wrapper.get('[data-testid="password-input"]').setValue('Admin@123456');
     await wrapper.get('form').trigger('submit.prevent');
     await flushPromises();
+    await router.isReady();
 
     expect(loginWithPassword).toHaveBeenCalledWith({
       mobile: '13800138000',
       password: 'Admin@123456'
     });
     expect(localStorage.getItem('bebefish_access_token')).toBe('token-1');
+    expect(JSON.parse(localStorage.getItem('bebefish_current_user') ?? '{}')).toMatchObject({
+      mobile: '13800138000',
+      permissions: ['dashboard:view']
+    });
     expect(wrapper.text()).toContain('13800138000');
+    expect(router.currentRoute.value.name).toBe('workbench');
   });
 
   it('sends sms code and submits sms login', async () => {

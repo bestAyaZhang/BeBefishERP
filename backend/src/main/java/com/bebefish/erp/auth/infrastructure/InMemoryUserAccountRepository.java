@@ -28,8 +28,19 @@ public class InMemoryUserAccountRepository implements UserAccountRepository {
                         "system:user:view",
                         "system:role:view",
                         "dashboard:view",
+                        "masterdata:view",
+                        "masterdata:edit",
                         "product:view",
-                        "inventory:view"
+                        "product:edit",
+                        "inventory:view",
+                        "inventory:adjust",
+                        "sales:view",
+                        "sales:create",
+                        "sales:confirm",
+                        "sales:void",
+                        "sales:print",
+                        "finance:view",
+                        "finance:receipt"
                 )
         );
         accounts.put(admin.mobile(), new StoredAccount(admin, null, null));

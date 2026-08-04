@@ -1,18 +1,39 @@
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WorkspacePrototype from './WorkspacePrototype.vue';
 
 describe('WorkspacePrototype product catalog', () => {
+  const currentUserStorageKey = 'bebefish_current_user';
+
+  beforeEach(() => {
+    localStorage.setItem(currentUserStorageKey, JSON.stringify({
+      accessToken: 'token',
+      mobile: '13800138000',
+      roles: ['ADMIN'],
+      permissions: ['dashboard:view', 'product:view', 'inventory:view', 'sales:create', 'sales:view'],
+      loginMethod: 'password'
+    }));
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
   function findButtonByText(wrapper: ReturnType<typeof mount>, text: string) {
     const button = wrapper.findAll('button').find((candidate) => candidate.text().includes(text));
     expect(button, `button containing "${text}"`).toBeTruthy();
     return button!;
   }
 
-  it('opens product master data from the sidebar and filters SKU rows', async () => {
+  it('renders page content inside the shared prototype shell', () => {
     const wrapper = mount(WorkspacePrototype);
 
-    await findButtonByText(wrapper, '产品资料').trigger('click');
+    expect(wrapper.find('[data-testid="workspace-prototype-content"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="prototype-sidebar-nav"]').exists()).toBe(false);
+  });
+
+  it('opens product master data from the sidebar and filters SKU rows', async () => {
+    const wrapper = mount(WorkspacePrototype, { props: { initialSection: 'products' } });
 
     expect(wrapper.text()).toContain('SKU 主数据');
     expect(wrapper.text()).toContain('BBF-FEED-001');
@@ -145,9 +166,7 @@ describe('WorkspacePrototype product catalog', () => {
     expect(wrapper.text()).toContain('BBF-FEED-001');
   });
   it('opens the selected product detail in a right drawer from the SKU list', async () => {
-    const wrapper = mount(WorkspacePrototype);
-
-    await findButtonByText(wrapper, '产品资料').trigger('click');
+    const wrapper = mount(WorkspacePrototype, { props: { initialSection: 'products' } });
 
     expect(wrapper.find('[data-testid="product-detail-drawer"]').exists()).toBe(false);
 
