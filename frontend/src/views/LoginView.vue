@@ -10,13 +10,13 @@ import {
   Sparkles
 } from 'lucide-vue-next';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { loginWithPassword, loginWithSms, logout, sendSmsCode } from '../services/auth';
-import type { LoginResult } from '../types/auth';
+import { clearCurrentUser, saveCurrentUser } from '../services/authSession';
+import { ACCESS_TOKEN_STORAGE_KEY, type LoginResult } from '../types/auth';
 
 type LoginMode = 'password' | 'sms';
 type ActiveField = 'none' | 'mobile' | 'password' | 'sms';
-
-const TOKEN_KEY = 'bebefish_access_token';
 
 const mode = ref<LoginMode>('password');
 const mobile = ref('');
@@ -33,7 +33,8 @@ const sendingCode = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
 const currentUser = ref<LoginResult | null>(null);
-const accessToken = ref(localStorage.getItem(TOKEN_KEY) ?? '');
+const accessToken = ref(localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ?? '');
+const router = useRouter();
 
 const primaryButtonText = computed(() => (mode.value === 'password' ? '密码登录' : '验证码登录'));
 const passwordState = computed(() => `${password.value ? 'filled' : 'empty'}-${showPassword.value ? 'visible' : 'hidden'}`);
@@ -161,8 +162,10 @@ async function submitLogin() {
         : await loginWithSms({ mobile: mobile.value, smsCode: smsCode.value });
     currentUser.value = result;
     accessToken.value = result.accessToken;
-    localStorage.setItem(TOKEN_KEY, result.accessToken);
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, result.accessToken);
+    saveCurrentUser(result);
     successMessage.value = '登录成功，已加载当前用户权限。';
+    await router.push({ name: 'workbench' });
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '登录失败';
   } finally {
@@ -190,8 +193,10 @@ async function handleLogout() {
   }
   accessToken.value = '';
   currentUser.value = null;
-  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  clearCurrentUser();
   successMessage.value = '已退出登录。';
+  await router.push({ name: 'login' });
 }
 </script>
 

@@ -1,10 +1,6 @@
 export type LoginMethod = 'password' | 'sms' | 'feishu';
 
-export interface ApiResponse<T> {
-  code: string;
-  message: string;
-  data: T;
-}
+export const ACCESS_TOKEN_STORAGE_KEY = 'bebefish_access_token';
 
 export interface LoginResult {
   accessToken: string;

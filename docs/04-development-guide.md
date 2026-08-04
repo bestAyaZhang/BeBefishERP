@@ -57,10 +57,27 @@
 
 ### 迭代 3：库存与采购
 
-- 库存余额表和库存流水表。
+- 库存余额表和库存流水表；当前已落地 V4 迁移，第一版先支持 SKU。
+- 库存调整单已落地 V5 迁移，支持草稿、确认、作废。
 - 采购单、采购明细、采购确认入库。
 - 应付生成和付款记录。
 - 库存查询和库存流水查询。
+
+当前库存基础接口：
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/inventory/balances` | 按仓库、货号、SKU 或商品关键字查询库存余额 |
+| `GET /api/inventory/ledger` | 按仓库、SKU、方向和来源类型查询库存流水 |
+| `GET /api/inventory/adjustments/{id}` | 查询库存调整单详情 |
+| `POST /api/inventory/adjustments` | 创建库存调整草稿 |
+| `PUT /api/inventory/adjustments/{id}` | 修改库存调整草稿 |
+| `POST /api/inventory/adjustments/{id}/confirm` | 确认调整并写余额/流水 |
+| `POST /api/inventory/adjustments/{id}/void` | 作废已确认调整并反向写入库存 |
+
+库存服务实现要求：库存余额和流水必须在同一事务内更新；按 SKU ID 升序获取行锁；先校验全部明细再写入；确认后不允许直接改历史。
+
+当前前端库存页面已接入上述接口，并通过基础资料接口加载启用仓库列表；余额、流水和调整页不写死仓库 ID。库存查询页为只读，调整页按“保存草稿 -> 确认调整”操作，确认后锁定表单。
 
 验收：
 
@@ -133,11 +150,26 @@ POST   /api/products
 GET    /api/products/{id}
 PUT    /api/products/{id}
 DELETE /api/products/{id}
+GET    /api/sales-orders
+POST   /api/sales-orders              # 创建销售草稿
+GET    /api/sales-orders/{id}
+PUT    /api/sales-orders/{id}         # 仅草稿
+DELETE /api/sales-orders/{id}         # 仅草稿
 POST   /api/sales-orders/{id}/confirm
 POST   /api/sales-orders/{id}/void
 ```
 
 资源使用复数名词，动作使用子路径。确认、作废、导入、导出属于业务动作，不用普通更新接口代替。
+
+销售确认补充：确认会在同一事务中校验并扣减库存、写入 `sales` 库存流水；作废已确认销售单会恢复库存并写入 `sales_void` 反向流水。应收和收款记录待财务模块接入后补齐。
+
+销售草稿阶段规则：
+
+- `POST /api/sales-orders` 只保存草稿、金额计算结果和客户/仓库/SKU 展示快照，不扣库存、不写库存流水、不生成应收或收款记录。
+- 草稿单号由后端按业务日期生成，格式为 `SOyyyyMMddNNNN`，同一日期从 `0001` 开始递增。
+- 列表支持 `page`、`size`、`keyword`、`status`、`dateFrom`、`dateTo` 查询参数；当前前端已接入单号、客户和状态查询。
+- 明细保存默认售价、实际售价、折扣、数量、金额、标准成本和产品/SKU 展示字段快照，避免历史草稿因基础资料修改而无法还原。
+- 确认接口会在库存事务完成后返回已确认状态；作废接口要求填写作废原因，并在库存回滚成功后返回已作废状态。应收和收款记录待财务模块接入后补齐。
 
 ### 4.2 认证接口
 

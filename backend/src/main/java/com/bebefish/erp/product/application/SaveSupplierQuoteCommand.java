@@ -1,0 +1,12 @@
+package com.bebefish.erp.product.application;
+
+import java.math.BigDecimal;
+
+public record SaveSupplierQuoteCommand(
+        Long supplierId,
+        String supplierItemNo,
+        BigDecimal purchasePrice,
+        BigDecimal minPurchaseQuantity,
+        boolean defaultQuote
+) {
+}

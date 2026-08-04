@@ -219,20 +219,24 @@
 
 ## 7. 库存表
 
+> 当前库存基础迭代已实际落地 Flyway `V4__inventory_schema.sql` 和 `V5__stock_adjustment_schema.sql`。本轮只实现 SKU 库存；物料库存字段和采购/组装关联在后续迭代扩展。以下结构以当前已执行迁移为准。
+
 ### inventory_balance
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | id | bigint | 库存余额 ID |
 | warehouse_id | bigint | 仓库 ID |
-| item_type | varchar(20) | sku、material |
-| item_id | bigint | SKU ID 或物料 ID |
-| quantity | decimal(18,4) | 当前库存 |
-| locked_quantity | decimal(18,4) | 锁定库存，第一版默认为 0 |
+| sku_id | bigint | SKU ID |
+| quantity | decimal(18,4) | 当前库存，不允许小于 0 |
+| version_no | bigint | 库存版本号，由库存服务递增 |
+| created_at / updated_at | datetime(3) | 创建和更新时间 |
 
 索引：
 
-- `uk_inventory_balance_item`：`warehouse_id, item_type, item_id` 唯一。
+- `uk_inventory_warehouse_sku`：`warehouse_id, sku_id` 唯一。
+- `idx_inventory_balance_sku`：`sku_id`。
+- `idx_inventory_balance_warehouse`：`warehouse_id`。
 
 ### inventory_ledger
 
@@ -240,15 +244,18 @@
 | --- | --- | --- |
 | id | bigint | 流水 ID |
 | warehouse_id | bigint | 仓库 ID |
-| item_type | varchar(20) | sku、material |
-| item_id | bigint | SKU ID 或物料 ID |
-| direction | varchar(10) | in、out |
+| sku_id | bigint | SKU ID |
+| direction | varchar(20) | increase、decrease |
 | quantity | decimal(18,4) | 变动数量 |
 | before_quantity | decimal(18,4) | 变动前库存 |
 | after_quantity | decimal(18,4) | 变动后库存 |
-| source_type | varchar(50) | purchase、sales、assembly、adjustment、void |
+| source_type | varchar(30) | purchase、sales、assembly、adjustment、adjustment_void |
 | source_id | bigint | 来源单据 ID |
-| occurred_at | datetime | 发生时间 |
+| source_no | varchar(50) | 来源单号 |
+| occurred_at | datetime(3) | 发生时间 |
+| operator_mobile | varchar(30) | 操作人手机号 |
+
+流水不可修改。每次余额变化必须在同一事务内写入流水，库存服务按 SKU ID 升序获取 `FOR UPDATE` 行锁；多明细扣减先全部校验，再统一写入，避免部分成功。
 
 ### stock_adjustment
 
@@ -258,7 +265,9 @@
 | adjustment_no | varchar(50) | 调整单号，唯一 |
 | status | varchar(20) | draft、confirmed、voided |
 | warehouse_id | bigint | 仓库 ID |
-| reason | varchar(255) | 调整原因 |
+| reason | varchar(200) | 调整原因 |
+| remark | varchar(500) | 备注 |
+| created_at / updated_at | datetime(3) | 创建和更新时间 |
 
 ### stock_adjustment_item
 
@@ -266,9 +275,14 @@
 | --- | --- | --- |
 | id | bigint | 明细 ID |
 | adjustment_id | bigint | 调整单 ID |
-| item_type | varchar(20) | sku、material |
-| item_id | bigint | SKU ID 或物料 ID |
+| sku_id | bigint | SKU ID |
 | quantity_delta | decimal(18,4) | 调整数量，正数增加，负数减少 |
+
+约束：
+
+- `stock_adjustment.status` 只允许 `draft`、`confirmed`、`voided`。
+- 同一调整单中 `sku_id` 不允许重复，`quantity_delta` 不允许为 0。
+- 确认调用库存服务一次完成；重复确认和确认后修改由后端拒绝；作废确认单通过反向调整恢复库存并写 `adjustment_void` 流水。
 
 ## 8. 采购表
 
@@ -325,32 +339,62 @@
 
 ## 10. 销售表
 
+### sales_order_sequence
+
+按业务日期维护销售单号序列。`business_date` 为主键，`current_value` 范围为 1-9999；销售单号由后端生成，格式为 `SOyyyyMMddNNNN`。
+
 ### sales_order
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | id | bigint | 销售单 ID |
 | sales_no | varchar(50) | 销售单号，唯一 |
-| customer_id | bigint | 客户 ID |
-| warehouse_id | bigint | 出库仓库 |
-| status | varchar(20) | draft、confirmed、voided |
-| total_amount | decimal(18,2) | 销售总额 |
+| customer_id/customer_name | bigint/varchar(100) | 客户引用及名称快照 |
+| warehouse_id/warehouse_name | bigint/varchar(100) | 出库仓库引用及名称快照 |
+| sales_date | date | 业务日期 |
+| salesperson_mobile | varchar(30) | 开单业务代表手机号 |
+| status | varchar(20) | `draft`、`confirmed`、`void` |
+| transport_method | varchar(30) | 自提、送货上门、托运、快递 |
+| settlement_cycle | varchar(30) | 月结、日结、季度、年结 |
+| payment_method | varchar(30) | 收款方式，第一版可为空 |
+| delivery_address | varchar(500) | 送货地址快照 |
+| logistics_company/tracking_no | varchar(100) | 物流公司及运单号 |
+| package_note | varchar(500) | 包装备注 |
+| invoice_required/invoice_status | boolean/varchar(20) | 是否开票及 `not_required`、`pending`、`issued` |
+| goods_amount | decimal(18,2) | 商品金额（折扣后） |
+| discount_amount | decimal(18,2) | 折扣金额 |
+| shipping_fee | decimal(18,2) | 运费 |
+| total_amount | decimal(18,2) | 应收合计 |
 | received_amount | decimal(18,2) | 已收金额 |
-| cost_amount | decimal(18,2) | 成本金额 |
-| confirmed_at | datetime | 确认时间 |
+| outstanding_amount | decimal(18,2) | 欠款应收 |
+| remark | varchar(1000) | 备注 |
+| created_at/updated_at | datetime(3) | 创建及更新时间 |
+
+第一版草稿保存只写入销售表及明细表，不扣库存、不写库存流水、不生成应收或收款记录。确认能力接入后，必须在同一事务中完成库存和财务处理，并保留确认时成本快照。
+
+销售确认补充：确认会在同一事务中扣减 `inventory_balance` 并写入 `inventory_ledger`，作废时反向恢复库存；应收和收款记录待财务模块接入后补齐。
 
 ### sales_order_item
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | id | bigint | 明细 ID |
-| sales_id | bigint | 销售单 ID |
+| sales_order_id | bigint | 销售单 ID |
 | sku_id | bigint | SKU ID |
-| quantity | decimal(18,4) | 数量 |
-| unit_price | decimal(18,2) | 销售单价 |
-| amount | decimal(18,2) | 销售金额 |
-| standard_cost | decimal(18,4) | 销售时标准成本 |
-| cost_amount | decimal(18,2) | 成本金额 |
+| quantity | decimal(18,4) | 销售数量 |
+| default_unit_price | decimal(18,2) | SKU 默认售价快照 |
+| unit_price | decimal(18,2) | 本单实际售价 |
+| discount_rate | decimal(7,4) | 折扣率，0-100 |
+| amount | decimal(18,2) | 明细金额 |
+| standard_cost_snapshot | decimal(18,4) | 草稿/确认时标准成本快照 |
+| item_no_snapshot | varchar(100) | 产品货号快照 |
+| product_name_snapshot | varchar(200) | 产品名称快照 |
+| sku_code_snapshot/sku_name_snapshot | varchar(100/200) | SKU 编码和名称快照 |
+| specification_snapshot | varchar(500) | 规格快照 |
+| packaging_snapshot | varchar(200) | 包装方式快照 |
+| carton_quantity_snapshot | int | 装箱数快照 |
+| barcode_snapshot | varchar(100) | 条形码快照 |
+| sales_unit_snapshot | varchar(30) | 销售单位快照 |
 
 ## 11. 财务表
 

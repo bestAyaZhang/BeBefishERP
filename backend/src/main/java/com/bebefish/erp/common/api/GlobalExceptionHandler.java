@@ -3,12 +3,20 @@ package com.bebefish.erp.common.api;
 import com.bebefish.erp.auth.application.AuthException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException exception) {
+        return ResponseEntity
+                .status(exception.status())
+                .body(ApiResponse.failure(exception.code(), exception.getMessage(), null));
+    }
+
     @ExceptionHandler(AuthException.class)
     public ResponseEntity<ApiResponse<Void>> handleAuthException(AuthException exception) {
         return ResponseEntity
@@ -21,6 +29,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .badRequest()
                 .body(ApiResponse.failure("VALIDATION_FAILED", "请求参数不完整或格式错误", null));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDeniedException(AccessDeniedException exception) {
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.failure("FORBIDDEN", "无权限", null));
     }
 
     @ExceptionHandler(Exception.class)

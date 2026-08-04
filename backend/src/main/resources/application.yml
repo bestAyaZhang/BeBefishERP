@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: ${ERP_DB_URL}
+    username: ${ERP_DB_USERNAME}
+    password: ${ERP_DB_PASSWORD}
+  flyway:
+    enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false

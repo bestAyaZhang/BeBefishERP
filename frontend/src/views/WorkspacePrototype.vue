@@ -4,7 +4,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   Bell,
-  Box,
   CalendarDays,
   CircleUserRound,
   ChevronDown,
@@ -12,7 +11,6 @@ import {
   ChevronRight,
   ClipboardList,
   Filter,
-  LayoutDashboard,
   Menu,
   MessageCircle,
   MoreVertical,
@@ -22,12 +20,14 @@ import {
   Search,
   Settings2,
   ShoppingCart,
-  Truck,
   WalletCards,
   Warehouse,
   X
 } from 'lucide-vue-next';
-import { computed, ref, watch } from 'vue';
+import { computed, inject, onMounted, ref, watch } from 'vue';
+import { masterdataService } from '../features/masterdata/masterdataService';
+import { mapProductToPrototype } from '../features/product/prototypeProductMapper';
+import { productService } from '../features/product/productService';
 
 type SectionKey = 'dashboard' | 'products' | 'tasks' | 'calendar';
 type ProductStatus = '全部状态' | '在售' | '待完善' | '低库存' | '已停用';
@@ -49,7 +49,10 @@ type CreateProductFormSection = {
 };
 type TaskStage = 'Developing' | 'Designing' | 'Wireframe';
 
-const activeSection = ref<SectionKey>('products');
+const props = defineProps<{ initialSection?: SectionKey; loadLiveData?: boolean }>();
+const openMobileNavigation = inject<() => void>('openMobileNavigation', () => undefined);
+
+const activeSection = ref<SectionKey>(props.initialSection ?? 'products');
 const activeTab = ref('table');
 const activeMenuTask = ref<string | null>('SKU-2026-001');
 const showCalendarPicker = ref(false);
@@ -74,23 +77,13 @@ const productPageSizes = [2, 10, 20, 50];
 const productPageSize = ref(10);
 const currentProductPage = ref(1);
 
-const navItems = [
-  { key: 'dashboard', label: '工作台', icon: LayoutDashboard },
-  { key: 'products', label: '产品资料', icon: PackageOpen },
-  { key: 'tasks', label: '任务清单', icon: ClipboardList },
-  { key: 'inventory', label: '库存流水', icon: Warehouse },
-  { key: 'purchase', label: '采购入库', icon: Truck },
-  { key: 'sales', label: '销售开单', icon: ShoppingCart },
-  { key: 'calendar', label: '日程排班', icon: CalendarDays },
-  { key: 'messages', label: '消息中心', icon: MessageCircle }
-];
-
-const topicItems = [
-  { label: '商品管理', color: 'text-amber-500', bg: 'bg-amber-50' },
-  { label: '库存协同', color: 'text-sky-500', bg: 'bg-sky-50' },
-  { label: '财务看板', color: 'text-rose-500', bg: 'bg-rose-50' }
-];
-
+watch(() => props.initialSection, (nextSection) => {
+  if (!nextSection || nextSection === activeSection.value) return;
+  activeSection.value = nextSection;
+  productViewMode.value = 'list';
+  activeCreateProductSelect.value = null;
+  closeProductDrawer();
+});
 const realtimeStats = [
   { label: '待付款', value: '639' },
   { label: '待发货', value: '320' },
@@ -203,7 +196,7 @@ const createProductFormSections: CreateProductFormSection[] = [
     ]
   }
 ];
-const products = [
+const products = ref([
   {
     sku: 'BBF-FEED-001',
     name: '热带鱼粮组合装',
@@ -299,10 +292,10 @@ const products = [
     imageTone: 'bg-violet-50 text-[#7b45f5]',
     alerts: ['缺少条码', '库存偏低', '待补规格']
   }
-];
+]);
 
 const initialProductSku = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('productSku');
-if (initialProductSku && products.some((product) => product.sku === initialProductSku)) {
+if (initialProductSku && products.value.some((product) => product.sku === initialProductSku)) {
   selectedProductSku.value = initialProductSku;
   isProductDrawerOpen.value = true;
 }
@@ -357,7 +350,7 @@ const groupedTasks = computed(() =>
 const filteredProducts = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
   const articleQuery = productArticleNoQuery.value.trim().toLowerCase();
-  return products.filter((product) => {
+  return products.value.filter((product) => {
     const details = productDetailFor(product.sku);
     const matchesStatus = activeProductStatus.value === '全部状态' || product.status === activeProductStatus.value;
     const matchesQuery = !query || [product.sku, product.name, product.spu, details.articleNo, product.category, product.brand, product.channel, product.supplier, product.status, product.audit].some((value) =>
@@ -382,7 +375,7 @@ const paginatedProducts = computed(() => {
 });
 
 
-const selectedProduct = computed(() => products.find((product) => product.sku === selectedProductSku.value) ?? products[0]);
+const selectedProduct = computed(() => products.value.find((product) => product.sku === selectedProductSku.value) ?? products.value[0]);
 
 const productCompletionSegments = [
   { label: '基础字段', value: 94, color: 'bg-[#536dff]' },
@@ -482,9 +475,33 @@ function productDetailFor(sku: string) {
   return productDetailBySku[sku as keyof typeof productDetailBySku] ?? productDetailBySku['BBF-FEED-001'];
 }
 
-const productBrandOptions = computed(() => [allProductBrandOption, ...uniqueProductOptions(products.map((product) => product.brand))]);
-const productSupplierOptions = computed(() => [allProductSupplierOption, ...uniqueProductOptions(products.map((product) => product.supplier))]);
-const productCategoryOptions = computed(() => [allProductCategoryOption, ...uniqueProductOptions(products.map((product) => product.category))]);
+const productBrandOptions = computed(() => [allProductBrandOption, ...uniqueProductOptions(products.value.map((product) => product.brand))]);
+const productSupplierOptions = computed(() => [allProductSupplierOption, ...uniqueProductOptions(products.value.map((product) => product.supplier))]);
+const productCategoryOptions = computed(() => [allProductCategoryOption, ...uniqueProductOptions(products.value.map((product) => product.category))]);
+
+async function loadLiveProductData() {
+  if (!props.loadLiveData) return;
+  try {
+    const [productPage, categoryPage] = await Promise.all([
+      productService.listProducts({ page: 1, size: 100 }),
+      masterdataService.listCategories({ page: 1, size: 100, status: 'enabled' })
+    ]);
+    const categoryNames = new Map(categoryPage.records.map((category) => [category.id, category.categoryName]));
+    const liveRows = productPage.records.map((product) => mapProductToPrototype(product, categoryNames.get(product.categoryId ?? 0) ?? '未分类'));
+    if (liveRows.length) {
+      products.value = liveRows;
+      selectedProductSku.value = liveRows[0].sku;
+    }
+  } catch {
+    // Keep the approved prototype fallback when the development API is unavailable.
+  }
+}
+
+onMounted(() => void loadLiveProductData());
+
+watch(() => props.initialSection, (nextSection) => {
+  if (nextSection === 'products') void loadLiveProductData();
+});
 
 const selectedProductDetails = computed(() => productDetailFor(selectedProduct.value.sku));
 
@@ -583,81 +600,13 @@ function closeProductCreateForm() {
   activeCreateProductSelect.value = null;
 }
 
-function selectNav(key: string) {
-  if (key === 'dashboard' || key === 'products' || key === 'tasks' || key === 'calendar') {
-    activeSection.value = key;
-    productViewMode.value = 'list';
-    activeCreateProductSelect.value = null;
-    closeProductDrawer();
-  }
-}
 </script>
 
 <template>
-  <main class="bebefish-prototype min-h-screen bg-[#f6f7fb] px-8 py-8 text-[#25314d]">
-    <div class="mx-auto grid max-w-[1440px] grid-cols-[244px_minmax(0,1fr)] gap-6">
-      <aside class="flex min-h-[calc(100vh-64px)] flex-col overflow-hidden rounded-[24px] border border-slate-200/80 bg-white shadow-[0_18px_50px_rgba(31,45,74,0.05)]">
-        <div class="flex items-center gap-3 border-b border-slate-100 px-6 py-6">
-          <div class="flex h-11 w-11 items-center justify-center rounded-full bg-[#536dff] text-white shadow-lg shadow-blue-200">
-            <Box class="h-5 w-5" aria-hidden="true" />
-          </div>
-          <div class="min-w-0">
-            <p class="truncate text-sm font-bold">BeBefish ERP</p>
-            <p class="text-xs font-medium text-slate-400">电商经营管理</p>
-          </div>
-          <button class="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50" type="button">
-            <ChevronDown class="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-
-        <nav class="flex-1 px-5 py-6">
-          <p class="mb-4 px-2 text-xs font-semibold text-slate-400">Menu</p>
-          <div class="space-y-1">
-            <button
-              v-for="item in navItems"
-              :key="item.key"
-              type="button"
-              class="group relative flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold transition"
-              :class="activeSection === item.key ? 'bg-[#f4f6ff] text-[#25314d]' : 'text-slate-400 hover:bg-slate-50 hover:text-[#25314d]'"
-              @click="selectNav(item.key)"
-            >
-              <span v-if="activeSection === item.key" class="absolute -left-5 h-7 w-1 rounded-r-full bg-[#536dff]"></span>
-              <component :is="item.icon" class="h-4 w-4" aria-hidden="true" />
-              <span>{{ item.label }}</span>
-              <ChevronRight v-if="activeSection === item.key" class="ml-auto h-4 w-4 text-slate-400" aria-hidden="true" />
-            </button>
-          </div>
-
-          <p class="mb-4 mt-8 px-2 text-xs font-semibold text-slate-400">Topics</p>
-          <div class="space-y-2">
-            <button
-              v-for="topic in topicItems"
-              :key="topic.label"
-              type="button"
-              class="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold text-slate-400 hover:bg-slate-50"
-            >
-              <span class="flex h-5 w-5 items-center justify-center rounded-md" :class="[topic.bg, topic.color]">
-                <PackageCheck class="h-3.5 w-3.5" aria-hidden="true" />
-              </span>
-              {{ topic.label }}
-            </button>
-          </div>
-        </nav>
-
-        <div class="mx-5 mb-5 flex items-center gap-3 border-t border-slate-100 pt-5">
-          <div class="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-600">AZ</div>
-          <div class="min-w-0">
-            <p class="truncate text-sm font-bold">Aya Zhang</p>
-            <p class="truncate text-xs text-slate-400">admin@bebefish.cn</p>
-          </div>
-          <ChevronRight class="ml-auto h-4 w-4 text-slate-400" aria-hidden="true" />
-        </div>
-      </aside>
-
-      <section class="min-w-0">
+  <section data-testid="workspace-prototype-content" class="bebefish-prototype min-w-0 text-[#25314d]">
         <header class="mb-6 flex h-11 items-center justify-between gap-5">
           <div class="flex min-w-0 items-center gap-4">
-            <button class="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition hover:bg-white hover:text-[#25314d]" type="button" aria-label="Open navigation">
+            <button class="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition hover:bg-white hover:text-[#25314d]" type="button" aria-label="Open navigation" @click="openMobileNavigation">
               <Menu class="h-5 w-5" aria-hidden="true" />
             </button>
             <nav class="flex items-center gap-2 text-sm" aria-label="Breadcrumb">
@@ -1339,9 +1288,6 @@ function selectNav(key: string) {
             </div>
           </div>
         </div>
-      </section>
-    </div>
-
     <Transition name="product-drawer">
       <div v-if="activeSection === 'products' && isProductDrawerOpen" class="fixed inset-0 z-50 flex justify-end" aria-modal="true" role="dialog">
         <button class="absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" type="button" aria-label="关闭商品详情抽屉" @click="closeProductDrawer"></button>
@@ -1491,7 +1437,7 @@ function selectNav(key: string) {
         </aside>
       </div>
     </Transition>
-  </main>
+  </section>
 </template>
 
 <style scoped>
