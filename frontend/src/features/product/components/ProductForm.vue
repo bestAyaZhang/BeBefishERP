@@ -2,6 +2,7 @@
 import { ArrowLeft, Check } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { message } from '../../../components/feedback/message';
+import ImageHoverPreview from '../../../components/media/ImageHoverPreview.vue';
 import type { Product, ProductFormPayload, ProductService, ProductSpecification, SkuForm } from '../types';
 
 const props = defineProps<{ service: ProductService; initialValue?: Product; categories?: Array<{ id: number; categoryName: string }> }>();
@@ -12,6 +13,7 @@ type SkuImageField = 'skuImageFileId';
 type PackagingImageField = 'packageImageFileId' | 'cartonImageFileId';
 type PackagingForm = Pick<SkuForm, 'packageLengthCm' | 'packageWidthCm' | 'packageHeightCm' | 'packageVolumeCm3' | 'netWeightKg' | 'grossWeightKg' | 'gramWeightG' | 'packagingMethod' | 'cartonQuantity' | 'packageImageFileId' | 'cartonImageFileId'>;
 type ProgressStatus = 'complete' | 'current' | 'pending';
+type ImageStatus = 'idle' | 'uploading' | 'uploaded' | 'error';
 
 const dimensionNames = ['口径', '高度', '容量', '重量'] as const;
 type DimensionName = typeof dimensionNames[number];
@@ -57,8 +59,22 @@ const skuList = ref<SkuForm[]>(props.initialValue?.skus?.map((sku) => ({ ...sku 
 const defaultSku = props.initialValue?.skus?.find((sku) => sku.defaultSku) ?? props.initialValue?.skus?.[0];
 const packaging = ref<PackagingForm>(packagingFromSku(defaultSku));
 const mainImageFileId = ref<number | null>(props.initialValue?.mainImageFileId ?? null);
-const imagePreviews = ref<Record<string, string>>({});
-const uploadingSlot = ref<string | null>(null);
+function initialImagePreviews() {
+  const previews: Record<string, string> = {};
+  if (props.initialValue?.mainImageUrl) previews.main = props.initialValue.mainImageUrl;
+  props.initialValue?.skus?.forEach((sku, index) => {
+    if (sku.skuImageUrl) previews[`sku-${index}-skuImageFileId`] = sku.skuImageUrl;
+  });
+  if (defaultSku?.packageImageUrl) previews['packaging-packageImageFileId'] = defaultSku.packageImageUrl;
+  if (defaultSku?.cartonImageUrl) previews['packaging-cartonImageFileId'] = defaultSku.cartonImageUrl;
+  return previews;
+}
+
+const imagePreviews = ref<Record<string, string>>(initialImagePreviews());
+const imageStatuses = ref<Record<string, ImageStatus>>(Object.fromEntries(
+  Object.keys(imagePreviews.value).map((slot) => [slot, 'uploaded'])
+));
+const imageErrors = ref<Record<string, string>>({});
 const saving = ref(false);
 const formTitle = computed(() => props.initialValue ? '编辑产品' : '新增产品');
 const formSteps = [
@@ -144,19 +160,69 @@ function previewFor(slot: string) {
   return imagePreviews.value[slot] ?? '';
 }
 
-async function uploadImage(event: Event, slot: string, assignFileId: (fileId: number) => void) {
+function statusFor(slot: string): ImageStatus {
+  return imageStatuses.value[slot] ?? 'idle';
+}
+
+function statusLabelFor(slot: string) {
+  const status = statusFor(slot);
+  return status === 'uploading' ? '上传中...' : status === 'uploaded' ? '上传成功' : status === 'error' ? '上传失败' : '未上传';
+}
+
+function statusClassFor(slot: string) {
+  const status = statusFor(slot);
+  return status === 'uploaded' ? 'text-emerald-600' : status === 'error' ? 'text-rose-500' : status === 'uploading' ? 'text-[#536dff]' : 'text-slate-400';
+}
+
+function markImageError(slot: string) {
+  imageStatuses.value = { ...imageStatuses.value, [slot]: 'error' };
+  imageErrors.value = { ...imageErrors.value, [slot]: '图片地址无法访问，请重新上传' };
+}
+
+function revokePreview(url: string) {
+  if (url.startsWith('blob:') && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url);
+}
+
+function removeImage(slot: string, clearFileId: () => void) {
+  const currentPreview = previewFor(slot);
+  revokePreview(currentPreview);
+  clearFileId();
+  const previews = { ...imagePreviews.value };
+  delete previews[slot];
+  imagePreviews.value = previews;
+  imageStatuses.value = { ...imageStatuses.value, [slot]: 'idle' };
+  const errors = { ...imageErrors.value };
+  delete errors[slot];
+  imageErrors.value = errors;
+}
+
+async function uploadImage(event: Event, slot: string, assignFileId: (fileId: number | null) => void) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
-  uploadingSlot.value = slot;
+  const previousPreview = previewFor(slot);
+  const localPreview = typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : '';
+  if (localPreview) imagePreviews.value = { ...imagePreviews.value, [slot]: localPreview };
+  imageStatuses.value = { ...imageStatuses.value, [slot]: 'uploading' };
+  imageErrors.value = { ...imageErrors.value, [slot]: '' };
   try {
     const uploaded = await props.service.uploadImage(file);
     assignFileId(uploaded.id);
-    imagePreviews.value = { ...imagePreviews.value, [slot]: uploaded.url };
+    if (uploaded.url) {
+      revokePreview(localPreview);
+      imagePreviews.value = { ...imagePreviews.value, [slot]: uploaded.url };
+    }
+    imageStatuses.value = { ...imageStatuses.value, [slot]: 'uploaded' };
   } catch (error) {
+    revokePreview(localPreview);
+    const previews = { ...imagePreviews.value };
+    if (previousPreview) previews[slot] = previousPreview;
+    else delete previews[slot];
+    imagePreviews.value = previews;
+    imageStatuses.value = { ...imageStatuses.value, [slot]: 'error' };
+    imageErrors.value = { ...imageErrors.value, [slot]: error instanceof Error ? error.message : '图片上传失败' };
     message.error(error instanceof Error ? error.message : '图片上传失败');
   } finally {
-    uploadingSlot.value = null;
     input.value = '';
   }
 }
@@ -279,15 +345,22 @@ async function save() {
               <label class="min-w-0 space-y-2 text-sm"><span class="block text-xs font-black text-slate-400">品牌</span><input v-model="brand" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-bold text-[#25314d] outline-none transition placeholder:text-slate-300 focus:border-[#536dff] focus:ring-4 focus:ring-blue-50" placeholder="请输入品牌" /></label>
             <div data-testid="product-form-section-images" class="mt-5">
                 <span class="mb-2 block text-xs font-black text-slate-400">产品实拍图</span>
-                <label class="group flex min-h-[112px] max-w-xl cursor-pointer items-center gap-4 rounded-2xl border border-dashed border-blue-200 bg-blue-50/45 px-4 py-4 transition hover:border-[#536dff] hover:bg-blue-50">
-                  <input data-testid="product-main-image" class="sr-only" type="file" accept="image/*" @change="uploadMainImage" />
-                  <span v-if="previewFor('main')" class="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-white"><img :src="previewFor('main')" alt="产品实拍图预览" class="h-full w-full object-cover" /></span>
-                  <span v-else class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-2xl font-light text-[#536dff] shadow-sm shadow-blue-100">+</span>
-                  <span class="min-w-0">
-                    <span class="block text-sm font-black text-[#25314d]">{{ uploadingSlot === 'main' ? '上传中...' : '点击上传产品图片' }}</span>
-                    <span class="mt-1 block text-xs font-bold text-slate-400">建议上传清晰的产品实拍图，支持 JPG / PNG</span>
-                  </span>
-                </label>
+                <div class="max-w-xl rounded-2xl border border-dashed border-blue-200 bg-blue-50/45 px-4 py-4 transition hover:border-[#536dff] hover:bg-blue-50">
+                  <input id="product-main-image-input" data-testid="product-main-image" class="sr-only" type="file" accept="image/*" @change="uploadMainImage" />
+                  <label for="product-main-image-input" class="group flex min-h-[80px] cursor-pointer items-center gap-4">
+                    <ImageHoverPreview v-if="previewFor('main')" :src="previewFor('main')" alt="产品实拍图预览" test-id="product-main-image-preview" image-class="h-20 w-20 shrink-0 rounded-xl object-cover" @error="markImageError('main')" />
+                    <span v-else class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-2xl font-light text-[#536dff] shadow-sm shadow-blue-100">+</span>
+                    <span class="min-w-0">
+                      <span class="block text-sm font-black text-[#25314d]">点击上传产品图片</span>
+                      <span class="mt-1 block text-xs font-bold text-slate-400">建议上传清晰的产品实拍图，支持 JPG / PNG</span>
+                    </span>
+                  </label>
+                  <div class="mt-2 flex items-center justify-between gap-3 text-xs font-bold">
+                    <span data-testid="product-main-image-status" :class="statusClassFor('main')">{{ statusLabelFor('main') }}</span>
+                    <button v-if="previewFor('main')" data-testid="product-main-image-delete" type="button" class="text-rose-500 transition hover:text-rose-700" @click="removeImage('main', () => { mainImageFileId = null; })">删除图片</button>
+                  </div>
+                  <p v-if="imageErrors.main" class="mt-1 text-xs font-bold text-rose-500">{{ imageErrors.main }}</p>
+                </div>
               </div>
             </div>
               <div data-testid="product-dimensions" class="mt-6 border-t border-slate-100 pt-6">
@@ -330,11 +403,13 @@ async function save() {
                 </div>
                 <label class="mt-4 block min-w-0 space-y-2 text-sm"><span class="block text-xs font-black text-slate-400">规格信息</span><input :data-testid="`sku-specification-${index}`" :value="skuSpecificationText(sku)" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-bold outline-none focus:border-[#536dff]" placeholder="例如：透明 / 竖纹" @input="updateSkuSpecification($event, index)" /></label>
                 <div class="mt-4 grid gap-3 md:grid-cols-3">
-                  <label class="group min-w-0 cursor-pointer rounded-2xl border border-dashed border-blue-200 bg-blue-50/45 p-3 transition hover:border-[#536dff] hover:bg-blue-50">
+                  <div class="group min-w-0 rounded-2xl border border-dashed border-blue-200 bg-blue-50/45 p-3 transition hover:border-[#536dff] hover:bg-blue-50">
                     <span class="block text-xs font-black text-slate-400">SKU 图</span>
-                    <input :data-testid="`sku-image-${index}`" class="sr-only" type="file" accept="image/*" @change="uploadSkuImage($event, index, 'skuImageFileId')" />
-                    <span class="mt-2 flex min-h-20 items-center gap-3"><span v-if="previewFor(`sku-${index}-skuImageFileId`)" class="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-white"><img :src="previewFor(`sku-${index}-skuImageFileId`)" alt="SKU 图预览" class="h-full w-full object-cover" /></span><span v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-xl font-light text-[#536dff]">+</span><span class="text-xs font-bold text-slate-400">{{ uploadingSlot === `sku-${index}-skuImageFileId` ? '上传中...' : '上传 SKU 图' }}</span></span>
-                  </label>
+                    <input :id="`sku-image-input-${index}`" :data-testid="`sku-image-${index}`" class="sr-only" type="file" accept="image/*" @change="uploadSkuImage($event, index, 'skuImageFileId')" />
+                    <label :for="`sku-image-input-${index}`" class="mt-2 flex min-h-20 cursor-pointer items-center gap-3"><ImageHoverPreview v-if="previewFor(`sku-${index}-skuImageFileId`)" :src="previewFor(`sku-${index}-skuImageFileId`)" alt="SKU 图预览" :test-id="`sku-image-${index}-preview`" image-class="h-16 w-16 shrink-0 rounded-xl object-cover" @error="markImageError(`sku-${index}-skuImageFileId`)" /><span v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-xl font-light text-[#536dff]">+</span><span class="text-xs font-bold text-slate-400">上传 SKU 图</span></label>
+                    <div class="mt-2 flex items-center justify-between gap-2 text-xs font-bold"><span :data-testid="`sku-image-${index}-status`" :class="statusClassFor(`sku-${index}-skuImageFileId`)">{{ statusLabelFor(`sku-${index}-skuImageFileId`) }}</span><button v-if="previewFor(`sku-${index}-skuImageFileId`)" :data-testid="`sku-image-${index}-delete`" type="button" class="text-rose-500 transition hover:text-rose-700" @click="removeImage(`sku-${index}-skuImageFileId`, () => { sku.skuImageFileId = null; })">删除</button></div>
+                    <p v-if="imageErrors[`sku-${index}-skuImageFileId`]" class="mt-1 text-xs font-bold text-rose-500">{{ imageErrors[`sku-${index}-skuImageFileId`] }}</p>
+                  </div>
                 </div>
               </article>
             </div>
@@ -356,16 +431,20 @@ async function save() {
                 <label class="min-w-0 space-y-2 text-sm"><span class="block text-xs font-black text-slate-400">包装方式</span><input v-model="packaging.packagingMethod" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-bold outline-none focus:border-[#536dff]" placeholder="例如：普盒/1*12*4/48*" /></label>
               </div>
               <div class="mt-4 grid gap-3 md:grid-cols-2">
-                <label class="group min-w-0 cursor-pointer rounded-2xl border border-dashed border-blue-200 bg-blue-50/45 p-3 transition hover:border-[#536dff] hover:bg-blue-50">
+                <div class="group min-w-0 rounded-2xl border border-dashed border-blue-200 bg-blue-50/45 p-3 transition hover:border-[#536dff] hover:bg-blue-50">
                   <span class="block text-xs font-black text-slate-400">彩盒图</span>
-                  <input data-testid="package-image" class="sr-only" type="file" accept="image/*" @change="uploadPackagingImage($event, 'packageImageFileId')" />
-                  <span class="mt-2 flex min-h-20 items-center gap-3"><span v-if="previewFor('packaging-packageImageFileId')" class="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-white"><img :src="previewFor('packaging-packageImageFileId')" alt="彩盒图预览" class="h-full w-full object-cover" /></span><span v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-xl font-light text-[#536dff]">+</span><span class="text-xs font-bold text-slate-400">{{ uploadingSlot === 'packaging-packageImageFileId' ? '上传中...' : '上传彩盒图' }}</span></span>
-                </label>
-                <label class="group min-w-0 cursor-pointer rounded-2xl border border-dashed border-blue-200 bg-blue-50/45 p-3 transition hover:border-[#536dff] hover:bg-blue-50">
+                  <input id="package-image-input" data-testid="package-image" class="sr-only" type="file" accept="image/*" @change="uploadPackagingImage($event, 'packageImageFileId')" />
+                  <label for="package-image-input" class="mt-2 flex min-h-20 cursor-pointer items-center gap-3"><ImageHoverPreview v-if="previewFor('packaging-packageImageFileId')" :src="previewFor('packaging-packageImageFileId')" alt="彩盒图预览" test-id="package-image-preview" image-class="h-16 w-16 shrink-0 rounded-xl object-cover" @error="markImageError('packaging-packageImageFileId')" /><span v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-xl font-light text-[#536dff]">+</span><span class="text-xs font-bold text-slate-400">上传彩盒图</span></label>
+                  <div class="mt-2 flex items-center justify-between gap-2 text-xs font-bold"><span data-testid="package-image-status" :class="statusClassFor('packaging-packageImageFileId')">{{ statusLabelFor('packaging-packageImageFileId') }}</span><button v-if="previewFor('packaging-packageImageFileId')" data-testid="package-image-delete" type="button" class="text-rose-500 transition hover:text-rose-700" @click="removeImage('packaging-packageImageFileId', () => { packaging.packageImageFileId = null; })">删除</button></div>
+                  <p v-if="imageErrors['packaging-packageImageFileId']" class="mt-1 text-xs font-bold text-rose-500">{{ imageErrors['packaging-packageImageFileId'] }}</p>
+                </div>
+                <div class="group min-w-0 rounded-2xl border border-dashed border-blue-200 bg-blue-50/45 p-3 transition hover:border-[#536dff] hover:bg-blue-50">
                   <span class="block text-xs font-black text-slate-400">外箱图</span>
-                  <input data-testid="carton-image" class="sr-only" type="file" accept="image/*" @change="uploadPackagingImage($event, 'cartonImageFileId')" />
-                  <span class="mt-2 flex min-h-20 items-center gap-3"><span v-if="previewFor('packaging-cartonImageFileId')" class="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-white"><img :src="previewFor('packaging-cartonImageFileId')" alt="外箱图预览" class="h-full w-full object-cover" /></span><span v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-xl font-light text-[#536dff]">+</span><span class="text-xs font-bold text-slate-400">{{ uploadingSlot === 'packaging-cartonImageFileId' ? '上传中...' : '上传外箱图' }}</span></span>
-                </label>
+                  <input id="carton-image-input" data-testid="carton-image" class="sr-only" type="file" accept="image/*" @change="uploadPackagingImage($event, 'cartonImageFileId')" />
+                  <label for="carton-image-input" class="mt-2 flex min-h-20 cursor-pointer items-center gap-3"><ImageHoverPreview v-if="previewFor('packaging-cartonImageFileId')" :src="previewFor('packaging-cartonImageFileId')" alt="外箱图预览" test-id="carton-image-preview" image-class="h-16 w-16 shrink-0 rounded-xl object-cover" @error="markImageError('packaging-cartonImageFileId')" /><span v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-xl font-light text-[#536dff]">+</span><span class="text-xs font-bold text-slate-400">上传外箱图</span></label>
+                  <div class="mt-2 flex items-center justify-between gap-2 text-xs font-bold"><span data-testid="carton-image-status" :class="statusClassFor('packaging-cartonImageFileId')">{{ statusLabelFor('packaging-cartonImageFileId') }}</span><button v-if="previewFor('packaging-cartonImageFileId')" data-testid="carton-image-delete" type="button" class="text-rose-500 transition hover:text-rose-700" @click="removeImage('packaging-cartonImageFileId', () => { packaging.cartonImageFileId = null; })">删除</button></div>
+                  <p v-if="imageErrors['packaging-cartonImageFileId']" class="mt-1 text-xs font-bold text-rose-500">{{ imageErrors['packaging-cartonImageFileId'] }}</p>
+                </div>
               </div>
             </div>
           </section>

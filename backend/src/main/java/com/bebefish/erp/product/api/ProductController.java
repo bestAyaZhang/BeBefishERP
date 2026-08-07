@@ -77,7 +77,7 @@ public class ProductController {
     }
 
     private ProductResponse toResponse(com.bebefish.erp.product.domain.Product product) {
-        return ProductResponse.from(product, service.mainImageUrl(product.id()), service.defaultSupplierName(product.id()));
+        return ProductResponse.from(product, service.imageUrls(product.id()), service.defaultSupplierName(product.id()));
     }
 
     private void validatePage(int page, int size) {

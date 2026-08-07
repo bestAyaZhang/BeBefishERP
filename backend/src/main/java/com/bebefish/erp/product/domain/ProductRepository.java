@@ -1,6 +1,7 @@
 package com.bebefish.erp.product.domain;
 
 import java.util.Optional;
+import java.util.Map;
 import java.math.BigDecimal;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -38,6 +39,10 @@ public interface ProductRepository {
 
     default Optional<String> findMainImageUrl(long productId) {
         return Optional.empty();
+    }
+
+    default Map<Long, String> findImageUrls(long productId) {
+        return Map.of();
     }
 
     default Optional<String> findDefaultSupplierName(long productId) {

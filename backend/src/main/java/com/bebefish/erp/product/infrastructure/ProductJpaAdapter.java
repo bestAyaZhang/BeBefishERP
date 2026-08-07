@@ -210,6 +210,22 @@ public class ProductJpaAdapter implements ProductRepository {
     }
 
     @Override
+    public Map<Long, String> findImageUrls(long productId) {
+        var imageUrls = new HashMap<Long, String>();
+        jdbc.query(
+                "select file.id, file.access_url from file_asset file "
+                        + "where file.status = 'enabled' and ("
+                        + "file.id = (select main_image_file_id from product_spu where id = ?) "
+                        + "or file.id in (select sku_image_file_id from product_sku where product_id = ?) "
+                        + "or file.id in (select package_image_file_id from product_sku where product_id = ?) "
+                        + "or file.id in (select carton_image_file_id from product_sku where product_id = ?))",
+                (RowCallbackHandler) resultSet -> imageUrls.put(resultSet.getLong("id"), resultSet.getString("access_url")),
+                productId, productId, productId, productId
+        );
+        return imageUrls;
+    }
+
+    @Override
     public Optional<String> findDefaultSupplierName(long productId) {
         return jdbc.query(
                 "select group_concat(distinct supplier.supplier_name order by supplier.supplier_name separator '、') "

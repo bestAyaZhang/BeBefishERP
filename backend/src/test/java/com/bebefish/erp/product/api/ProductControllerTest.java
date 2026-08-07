@@ -188,6 +188,9 @@ class ProductControllerTest {
                         .param("keyword", "EW43245"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.records[0].mainImageUrl").value("/uploads/T7-image.png"))
+                .andExpect(jsonPath("$.data.records[0].skus[0].skuImageUrl").value("/uploads/T7-image.png"))
+                .andExpect(jsonPath("$.data.records[0].skus[0].packageImageUrl").value("/uploads/T7-image.png"))
+                .andExpect(jsonPath("$.data.records[0].skus[0].cartonImageUrl").value("/uploads/T7-image.png"))
                 .andExpect(jsonPath("$.data.records[0].defaultSupplierName").value("义乌玻璃厂"));
     }
 
@@ -222,6 +225,9 @@ class ProductControllerTest {
         sku.put("gramWeightG", "350");
         sku.put("packagingMethod", "彩盒");
         sku.put("cartonQuantity", 12);
+        sku.put("skuImageFileId", imageId);
+        sku.put("packageImageFileId", imageId);
+        sku.put("cartonImageFileId", imageId);
         var product = new LinkedHashMap<String, Object>();
         if (productCode != null) {
             product.put("productCode", productCode);

@@ -62,7 +62,14 @@ class FileControllerTest {
 
         mvc.perform(get(url))
                 .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("image/png"))
                 .andExpect(content().bytes(pngBytes()));
+    }
+
+    @Test
+    void returnsNotFoundWhenUploadedImageDoesNotExist() throws Exception {
+        mvc.perform(get("/uploads/missing-image.png"))
+                .andExpect(status().isNotFound());
     }
 
     @Test

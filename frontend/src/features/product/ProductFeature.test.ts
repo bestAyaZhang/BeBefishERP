@@ -129,6 +129,87 @@ describe('product feature', () => {
     expect(wrapper.get('[data-testid="progress-summary-images-status"]').text()).toBe('已完成');
   });
 
+  it('shows upload success, previews uploaded images, and removes an image association', async () => {
+    vi.clearAllMocks();
+    vi.mocked(fakeProductService.uploadImage).mockResolvedValue({
+      id: 201,
+      url: '/uploads/product-preview.png',
+      originalFileName: 'product-preview.png'
+    });
+    const wrapper = mount(ProductForm, { props: { service: fakeProductService } });
+    const input = wrapper.get('[data-testid="product-main-image"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['image'], 'product-preview.png', { type: 'image/png' })]
+    });
+
+    await input.trigger('change');
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="product-main-image-preview"]').attributes('src')).toBe('/uploads/product-preview.png');
+    expect(wrapper.get('[data-testid="product-main-image-status"]').text()).toContain('上传成功');
+
+    await wrapper.get('[data-testid="product-main-image-delete"]').trigger('click');
+
+    expect(wrapper.find('[data-testid="product-main-image-preview"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="product-main-image-status"]').text()).toContain('未上传');
+
+    vi.mocked(fakeProductService.createProduct).mockResolvedValue({} as Product);
+    await wrapper.get('[data-testid="save-product"]').trigger('click');
+    await flushPromises();
+    expect(fakeProductService.createProduct).toHaveBeenCalledWith(expect.objectContaining({ mainImageFileId: null }));
+  });
+
+  it('hydrates existing product and packaging images when editing', () => {
+    const product: Product = {
+      id: 22,
+      productCode: 'PRD-000022',
+      itemNo: 'GLASS-022',
+      productName: '编辑图片产品',
+      categoryId: 1,
+      brand: '共典',
+      productType: 'simple',
+      mainImageFileId: 301,
+      mainImageUrl: '/uploads/main.png',
+      remark: '',
+      specifications: [],
+      skus: [{
+        id: 302,
+        skuCode: 'PRD-000022-001',
+        barcode: 'GLASS-022-1',
+        skuName: '默认规格',
+        specificationValues: [],
+        salesUnit: '只',
+        defaultSalePrice: 12,
+        standardCost: 5,
+        packageLengthCm: 10,
+        packageWidthCm: 10,
+        packageHeightCm: 10,
+        packageVolumeCm3: 1000,
+        netWeightKg: 1,
+        grossWeightKg: 1.2,
+        gramWeightG: 200,
+        packagingMethod: '彩盒',
+        cartonQuantity: 12,
+        skuImageFileId: 303,
+        skuImageUrl: '/uploads/sku.png',
+        packageImageFileId: 304,
+        packageImageUrl: '/uploads/package.png',
+        cartonImageFileId: 305,
+      cartonImageUrl: '/uploads/carton.png',
+        defaultSku: true,
+        status: 'enabled'
+      }],
+      status: 'enabled'
+    };
+    const wrapper = mount(ProductForm, { props: { service: fakeProductService, initialValue: product } });
+
+    expect(wrapper.get('[data-testid="product-main-image-preview"]').attributes('src')).toBe('/uploads/main.png');
+    expect(wrapper.get('[data-testid="sku-image-0-preview"]').attributes('src')).toBe('/uploads/sku.png');
+    expect(wrapper.get('[data-testid="package-image-preview"]').attributes('src')).toBe('/uploads/package.png');
+    expect(wrapper.get('[data-testid="carton-image-preview"]').attributes('src')).toBe('/uploads/carton.png');
+  });
+
   it('adds SKU cards directly without a product type switch', async () => {
     const wrapper = mount(ProductForm, { props: { service: fakeProductService } });
 
@@ -415,6 +496,42 @@ describe('product feature', () => {
     expect(wrapper.text()).toContain('义乌玻璃厂');
     expect(wrapper.get('[data-testid="product-packaging-9"]').classes()).toContain('whitespace-nowrap');
     expect(wrapper.get('[data-testid="product-supplier-9"]').classes()).toContain('whitespace-nowrap');
+  });
+
+  it('previews a product image while the pointer is over the thumbnail', async () => {
+    const service: ProductService = {
+      ...fakeProductService,
+      listProducts: vi.fn().mockResolvedValue({
+        records: [{
+          id: 11,
+          productCode: 'GLASS-011',
+          itemNo: 'GB-011',
+          productName: '预览玻璃杯',
+          categoryId: 1,
+          brand: '共典',
+          productType: 'simple',
+          mainImageFileId: 21,
+          mainImageUrl: '/uploads/glass-011.png',
+          remark: '',
+          specifications: [],
+          skus: [],
+          status: 'enabled'
+        }],
+        page: 1,
+        pageSize: 20,
+        total: 1
+      })
+    };
+    const wrapper = mount(ProductList, { props: { service } });
+    await flushPromises();
+
+    const image = wrapper.get('[data-testid="product-image-11"]');
+    await image.trigger('mouseenter');
+    expect(document.body.querySelector('[data-testid="image-hover-preview"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-testid="image-hover-preview"] img')?.getAttribute('src')).toBe('/uploads/glass-011.png');
+
+    await image.trigger('mouseleave');
+    expect(document.body.querySelector('[data-testid="image-hover-preview"]')).toBeNull();
   });
 
   it('groups product information and formats specifications, packaging and carton size', async () => {

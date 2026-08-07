@@ -77,6 +77,22 @@ npm run test:run
 npm run build
 ```
 
+## 图片存储
+
+默认使用后端本地 `uploads/` 目录。线上部署七牛云时，通过环境变量切换，不要把 AK/SK 写入代码或提交到 Git：
+
+```bash
+ERP_FILE_STORAGE_PROVIDER=qiniu
+QINIU_ACCESS_KEY=你的AK
+QINIU_SECRET_KEY=你的SK
+QINIU_BUCKET=gd-goods-img
+QINIU_DOMAIN=https://tigd0hqp4.hn-bkt.clouddn.com
+# 可选：z0、z1、z2、na0、as0；不填时由 SDK 自动识别
+QINIU_REGION=z0
+```
+
+`QINIU_DOMAIN` 必须是该 Bucket 可访问的域名；如果空间是私有空间，还需要增加私有下载签名方案，当前版本按公开图片 URL 设计。已有本地图片不会自动迁移到七牛云。
+
 ## 本地登录账号
 
 本地开发默认账号用于阶段 1 联调：

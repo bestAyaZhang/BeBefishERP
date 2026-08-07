@@ -26,8 +26,11 @@ export interface SkuForm {
   packagingMethod: string;
   cartonQuantity: number | null;
   skuImageFileId: number | null;
+  skuImageUrl?: string | null;
   packageImageFileId: number | null;
+  packageImageUrl?: string | null;
   cartonImageFileId: number | null;
+  cartonImageUrl?: string | null;
   defaultSku: boolean;
   status?: RecordStatus;
 }

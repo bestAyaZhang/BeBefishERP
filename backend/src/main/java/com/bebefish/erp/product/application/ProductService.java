@@ -71,6 +71,10 @@ public class ProductService {
         return repository.findMainImageUrl(productId).orElse(null);
     }
 
+    public Map<Long, String> imageUrls(long productId) {
+        return repository.findImageUrls(productId);
+    }
+
     public String defaultSupplierName(long productId) {
         return repository.findDefaultSupplierName(productId).orElse(null);
     }

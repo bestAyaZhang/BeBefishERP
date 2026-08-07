@@ -78,6 +78,27 @@ describe('product detail navigation', () => {
     expect(wrapper.text()).toContain('商品详情');
   });
 
+  it('opens and closes a large image preview from the detail page', async () => {
+    const productWithImage: Product = {
+      ...product,
+      mainImageFileId: 100,
+      mainImageUrl: '/uploads/detail-main.png'
+    };
+    const wrapper = mount(ProductDetailDrawer, { props: { product: productWithImage, presentation: 'page' }, global: { plugins: [router] } });
+
+    await wrapper.get('[data-testid="product-detail-main-image"]').trigger('click');
+
+    const lightbox = document.body.querySelector('[data-testid="product-image-lightbox"]');
+    expect(lightbox).not.toBeNull();
+    expect(lightbox?.querySelector('img')?.getAttribute('src')).toBe('/uploads/detail-main.png');
+
+    const closeButton = document.body.querySelector('[data-testid="product-image-lightbox-close"]');
+    expect(closeButton).not.toBeNull();
+    (closeButton as HTMLButtonElement).click();
+    await wrapper.vm.$nextTick();
+    expect(document.body.querySelector('[data-testid="product-image-lightbox"]')).toBeNull();
+  });
+
   it('falls back to the product list data when the detail request fails', async () => {
     vi.mocked(productService.getProduct).mockRejectedValueOnce(new Error('详情接口暂不可用'));
     await router.push('/products/42');

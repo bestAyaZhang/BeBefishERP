@@ -9,3 +9,7 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+erp:
+  file:
+    storage:
+      provider: ${ERP_FILE_STORAGE_PROVIDER:local}

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { PackageOpen, X } from 'lucide-vue-next';
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import ImageHoverPreview from '../../../components/media/ImageHoverPreview.vue';
 import type { Product } from '../types';
 
 const props = withDefaults(defineProps<{ product: Product; presentation?: 'drawer' | 'page' }>(), {
@@ -10,6 +11,8 @@ const emit = defineEmits<{ close: []; edit: [] }>();
 const isDrawer = computed(() => props.presentation === 'drawer');
 
 const primarySku = computed(() => props.product.skus.find((sku) => sku.defaultSku) ?? props.product.skus[0]);
+type DetailImage = { src: string; alt: string; title: string };
+const lightboxImage = ref<DetailImage | null>(null);
 const statusText = computed(() => props.product.status === 'enabled' ? '在售' : '已停用');
 const auditText = computed(() => props.product.mainImageFileId && props.product.skus.length ? '资料完整' : '待完善');
 const priceText = computed(() => primarySku.value?.defaultSalePrice === null || primarySku.value?.defaultSalePrice === undefined ? '-' : `¥${Number(primarySku.value.defaultSalePrice).toFixed(2)}`);
@@ -64,6 +67,22 @@ const completionRate = computed(() => Math.round(completionSegments.value.reduce
 function close() {
   emit('close');
 }
+
+function openImage(src: string | null | undefined, alt: string, title: string) {
+  if (!src) return;
+  lightboxImage.value = { src, alt, title };
+}
+
+function closeImage() {
+  lightboxImage.value = null;
+}
+
+function handleLightboxKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') closeImage();
+}
+
+onMounted(() => window.addEventListener('keydown', handleLightboxKeydown));
+onBeforeUnmount(() => window.removeEventListener('keydown', handleLightboxKeydown));
 </script>
 
 <template>
@@ -99,7 +118,7 @@ function close() {
               <span class="rounded-full bg-white px-3 py-1 text-[11px] font-black text-[#536dff]">{{ product.itemNo }}</span>
             </div>
             <div class="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-2xl bg-white text-[#536dff] shadow-inner shadow-slate-100">
-              <img v-if="product.mainImageUrl" :src="product.mainImageUrl" :alt="product.productName" class="h-full w-full object-cover" />
+              <ImageHoverPreview v-if="product.mainImageUrl" :src="product.mainImageUrl" :alt="product.productName" test-id="product-detail-main-image" clickable image-class="h-full w-full object-cover" @click="openImage(product.mainImageUrl, product.productName, '产品主图')" />
               <PackageOpen v-else class="h-16 w-16" aria-hidden="true" />
             </div>
           </section>
@@ -130,7 +149,8 @@ function close() {
                 <div data-testid="product-detail-sku-image" class="rounded-xl bg-white p-2.5">
                   <p class="text-[11px] font-black text-slate-400">SKU 图片</p>
                   <div class="mt-2 flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-slate-50 text-[#36bee3]">
-                    <PackageOpen class="h-10 w-10" aria-hidden="true" />
+                    <ImageHoverPreview v-if="sku.skuImageUrl" :src="sku.skuImageUrl" :alt="`${sku.skuName || 'SKU'} 图片`" :test-id="`product-detail-sku-image-${index}`" clickable image-class="h-full w-full object-cover" @click="openImage(sku.skuImageUrl, `${sku.skuName || 'SKU'} 图片`, `SKU ${index + 1}`)" />
+                    <PackageOpen v-else class="h-10 w-10" aria-hidden="true" />
                   </div>
                   <p class="mt-2 text-center text-[11px] font-bold text-slate-400">{{ sku.skuImageFileId ? '已上传 SKU 图' : '未上传 SKU 图' }}</p>
                 </div>
@@ -171,10 +191,10 @@ function close() {
         <section data-testid="product-detail-drawer-images" class="mt-5 rounded-2xl border border-slate-100 p-4">
           <h3 class="mb-4 text-base font-black text-[#25314d]">图片资料</h3>
           <div class="grid gap-3 sm:grid-cols-2">
-            <div class="rounded-xl bg-slate-50 p-3"><p class="text-xs font-black text-slate-400">产品主图</p><div class="mt-3 flex items-center gap-3 rounded-xl bg-white p-3"><PackageOpen class="h-7 w-7 text-[#536dff]" aria-hidden="true" /><span class="truncate text-sm font-black text-[#25314d]">{{ product.mainImageFileId ? '已上传产品主图' : '未上传产品主图' }}</span></div></div>
-            <div class="rounded-xl bg-slate-50 p-3"><p class="text-xs font-black text-slate-400">SKU 图片</p><div class="mt-3 flex items-center gap-3 rounded-xl bg-white p-3"><PackageOpen class="h-7 w-7 text-[#36bee3]" aria-hidden="true" /><span class="truncate text-sm font-black text-[#25314d]">{{ primarySku?.skuImageFileId ? '已上传 SKU 图' : '未上传 SKU 图' }}</span></div></div>
-            <div class="rounded-xl bg-slate-50 p-3"><p class="text-xs font-black text-slate-400">彩盒图片</p><div class="mt-3 flex items-center gap-3 rounded-xl bg-white p-3"><PackageOpen class="h-7 w-7 text-[#7b45f5]" aria-hidden="true" /><span class="truncate text-sm font-black text-[#25314d]">{{ primarySku?.packageImageFileId ? '已上传彩盒图' : '未上传彩盒图' }}</span></div></div>
-            <div class="rounded-xl bg-slate-50 p-3"><p class="text-xs font-black text-slate-400">外箱图片</p><div class="mt-3 flex items-center gap-3 rounded-xl bg-white p-3"><PackageOpen class="h-7 w-7 text-amber-500" aria-hidden="true" /><span class="truncate text-sm font-black text-[#25314d]">{{ primarySku?.cartonImageFileId ? '已上传外箱图' : '未上传外箱图' }}</span></div></div>
+            <div class="rounded-xl bg-slate-50 p-3"><p class="text-xs font-black text-slate-400">产品主图</p><div class="mt-3 flex items-center gap-3 rounded-xl bg-white p-3"><ImageHoverPreview v-if="product.mainImageUrl" :src="product.mainImageUrl" :alt="product.productName" test-id="product-detail-main-image-card" clickable image-class="h-12 w-12 rounded-lg object-cover" @click="openImage(product.mainImageUrl, product.productName, '产品主图')" /><PackageOpen v-else class="h-7 w-7 text-[#536dff]" aria-hidden="true" /><span class="truncate text-sm font-black text-[#25314d]">{{ product.mainImageUrl ? '已上传产品主图' : '未上传产品主图' }}</span></div></div>
+            <div class="rounded-xl bg-slate-50 p-3"><p class="text-xs font-black text-slate-400">SKU 图片</p><div class="mt-3 flex items-center gap-3 rounded-xl bg-white p-3"><ImageHoverPreview v-if="primarySku?.skuImageUrl" :src="primarySku.skuImageUrl" alt="SKU 图片" test-id="product-detail-sku-image-card" clickable image-class="h-12 w-12 rounded-lg object-cover" @click="openImage(primarySku.skuImageUrl, 'SKU 图片', 'SKU 图片')" /><PackageOpen v-else class="h-7 w-7 text-[#36bee3]" aria-hidden="true" /><span class="truncate text-sm font-black text-[#25314d]">{{ primarySku?.skuImageUrl ? '已上传 SKU 图' : '未上传 SKU 图' }}</span></div></div>
+            <div class="rounded-xl bg-slate-50 p-3"><p class="text-xs font-black text-slate-400">彩盒图片</p><div class="mt-3 flex items-center gap-3 rounded-xl bg-white p-3"><ImageHoverPreview v-if="primarySku?.packageImageUrl" :src="primarySku.packageImageUrl" alt="彩盒图片" test-id="product-detail-package-image-card" clickable image-class="h-12 w-12 rounded-lg object-cover" @click="openImage(primarySku.packageImageUrl, '彩盒图片', '彩盒图片')" /><PackageOpen v-else class="h-7 w-7 text-[#7b45f5]" aria-hidden="true" /><span class="truncate text-sm font-black text-[#25314d]">{{ primarySku?.packageImageUrl ? '已上传彩盒图' : '未上传彩盒图' }}</span></div></div>
+            <div class="rounded-xl bg-slate-50 p-3"><p class="text-xs font-black text-slate-400">外箱图片</p><div class="mt-3 flex items-center gap-3 rounded-xl bg-white p-3"><ImageHoverPreview v-if="primarySku?.cartonImageUrl" :src="primarySku.cartonImageUrl" alt="外箱图片" test-id="product-detail-carton-image-card" clickable image-class="h-12 w-12 rounded-lg object-cover" @click="openImage(primarySku.cartonImageUrl, '外箱图片', '外箱图片')" /><PackageOpen v-else class="h-7 w-7 text-amber-500" aria-hidden="true" /><span class="truncate text-sm font-black text-[#25314d]">{{ primarySku?.cartonImageUrl ? '已上传外箱图' : '未上传外箱图' }}</span></div></div>
           </div>
         </section>
 
@@ -190,6 +210,32 @@ function close() {
       </component>
     </div>
   </Transition>
+
+  <Teleport to="body">
+    <div
+      v-if="lightboxImage"
+      data-testid="product-image-lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label="图片预览"
+      class="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/75 p-6 backdrop-blur-sm"
+      @click.self="closeImage"
+    >
+      <button
+        data-testid="product-image-lightbox-close"
+        type="button"
+        class="absolute right-5 top-5 flex h-11 w-11 items-center justify-center rounded-xl border border-white/30 bg-white/10 text-white transition hover:bg-white/20"
+        aria-label="关闭图片预览"
+        @click="closeImage"
+      >
+        <X class="h-5 w-5" aria-hidden="true" />
+      </button>
+      <figure class="flex max-h-full max-w-full flex-col items-center gap-3 rounded-2xl bg-white/95 p-4 shadow-2xl">
+        <img :src="lightboxImage.src" :alt="lightboxImage.alt" class="max-h-[calc(100vh-120px)] max-w-[min(92vw,1200px)] rounded-xl object-contain" />
+        <figcaption class="text-sm font-bold text-slate-600">{{ lightboxImage.title }}</figcaption>
+      </figure>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
