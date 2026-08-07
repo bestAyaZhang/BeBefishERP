@@ -4,6 +4,7 @@ import com.bebefish.erp.file.domain.FileStorage;
 import com.bebefish.erp.file.domain.ImageUpload;
 import com.bebefish.erp.file.domain.StoredFile;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -14,6 +15,7 @@ public class QiniuFileStorage implements FileStorage {
     private final QiniuObjectClient client;
     private final String domain;
 
+    @Autowired
     public QiniuFileStorage(
             @Value("${QINIU_ACCESS_KEY:}") String accessKey,
             @Value("${QINIU_SECRET_KEY:}") String secretKey,

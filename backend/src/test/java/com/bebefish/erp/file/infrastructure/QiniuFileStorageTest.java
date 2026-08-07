@@ -7,8 +7,23 @@ import com.bebefish.erp.file.domain.ImageUpload;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 class QiniuFileStorageTest {
+    @Test
+    void createsSpringBeanWhenQiniuStorageIsEnabled() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(QiniuFileStorage.class)
+                .withPropertyValues(
+                        "erp.file.storage.provider=qiniu",
+                        "QINIU_ACCESS_KEY=test-ak",
+                        "QINIU_SECRET_KEY=test-sk",
+                        "QINIU_BUCKET=test-bucket",
+                        "QINIU_DOMAIN=img.example.com"
+                )
+                .run(context -> assertThat(context).hasSingleBean(QiniuFileStorage.class));
+    }
+
     @Test
     void requiresProductionQiniuConfiguration() {
         assertThatThrownBy(() -> new QiniuFileStorage("", "", "", "", ""))
