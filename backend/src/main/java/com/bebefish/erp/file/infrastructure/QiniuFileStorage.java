@@ -56,7 +56,7 @@ public class QiniuFileStorage implements FileStorage {
     private static String normalizeDomain(String value) {
         var result = value.trim();
         if (!result.startsWith("http://") && !result.startsWith("https://")) {
-            result = "https://" + result;
+            result = "http://" + result;
         }
         return result.replaceAll("/+$", "");
     }

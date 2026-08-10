@@ -2,6 +2,7 @@ package com.bebefish.erp.file.api;
 
 import com.bebefish.erp.common.api.ApiResponse;
 import com.bebefish.erp.file.application.ImageUploadService;
+import com.bebefish.erp.file.domain.FileAccessUrlResolver;
 import com.bebefish.erp.file.domain.ImageUpload;
 import java.io.IOException;
 import org.springframework.http.MediaType;
@@ -16,9 +17,11 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/files")
 public class FileController {
     private final ImageUploadService service;
+    private final FileAccessUrlResolver urlResolver;
 
-    public FileController(ImageUploadService service) {
+    public FileController(ImageUploadService service, FileAccessUrlResolver urlResolver) {
         this.service = service;
+        this.urlResolver = urlResolver;
     }
 
     @PostMapping(path = "/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -28,6 +31,6 @@ public class FileController {
         var asset = service.upload(new ImageUpload(
                 file.getOriginalFilename(), file.getContentType(), file.getBytes()
         ));
-        return ApiResponse.success(FileAssetResponse.from(asset));
+        return ApiResponse.success(FileAssetResponse.from(asset, urlResolver));
     }
 }

@@ -5,6 +5,7 @@ import com.qiniu.storage.Configuration;
 import com.qiniu.storage.Region;
 import com.qiniu.storage.UploadManager;
 import com.qiniu.util.Auth;
+import com.bebefish.erp.file.domain.FileStorageException;
 import java.io.IOException;
 
 public class QiniuSdkObjectClient implements QiniuObjectClient {
@@ -24,10 +25,18 @@ public class QiniuSdkObjectClient implements QiniuObjectClient {
             var uploadToken = auth.uploadToken(bucket);
             Response response = uploadManager.put(content, key, uploadToken, null, contentType, false);
             if (!response.isOK()) {
-                throw new IllegalStateException("七牛云图片上传失败：HTTP " + response.statusCode);
+                var reason = response.error == null || response.error.isBlank()
+                        ? "HTTP " + response.statusCode
+                        : "HTTP " + response.statusCode + "：" + response.error;
+                throw new FileStorageException("七牛云图片上传失败：" + reason);
             }
         } catch (IOException exception) {
-            throw new IllegalStateException("七牛云图片上传失败", exception);
+            throw new FileStorageException("七牛云图片上传失败", exception);
+        } catch (RuntimeException exception) {
+            if (exception instanceof FileStorageException) {
+                throw exception;
+            }
+            throw new FileStorageException("七牛云图片上传失败", exception);
         }
     }
 

@@ -4,6 +4,7 @@ import com.bebefish.erp.common.api.ApiResponse;
 import com.bebefish.erp.common.api.BusinessException;
 import com.bebefish.erp.common.api.PageResponse;
 import com.bebefish.erp.masterdata.api.ChangeMasterdataStatusRequest;
+import com.bebefish.erp.file.domain.FileAccessUrlResolver;
 import com.bebefish.erp.product.application.ProductService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.PageRequest;
@@ -18,14 +19,17 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/products")
 public class ProductController {
     private final ProductService service;
+    private final FileAccessUrlResolver urlResolver;
 
-    public ProductController(ProductService service) {
+    public ProductController(ProductService service, FileAccessUrlResolver urlResolver) {
         this.service = service;
+        this.urlResolver = urlResolver;
     }
 
     @GetMapping
@@ -77,7 +81,11 @@ public class ProductController {
     }
 
     private ProductResponse toResponse(com.bebefish.erp.product.domain.Product product) {
-        return ProductResponse.from(product, service.imageUrls(product.id()), service.defaultSupplierName(product.id()));
+        var imageUrls = service.imageUrls(product.id()).entrySet().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        Map.Entry::getKey, entry -> urlResolver.resolve(entry.getValue())
+                ));
+        return ProductResponse.from(product, imageUrls, service.defaultSupplierName(product.id()));
     }
 
     private void validatePage(int page, int size) {
