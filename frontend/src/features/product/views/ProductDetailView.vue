@@ -110,7 +110,6 @@ onBeforeUnmount(() => {
     </header>
 
     <div v-if="loading" data-testid="product-detail-skeleton" class="space-y-4" aria-label="正在加载商品详情">
-      <div class="h-16 animate-pulse rounded-lg border border-slate-200 bg-white"></div>
       <div v-for="index in 6" :key="index" class="h-40 animate-pulse rounded-lg border border-slate-200 bg-white"></div>
     </div>
 

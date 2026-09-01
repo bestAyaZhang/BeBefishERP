@@ -455,7 +455,9 @@ describe('product detail navigation', () => {
     await router.push('/products/42');
     const loadingWrapper = mount(ProductDetailView, { global: { plugins: [router] } });
 
-    expect(loadingWrapper.find('[data-testid="product-detail-skeleton"]').exists()).toBe(true);
+    const skeleton = loadingWrapper.get('[data-testid="product-detail-skeleton"]');
+    expect(skeleton.findAll('.h-40')).toHaveLength(6);
+    expect(skeleton.find('.h-16').exists()).toBe(false);
     expect(loadingWrapper.find('[data-testid="product-detail-back"]').exists()).toBe(true);
     loadingWrapper.unmount();
     pendingProduct.resolve(detailProduct);
