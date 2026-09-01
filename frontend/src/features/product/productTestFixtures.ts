@@ -1,3 +1,4 @@
+import type { PageResult } from '../masterdata/types';
 import type { Product, ProductSku } from './types';
 
 type ProductResponseDefaults = Pick<Product,
@@ -37,8 +38,8 @@ type ProductFixture = Omit<Product, keyof ProductResponseDefaults | 'skus'>
 export function productFixture(input: ProductFixture): Product {
   const { skus: inputSkus, ...product } = input;
   const skus = inputSkus.map((sku): ProductSku => ({
-    specText: sku.specificationValues.join(' / '),
-    safetyStockQuantity: null,
+    specText: sku.specificationValues.length > 0 ? sku.specificationValues.join(' / ') : null,
+    safetyStockQuantity: 0,
     stockQuantity: 0,
     innerPackageLengthCm: null,
     innerPackageWidthCm: null,
@@ -56,7 +57,7 @@ export function productFixture(input: ProductFixture): Product {
     mainImageUrl: null,
     defaultSupplierName: null,
     totalStock: skus.reduce((total, sku) => total + sku.stockQuantity, 0),
-    totalSafetyStock: skus.reduce((total, sku) => total + (sku.safetyStockQuantity ?? 0), 0),
+    totalSafetyStock: skus.reduce((total, sku) => total + sku.safetyStockQuantity, 0),
     defaultSalePrice: defaultSku?.defaultSalePrice ?? null,
     completenessPercent: 0,
     completenessStatus: 'incomplete',
@@ -66,4 +67,13 @@ export function productFixture(input: ProductFixture): Product {
     ...product,
     skus
   };
+}
+
+export function productPage(
+  records: Product[],
+  total = records.length,
+  page = 1,
+  pageSize = 20
+): PageResult<Product> {
+  return { records, page, pageSize, total };
 }

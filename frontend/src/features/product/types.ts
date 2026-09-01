@@ -26,30 +26,24 @@ export interface SkuForm {
   salesUnit: string;
   defaultSalePrice: number | null;
   standardCost: number | null;
-  safetyStockQuantity?: number | null;
-  stockQuantity?: number;
+  safetyStockQuantity: number | null;
   packageLengthCm: number | null;
   packageWidthCm: number | null;
   packageHeightCm: number | null;
   packageVolumeCm3: number | null;
-  innerPackageLengthCm?: number | null;
-  innerPackageWidthCm?: number | null;
-  innerPackageHeightCm?: number | null;
+  innerPackageLengthCm: number | null;
+  innerPackageWidthCm: number | null;
+  innerPackageHeightCm: number | null;
   netWeightKg: number | null;
   grossWeightKg: number | null;
   gramWeightG: number | null;
-  innerPackageWeightKg?: number | null;
+  innerPackageWeightKg: number | null;
   packagingMethod: string;
   cartonQuantity: number | null;
   skuImageFileId: number | null;
-  skuImageUrl?: string | null;
   packageImageFileId: number | null;
-  packageImageUrl?: string | null;
   cartonImageFileId: number | null;
-  cartonImageUrl?: string | null;
   supplierQuotes?: ProductSupplierQuoteInput[];
-  defaultSku: boolean;
-  status?: RecordStatus;
 }
 
 export interface ProductFormPayload {
@@ -64,35 +58,64 @@ export interface ProductFormPayload {
   skus: SkuForm[];
 }
 
-export interface SupplierQuote extends ProductSupplierQuoteInput {
+export interface ProductSupplierQuote {
   id: number;
   skuId: number;
+  supplierId: number;
+  supplierItemNo: string | null;
+  purchasePrice: number;
+  minPurchaseQuantity: number;
+  defaultQuote: boolean;
+  status: RecordStatus;
 }
 
-export interface ProductSku extends SkuForm {
+export interface ProductSku {
   id: number;
   skuCode: string;
-  specText: string;
-  safetyStockQuantity: number | null;
+  barcode: string | null;
+  skuName: string;
+  specText: string | null;
+  specificationValues: string[];
+  salesUnit: string;
+  defaultSalePrice: number;
+  standardCost: number;
+  safetyStockQuantity: number;
   stockQuantity: number;
+  packageLengthCm: number | null;
+  packageWidthCm: number | null;
+  packageHeightCm: number | null;
+  packageVolumeCm3: number | null;
   innerPackageLengthCm: number | null;
   innerPackageWidthCm: number | null;
   innerPackageHeightCm: number | null;
+  netWeightKg: number | null;
+  grossWeightKg: number | null;
+  gramWeightG: number | null;
   innerPackageWeightKg: number | null;
+  packagingMethod: string | null;
+  cartonQuantity: number | null;
+  skuImageFileId: number | null;
   skuImageUrl: string | null;
+  packageImageFileId: number | null;
   packageImageUrl: string | null;
+  cartonImageFileId: number | null;
   cartonImageUrl: string | null;
-  supplierQuotes: SupplierQuote[];
+  supplierQuotes: ProductSupplierQuote[];
+  defaultSku: boolean;
   status: RecordStatus;
 }
 
 export type ProductCompletenessStatus = 'complete' | 'incomplete';
 
-export interface Product extends Omit<ProductFormPayload, 'skus'> {
+export interface Product {
   id: number;
   productCode: string;
+  itemNo: string;
+  productName: string;
   categoryId: number;
-  status: RecordStatus;
+  brand: string | null;
+  productType: ProductType;
+  mainImageFileId: number | null;
   mainImageUrl: string | null;
   defaultSupplierName: string | null;
   totalStock: number;
@@ -101,6 +124,9 @@ export interface Product extends Omit<ProductFormPayload, 'skus'> {
   completenessPercent: number;
   completenessStatus: ProductCompletenessStatus;
   missingGroups: string[];
+  status: RecordStatus;
+  remark: string | null;
+  specifications: ProductSpecification[];
   skus: ProductSku[];
   createdAt: string;
   updatedAt: string;
@@ -119,9 +145,9 @@ export interface SkuSummary {
   id: number;
   skuCode: string;
   skuName: string;
-  specText: string;
-  defaultSalePrice: number | null;
-  standardCost: number | null;
+  specText: string | null;
+  defaultSalePrice: number;
+  standardCost: number;
   status: RecordStatus;
 }
 
@@ -147,8 +173,8 @@ export interface ProductService {
   createProduct(payload: ProductFormPayload): Promise<Product>;
   updateProduct(id: number, payload: ProductFormPayload): Promise<Product>;
   changeProductStatus(id: number, status: RecordStatus): Promise<Product>;
-  listSupplierQuotes(skuId: number): Promise<SupplierQuote[]>;
-  saveSupplierQuote(skuId: number, payload: SaveSupplierQuotePayload, quoteId?: number): Promise<SupplierQuote>;
-  setDefaultSupplierQuote(skuId: number, quoteId: number, syncStandardCost: boolean): Promise<SupplierQuote>;
+  listSupplierQuotes(skuId: number): Promise<ProductSupplierQuote[]>;
+  saveSupplierQuote(skuId: number, payload: SaveSupplierQuotePayload, quoteId?: number): Promise<ProductSupplierQuote>;
+  setDefaultSupplierQuote(skuId: number, quoteId: number, syncStandardCost: boolean): Promise<ProductSupplierQuote>;
   uploadImage(file: File): Promise<UploadedImage>;
 }

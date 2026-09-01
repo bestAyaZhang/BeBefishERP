@@ -8,11 +8,11 @@ function toProductOptions(products: Product[]): SaleProductOption[] {
     skuId: sku.id ?? 0,
     skuCode: sku.skuCode,
     itemNo: product.itemNo,
-    barcode: sku.barcode,
+    barcode: sku.barcode ?? '',
     productName: product.productName,
     skuName: sku.skuName || '默认规格',
     specification: sku.specificationValues.join(' / ') || '默认规格',
-    packagingMethod: sku.packagingMethod,
+    packagingMethod: sku.packagingMethod ?? '',
     cartonQuantity: sku.cartonQuantity,
     salesUnit: sku.salesUnit || '件',
     defaultSalePrice: Number(sku.defaultSalePrice ?? 0)

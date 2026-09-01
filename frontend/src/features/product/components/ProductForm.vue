@@ -3,6 +3,7 @@ import { ArrowLeft, Check } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { message } from '../../../components/feedback/message';
 import ImageHoverPreview from '../../../components/media/ImageHoverPreview.vue';
+import { toProductFormPayload } from '../productFormMapper';
 import type { Product, ProductFormPayload, ProductService, ProductSpecification, SkuForm } from '../types';
 
 const props = defineProps<{ service: ProductService; initialValue?: Product; categories?: Array<{ id: number; categoryName: string }> }>();
@@ -18,14 +19,15 @@ type ImageStatus = 'idle' | 'uploading' | 'uploaded' | 'error';
 const dimensionNames = ['口径', '高度', '容量', '重量'] as const;
 type DimensionName = typeof dimensionNames[number];
 
-function blankSku(values: string[] = [], index = 0): SkuForm {
+function blankSku(values: string[] = []): SkuForm {
   return {
     skuCode: '', barcode: '', skuName: values.join(' / '), specificationValues: values,
-    salesUnit: '只', defaultSalePrice: null, standardCost: null,
+    salesUnit: '只', defaultSalePrice: null, standardCost: null, safetyStockQuantity: null,
     packageLengthCm: null, packageWidthCm: null, packageHeightCm: null, packageVolumeCm3: null,
+    innerPackageLengthCm: null, innerPackageWidthCm: null, innerPackageHeightCm: null,
     netWeightKg: null, grossWeightKg: null, gramWeightG: null, packagingMethod: '', cartonQuantity: null,
+    innerPackageWeightKg: null,
     skuImageFileId: null, packageImageFileId: null, cartonImageFileId: null,
-    defaultSku: index === 0, status: 'enabled'
   };
 }
 
@@ -45,28 +47,29 @@ function packagingFromSku(sku?: SkuForm): PackagingForm {
   };
 }
 
-const itemNo = ref(props.initialValue?.itemNo ?? '');
-const productName = ref(props.initialValue?.productName ?? '');
-const categoryId = ref<number | null>(props.initialValue?.categoryId ?? null);
-const brand = ref(props.initialValue?.brand ?? '');
-const remark = ref(props.initialValue?.remark ?? '');
-const initialSpecifications = props.initialValue?.specifications ?? [];
+const initialPayload = props.initialValue ? toProductFormPayload(props.initialValue) : undefined;
+const itemNo = ref(initialPayload?.itemNo ?? '');
+const productName = ref(initialPayload?.productName ?? '');
+const categoryId = ref<number | null>(initialPayload?.categoryId ?? null);
+const brand = ref(initialPayload?.brand ?? '');
+const remark = ref(initialPayload?.remark ?? '');
+const initialSpecifications = initialPayload?.specifications ?? [];
 const dimensionParameters = ref<SpecificationDraft[]>(dimensionNames.map((name) => ({
   name,
   valuesText: initialSpecifications.find((specification) => specification.name === name)?.values.join(' / ') ?? ''
 })));
-const skuList = ref<SkuForm[]>(props.initialValue?.skus?.map((sku) => ({ ...sku })) ?? [blankSku()]);
-const defaultSku = props.initialValue?.skus?.find((sku) => sku.defaultSku) ?? props.initialValue?.skus?.[0];
-const packaging = ref<PackagingForm>(packagingFromSku(defaultSku));
-const mainImageFileId = ref<number | null>(props.initialValue?.mainImageFileId ?? null);
+const skuList = ref<SkuForm[]>(initialPayload?.skus ?? [blankSku()]);
+const defaultResponseSku = props.initialValue?.skus.find((sku) => sku.defaultSku) ?? props.initialValue?.skus[0];
+const packaging = ref<PackagingForm>(packagingFromSku(initialPayload?.skus[0]));
+const mainImageFileId = ref<number | null>(initialPayload?.mainImageFileId ?? null);
 function initialImagePreviews() {
   const previews: Record<string, string> = {};
   if (props.initialValue?.mainImageUrl) previews.main = props.initialValue.mainImageUrl;
   props.initialValue?.skus?.forEach((sku, index) => {
     if (sku.skuImageUrl) previews[`sku-${index}-skuImageFileId`] = sku.skuImageUrl;
   });
-  if (defaultSku?.packageImageUrl) previews['packaging-packageImageFileId'] = defaultSku.packageImageUrl;
-  if (defaultSku?.cartonImageUrl) previews['packaging-cartonImageFileId'] = defaultSku.cartonImageUrl;
+  if (defaultResponseSku?.packageImageUrl) previews['packaging-packageImageFileId'] = defaultResponseSku.packageImageUrl;
+  if (defaultResponseSku?.cartonImageUrl) previews['packaging-cartonImageFileId'] = defaultResponseSku.cartonImageUrl;
   return previews;
 }
 
@@ -137,7 +140,7 @@ function scrollToStep(target: string) {
 }
 
 function addSku() {
-  skuList.value.push(blankSku([], skuList.value.length));
+  skuList.value.push(blankSku());
 }
 
 function removeSku(index: number) {
@@ -244,7 +247,7 @@ function uploadPackagingImage(event: Event, field: PackagingImageField) {
 function payload(): ProductFormPayload {
   const specificationValues = [...new Set(skuList.value.map(skuSpecificationText).filter(Boolean))];
   const isVariant = skuList.value.length > 1 || specificationValues.length > 0;
-  const packagingOwnerIndex = Math.max(skuList.value.findIndex((sku) => sku.defaultSku), 0);
+  const packagingOwnerIndex = 0;
   const skus = skuList.value.map((sku, index) => ({
     ...sku,
     specificationValues: isVariant ? (skuSpecificationText(sku) ? [skuSpecificationText(sku)] : []) : [],
@@ -390,7 +393,7 @@ async function save() {
                 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div class="font-black text-[#25314d]">{{ skuSpecificationText(sku) || `SKU ${index + 1}` }}</div>
-                    <span v-if="sku.defaultSku" data-testid="default-sku-badge" class="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700">默认 SKU</span>
+                    <span v-if="index === 0" data-testid="default-sku-badge" class="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700">默认 SKU</span>
                   </div>
                   <button v-if="skuList.length > 1" :data-testid="`remove-sku-${index}`" type="button" class="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600" @click="removeSku(index)">删除 SKU</button>
                 </div>

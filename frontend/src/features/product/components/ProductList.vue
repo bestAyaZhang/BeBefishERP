@@ -44,7 +44,9 @@ const overviewStats = [
   { label: '待完善资料', value: () => filteredRecords.value.filter((product) => !product.mainImageFileId).length, caption: '图片/条码缺失', icon: ClipboardList, tone: 'bg-amber-50 text-amber-500' }
 ];
 
-const productBrandOptions = computed(() => [allBrandOption, ...Array.from(new Set(result.value.records.map((product) => product.brand).filter(Boolean)))]);
+const productBrandOptions = computed(() => [allBrandOption, ...Array.from(new Set(result.value.records
+  .map((product) => product.brand)
+  .filter((value): value is string => Boolean(value))))]);
 const productSupplierOptions = computed(() => [allSupplierOption, ...Array.from(new Set(result.value.records.map((product) => product.defaultSupplierName).filter((value): value is string => Boolean(value))))]);
 const categoryNameById = computed(() => new Map((props.categories ?? []).map((category) => [category.id, category.categoryName])));
 const productCategoryOptions = computed(() => {

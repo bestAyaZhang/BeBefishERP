@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { clearMessages, messages } from '../../components/feedback/message';
 import { httpProductService } from './httpProductService';
-import { productFixture } from './productTestFixtures';
+import { productFixture, productPage } from './productTestFixtures';
 import type { Product, ProductFormPayload, ProductService } from './types';
 import ProductDetailDrawer from './components/ProductDetailDrawer.vue';
 import ProductForm from './components/ProductForm.vue';
@@ -51,9 +51,7 @@ function productPayload(supplierQuotes?: ProductFormPayload['skus'][number]['sup
       skuImageFileId: null,
       packageImageFileId: null,
       cartonImageFileId: null,
-      supplierQuotes,
-      defaultSku: true,
-      status: 'enabled'
+      supplierQuotes
     }]
   };
 }
@@ -124,6 +122,10 @@ const fakeProductService: ProductService = {
   setDefaultSupplierQuote: vi.fn(),
   uploadImage: vi.fn()
 };
+
+function mockListProducts(result: ReturnType<typeof productPage>) {
+  return vi.fn<ProductService['listProducts']>().mockResolvedValue(result);
+}
 
 describe('product feature', () => {
   afterEach(() => {
@@ -508,12 +510,10 @@ describe('product feature', () => {
   it('loads one SPU row and opens product creation from the list', async () => {
     const service: ProductService = {
       ...fakeProductService,
-      listProducts: vi.fn().mockResolvedValue({
-        records: [{ id: 8, productCode: 'GLASS-001', itemNo: 'GB-001', productName: '玻璃杯', categoryId: 1, brand: 'BeBefish', productType: 'simple', mainImageFileId: null, remark: '', specifications: [], skus: [], status: 'enabled' }],
-        page: 1,
-        pageSize: 20,
-        total: 1
-      })
+      listProducts: mockListProducts(productPage([productFixture({
+        id: 8, productCode: 'GLASS-001', itemNo: 'GB-001', productName: '玻璃杯', categoryId: 1,
+        brand: 'BeBefish', productType: 'simple', mainImageFileId: null, remark: '', specifications: [], skus: [], status: 'enabled'
+      })]))
     };
     const wrapper = mount(ProductList, { props: { service } });
     await flushPromises();
@@ -527,12 +527,10 @@ describe('product feature', () => {
   it('shows the approved product overview labels and opens a selected product', async () => {
     const service: ProductService = {
       ...fakeProductService,
-      listProducts: vi.fn().mockResolvedValue({
-        records: [{ id: 8, productCode: 'GLASS-001', itemNo: 'GB-001', productName: '玻璃杯', categoryId: 1, brand: 'BeBefish', productType: 'simple', mainImageFileId: null, remark: '', specifications: [], skus: [], status: 'enabled' }],
-        page: 1,
-        pageSize: 20,
-        total: 1
-      })
+      listProducts: mockListProducts(productPage([productFixture({
+        id: 8, productCode: 'GLASS-001', itemNo: 'GB-001', productName: '玻璃杯', categoryId: 1,
+        brand: 'BeBefish', productType: 'simple', mainImageFileId: null, remark: '', specifications: [], skus: [], status: 'enabled'
+      })]))
     };
     const wrapper = mount(ProductList, { props: { service } });
     await flushPromises();
@@ -545,8 +543,7 @@ describe('product feature', () => {
   it('shows product image, item number, specification, price, weight, brand and supplier', async () => {
     const service: ProductService = {
       ...fakeProductService,
-      listProducts: vi.fn().mockResolvedValue({
-        records: [{
+      listProducts: mockListProducts(productPage([productFixture({
           id: 9,
           productCode: 'GLASS-009',
           itemNo: 'GB-009',
@@ -584,11 +581,7 @@ describe('product feature', () => {
             status: 'enabled'
           }],
           status: 'enabled'
-        }],
-        page: 1,
-        pageSize: 20,
-        total: 1
-      })
+      })]))
     };
     const wrapper = mount(ProductList, { props: { service } });
     await flushPromises();
@@ -607,8 +600,7 @@ describe('product feature', () => {
   it('previews a product image while the pointer is over the thumbnail', async () => {
     const service: ProductService = {
       ...fakeProductService,
-      listProducts: vi.fn().mockResolvedValue({
-        records: [{
+      listProducts: mockListProducts(productPage([productFixture({
           id: 11,
           productCode: 'GLASS-011',
           itemNo: 'GB-011',
@@ -622,11 +614,7 @@ describe('product feature', () => {
           specifications: [],
           skus: [],
           status: 'enabled'
-        }],
-        page: 1,
-        pageSize: 20,
-        total: 1
-      })
+      })]))
     };
     const wrapper = mount(ProductList, { props: { service } });
     await flushPromises();
@@ -643,8 +631,7 @@ describe('product feature', () => {
   it('groups product information and formats specifications, packaging and carton size', async () => {
     const service: ProductService = {
       ...fakeProductService,
-      listProducts: vi.fn().mockResolvedValue({
-        records: [{
+      listProducts: mockListProducts(productPage([productFixture({
           id: 10,
           productCode: 'GLASS-010',
           itemNo: 'GB-010',
@@ -685,11 +672,7 @@ describe('product feature', () => {
             status: 'enabled'
           }],
           status: 'enabled'
-        }],
-        page: 1,
-        pageSize: 20,
-        total: 1
-      })
+      })]))
     };
     const wrapper = mount(ProductList, { props: { service } });
     await flushPromises();
@@ -733,8 +716,7 @@ describe('product feature', () => {
   it('shows category names from masterdata in the product list filter', async () => {
     const service: ProductService = {
       ...fakeProductService,
-      listProducts: vi.fn().mockResolvedValue({
-        records: [{
+      listProducts: mockListProducts(productPage([productFixture({
           id: 21,
           productCode: 'PRD-000021',
           itemNo: 'ITEM-021',
@@ -747,11 +729,7 @@ describe('product feature', () => {
           specifications: [],
           skus: [],
           status: 'enabled'
-        }],
-        page: 1,
-        pageSize: 20,
-        total: 1
-      })
+      })]))
     };
     const wrapper = mount(ProductList, {
       props: {
@@ -771,7 +749,7 @@ describe('product feature', () => {
   it('uses the prototype list table styling for the product master data table', async () => {
     const service: ProductService = {
       ...fakeProductService,
-      listProducts: vi.fn().mockResolvedValue({ records: [], page: 1, pageSize: 20, total: 0 })
+      listProducts: mockListProducts(productPage([]))
     };
     const wrapper = mount(ProductList, { props: { service } });
     await flushPromises();
@@ -833,7 +811,7 @@ describe('product feature', () => {
     });
     const service: ProductService = {
       ...fakeProductService,
-      listProducts: vi.fn().mockResolvedValue({ records: [product], page: 1, pageSize: 20, total: 1 })
+      listProducts: mockListProducts(productPage([product]))
     };
     const wrapper = mount(ProductList, { props: { service } });
     await flushPromises();
@@ -850,7 +828,7 @@ describe('product feature', () => {
   it('closes an open product filter menu after clicking outside the filter bar', async () => {
     const service: ProductService = {
       ...fakeProductService,
-      listProducts: vi.fn().mockResolvedValue({ records: [], page: 1, pageSize: 20, total: 0 })
+      listProducts: mockListProducts(productPage([]))
     };
     const wrapper = mount(ProductList, { props: { service } });
     await flushPromises();
@@ -869,12 +847,10 @@ describe('product feature', () => {
   it('uses the prototype SKU master header and filter layout', async () => {
     const service: ProductService = {
       ...fakeProductService,
-      listProducts: vi.fn().mockResolvedValue({
-        records: [{ id: 8, productCode: 'GLASS-001', itemNo: 'GB-001', productName: '玻璃杯', categoryId: 1, brand: 'BeBefish', productType: 'simple', mainImageFileId: null, remark: '', specifications: [], skus: [], status: 'enabled' }],
-        page: 1,
-        pageSize: 20,
-        total: 5
-      })
+      listProducts: mockListProducts(productPage([productFixture({
+        id: 8, productCode: 'GLASS-001', itemNo: 'GB-001', productName: '玻璃杯', categoryId: 1,
+        brand: 'BeBefish', productType: 'simple', mainImageFileId: null, remark: '', specifications: [], skus: [], status: 'enabled'
+      })], 5))
     };
     const wrapper = mount(ProductList, { props: { service } });
     await flushPromises();
@@ -898,7 +874,7 @@ describe('product feature', () => {
   });
 
   it('searches products only after clicking the search button', async () => {
-    const listProducts = vi.fn().mockResolvedValue({ records: [], page: 1, pageSize: 20, total: 0 });
+    const listProducts = mockListProducts(productPage([]));
     const service: ProductService = { ...fakeProductService, listProducts };
     const wrapper = mount(ProductList, { props: { service } });
     await flushPromises();
@@ -930,7 +906,7 @@ describe('product feature', () => {
       status: 'enabled'
     });
     const records = [makeProduct(21, '品牌A'), makeProduct(22, '品牌B')];
-    const listProducts = vi.fn().mockResolvedValue({ records, page: 1, pageSize: 20, total: records.length });
+    const listProducts = mockListProducts(productPage(records));
     const service: ProductService = { ...fakeProductService, listProducts };
     const wrapper = mount(ProductList, { props: { service } });
     await flushPromises();
@@ -955,7 +931,7 @@ describe('product feature', () => {
   it('uses the approved prototype layout for product overview stats', async () => {
     const service: ProductService = {
       ...fakeProductService,
-      listProducts: vi.fn().mockResolvedValue({ records: [], page: 1, pageSize: 20, total: 0 })
+      listProducts: mockListProducts(productPage([]))
     };
     const wrapper = mount(ProductList, { props: { service } });
     await flushPromises();

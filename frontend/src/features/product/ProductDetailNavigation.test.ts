@@ -6,7 +6,7 @@ import ProductListView from './views/ProductListView.vue';
 import ProductDetailView from './views/ProductDetailView.vue';
 import type { Product, ProductService } from './types';
 import { productService } from './productService';
-import { productFixture } from './productTestFixtures';
+import { productFixture, productPage } from './productTestFixtures';
 
 vi.mock('./productService', () => ({
   productService: {
@@ -47,7 +47,7 @@ const product = productFixture({
 describe('product detail navigation', () => {
   beforeEach(async () => {
     localStorage.setItem('bebefish_access_token', 'test-token');
-    vi.mocked(productService.listProducts).mockResolvedValue({ records: [product], page: 1, pageSize: 20, total: 1 });
+    vi.mocked(productService.listProducts).mockResolvedValue(productPage([product]));
     await router.push('/products');
     await router.isReady();
   });
