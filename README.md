@@ -41,6 +41,12 @@ cd backend
 $env:ERP_DB_URL = 'jdbc:mysql://localhost:3306/<database>'
 $env:ERP_DB_USERNAME = '<username>'
 $env:ERP_DB_PASSWORD = '<password>'
+mvn spring-boot:run
+```
+
+在 Windows 的 Unicode / 非 ASCII 工作区路径下，如果 `mvn spring-boot:run` 生成的 argfile 或 classpath 出现乱码，优先使用已在此类路径中验证过的可执行 JAR 启动方式：
+
+```powershell
 mvn -DskipTests package
 java -jar target/bebefish-erp-0.1.0-SNAPSHOT.jar
 ```
@@ -97,7 +103,9 @@ QINIU_REGION=z0
 
 ## 本地登录账号
 
-使用仓库现有的本地开发管理员账号联调。账号凭据应通过本地配置管理，不要写入代码或提交到 Git。
+当前应用内置一个仅供开发联调的内存演示管理员，登录页会显示该账号的演示登录信息；README 不重复记录具体值。
+
+该演示账号和凭据不得用于生产。生产部署前必须移除这套开发账号与页面提示，或将生产身份与凭据交由外部安全配置和密钥管理系统提供。
 
 ## 当前认证实现说明
 
