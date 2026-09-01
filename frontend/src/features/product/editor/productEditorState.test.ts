@@ -531,6 +531,18 @@ describe('product editor state', () => {
     expect(validateStep(state, 'sku')).toEqual({});
   });
 
+  it('reports missing SKUs together with residual simple-product structure', () => {
+    const state = createEditorState();
+    state.productType = 'simple';
+    state.specifications = [{ name: '颜色', values: ['透明'] }];
+    state.skus = [];
+
+    expect(validateStep(state, 'sku')).toEqual({
+      skus: '请至少添加一个 SKU',
+      productType: '单规格商品不能包含规格维度或规格值'
+    });
+  });
+
   it('preserves loaded simple and variant product types during hydration', () => {
     const loadedSimple = loadedProductFixture('simple');
     const loadedVariant = loadedProductFixture('variant');

@@ -50,7 +50,11 @@ let latestOptionRequestId = 0;
 let latestSaveRequestId = 0;
 let routeGeneration = 0;
 let componentActive = true;
-let expectedSavedProductId: number | null = null;
+let saveNavigationAuthorization: {
+  requestId: number;
+  routeGeneration: number;
+  savedProductId: number;
+} | null = null;
 
 const currentStep = computed(() => stepDefinitions[currentStepIndex.value] ?? stepDefinitions[0]);
 const isEdit = computed(() => route.name === 'product-edit');
@@ -236,7 +240,7 @@ async function submit() {
   const requestId = ++latestSaveRequestId;
   const sourceRouteGeneration = routeGeneration;
   const wasCreate = state.value.productId === null;
-  expectedSavedProductId = null;
+  saveNavigationAuthorization = null;
   saving.value = true;
   try {
     const payload = toProductPayload(state.value);
@@ -246,11 +250,16 @@ async function submit() {
     if (!componentActive || requestId !== latestSaveRequestId || routeGeneration !== sourceRouteGeneration) return;
     initialSnapshot.value = serializeState(state.value);
     message.success(wasCreate ? '商品已创建' : '商品已更新');
-    expectedSavedProductId = saved.id;
+    const navigationAuthorization = {
+      requestId,
+      routeGeneration: sourceRouteGeneration,
+      savedProductId: saved.id
+    };
+    saveNavigationAuthorization = navigationAuthorization;
     try {
       await router.push({ name: 'product-detail', params: { id: saved.id } });
     } finally {
-      expectedSavedProductId = null;
+      if (saveNavigationAuthorization === navigationAuthorization) saveNavigationAuthorization = null;
     }
   } catch (error) {
     if (!componentActive || requestId !== latestSaveRequestId || routeGeneration !== sourceRouteGeneration) return;
@@ -272,9 +281,11 @@ function blockActiveOperation() {
 
 function confirmLeave(to: RouteLocationNormalized) {
   if (
-    expectedSavedProductId !== null
+    saveNavigationAuthorization !== null
+    && saveNavigationAuthorization.requestId === latestSaveRequestId
+    && saveNavigationAuthorization.routeGeneration === routeGeneration
     && to.name === 'product-detail'
-    && String(to.params.id) === String(expectedSavedProductId)
+    && String(to.params.id) === String(saveNavigationAuthorization.savedProductId)
   ) return true;
   if (blockActiveOperation()) return false;
   return !dirty.value || window.confirm('商品资料尚未保存，确定离开当前页面吗？');
@@ -295,9 +306,11 @@ onBeforeRouteUpdate((to) => confirmLeave(to));
 
 watch(() => route.fullPath, () => {
   routeGeneration += 1;
-  expectedSavedProductId = null;
+  latestSaveRequestId += 1;
+  saving.value = false;
+  saveNavigationAuthorization = null;
   void loadEditor();
-}, { immediate: true });
+}, { immediate: true, flush: 'sync' });
 
 onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload));
 onBeforeUnmount(() => {
@@ -305,7 +318,7 @@ onBeforeUnmount(() => {
   latestProductRequestId += 1;
   latestOptionRequestId += 1;
   latestSaveRequestId += 1;
-  expectedSavedProductId = null;
+  saveNavigationAuthorization = null;
   window.removeEventListener('beforeunload', handleBeforeUnload);
 });
 </script>

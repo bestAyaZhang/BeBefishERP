@@ -433,7 +433,7 @@ export function validateStep(
   }
 
   if (step === 'sku') {
-    if (state.skus.length === 0) return { skus: '请至少添加一个 SKU' };
+    if (state.skus.length === 0) errors.skus = '请至少添加一个 SKU';
     if (
       state.productType === 'simple'
       && (state.skus.length > 1
@@ -442,26 +442,28 @@ export function validateStep(
     ) {
       errors.productType = '单规格商品不能包含规格维度或规格值';
     }
-    const enabledSkus = state.skus.filter((sku) => sku.status === 'enabled');
-    const defaultSkus = state.skus.filter((sku) => sku.defaultSku);
-    if (enabledSkus.length === 0) errors.skus = '至少保留一个启用的 SKU';
-    else if (defaultSkus.length !== 1 || defaultSkus[0].status !== 'enabled') errors.skus = '请选择一个启用的默认 SKU';
-    state.skus.forEach((sku, index) => {
-      if (isBlank(sku.skuName)) errors[`skus.${index}.skuName`] = '请输入 SKU 名称';
-      if (isBlank(sku.salesUnit)) errors[`skus.${index}.salesUnit`] = '请输入销售单位';
-      if (isNegative(sku.defaultSalePrice)) errors[`skus.${index}.defaultSalePrice`] = '默认售价不能小于 0';
-      if (isNegative(sku.standardCost)) errors[`skus.${index}.standardCost`] = '标准成本不能小于 0';
-      if (isNegative(sku.safetyStockQuantity)) errors[`skus.${index}.safetyStockQuantity`] = '安全库存不能小于 0';
-      if (!isNegative(sku.defaultSalePrice) && !isValidDecimal(sku.defaultSalePrice, 15, 4)) {
-        errors[`skus.${index}.defaultSalePrice`] = '默认售价最多允许 15 位整数和 4 位小数';
-      }
-      if (!isNegative(sku.standardCost) && !isValidDecimal(sku.standardCost, 15, 4)) {
-        errors[`skus.${index}.standardCost`] = '标准成本最多允许 15 位整数和 4 位小数';
-      }
-      if (!isNegative(sku.safetyStockQuantity) && !isValidDecimal(sku.safetyStockQuantity, 14, 4)) {
-        errors[`skus.${index}.safetyStockQuantity`] = '安全库存最多允许 14 位整数和 4 位小数';
-      }
-    });
+    if (state.skus.length > 0) {
+      const enabledSkus = state.skus.filter((sku) => sku.status === 'enabled');
+      const defaultSkus = state.skus.filter((sku) => sku.defaultSku);
+      if (enabledSkus.length === 0) errors.skus = '至少保留一个启用的 SKU';
+      else if (defaultSkus.length !== 1 || defaultSkus[0].status !== 'enabled') errors.skus = '请选择一个启用的默认 SKU';
+      state.skus.forEach((sku, index) => {
+        if (isBlank(sku.skuName)) errors[`skus.${index}.skuName`] = '请输入 SKU 名称';
+        if (isBlank(sku.salesUnit)) errors[`skus.${index}.salesUnit`] = '请输入销售单位';
+        if (isNegative(sku.defaultSalePrice)) errors[`skus.${index}.defaultSalePrice`] = '默认售价不能小于 0';
+        if (isNegative(sku.standardCost)) errors[`skus.${index}.standardCost`] = '标准成本不能小于 0';
+        if (isNegative(sku.safetyStockQuantity)) errors[`skus.${index}.safetyStockQuantity`] = '安全库存不能小于 0';
+        if (!isNegative(sku.defaultSalePrice) && !isValidDecimal(sku.defaultSalePrice, 15, 4)) {
+          errors[`skus.${index}.defaultSalePrice`] = '默认售价最多允许 15 位整数和 4 位小数';
+        }
+        if (!isNegative(sku.standardCost) && !isValidDecimal(sku.standardCost, 15, 4)) {
+          errors[`skus.${index}.standardCost`] = '标准成本最多允许 15 位整数和 4 位小数';
+        }
+        if (!isNegative(sku.safetyStockQuantity) && !isValidDecimal(sku.safetyStockQuantity, 14, 4)) {
+          errors[`skus.${index}.safetyStockQuantity`] = '安全库存最多允许 14 位整数和 4 位小数';
+        }
+      });
+    }
   }
 
   if (step === 'procurement') {

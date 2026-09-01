@@ -952,7 +952,6 @@ describe('Task 10 product editor', () => {
       fullPath: '/products/new?revision=2',
       query: { revision: '2' }
     };
-    await flushPromises();
     routeRef.value = {
       ...routeRef.value,
       fullPath: '/products/new',
@@ -967,6 +966,97 @@ describe('Task 10 product editor', () => {
 
     expect(push).not.toHaveBeenCalled();
     expect(messages.value).toHaveLength(0);
+  });
+
+  it('releases stale saving state on route identity change and keeps the late callback silent', async () => {
+    const pending = deferred<Product>();
+    vi.mocked(productService.createProduct).mockReturnValueOnce(pending.promise);
+    const { router, wrapper } = await mountEditor();
+    const confirm = vi.mocked(window.confirm);
+    await fillBasic(wrapper);
+    await next(wrapper);
+    await addSku(wrapper, '透明款', 'A-1');
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    const push = vi.spyOn(router, 'push');
+    const routeRef = router.currentRoute as unknown as { value: typeof router.currentRoute.value };
+
+    routeRef.value = {
+      ...routeRef.value,
+      fullPath: '/products/new?revision=2',
+      query: { revision: '2' }
+    };
+    await flushPromises();
+    push.mockClear();
+    clearMessages();
+
+    pending.resolve(completeProduct({ id: 77 }));
+    await flushPromises();
+
+    expect(push).not.toHaveBeenCalled();
+    expect(messages.value).toHaveLength(0);
+    expect(confirm).not.toHaveBeenCalled();
+
+    await fillBasic(wrapper);
+    clearMessages();
+    await wrapper.get('[data-testid="step-sku"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('SKU 信息');
+    expect(messages.value.map((entry) => entry.text)).not.toContain('商品正在保存，请等待完成后再离开');
+  });
+
+  it('does not let an old navigation finally clear a newer save authorization', async () => {
+    const firstSave = deferred<Product>();
+    const secondSave = deferred<Product>();
+    const firstNavigationStarted = deferred<void>();
+    const secondNavigationStarted = deferred<void>();
+    const releaseFirstNavigation = deferred<void>();
+    const releaseSecondNavigation = deferred<void>();
+    vi.mocked(productService.getProduct).mockImplementation(async (id) => completeProduct({ id }));
+    vi.mocked(productService.updateProduct).mockImplementation((id) => (
+      id === 42 ? firstSave.promise : secondSave.promise
+    ));
+    const { router, wrapper } = await mountEditor('/products/42/edit');
+    const confirm = vi.mocked(window.confirm);
+    const originalPush = router.push.bind(router);
+    vi.spyOn(router, 'push').mockImplementation(async (to) => {
+      const target = router.resolve(to);
+      if (target.name === 'product-detail' && target.params.id === '42') {
+        firstNavigationStarted.resolve(undefined);
+        await releaseFirstNavigation.promise;
+        return;
+      }
+      if (target.name === 'product-detail' && target.params.id === '43') {
+        secondNavigationStarted.resolve(undefined);
+        await releaseSecondNavigation.promise;
+      }
+      return originalPush(to);
+    });
+
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    firstSave.resolve(completeProduct({ id: 42 }));
+    await firstNavigationStarted.promise;
+
+    const routeRef = router.currentRoute as unknown as { value: typeof router.currentRoute.value };
+    routeRef.value = {
+      ...routeRef.value,
+      fullPath: '/products/43/edit',
+      params: { id: '43' }
+    };
+    await flushPromises();
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    secondSave.resolve(completeProduct({ id: 43 }));
+    await secondNavigationStarted.promise;
+
+    releaseFirstNavigation.resolve(undefined);
+    await flushPromises();
+    releaseSecondNavigation.resolve(undefined);
+    await flushPromises();
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(router.currentRoute.value).toMatchObject({ name: 'product-detail', params: { id: '43' } });
   });
 
   it('authorizes only the exact saved detail target while save navigation is pending', async () => {
