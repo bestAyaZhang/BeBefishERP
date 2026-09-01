@@ -8,10 +8,13 @@ import { getCurrentUser } from '../services/auth';
 import { clearCurrentUser, currentUser, saveCurrentUser } from '../services/authSession';
 import { ACCESS_TOKEN_STORAGE_KEY } from '../types/auth';
 
+const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)';
 const mobileNavigationOpen = ref(false);
+const desktopViewport = ref(false);
 const mobileNavigationTrigger = ref<HTMLButtonElement | null>(null);
 const mobileNavigationDrawer = ref<HTMLElement | null>(null);
 const mobileNavigationClose = ref<HTMLButtonElement | null>(null);
+let desktopMediaQueryList: MediaQueryList | null = null;
 const searchQuery = ref('');
 const router = useRouter();
 const route = useRoute();
@@ -51,11 +54,17 @@ const pageHeader = computed<PageHeader>(() => pageHeaders[String(route.name)] ??
   titleRoute: 'workbench'
 });
 const routeOwnsHeader = computed(() => route.meta.ownsPrototypeHeader === true);
+const mobileNavigationModalActive = computed(() => mobileNavigationOpen.value && !desktopViewport.value);
 
 provide('openMobileNavigation', openMobileNavigation);
 
 onMounted(async () => {
   window.addEventListener('keydown', handleKeydown);
+  if (typeof window.matchMedia === 'function') {
+    desktopMediaQueryList = window.matchMedia(DESKTOP_MEDIA_QUERY);
+    desktopViewport.value = desktopMediaQueryList.matches;
+    desktopMediaQueryList.addEventListener('change', handleDesktopViewportChange);
+  }
 
   const accessToken = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
   if (currentUser.value || !accessToken) return;
@@ -69,20 +78,28 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown);
+  desktopMediaQueryList?.removeEventListener('change', handleDesktopViewportChange);
+  desktopMediaQueryList = null;
 });
 
 watch(() => route.fullPath, () => closeMobileNavigation());
 
-function closeMobileNavigation() {
+function closeMobileNavigation({ restoreFocus = true }: { restoreFocus?: boolean } = {}) {
   if (!mobileNavigationOpen.value) return;
   mobileNavigationOpen.value = false;
-  nextTick(() => mobileNavigationTrigger.value?.focus());
+  if (restoreFocus) nextTick(() => mobileNavigationTrigger.value?.focus());
 }
 
 async function openMobileNavigation() {
+  if (desktopViewport.value) return;
   mobileNavigationOpen.value = true;
   await nextTick();
   mobileNavigationClose.value?.focus();
+}
+
+function handleDesktopViewportChange(event: MediaQueryListEvent) {
+  desktopViewport.value = event.matches;
+  if (event.matches) closeMobileNavigation({ restoreFocus: false });
 }
 
 function trapMobileNavigationFocus(event: KeyboardEvent) {
@@ -107,7 +124,7 @@ function trapMobileNavigationFocus(event: KeyboardEvent) {
 }
 
 function handleKeydown(event: KeyboardEvent) {
-  if (!mobileNavigationOpen.value) return;
+  if (!mobileNavigationModalActive.value) return;
   if (event.key === 'Escape') {
     event.preventDefault();
     closeMobileNavigation();
@@ -126,7 +143,7 @@ async function handleLogout() {
 <template>
   <main data-testid="erp-shell" class="bebefish-prototype min-h-screen bg-[#f6f7fb] text-[#25314d]">
     <MessageHost />
-    <div data-testid="erp-layout-grid" class="grid min-h-screen grid-cols-1 lg:grid-cols-[244px_minmax(0,1fr)]" :inert="mobileNavigationOpen || undefined" :aria-hidden="mobileNavigationOpen ? 'true' : undefined">
+    <div data-testid="erp-layout-grid" class="grid min-h-screen grid-cols-1 lg:grid-cols-[244px_minmax(0,1fr)]" :inert="mobileNavigationModalActive || undefined" :aria-hidden="mobileNavigationModalActive ? 'true' : undefined">
       <aside class="sticky top-0 hidden h-screen min-h-0 border-r border-slate-200 bg-white lg:flex">
         <SidebarNav />
       </aside>
@@ -166,9 +183,9 @@ async function handleLogout() {
       </section>
     </div>
 
-    <div v-if="mobileNavigationOpen" data-testid="erp-mobile-navigation" class="fixed inset-0 z-50 bg-slate-950/35 lg:hidden" @click="closeMobileNavigation">
+    <div v-if="mobileNavigationModalActive" data-testid="erp-mobile-navigation" class="fixed inset-0 z-50 bg-slate-950/35 lg:hidden" @click="closeMobileNavigation()">
       <aside ref="mobileNavigationDrawer" data-testid="erp-mobile-drawer" class="relative h-full w-72 bg-white shadow-xl" role="dialog" aria-modal="true" aria-label="主导航" @click.stop>
-        <button ref="mobileNavigationClose" data-testid="erp-mobile-close" type="button" class="absolute right-3 top-3 z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-[#25314d]" aria-label="关闭菜单" @click="closeMobileNavigation">
+        <button ref="mobileNavigationClose" data-testid="erp-mobile-close" type="button" class="absolute right-3 top-3 z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-[#25314d]" aria-label="关闭菜单" @click="closeMobileNavigation()">
           <X class="h-5 w-5" aria-hidden="true" />
         </button>
         <SidebarNav @navigate="closeMobileNavigation" />

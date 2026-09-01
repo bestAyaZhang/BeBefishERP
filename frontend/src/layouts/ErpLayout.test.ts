@@ -5,6 +5,47 @@ import { clearCurrentUser, saveCurrentUser } from '../services/authSession';
 import ErpLayout from './ErpLayout.vue';
 
 const TestPage = { template: '<div data-testid="test-page">Page</div>' };
+const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)';
+
+function stubDesktopMatchMedia(initialMatches = false) {
+  const listeners = new Set<(event: MediaQueryListEvent) => void>();
+  let matches = initialMatches;
+  const addEventListener = vi.fn((eventName: string, listener: EventListenerOrEventListenerObject) => {
+    if (eventName === 'change' && typeof listener === 'function') {
+      listeners.add(listener as (event: MediaQueryListEvent) => void);
+    }
+  });
+  const removeEventListener = vi.fn((eventName: string, listener: EventListenerOrEventListenerObject) => {
+    if (eventName === 'change' && typeof listener === 'function') {
+      listeners.delete(listener as (event: MediaQueryListEvent) => void);
+    }
+  });
+  const mediaQueryList = {
+    get matches() {
+      return matches;
+    },
+    media: DESKTOP_MEDIA_QUERY,
+    onchange: null,
+    addEventListener,
+    removeEventListener,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(() => true)
+  } as unknown as MediaQueryList;
+  const matchMedia = vi.fn(() => mediaQueryList);
+  vi.stubGlobal('matchMedia', matchMedia);
+
+  return {
+    addEventListener,
+    matchMedia,
+    removeEventListener,
+    setMatches(nextMatches: boolean) {
+      matches = nextMatches;
+      const event = { matches, media: DESKTOP_MEDIA_QUERY } as MediaQueryListEvent;
+      for (const listener of listeners) listener(event);
+    }
+  };
+}
 
 function createTestRouter() {
   return createRouter({
@@ -40,8 +81,10 @@ async function openMobileNavigation(wrapper: VueWrapper) {
 describe('ErpLayout', () => {
   let wrapper: VueWrapper | null = null;
   let router: Router | null = null;
+  let desktopMedia: ReturnType<typeof stubDesktopMatchMedia>;
 
   beforeEach(() => {
+    desktopMedia = stubDesktopMatchMedia();
     clearCurrentUser();
     saveCurrentUser({
       accessToken: 'token',
@@ -60,6 +103,7 @@ describe('ErpLayout', () => {
     clearCurrentUser();
     localStorage.clear();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('fills the viewport with a fixed desktop sidebar and stable content frame', async () => {
@@ -181,6 +225,44 @@ describe('ErpLayout', () => {
 
     expect(wrapper.find('[data-testid="erp-mobile-navigation"]').exists()).toBe(false);
     expect(document.activeElement).toBe(trigger.element);
+  });
+
+  it('releases the modal without focusing the hidden trigger when the viewport becomes desktop', async () => {
+    ({ router, wrapper } = await mountLayout());
+    const trigger = await openMobileNavigation(wrapper);
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="erp-mobile-close"]').element);
+
+    desktopMedia.setMatches(true);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="erp-mobile-navigation"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="erp-layout-grid"]').attributes('inert')).toBeUndefined();
+    expect(wrapper.get('[data-testid="erp-layout-grid"]').attributes('aria-hidden')).toBeUndefined();
+    expect(document.activeElement).not.toBe(trigger.element);
+
+    await trigger.trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="erp-mobile-navigation"]').exists()).toBe(false);
+
+    desktopMedia.setMatches(false);
+    await trigger.trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="erp-mobile-navigation"]').exists()).toBe(true);
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="erp-mobile-close"]').element);
+  });
+
+  it('removes the same desktop media change listener that it registers', async () => {
+    ({ router, wrapper } = await mountLayout());
+
+    expect(desktopMedia.matchMedia).toHaveBeenCalledWith(DESKTOP_MEDIA_QUERY);
+    const registration = desktopMedia.addEventListener.mock.calls.find(([eventName]) => eventName === 'change');
+    expect(registration).toBeDefined();
+
+    wrapper.unmount();
+    wrapper = null;
+
+    expect(desktopMedia.removeEventListener).toHaveBeenCalledWith('change', registration?.[1]);
   });
 
   it('removes the same global keydown listener that it registers', async () => {
