@@ -1,4 +1,5 @@
 import type { PageResult, RecordStatus } from '../masterdata/types';
+import type { Category } from '../masterdata/types';
 import type {
   Product,
   ProductCatalogSupplierQuote,
@@ -70,7 +71,7 @@ function maxId(values: number[], floor: number) {
   return Math.max(floor, ...values) + 1;
 }
 
-export function createMockProductService(seed: Product[] = defaultSeed): MockProductService {
+export function createMockProductService(seed: Product[] = defaultSeed, categories: Category[] = []): MockProductService {
   let products = seed.map(cloneProduct);
   const supplierNames = new Map(products.flatMap((product) => product.skus.flatMap((sku) => (
     sku.supplierQuotes.map((quote) => [quote.supplierId, quote.supplierName] as const)
@@ -150,8 +151,8 @@ export function createMockProductService(seed: Product[] = defaultSeed): MockPro
       cartonImageFileId: sku.cartonImageFileId,
       cartonImageUrl: imageUrl(sku.cartonImageFileId, current?.cartonImageFileId, current?.cartonImageUrl),
       supplierQuotes: [],
-      defaultSku: index === 0,
-      status: current?.status ?? 'enabled'
+      defaultSku: sku.defaultSku,
+      status: sku.status
     };
   }
 
@@ -185,7 +186,7 @@ export function createMockProductService(seed: Product[] = defaultSeed): MockPro
       completenessPercent: current?.completenessPercent ?? 0,
       completenessStatus: current?.completenessStatus ?? 'incomplete',
       missingGroups: [...(current?.missingGroups ?? ['基本信息', 'SKU 信息', '采购信息', '包装重量', '图片资料'])],
-      status: current?.status ?? 'enabled',
+      status: payload.status,
       remark: payload.remark || null,
       specifications: payload.specifications.map((specification) => ({
         name: specification.name,
@@ -228,7 +229,12 @@ export function createMockProductService(seed: Product[] = defaultSeed): MockPro
     const filtered = products.filter((product) =>
       (!query.status || product.status === query.status)
       && (!query.categoryId || product.categoryId === query.categoryId)
-      && (!keyword || [product.productCode, product.itemNo, product.productName]
+      && (!keyword || [
+        product.productCode,
+        product.itemNo,
+        product.productName,
+        ...product.skus.flatMap((sku) => [sku.skuCode, sku.barcode ?? ''])
+      ]
         .some((value) => value.toLowerCase().includes(keyword)))
     );
     return {
@@ -250,10 +256,19 @@ export function createMockProductService(seed: Product[] = defaultSeed): MockPro
 
   return {
     listProducts: async (query) => page(query),
-    getCategoryCounts: async () => products.reduce<Record<number, number>>((counts, product) => {
-      counts[product.categoryId] = (counts[product.categoryId] ?? 0) + 1;
-      return counts;
-    }, {}),
+    getCategoryCounts: async () => {
+      const parentById = new Map(categories.map((category) => [category.id, category.parentId]));
+      return products.reduce<Record<number, number>>((counts, product) => {
+        const visited = new Set<number>();
+        let categoryId: number | null = product.categoryId;
+        while (categoryId !== null && !visited.has(categoryId)) {
+          visited.add(categoryId);
+          counts[categoryId] = (counts[categoryId] ?? 0) + 1;
+          categoryId = parentById.get(categoryId) ?? null;
+        }
+        return counts;
+      }, {});
+    },
     getProduct: async (id) => {
       const product = products.find((value) => value.id === id);
       if (!product) throw new Error('产品不存在');

@@ -25,7 +25,7 @@
 
 ```text
 /login
-/dashboard
+/workbench
 /products
 /products/new
 /products/:id

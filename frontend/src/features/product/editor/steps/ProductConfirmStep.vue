@@ -26,6 +26,8 @@ const quoteCount = computed(() => props.state.skus.reduce((total, sku) => total 
         <div><dt class="font-bold text-slate-400">商品名称</dt><dd class="mt-1 font-black text-[#25314d]">{{ state.productName || '--' }}</dd></div>
         <div><dt class="font-bold text-slate-400">分类</dt><dd class="mt-1 font-semibold text-slate-700">{{ categoryName }}</dd></div>
         <div><dt class="font-bold text-slate-400">品牌</dt><dd class="mt-1 font-semibold text-slate-700">{{ state.brand || '--' }}</dd></div>
+        <div><dt class="font-bold text-slate-400">商品类型</dt><dd class="mt-1 font-semibold text-slate-700">{{ state.productType === 'simple' ? '单规格' : '多规格' }}</dd></div>
+        <div><dt class="font-bold text-slate-400">商品状态</dt><dd class="mt-1 font-semibold text-slate-700">{{ state.status === 'enabled' ? '启用' : '停用' }}</dd></div>
         <div class="sm:col-span-2"><dt class="font-bold text-slate-400">备注</dt><dd class="mt-1 whitespace-pre-wrap font-semibold text-slate-700">{{ state.remark || '--' }}</dd></div>
       </dl>
     </section>
@@ -40,7 +42,7 @@ const quoteCount = computed(() => props.state.skus.reduce((total, sku) => total 
           <thead class="bg-slate-50 text-xs font-black text-slate-500"><tr><th class="px-4 py-3">SKU</th><th class="px-4 py-3">规格</th><th class="px-4 py-3">供应商报价</th><th class="px-4 py-3">包装</th><th class="px-4 py-3">图片</th></tr></thead>
           <tbody class="divide-y divide-slate-100">
             <tr v-for="(sku, index) in state.skus" :key="sku.id ?? `confirm-${index}`">
-              <td class="px-4 py-4"><p class="font-black text-[#25314d]">{{ sku.skuName }}</p><p class="mt-1 text-xs font-semibold text-slate-400">{{ sku.barcode || sku.skuCode || '--' }}</p></td>
+              <td class="px-4 py-4"><p class="font-black text-[#25314d]">{{ sku.skuName }}</p><p class="mt-1 text-xs font-semibold text-slate-400">{{ sku.skuCode || '保存后生成' }}</p><p class="mt-1 text-xs font-semibold text-slate-400">条码：{{ sku.barcode || '--' }} · {{ sku.status === 'enabled' ? '启用' : '停用' }}<span v-if="sku.defaultSku"> · 默认</span></p></td>
               <td class="px-4 py-4 font-semibold text-slate-600">{{ sku.specificationValues.join(' / ') || '--' }}</td>
               <td class="px-4 py-4">
                 <p v-for="quote in sku.supplierQuotes ?? []" :key="quote.id ?? `${quote.supplierId}-${quote.supplierItemNo}`" class="font-semibold text-slate-600">{{ supplierNames.get(quote.supplierId) ?? '--' }}<span v-if="quote.defaultQuote" class="text-[#536dff]"> · 默认</span></p>

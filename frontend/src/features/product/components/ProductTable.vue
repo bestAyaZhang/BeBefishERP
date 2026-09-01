@@ -28,6 +28,9 @@ const categoryNames = computed(() => new Map(
 const failedImageUrls = ref<Record<number, string>>({});
 
 function categoryDisplay(product: Product) {
+  if (product.categoryName) {
+    return { label: product.categoryName, hint: '' };
+  }
   if (product.categoryId != null && categoryNames.value.has(product.categoryId)) {
     return { label: categoryNames.value.get(product.categoryId)!, hint: '' };
   }

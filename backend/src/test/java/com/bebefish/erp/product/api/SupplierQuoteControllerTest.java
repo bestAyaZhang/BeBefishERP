@@ -110,6 +110,18 @@ class SupplierQuoteControllerTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void rejectsStandaloneQuoteNumericOverflowWithFieldSpecificMessage() throws Exception {
+        var body = quoteBody(firstSupplierId, "1000000000000000.0000", false, false);
+
+        mvc.perform(post("/api/skus/{skuId}/supplier-quotes", skuId)
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("采购价最多允许 15 位整数和 4 位小数"));
+    }
+
     private JsonNode createQuote(long supplierId, String purchasePrice, boolean defaultQuote) throws Exception {
         var response = mvc.perform(post("/api/skus/{skuId}/supplier-quotes", skuId)
                         .header("Authorization", bearer(editToken))

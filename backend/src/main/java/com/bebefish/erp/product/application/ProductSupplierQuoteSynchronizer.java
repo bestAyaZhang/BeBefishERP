@@ -68,8 +68,13 @@ public class ProductSupplierQuoteSynchronizer {
             if (command.id() != null && !quoteIds.add(command.id())) {
                 throw validation("供应商报价 ID 不能重复");
             }
-            var purchasePrice = nonNegative(command.purchasePrice(), "采购价不能小于 0");
-            var minQuantity = positive(command.minPurchaseQuantity(), "最小采购量必须大于 0");
+            var purchasePrice = DecimalConstraints.requireFits(
+                    nonNegative(command.purchasePrice(), "采购价不能小于 0"), 15, 4, "采购价"
+            );
+            var minQuantity = DecimalConstraints.requireFits(
+                    positive(command.minPurchaseQuantity(), "最小采购量必须大于 0"),
+                    15, 4, "最小采购量"
+            );
             var status = normalizeStatus(command.status());
             if (command.defaultQuote() && !"enabled".equals(status)) {
                 throw validation("禁用报价不能设为默认报价");

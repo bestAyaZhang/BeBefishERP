@@ -81,7 +81,7 @@ function completeProduct(overrides: Partial<Product> = {}): Product {
     categoryId: 9,
     categoryName: '历史杯具',
     brand: 'BeBefish',
-    productType: 'simple',
+    productType: 'variant',
     mainImageFileId: 100,
     mainImageUrl: '/uploads/main.png',
     remark: '编辑备注',
@@ -266,8 +266,12 @@ describe('Task 10 product editor', () => {
     expect(productService.createProduct).toHaveBeenCalledWith(expect.objectContaining({
       itemNo: 'BBF-021',
       productName: '按压瓶',
+      productType: 'simple',
+      status: 'enabled',
       mainImageFileId: 201,
       skus: [expect.objectContaining({
+        defaultSku: true,
+        status: 'enabled',
         supplierQuotes: [expect.objectContaining({ supplierId: 4, defaultQuote: true })],
         packageLengthCm: 42,
         innerPackageLengthCm: 36,
@@ -278,6 +282,53 @@ describe('Task 10 product editor', () => {
     }));
     expect(vi.mocked(productService.createProduct).mock.calls[0][0]).not.toHaveProperty('packagingMode');
     expect(router.currentRoute.value).toMatchObject({ name: 'product-detail', params: { id: '77' } });
+  });
+
+  it('saves explicit product type and product status controls', async () => {
+    const { wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await wrapper.get('[data-testid="product-type"]').setValue('variant');
+    await wrapper.get('[data-testid="product-status"]').setValue('disabled');
+    await next(wrapper);
+    await addSku(wrapper, '透明款', '6970001');
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    await flushPromises();
+
+    expect(productService.createProduct).toHaveBeenCalledWith(expect.objectContaining({
+      productType: 'variant',
+      status: 'disabled'
+    }));
+  });
+
+  it('keeps SKU item number and barcode distinct through create and edit', async () => {
+    const { wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await next(wrapper);
+    await wrapper.get('[data-testid="add-sku"]').trigger('click');
+    await wrapper.get('[data-testid="sku-dialog-name"]').setValue('透明款');
+    await wrapper.get('[data-testid="sku-dialog-sku-code"]').setValue('SKU-ITEM-021');
+    await wrapper.get('[data-testid="sku-dialog-barcode"]').setValue('6970000000210');
+    await wrapper.get('[data-testid="sku-dialog-save"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="sku-row-0"]').text()).toContain('SKU-ITEM-021');
+    expect(wrapper.get('[data-testid="sku-row-0"]').text()).toContain('6970000000210');
+    await wrapper.get('[data-testid="edit-sku-0"]').trigger('click');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="sku-dialog-sku-code"]').element.value).toBe('SKU-ITEM-021');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="sku-dialog-barcode"]').element.value).toBe('6970000000210');
+    await wrapper.get('[data-testid="sku-dialog-sku-code"]').setValue('SKU-ITEM-021-B');
+    await wrapper.get('[data-testid="sku-dialog-barcode"]').setValue('6970000000211');
+    await wrapper.get('[data-testid="sku-dialog-save"]').trigger('click');
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    await flushPromises();
+
+    expect(productService.createProduct).toHaveBeenCalledWith(expect.objectContaining({
+      skus: [expect.objectContaining({
+        skuCode: 'SKU-ITEM-021-B',
+        barcode: '6970000000211'
+      })]
+    }));
   });
 
   it('loads every option page, preserves selected disabled options, and updates the loaded numeric id', async () => {
@@ -297,6 +348,7 @@ describe('Task 10 product editor', () => {
     expect(wrapper.get<HTMLInputElement>('[data-testid="product-name"]').element.value).toBe('玻璃按压瓶');
     expect(wrapper.get('[data-testid="product-category"]').text()).toContain('历史杯具（已停用）');
     await wrapper.get('[data-testid="product-name"]').setValue('更新后的玻璃按压瓶');
+    await wrapper.get('[data-testid="product-status"]').setValue('disabled');
 
     for (let index = 0; index < 5; index += 1) await next(wrapper);
     expect(wrapper.text()).toContain('历史供应商');
@@ -306,6 +358,8 @@ describe('Task 10 product editor', () => {
 
     expect(productService.updateProduct).toHaveBeenCalledWith(42, expect.objectContaining({
       productName: '更新后的玻璃按压瓶',
+      productType: 'variant',
+      status: 'disabled',
       mainImageFileId: 100,
       skus: [expect.objectContaining({
         id: 420,
@@ -353,6 +407,56 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="sku-dialog-name"]').setValue('烟灰款');
     await wrapper.get('[data-testid="sku-dialog-save"]').trigger('click');
     expect(wrapper.get('[data-testid="sku-row-0"]').text()).toContain('烟灰款');
+  });
+
+  it('traps modal focus, closes on Escape, and restores the SKU opener focus', async () => {
+    const { wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await next(wrapper);
+    const opener = wrapper.get('[data-testid="add-sku"]');
+    (opener.element as HTMLButtonElement).focus();
+
+    await opener.trigger('click');
+    await flushPromises();
+    const dialog = wrapper.get('[data-testid="sku-editor-dialog"]');
+    const close = dialog.get('[data-testid="sku-dialog-close"]');
+    const save = dialog.get('[data-testid="sku-dialog-save"]');
+    expect(document.activeElement).toBe(close.element);
+
+    await close.trigger('keydown', { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(save.element);
+    await save.trigger('keydown', { key: 'Tab' });
+    expect(document.activeElement).toBe(close.element);
+
+    await dialog.trigger('keydown', { key: 'Escape' });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="sku-editor-dialog"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(opener.element);
+  });
+
+  it('renders persisted SKU default/status and reconciles default selection after disable and delete', async () => {
+    const base = completeProduct();
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct({
+      skus: [
+        { ...base.skus[0], id: 420, skuName: '启用款', defaultSku: true, status: 'enabled' },
+        { ...base.skus[0], id: 421, skuCode: 'BBF-042-002', skuName: '停用款', defaultSku: false, status: 'disabled' }
+      ]
+    }));
+    const { wrapper } = await mountEditor('/products/42/edit');
+    await wrapper.get('[data-testid="step-sku"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="sku-row-0"]').text()).toContain('默认 SKU');
+    expect(wrapper.get('[data-testid="sku-row-1"]').text()).toContain('已停用');
+    await wrapper.get('[data-testid="edit-sku-1"]').trigger('click');
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="sku-dialog-status"]').element.value).toBe('disabled');
+    await wrapper.get('[data-testid="sku-dialog-status"]').setValue('enabled');
+    await wrapper.get('[data-testid="sku-dialog-default"]').setValue(true);
+    await wrapper.get('[data-testid="sku-dialog-save"]').trigger('click');
+    expect(wrapper.get('[data-testid="sku-row-1"]').text()).toContain('默认 SKU');
+    expect(wrapper.get('[data-testid="sku-row-0"]').text()).not.toContain('默认 SKU');
+
+    await wrapper.get('[data-testid="remove-sku-1"]').trigger('click');
+    expect(wrapper.get('[data-testid="sku-row-0"]').text()).toContain('默认 SKU');
   });
 
   it('groups quotes by SKU and keeps one default when adding, selecting, and removing quotes', async () => {
@@ -413,6 +517,7 @@ describe('Task 10 product editor', () => {
   it('copies unified packaging independently and preserves per-SKU dialog differences', async () => {
     const { wrapper } = await mountEditor();
     await fillBasic(wrapper);
+    await wrapper.get('[data-testid="product-type"]').setValue('variant');
     await next(wrapper);
     await addSku(wrapper, '透明款', 'A-1');
     await addSku(wrapper, '烟灰款', 'A-2');
@@ -447,6 +552,13 @@ describe('Task 10 product editor', () => {
     expect(wrapper.get('[data-testid="packaging-row-0"]').text()).toContain('42');
 
     await wrapper.get('[data-testid="packaging-mode-unified"]').trigger('click');
+    expect(wrapper.get('[data-testid="packaging-unify-confirm-dialog"]').text()).toContain('覆盖');
+    await wrapper.get('[data-testid="packaging-unify-cancel"]').trigger('click');
+    expect(wrapper.get('[data-testid="packaging-row-0"]').text()).toContain('42');
+    expect(wrapper.get('[data-testid="packaging-row-1"]').text()).toContain('44');
+
+    await wrapper.get('[data-testid="packaging-mode-unified"]').trigger('click');
+    await wrapper.get('[data-testid="packaging-unify-confirm"]').trigger('click');
     await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
     expect(wrapper.get('[data-testid="packaging-row-0"]').text()).toContain('42');
     expect(wrapper.get('[data-testid="packaging-row-1"]').text()).toContain('42');
@@ -459,6 +571,39 @@ describe('Task 10 product editor', () => {
 
     const input = wrapper.get('[data-testid="unified-carton-quantity"]');
     expect(input.attributes()).toMatchObject({ min: '1', step: '1', max: '2147483647' });
+  });
+
+  it('sets schema and safe-precision constraints on editor decimal inputs', async () => {
+    const { wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await next(wrapper);
+    await wrapper.get('[data-testid="add-sku"]').trigger('click');
+    expect(wrapper.get('[data-testid="sku-dialog-sale-price"]').attributes()).toMatchObject({
+      step: '0.0001',
+      max: '900719925474.0991'
+    });
+    await wrapper.get('[data-testid="sku-dialog-name"]').setValue('透明款');
+    await wrapper.get('[data-testid="sku-dialog-save"]').trigger('click');
+    await next(wrapper);
+    await wrapper.get('[data-testid="add-quote-0"]').trigger('click');
+    expect(wrapper.get('[data-testid="quote-price-0-0"]').attributes()).toMatchObject({
+      step: '0.0001',
+      max: '900719925474.0991'
+    });
+    expect(wrapper.get('[data-testid="quote-min-quantity-0-0"]').attributes()).toMatchObject({
+      step: '0.0001',
+      max: '900719925474.0991'
+    });
+    await wrapper.get('[data-testid="quote-supplier-0-0"]').setValue('4');
+    await wrapper.get('[data-testid="step-packaging"]').trigger('click');
+    expect(wrapper.get('[data-testid="unified-package-length"]').attributes()).toMatchObject({
+      step: '0.001',
+      max: '999999999.999'
+    });
+    expect(wrapper.get('[data-testid="unified-package-volume"]').attributes()).toMatchObject({
+      step: '0.001',
+      max: '9007199254740.991'
+    });
   });
 
   it('sets Java integer constraints on the per-SKU carton quantity input', async () => {
@@ -529,6 +674,7 @@ describe('Task 10 product editor', () => {
   it('inherits unified packaging data and matching previews when a SKU is added later', async () => {
     const { wrapper } = await mountEditor();
     await fillBasic(wrapper);
+    await wrapper.get('[data-testid="product-type"]').setValue('variant');
     await next(wrapper);
     await addSku(wrapper, '透明款', 'A-1');
     await next(wrapper);
@@ -601,6 +747,140 @@ describe('Task 10 product editor', () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="image-upload-blocker"]').exists()).toBe(false);
     expect(wrapper.get<HTMLButtonElement>('[data-testid="next-step"]').element.disabled).toBe(false);
+  });
+
+  it('blocks every step, route, and browser exit while an upload is active', async () => {
+    const pending = deferred<{ id: number; url: string; originalFileName: string }>();
+    vi.mocked(productService.uploadImage).mockReturnValueOnce(pending.promise);
+    const { router, wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await next(wrapper);
+    await addSku(wrapper, '透明款', 'A-1');
+    await wrapper.get('[data-testid="step-images"]').trigger('click');
+    const input = wrapper.get('[data-testid="product-main-image"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['image'], 'pending-main.png', { type: 'image/png' })]
+    });
+    await input.trigger('change');
+
+    await wrapper.get('[data-testid="step-basic"]').trigger('click');
+    await wrapper.get('[data-testid="previous-step"]').trigger('click');
+    await router.push({ name: 'products' });
+    const unloadEvent = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unloadEvent);
+
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('图片资料');
+    expect(router.currentRoute.value.name).toBe('product-new');
+    expect(unloadEvent.defaultPrevented).toBe(true);
+    expect(messages.value.at(-1)?.text).toContain('图片正在上传');
+
+    pending.resolve({ id: 201, url: '/uploads/main.png', originalFileName: 'pending-main.png' });
+    await flushPromises();
+  });
+
+  it('blocks route and browser exits while saving, then permits its own successful detail navigation', async () => {
+    const pending = deferred<Product>();
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    vi.mocked(productService.updateProduct).mockReturnValueOnce(pending.promise);
+    const { router, wrapper } = await mountEditor('/products/42/edit');
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+
+    await router.push({ name: 'products' });
+    const unloadEvent = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unloadEvent);
+    expect(router.currentRoute.value.name).toBe('product-edit');
+    expect(unloadEvent.defaultPrevented).toBe(true);
+    expect(messages.value.at(-1)?.text).toContain('商品正在保存');
+
+    pending.resolve(completeProduct());
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('product-detail');
+  });
+
+  it('ignores late save success and failure callbacks after unmount', async () => {
+    const success = deferred<Product>();
+    vi.mocked(productService.createProduct).mockReturnValueOnce(success.promise);
+    const first = await mountEditor();
+    await fillBasic(first.wrapper);
+    await next(first.wrapper);
+    await addSku(first.wrapper, '透明款', 'A-1');
+    await first.wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await first.wrapper.get('[data-testid="submit-product"]').trigger('click');
+    const firstPush = vi.spyOn(first.router, 'push');
+    first.wrapper.unmount();
+    firstPush.mockClear();
+    clearMessages();
+    success.resolve(completeProduct({ id: 77 }));
+    await flushPromises();
+    expect(firstPush).not.toHaveBeenCalled();
+    expect(messages.value).toHaveLength(0);
+
+    const failure = deferred<Product>();
+    vi.mocked(productService.createProduct).mockReturnValueOnce(failure.promise);
+    const second = await mountEditor();
+    await fillBasic(second.wrapper);
+    await next(second.wrapper);
+    await addSku(second.wrapper, '透明款', 'A-2');
+    await second.wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await second.wrapper.get('[data-testid="submit-product"]').trigger('click');
+    const secondPush = vi.spyOn(second.router, 'push');
+    second.wrapper.unmount();
+    secondPush.mockClear();
+    clearMessages();
+    failure.reject(new Error('迟到的失败'));
+    await flushPromises();
+    expect(secondPush).not.toHaveBeenCalled();
+    expect(messages.value).toHaveLength(0);
+  });
+
+  it('ignores late save success and failure after an external route identity change', async () => {
+    const success = deferred<Product>();
+    vi.mocked(productService.createProduct).mockReturnValueOnce(success.promise);
+    const first = await mountEditor();
+    await fillBasic(first.wrapper);
+    await next(first.wrapper);
+    await addSku(first.wrapper, '透明款', 'A-1');
+    await first.wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await first.wrapper.get('[data-testid="submit-product"]').trigger('click');
+    const firstPush = vi.spyOn(first.router, 'push');
+    const firstRoute = first.router.currentRoute as unknown as { value: typeof first.router.currentRoute.value };
+    firstRoute.value = {
+      ...firstRoute.value,
+      fullPath: '/products/new?revision=2',
+      query: { revision: '2' }
+    };
+    await flushPromises();
+    firstPush.mockClear();
+    clearMessages();
+    success.resolve(completeProduct({ id: 77 }));
+    await flushPromises();
+    expect(firstPush).not.toHaveBeenCalled();
+    expect(messages.value).toHaveLength(0);
+
+    const failure = deferred<Product>();
+    vi.mocked(productService.createProduct).mockReturnValueOnce(failure.promise);
+    const second = await mountEditor();
+    await fillBasic(second.wrapper);
+    await next(second.wrapper);
+    await addSku(second.wrapper, '透明款', 'A-2');
+    await second.wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await second.wrapper.get('[data-testid="submit-product"]').trigger('click');
+    const secondPush = vi.spyOn(second.router, 'push');
+    const secondRoute = second.router.currentRoute as unknown as { value: typeof second.router.currentRoute.value };
+    secondRoute.value = {
+      ...secondRoute.value,
+      fullPath: '/products/new?revision=3',
+      query: { revision: '3' }
+    };
+    await flushPromises();
+    secondPush.mockClear();
+    clearMessages();
+    failure.reject(new Error('迟到的路由失败'));
+    await flushPromises();
+    expect(secondPush).not.toHaveBeenCalled();
+    expect(messages.value).toHaveLength(0);
   });
 
   it('guards only real unsaved changes for route and browser navigation', async () => {

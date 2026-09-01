@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { Pencil } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
+import AccessibleDialog from '../../../../components/AccessibleDialog.vue';
 import type { SkuForm } from '../../types';
 import PackagingEditorDialog from '../PackagingEditorDialog.vue';
 import {
   MAX_CARTON_QUANTITY,
+  MAX_SAFE_DIMENSION,
+  MAX_SAFE_VOLUME,
+  packagingFromSku,
   setPackagingMode,
   type PackagingForm,
   type PackagingMode,
@@ -19,25 +23,47 @@ type NumericPackagingField = Exclude<keyof PackagingForm,
   'packagingMethod' | 'packageImageFileId' | 'cartonImageFileId'>;
 
 const fields: Array<{ field: NumericPackagingField; label: string; testId: string; step: string }> = [
-  { field: 'packageLengthCm', label: '包装长 (cm)', testId: 'package-length', step: '0.01' },
-  { field: 'packageWidthCm', label: '包装宽 (cm)', testId: 'package-width', step: '0.01' },
-  { field: 'packageHeightCm', label: '包装高 (cm)', testId: 'package-height', step: '0.01' },
-  { field: 'packageVolumeCm3', label: '包装体积 (cm³)', testId: 'package-volume', step: '0.01' },
-  { field: 'innerPackageLengthCm', label: '内包装长 (cm)', testId: 'inner-package-length', step: '0.01' },
-  { field: 'innerPackageWidthCm', label: '内包装宽 (cm)', testId: 'inner-package-width', step: '0.01' },
-  { field: 'innerPackageHeightCm', label: '内包装高 (cm)', testId: 'inner-package-height', step: '0.01' },
+  { field: 'packageLengthCm', label: '包装长 (cm)', testId: 'package-length', step: '0.001' },
+  { field: 'packageWidthCm', label: '包装宽 (cm)', testId: 'package-width', step: '0.001' },
+  { field: 'packageHeightCm', label: '包装高 (cm)', testId: 'package-height', step: '0.001' },
+  { field: 'packageVolumeCm3', label: '包装体积 (cm³)', testId: 'package-volume', step: '0.001' },
+  { field: 'innerPackageLengthCm', label: '内包装长 (cm)', testId: 'inner-package-length', step: '0.001' },
+  { field: 'innerPackageWidthCm', label: '内包装宽 (cm)', testId: 'inner-package-width', step: '0.001' },
+  { field: 'innerPackageHeightCm', label: '内包装高 (cm)', testId: 'inner-package-height', step: '0.001' },
   { field: 'netWeightKg', label: '净重 (kg)', testId: 'net-weight', step: '0.001' },
   { field: 'grossWeightKg', label: '毛重 (kg)', testId: 'gross-weight', step: '0.001' },
-  { field: 'gramWeightG', label: '克重 (g)', testId: 'gram-weight', step: '0.01' },
+  { field: 'gramWeightG', label: '克重 (g)', testId: 'gram-weight', step: '0.001' },
   { field: 'innerPackageWeightKg', label: '内包装重量 (kg)', testId: 'inner-package-weight', step: '0.001' },
   { field: 'cartonQuantity', label: '装箱数', testId: 'carton-quantity', step: '1' }
 ];
 
 const dialogIndex = ref<number | null>(null);
+const unifyConfirmationOpen = ref(false);
 const dialogSku = computed(() => dialogIndex.value === null ? undefined : state.value.skus[dialogIndex.value]);
 
 function switchMode(mode: PackagingMode) {
+  if (mode === 'unified' && state.value.packagingMode === 'perSku' && hasPackagingDifferences()) {
+    unifyConfirmationOpen.value = true;
+    return;
+  }
   setPackagingMode(state.value, mode);
+}
+
+function hasPackagingDifferences() {
+  const first = state.value.skus[0];
+  if (!first) return false;
+  const baseline = JSON.stringify(packagingFromSku(first));
+  const packagingDiffers = state.value.skus.slice(1).some((sku) => JSON.stringify(packagingFromSku(sku)) !== baseline);
+  const previewDiffers = (['package', 'carton'] as const).some((kind) => (
+    state.value.imagePreviews[kind].slice(1).some((preview) => preview !== state.value.imagePreviews[kind][0])
+    || state.value.imagePreviewFileIds[kind].slice(1).some((fileId) => fileId !== state.value.imagePreviewFileIds[kind][0])
+  ));
+  return packagingDiffers || previewDiffers;
+}
+
+function confirmUnifiedMode() {
+  setPackagingMode(state.value, 'unified');
+  unifyConfirmationOpen.value = false;
 }
 
 function updateNumber(field: NumericPackagingField, event: Event) {
@@ -65,6 +91,11 @@ function formatDimensions(sku: SkuForm) {
   const values = [sku.packageLengthCm, sku.packageWidthCm, sku.packageHeightCm];
   return values.some((value) => value !== null) ? values.map((value) => value ?? '--').join(' × ') : '--';
 }
+
+function fieldMax(field: NumericPackagingField) {
+  if (field === 'cartonQuantity') return MAX_CARTON_QUANTITY;
+  return field === 'packageVolumeCm3' ? MAX_SAFE_VOLUME : MAX_SAFE_DIMENSION;
+}
 </script>
 
 <template>
@@ -88,7 +119,7 @@ function formatDimensions(sku: SkuForm) {
           :value="state.unifiedPackaging[field.field] ?? ''"
           type="number"
           :min="field.field === 'cartonQuantity' ? 1 : 0"
-          :max="field.field === 'cartonQuantity' ? MAX_CARTON_QUANTITY : undefined"
+          :max="fieldMax(field.field)"
           :step="field.step"
           class="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold tabular-nums text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15"
           @input="updateNumber(field.field, $event)"
@@ -126,5 +157,21 @@ function formatDimensions(sku: SkuForm) {
     </div>
 
     <PackagingEditorDialog :open="dialogIndex !== null" :sku="dialogSku" @cancel="dialogIndex = null" @save="saveSku" />
+    <AccessibleDialog
+      :open="unifyConfirmationOpen"
+      title="统一所有 SKU 包装资料"
+      description="继续后将使用第一个 SKU 的包装、重量和包装图片覆盖其他 SKU。"
+      test-id="packaging-unify-confirm-dialog"
+      body-test-id="packaging-unify-confirm-body"
+      footer-test-id="packaging-unify-confirm-footer"
+      close-test-id="packaging-unify-close"
+      @cancel="unifyConfirmationOpen = false"
+    >
+      <p class="text-sm font-semibold leading-6 text-slate-600">此操作会覆盖当前按 SKU 维护的差异，保存商品后才能再次恢复。</p>
+      <template #footer>
+        <button data-testid="packaging-unify-cancel" type="button" class="h-10 rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-600 hover:bg-slate-50" @click="unifyConfirmationOpen = false">取消</button>
+        <button data-testid="packaging-unify-confirm" type="button" class="h-10 rounded-lg bg-rose-600 px-4 text-sm font-bold text-white hover:bg-rose-700" @click="confirmUnifiedMode">确认覆盖</button>
+      </template>
+    </AccessibleDialog>
   </div>
 </template>

@@ -107,8 +107,13 @@ public class SupplierQuoteService {
         if (command == null || command.supplierId() == null || command.supplierId() <= 0) {
             throw validation("供应商不能为空");
         }
-        var purchasePrice = nonNegative(command.purchasePrice(), "采购价不能小于 0");
-        var minQuantity = positive(command.minPurchaseQuantity(), "最小采购量必须大于 0");
+        var purchasePrice = DecimalConstraints.requireFits(
+                nonNegative(command.purchasePrice(), "采购价不能小于 0"), 15, 4, "采购价"
+        );
+        var minQuantity = DecimalConstraints.requireFits(
+                positive(command.minPurchaseQuantity(), "最小采购量必须大于 0"),
+                15, 4, "最小采购量"
+        );
         return new SaveSupplierQuoteCommand(
                 command.supplierId(), optional(command.supplierItemNo()), purchasePrice,
                 minQuantity, command.defaultQuote()

@@ -8,6 +8,7 @@ import javax.sql.DataSource;
 import java.math.BigDecimal;
 
 import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,17 +29,30 @@ class FlywayMigrationTest {
 
     @BeforeEach
     void migrateFromEmptyTestDatabase() {
+        assertDedicatedTestDatabase();
+        var flyway = flyway();
+        flyway.clean();
+        flyway.migrate();
+    }
+
+    @AfterEach
+    void leaveDedicatedTestDatabaseAtLatestVersion() {
+        assertDedicatedTestDatabase();
+        flyway().migrate();
+    }
+
+    private void assertDedicatedTestDatabase() {
         var databaseName = jdbc.queryForObject("select database()", String.class);
         assertThat(databaseName)
                 .as("Flyway migration tests may only clean a dedicated *_test database")
                 .endsWith("_test");
+    }
 
-        var flyway = Flyway.configure()
+    private Flyway flyway() {
+        return Flyway.configure()
                 .dataSource(dataSource)
                 .cleanDisabled(false)
                 .load();
-        flyway.clean();
-        flyway.migrate();
     }
 
     @Test
@@ -135,6 +149,81 @@ class FlywayMigrationTest {
                 "select safety_stock_quantity from product_sku where id = ?",
                 BigDecimal.class, skuId
         )).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void upgradesRepresentativeLegacyRowsFromV7ToV8WithoutDataLoss() {
+        var v7 = Flyway.configure()
+                .dataSource(dataSource)
+                .cleanDisabled(false)
+                .target("7")
+                .load();
+        v7.clean();
+        v7.migrate();
+
+        var categoryId = insertCategory("CAT-V7-UPGRADE");
+        jdbc.update(
+                "insert into product_spu "
+                        + "(product_code, item_no, product_name, category_id, brand, product_type, status, remark, "
+                        + "created_at, updated_at) values "
+                        + "('P-V7-UPGRADE', 'ITEM-V7-UPGRADE', 'V7 历史商品', ?, '历史品牌', 'variant', "
+                        + "'disabled', '保留备注', '2026-01-02 03:04:05.123', '2026-02-03 04:05:06.123')",
+                categoryId
+        );
+        var productId = requiredId("product_spu", "product_code", "P-V7-UPGRADE");
+        jdbc.update(
+                "insert into product_sku "
+                        + "(product_id, sku_code, barcode, sku_name, spec_text, sales_unit, default_sale_price, "
+                        + "standard_cost, package_length_cm, package_width_cm, package_height_cm, package_volume_cm3, "
+                        + "net_weight_kg, gross_weight_kg, gram_weight_g, packaging_method, carton_quantity, "
+                        + "is_default, status, created_at, updated_at) values "
+                        + "(?, 'SKU-V7-UPGRADE', '6970000007001', 'V7 历史 SKU', '透明 / 500ml', '只', "
+                        + "19.9000, 8.6000, 42.000, 31.000, 28.000, 36456.000, 8.500, 9.200, 350.000, "
+                        + "'彩盒', 12, true, 'disabled', '2026-01-02 03:04:05.123', '2026-02-03 04:05:06.123')",
+                productId
+        );
+
+        flyway().migrate();
+
+        assertThat(jdbc.queryForObject(
+                "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
+                String.class
+        )).isEqualTo("8");
+        var product = jdbc.queryForMap(
+                "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
+                productId
+        );
+        assertThat(product).containsEntry("item_no", "ITEM-V7-UPGRADE")
+                .containsEntry("product_name", "V7 历史商品")
+                .containsEntry("brand", "历史品牌")
+                .containsEntry("product_type", "variant")
+                .containsEntry("status", "disabled")
+                .containsEntry("remark", "保留备注");
+        var sku = jdbc.queryForMap(
+                "select barcode, default_sale_price, standard_cost, package_length_cm, net_weight_kg, "
+                        + "is_default, status, safety_stock_quantity, inner_package_length_cm, "
+                        + "inner_package_width_cm, inner_package_height_cm, inner_package_weight_kg "
+                        + "from product_sku where sku_code = 'SKU-V7-UPGRADE'"
+        );
+        assertThat((BigDecimal) sku.get("default_sale_price")).isEqualByComparingTo("19.9000");
+        assertThat((BigDecimal) sku.get("standard_cost")).isEqualByComparingTo("8.6000");
+        assertThat((BigDecimal) sku.get("package_length_cm")).isEqualByComparingTo("42.000");
+        assertThat((BigDecimal) sku.get("net_weight_kg")).isEqualByComparingTo("8.500");
+        assertThat((BigDecimal) sku.get("safety_stock_quantity")).isEqualByComparingTo("0");
+        assertThat(sku).containsEntry("barcode", "6970000007001")
+                .containsEntry("is_default", true)
+                .containsEntry("status", "disabled")
+                .containsEntry("inner_package_length_cm", null)
+                .containsEntry("inner_package_width_cm", null)
+                .containsEntry("inner_package_height_cm", null)
+                .containsEntry("inner_package_weight_kg", null);
+
+        assertThatThrownBy(() -> jdbc.update(
+                "update product_sku set safety_stock_quantity = -0.0001 where sku_code = 'SKU-V7-UPGRADE'"
+        )).isInstanceOf(DataAccessException.class);
+        assertThatThrownBy(() -> jdbc.update(
+                "update product_sku set inner_package_weight_kg = -0.001 where sku_code = 'SKU-V7-UPGRADE'"
+        )).isInstanceOf(DataAccessException.class);
     }
 
     private void insertWarehouse(String number, boolean isDefault, String status) {

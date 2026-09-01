@@ -137,6 +137,86 @@ class ProductServiceTest {
                 .containsExactly("PRD-000001-001", "PRD-000001-002", "PRD-000001-003", "PRD-000001-004");
         assertThat(result.skus()).extracting(Sku::specText)
                 .containsExactly("透明 / 竖纹", "透明 / 樱花纹", "烟灰 / 竖纹", "烟灰 / 樱花纹");
+        assertThat(result.skus()).extracting(Sku::isDefault)
+                .containsExactly(true, false, false, false);
+        assertThat(result.skus()).extracting(Sku::status)
+                .containsOnly("enabled");
+    }
+
+    @Test
+    void rejectsSimpleProductWithVariantSpecificationStructure() {
+        var command = new SaveProductCommand(
+                "P205", "EW50005", "玻璃杯", 1L, "共典", SIMPLE,
+                null, null, List.of(new Specification("颜色", List.of("透明", "烟灰"))),
+                List.of(sku(null, null, List.of(), packaging("1", "1", "1", null, "1", "1")))
+        );
+
+        assertThatThrownBy(() -> service.createProduct(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("单规格产品不能定义 SKU 规格");
+    }
+
+    @Test
+    void acceptsMaximumSchemaDecimalValues() {
+        var packaging = new PackagingCommand(
+                decimal("999999999.999"), decimal("999999999.999"), decimal("999999999.999"),
+                decimal("999999999999999.999"), decimal("999999999.999"), decimal("999999999.999"),
+                decimal("999999999.999"), decimal("999999999.999"), decimal("999999999.999"),
+                decimal("999999999.999"), decimal("999999999.999"), "彩盒", Integer.MAX_VALUE, null, null
+        );
+        var sku = new SaveSkuCommand(
+                null, null, null, null, List.of(), "只",
+                decimal("999999999999999.9999"), decimal("999999999999999.9999"),
+                decimal("99999999999999.9999"), packaging, null
+        );
+        var command = new SaveProductCommand(
+                "P-MAX", "EW-MAX", "边界商品", 1L, "共典", SIMPLE,
+                null, null, List.of(), List.of(sku)
+        );
+
+        var result = service.createProduct(command);
+
+        assertThat(result.skus().getFirst().defaultSalePrice())
+                .isEqualByComparingTo("999999999999999.9999");
+        assertThat(result.skus().getFirst().packaging().volumeCm3())
+                .isEqualByComparingTo("999999999999999.999");
+    }
+
+    @Test
+    void rejectsSchemaDecimalOverflowAndExcessScale() {
+        var priceOverflow = new SaveSkuCommand(
+                null, null, null, null, List.of(), "只",
+                decimal("1000000000000000.0000"), BigDecimal.ZERO, BigDecimal.ZERO,
+                packaging("1", "1", "1", "1", "1", "1"), null
+        );
+        var safetyScale = new SaveSkuCommand(
+                null, null, null, null, List.of(), "只",
+                BigDecimal.ZERO, BigDecimal.ZERO, decimal("0.00001"),
+                packaging("1", "1", "1", "1", "1", "1"), null
+        );
+        var dimensionOverflow = new SaveSkuCommand(
+                null, null, null, null, List.of(), "只",
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                packaging("1000000000.000", "1", "1", "1", "1", "1"), null
+        );
+        var volumeScale = new SaveSkuCommand(
+                null, null, null, null, List.of(), "只",
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                packaging("1", "1", "1", "0.0001", "1", "1"), null
+        );
+
+        assertThatThrownBy(() -> service.createProduct(commandWithSku("EW-NUM-1", priceOverflow)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("默认售价最多允许 15 位整数和 4 位小数");
+        assertThatThrownBy(() -> service.createProduct(commandWithSku("EW-NUM-2", safetyScale)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("安全库存最多允许 14 位整数和 4 位小数");
+        assertThatThrownBy(() -> service.createProduct(commandWithSku("EW-NUM-3", dimensionOverflow)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("包装长最多允许 9 位整数和 3 位小数");
+        assertThatThrownBy(() -> service.createProduct(commandWithSku("EW-NUM-4", volumeScale)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("包装体积最多允许 15 位整数和 3 位小数");
     }
 
     @Test
@@ -313,6 +393,20 @@ class ProductServiceTest {
     }
 
     @Test
+    void rejectsQuoteDecimalOverflowAndExcessScale() {
+        assertThatThrownBy(() -> quoteSynchronizer.synchronize(10L, List.of(
+                quote(null, 1L, "0.00001", "1", false, "enabled")
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("采购价最多允许 15 位整数和 4 位小数");
+        assertThatThrownBy(() -> quoteSynchronizer.synchronize(10L, List.of(
+                quote(null, 1L, "1", "1000000000000000.0000", false, "enabled")
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("最小采购量最多允许 15 位整数和 4 位小数");
+    }
+
+    @Test
     void deletesOmittedQuotesAndUpdatesRetainedQuotes() {
         var retained = quoteRepository.save(new SupplierQuote(
                 null, 10L, 1L, "OLD", new BigDecimal("2.20"), BigDecimal.ONE, false, "enabled"
@@ -380,6 +474,13 @@ class ProductServiceTest {
                 productCode, itemNo, "高脚红酒杯", 1L, "共典", SIMPLE,
                 null, null, List.of(),
                 List.of(sku(null, null, List.of(), packaging))
+        );
+    }
+
+    private SaveProductCommand commandWithSku(String itemNo, SaveSkuCommand sku) {
+        return new SaveProductCommand(
+                "IGNORED", itemNo, "数值边界商品", 1L, "共典", SIMPLE,
+                null, null, List.of(), List.of(sku)
         );
     }
 

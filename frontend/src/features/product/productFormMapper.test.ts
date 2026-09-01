@@ -84,8 +84,11 @@ describe('product form mapper', () => {
       packagingMethod: '',
       defaultSalePrice: 0,
       standardCost: 0,
-      safetyStockQuantity: 0
+      safetyStockQuantity: 0,
+      defaultSku: true,
+      status: 'enabled'
     }));
+    expect(payload).toEqual(expect.objectContaining({ status: 'enabled' }));
     expect(payload.skus[0].supplierQuotes).toEqual([expect.objectContaining({
       id: 31,
       supplierItemNo: '',
@@ -98,7 +101,7 @@ describe('product form mapper', () => {
     const payload = toProductFormPayload(backendProduct);
     const sku: object = payload.skus[0];
 
-    for (const field of ['stockQuantity', 'skuImageUrl', 'packageImageUrl', 'cartonImageUrl', 'specText', 'defaultSku', 'status']) {
+    for (const field of ['stockQuantity', 'skuImageUrl', 'packageImageUrl', 'cartonImageUrl', 'specText']) {
       expect(sku).not.toHaveProperty(field);
     }
     for (const field of ['productCode', 'mainImageUrl', 'totalStock', 'createdAt', 'updatedAt']) {

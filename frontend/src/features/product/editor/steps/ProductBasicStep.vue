@@ -48,6 +48,21 @@ function updateSpecificationValues(index: number, event: Event) {
         <span>品牌</span>
         <input data-testid="product-brand" v-model="state.brand" maxlength="100" class="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15" placeholder="请输入品牌" />
       </label>
+      <label class="space-y-2 text-sm font-bold text-slate-600">
+        <span>商品类型</span>
+        <select data-testid="product-type" v-model="state.productType" class="h-11 w-full rounded-lg border bg-white px-3 text-sm font-semibold text-[#25314d] outline-none focus:border-[#536dff]" :class="errors.productType ? 'border-rose-400' : 'border-slate-300'">
+          <option value="simple">单规格</option>
+          <option value="variant">多规格</option>
+        </select>
+        <span v-if="errors.productType" class="block text-xs text-rose-600">{{ errors.productType }}</span>
+      </label>
+      <label class="space-y-2 text-sm font-bold text-slate-600">
+        <span>商品状态</span>
+        <select data-testid="product-status" v-model="state.status" class="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-[#25314d] outline-none focus:border-[#536dff]">
+          <option value="enabled">启用</option>
+          <option value="disabled">停用</option>
+        </select>
+      </label>
       <label class="space-y-2 text-sm font-bold text-slate-600 md:col-span-2">
         <span>备注</span>
         <textarea data-testid="product-remark" v-model="state.remark" maxlength="500" rows="3" class="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold leading-6 text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15" placeholder="记录商品内部备注" />

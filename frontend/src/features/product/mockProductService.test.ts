@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createMockProductService } from './mockProductService';
+import type { Category } from '../masterdata/types';
 import type { Product, ProductFormPayload, ProductSupplierQuoteInput } from './types';
 
 function seedProduct(): Product {
@@ -81,6 +82,7 @@ function updatePayload(supplierQuotes?: ProductSupplierQuoteInput[]): ProductFor
     categoryId: 2,
     brand: '',
     productType: 'simple',
+    status: 'enabled',
     mainImageFileId: null,
     remark: '',
     specifications: [],
@@ -110,12 +112,34 @@ function updatePayload(supplierQuotes?: ProductSupplierQuoteInput[]): ProductFor
       skuImageFileId: null,
       packageImageFileId: null,
       cartonImageFileId: null,
-      supplierQuotes
+      supplierQuotes,
+      defaultSku: true,
+      status: 'enabled'
     }]
   };
 }
 
 describe('mock product service', () => {
+  it('searches SKU codes and barcodes as part of the product keyword contract', async () => {
+    const product = seedProduct();
+    product.skus[0].barcode = '6971234567890';
+    const service = createMockProductService([product]);
+
+    expect((await service.listProducts({ page: 1, size: 20, keyword: 'sku-001' })).total).toBe(1);
+    expect((await service.listProducts({ page: 1, size: 20, keyword: '697123' })).total).toBe(1);
+  });
+
+  it('rolls descendant products into parent category counts', async () => {
+    const categories: Category[] = [
+      { id: 1, categoryCode: 'ROOT', categoryName: '根分类', parentId: null, level: 1, sortOrder: 1, status: 'enabled', remark: '' },
+      { id: 2, categoryCode: 'CHILD', categoryName: '子分类', parentId: 1, level: 2, sortOrder: 1, status: 'enabled', remark: '' }
+    ];
+    const factory = createMockProductService as unknown as (seed: Product[], categories: Category[]) => ReturnType<typeof createMockProductService>;
+    const service = factory([seedProduct()], categories);
+
+    expect(await service.getCategoryCounts()).toEqual({ 1: 1, 2: 1 });
+  });
+
   it('preserves existing quotes when an update omits supplierQuotes', async () => {
     const service = createMockProductService([seedProduct()]);
 

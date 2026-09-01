@@ -58,7 +58,7 @@ function skuError(index: number) {
         <thead class="bg-slate-50 text-xs font-black text-slate-500">
           <tr>
             <th class="px-4 py-3">SKU</th>
-            <th class="px-4 py-3">SKU 货号</th>
+            <th class="px-4 py-3">SKU 货号 / 条码</th>
             <th class="px-4 py-3">规格值</th>
             <th class="px-4 py-3">销售单位</th>
             <th class="px-4 py-3 text-right">默认售价</th>
@@ -69,10 +69,15 @@ function skuError(index: number) {
           <tr v-for="(sku, index) in state.skus" :key="sku.id ?? `sku-${index}`" :data-testid="`sku-row-${index}`" class="bg-white">
             <td class="px-4 py-4">
               <p class="font-black text-[#25314d]">{{ sku.skuName || '--' }}</p>
-              <p class="mt-1 text-xs font-semibold text-slate-400">{{ sku.skuCode || '保存后生成编码' }}<span v-if="index === 0"> · 默认 SKU</span></p>
+              <p class="mt-1 text-xs font-semibold text-slate-400">
+                {{ sku.status === 'enabled' ? '启用' : '已停用' }}<span v-if="sku.defaultSku"> · 默认 SKU</span>
+              </p>
               <p v-if="skuError(index)" class="mt-1 text-xs font-bold text-rose-600">{{ skuError(index) }}</p>
             </td>
-            <td class="break-all px-4 py-4 font-semibold text-slate-600">{{ sku.barcode || '--' }}</td>
+            <td class="break-all px-4 py-4 font-semibold text-slate-600">
+              <p>{{ sku.skuCode || '保存后生成' }}</p>
+              <p class="mt-1 text-xs text-slate-400">{{ sku.barcode || '无条码' }}</p>
+            </td>
             <td class="px-4 py-4 font-semibold text-slate-600">{{ sku.specificationValues.join(' / ') || '--' }}</td>
             <td class="px-4 py-4 font-semibold text-slate-600">{{ sku.salesUnit || '--' }}</td>
             <td class="px-4 py-4 text-right font-bold tabular-nums text-slate-700">{{ sku.defaultSalePrice ?? '--' }}</td>
@@ -81,7 +86,7 @@ function skuError(index: number) {
                 <button :data-testid="`edit-sku-${index}`" type="button" class="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-blue-50 hover:text-[#536dff]" :aria-label="`编辑 ${sku.skuName}`" @click="openEdit(index)">
                   <Pencil class="h-4 w-4" aria-hidden="true" />
                 </button>
-                <button type="button" class="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" :aria-label="`删除 ${sku.skuName}`" @click="removeSku(index)">
+                <button :data-testid="`remove-sku-${index}`" type="button" class="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" :aria-label="`删除 ${sku.skuName}`" @click="removeSku(index)">
                   <Trash2 class="h-4 w-4" aria-hidden="true" />
                 </button>
               </div>

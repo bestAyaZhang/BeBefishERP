@@ -159,6 +159,202 @@ class ProductControllerTest {
     }
 
     @Test
+    void roundTripsExplicitProductStatusSkuStatusAndDefaultSkuThenPreservesLegacyOmissions() throws Exception {
+        var create = requestBody(null, "EW43270", "显式状态商品", null);
+        create.put("productType", "variant");
+        create.put("status", "disabled");
+        var disabledSku = new LinkedHashMap<>(skuInput(create));
+        disabledSku.put("skuCode", "T7-STATE-SKU-DISABLED");
+        disabledSku.put("barcode", "6970000000701");
+        disabledSku.put("skuName", "停用款");
+        disabledSku.put("defaultSku", false);
+        disabledSku.put("status", "disabled");
+        var defaultSku = new LinkedHashMap<>(skuInput(create));
+        defaultSku.put("skuCode", "T7-STATE-SKU-DEFAULT");
+        defaultSku.put("barcode", "6970000000702");
+        defaultSku.put("skuName", "默认款");
+        defaultSku.put("defaultSku", true);
+        defaultSku.put("status", "enabled");
+        create.put("skus", List.of(disabledSku, defaultSku));
+
+        var created = responseData(post("/api/products"), create);
+        var productId = created.path("id").asLong();
+        var createdDisabledSku = findSku(created, "T7-STATE-SKU-DISABLED");
+        var createdDefaultSku = findSku(created, "T7-STATE-SKU-DEFAULT");
+        assertThat(created.path("status").asText()).isEqualTo("disabled");
+        assertThat(createdDisabledSku.path("status").asText()).isEqualTo("disabled");
+        assertThat(createdDisabledSku.path("defaultSku").asBoolean()).isFalse();
+        assertThat(createdDefaultSku.path("status").asText()).isEqualTo("enabled");
+        assertThat(createdDefaultSku.path("defaultSku").asBoolean()).isTrue();
+
+        disabledSku.put("id", createdDisabledSku.path("id").asLong());
+        defaultSku.put("id", createdDefaultSku.path("id").asLong());
+        create.put("status", "enabled");
+        disabledSku.put("defaultSku", true);
+        disabledSku.put("status", "enabled");
+        defaultSku.put("defaultSku", false);
+        defaultSku.put("status", "disabled");
+        create.put("skus", List.of(disabledSku, defaultSku));
+
+        var explicitUpdate = responseData(put("/api/products/{id}", productId), create);
+        assertThat(explicitUpdate.path("status").asText()).isEqualTo("enabled");
+        assertThat(findSku(explicitUpdate, "T7-STATE-SKU-DISABLED").path("defaultSku").asBoolean()).isTrue();
+        assertThat(findSku(explicitUpdate, "T7-STATE-SKU-DISABLED").path("status").asText()).isEqualTo("enabled");
+        assertThat(findSku(explicitUpdate, "T7-STATE-SKU-DEFAULT").path("defaultSku").asBoolean()).isFalse();
+        assertThat(findSku(explicitUpdate, "T7-STATE-SKU-DEFAULT").path("status").asText()).isEqualTo("disabled");
+
+        disabledSku.remove("defaultSku");
+        disabledSku.remove("status");
+        defaultSku.remove("defaultSku");
+        defaultSku.remove("status");
+        var legacyUpdate = new LinkedHashMap<>(create);
+        legacyUpdate.remove("status");
+        legacyUpdate.put("productName", "旧客户端更新");
+        legacyUpdate.put("skus", List.of(disabledSku, defaultSku));
+
+        var updated = responseData(put("/api/products/{id}", productId), legacyUpdate);
+        assertThat(updated.path("status").asText()).isEqualTo("enabled");
+        assertThat(findSku(updated, "T7-STATE-SKU-DISABLED").path("status").asText())
+                .isEqualTo("enabled");
+        assertThat(findSku(updated, "T7-STATE-SKU-DISABLED").path("defaultSku").asBoolean()).isTrue();
+        assertThat(findSku(updated, "T7-STATE-SKU-DEFAULT").path("status").asText()).isEqualTo("disabled");
+        assertThat(findSku(updated, "T7-STATE-SKU-DEFAULT").path("defaultSku").asBoolean()).isFalse();
+    }
+
+    @Test
+    void rejectsMixedMissingAndDisabledDefaultSkuDeclarations() throws Exception {
+        var mixed = twoSkuRequest("EW43271");
+        var mixedSkus = skus(mixed);
+        mixedSkus.get(0).put("defaultSku", true);
+        mixedSkus.get(0).put("status", "enabled");
+
+        mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(mixed)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("SKU 默认项和状态必须全部显式提交或全部省略"));
+
+        var noDefault = twoSkuRequest("EW43272");
+        for (var sku : skus(noDefault)) {
+            sku.put("defaultSku", false);
+            sku.put("status", "enabled");
+        }
+        mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(noDefault)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("商品必须且只能有一个默认 SKU"));
+
+        var disabledDefault = twoSkuRequest("EW43273");
+        for (var index = 0; index < skus(disabledDefault).size(); index++) {
+            skus(disabledDefault).get(index).put("defaultSku", index == 0);
+            skus(disabledDefault).get(index).put("status", index == 0 ? "disabled" : "enabled");
+        }
+        mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(disabledDefault)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("默认 SKU 必须启用"));
+    }
+
+    @Test
+    void rejectsSimpleProductWithVariantSpecificationStructure() throws Exception {
+        var request = requestBody(null, "EW43274", "类型冲突商品", null);
+        request.put("productType", "simple");
+        request.put("specifications", List.of(Map.of("name", "颜色", "values", List.of("透明", "烟灰"))));
+
+        mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("单规格产品不能定义 SKU 规格"));
+    }
+
+    @Test
+    void acceptsMaximumSchemaNumericValues() throws Exception {
+        var request = requestBody(null, "EW43275", "数值上界商品", null);
+        var sku = skuInput(request);
+        sku.put("defaultSalePrice", "999999999999999.9999");
+        sku.put("standardCost", "999999999999999.9999");
+        sku.put("safetyStockQuantity", "99999999999999.9999");
+        sku.put("packageLengthCm", "999999999.999");
+        sku.put("packageWidthCm", "999999999.999");
+        sku.put("packageHeightCm", "999999999.999");
+        sku.put("packageVolumeCm3", "999999999999999.999");
+        sku.put("innerPackageLengthCm", "999999999.999");
+        sku.put("innerPackageWidthCm", "999999999.999");
+        sku.put("innerPackageHeightCm", "999999999.999");
+        sku.put("netWeightKg", "999999999.999");
+        sku.put("grossWeightKg", "999999999.999");
+        sku.put("gramWeightG", "999999999.999");
+        sku.put("innerPackageWeightKg", "999999999.999");
+        sku.put("cartonQuantity", Integer.MAX_VALUE);
+        sku.put("supplierQuotes", List.of(Map.of(
+                "supplierId", quoteSupplierId,
+                "supplierItemNo", "T7-MAX",
+                "purchasePrice", "999999999999999.9999",
+                "minPurchaseQuantity", "999999999999999.9999",
+                "defaultQuote", true,
+                "status", "enabled"
+        )));
+
+        mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void rejectsNumericOverflowAndExcessScaleWithFieldSpecificMessages() throws Exception {
+        var overflow = requestBody(null, "EW43276", "数值溢出商品", null);
+        skuInput(overflow).put("defaultSalePrice", "1000000000000000.0000");
+        mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(overflow)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("默认售价最多允许 15 位整数和 4 位小数"));
+
+        var scale = requestBody(null, "EW43277", "数值小数位商品", null);
+        skuInput(scale).put("innerPackageWeightKg", "0.0001");
+        mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(scale)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("内盒重量最多允许 9 位整数和 3 位小数"));
+    }
+
+    @Test
+    void keepsSkuCodeAndBarcodeDistinctAndSearchable() throws Exception {
+        var request = requestBody(null, "EW43278", "双标识商品", null);
+        skuInput(request).put("skuCode", "T7-MERCHANT-SKU-78");
+        skuInput(request).put("barcode", "6970000000788");
+
+        mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.skus[0].skuCode").value("T7-MERCHANT-SKU-78"))
+                .andExpect(jsonPath("$.data.skus[0].barcode").value("6970000000788"));
+
+        for (var keyword : List.of("T7-MERCHANT-SKU-78", "6970000000788")) {
+            mvc.perform(get("/api/products")
+                            .header("Authorization", bearer(viewToken))
+                            .param("keyword", keyword))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.total").value(1))
+                    .andExpect(jsonPath("$.data.records[0].itemNo").value("EW43278"));
+        }
+    }
+
+    @Test
     void persistsProductDimensionsWhenCreatingAndUpdatingSimpleProduct() throws Exception {
         var request = requestBody(null, "EW43250", "尺寸参数产品", null);
         request.put("specifications", List.of(
@@ -647,6 +843,44 @@ class ProductControllerTest {
         product.put("specifications", List.of());
         product.put("skus", List.of(sku));
         return product;
+    }
+
+    private Map<String, Object> twoSkuRequest(String itemNo) {
+        var request = requestBody(null, itemNo, "双 SKU 商品", null);
+        request.put("productType", "variant");
+        var first = new LinkedHashMap<>(skuInput(request));
+        first.put("skuCode", "T7-" + itemNo + "-A");
+        first.put("skuName", "SKU A");
+        var second = new LinkedHashMap<>(skuInput(request));
+        second.put("skuCode", "T7-" + itemNo + "-B");
+        second.put("skuName", "SKU B");
+        request.put("skus", List.of(first, second));
+        return request;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> skus(Map<String, Object> product) {
+        return (List<Map<String, Object>>) product.get("skus");
+    }
+
+    private JsonNode responseData(
+            org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request,
+            Map<String, Object> body
+    ) throws Exception {
+        var response = mvc.perform(request
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).path("data");
+    }
+
+    private JsonNode findSku(JsonNode product, String skuCode) {
+        for (var sku : product.path("skus")) {
+            if (skuCode.equals(sku.path("skuCode").asText())) return sku;
+        }
+        throw new AssertionError("SKU not found: " + skuCode);
     }
 
     @SuppressWarnings("unchecked")

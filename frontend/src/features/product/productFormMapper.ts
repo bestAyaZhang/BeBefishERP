@@ -7,6 +7,7 @@ export function toProductFormPayload(product: Product): ProductFormPayload {
     categoryId: product.categoryId,
     brand: product.brand ?? '',
     productType: product.productType,
+    status: product.status,
     mainImageFileId: product.mainImageFileId,
     remark: product.remark ?? '',
     specifications: product.specifications.map((specification) => ({
@@ -39,6 +40,8 @@ export function toProductFormPayload(product: Product): ProductFormPayload {
       skuImageFileId: sku.skuImageFileId,
       packageImageFileId: sku.packageImageFileId,
       cartonImageFileId: sku.cartonImageFileId,
+      defaultSku: sku.defaultSku,
+      status: sku.status,
       supplierQuotes: sku.supplierQuotes.map((quote) => ({
         id: quote.id,
         supplierId: quote.supplierId,

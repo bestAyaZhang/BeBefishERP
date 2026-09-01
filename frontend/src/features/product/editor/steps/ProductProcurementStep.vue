@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Plus, Trash2 } from 'lucide-vue-next';
 import type { Supplier } from '../../../masterdata/types';
-import { reconcileQuoteDefaults, setDefaultQuote, type ProductEditorState } from '../productEditorState';
+import { MAX_SAFE_MONEY, reconcileQuoteDefaults, setDefaultQuote, type ProductEditorState } from '../productEditorState';
 
 const state = defineModel<ProductEditorState>({ required: true });
 const props = defineProps<{
@@ -95,11 +95,11 @@ function fieldError(skuIndex: number, quoteIndex: number, field: string) {
               </td>
               <td class="px-3 py-3"><input v-model="quote.supplierItemNo" maxlength="100" class="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-[#536dff]" /></td>
               <td class="px-3 py-3 align-top">
-                <input :data-testid="`quote-price-${skuIndex}-${quoteIndex}`" v-model.number="quote.purchasePrice" type="number" min="0" step="0.01" class="h-10 w-full rounded-lg border px-3 text-sm font-semibold tabular-nums outline-none focus:border-[#536dff]" :class="fieldError(skuIndex, quoteIndex, 'purchasePrice') ? 'border-rose-400' : 'border-slate-300'" />
+                <input :data-testid="`quote-price-${skuIndex}-${quoteIndex}`" v-model.number="quote.purchasePrice" type="number" min="0" :max="MAX_SAFE_MONEY" step="0.0001" class="h-10 w-full rounded-lg border px-3 text-sm font-semibold tabular-nums outline-none focus:border-[#536dff]" :class="fieldError(skuIndex, quoteIndex, 'purchasePrice') ? 'border-rose-400' : 'border-slate-300'" />
                 <p v-if="fieldError(skuIndex, quoteIndex, 'purchasePrice')" class="mt-1 text-xs font-bold text-rose-600">{{ fieldError(skuIndex, quoteIndex, 'purchasePrice') }}</p>
               </td>
               <td class="px-3 py-3 align-top">
-                <input :data-testid="`quote-min-quantity-${skuIndex}-${quoteIndex}`" v-model.number="quote.minPurchaseQuantity" type="number" min="0.01" step="0.01" class="h-10 w-full rounded-lg border px-3 text-sm font-semibold tabular-nums outline-none focus:border-[#536dff]" :class="fieldError(skuIndex, quoteIndex, 'minPurchaseQuantity') ? 'border-rose-400' : 'border-slate-300'" />
+                <input :data-testid="`quote-min-quantity-${skuIndex}-${quoteIndex}`" v-model.number="quote.minPurchaseQuantity" type="number" min="0.0001" :max="MAX_SAFE_MONEY" step="0.0001" class="h-10 w-full rounded-lg border px-3 text-sm font-semibold tabular-nums outline-none focus:border-[#536dff]" :class="fieldError(skuIndex, quoteIndex, 'minPurchaseQuantity') ? 'border-rose-400' : 'border-slate-300'" />
                 <p v-if="fieldError(skuIndex, quoteIndex, 'minPurchaseQuantity')" class="mt-1 text-xs font-bold text-rose-600">{{ fieldError(skuIndex, quoteIndex, 'minPurchaseQuantity') }}</p>
               </td>
               <td class="px-3 py-3">

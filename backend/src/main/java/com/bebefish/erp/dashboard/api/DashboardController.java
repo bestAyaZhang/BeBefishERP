@@ -18,7 +18,7 @@ public class DashboardController {
     }
 
     @GetMapping("/overview")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAuthority('dashboard:view')")
     public ApiResponse<DashboardOverviewResponse> overview(
             @RequestParam(required = false) String period
     ) {

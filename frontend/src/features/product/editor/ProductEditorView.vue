@@ -47,6 +47,9 @@ const optionError = ref('');
 const initialSnapshot = ref(serializeState(state.value));
 let latestProductRequestId = 0;
 let latestOptionRequestId = 0;
+let latestSaveRequestId = 0;
+let componentActive = true;
+let allowSaveNavigation = false;
 
 const currentStep = computed(() => stepDefinitions[currentStepIndex.value] ?? stepDefinitions[0]);
 const isEdit = computed(() => route.name === 'product-edit');
@@ -182,7 +185,7 @@ function firstInvalidStep(targetIndex = productEditorSteps.length - 1) {
 
 async function goToStep(index: number) {
   if (index < 0 || index >= stepDefinitions.length) return;
-  if (imageUploading.value && currentStep.value.id === 'images' && index > currentStepIndex.value) return;
+  if (index !== currentStepIndex.value && blockActiveOperation()) return;
   if (index > currentStepIndex.value) {
     const invalid = firstInvalidStep(index - 1);
     if (invalid) {
@@ -197,7 +200,7 @@ async function goToStep(index: number) {
 }
 
 async function nextStep() {
-  if (imageUploading.value && currentStep.value.id === 'images') return;
+  if (blockActiveOperation()) return;
   const errors = stepErrors(currentStep.value.id);
   validationErrors.value = errors;
   if (Object.keys(errors).length > 0) {
@@ -209,6 +212,7 @@ async function nextStep() {
 
 function previousStep() {
   if (currentStepIndex.value <= 0) return;
+  if (blockActiveOperation()) return;
   currentStepIndex.value -= 1;
   validationErrors.value = {};
 }
@@ -219,6 +223,7 @@ async function submit() {
     message.error('图片正在上传，请等待上传完成后再保存');
     return;
   }
+  if (saving.value) return;
   const invalid = firstInvalidStep();
   if (invalid) {
     currentStepIndex.value = invalid.index;
@@ -227,23 +232,45 @@ async function submit() {
     return;
   }
 
+  const requestId = ++latestSaveRequestId;
+  const sourceRoute = route.fullPath;
+  const wasCreate = state.value.productId === null;
   saving.value = true;
   try {
     const payload = toProductPayload(state.value);
     const saved = state.value.productId === null
       ? await productService.createProduct(payload)
       : await productService.updateProduct(state.value.productId, payload);
+    if (!componentActive || requestId !== latestSaveRequestId || route.fullPath !== sourceRoute) return;
     initialSnapshot.value = serializeState(state.value);
-    message.success(state.value.productId === null ? '商品已创建' : '商品已更新');
-    await router.push({ name: 'product-detail', params: { id: saved.id } });
+    message.success(wasCreate ? '商品已创建' : '商品已更新');
+    allowSaveNavigation = true;
+    try {
+      await router.push({ name: 'product-detail', params: { id: saved.id } });
+    } finally {
+      allowSaveNavigation = false;
+    }
   } catch (error) {
+    if (!componentActive || requestId !== latestSaveRequestId || route.fullPath !== sourceRoute) return;
     message.error(error instanceof Error ? error.message : '商品保存失败');
   } finally {
-    saving.value = false;
+    if (requestId === latestSaveRequestId) saving.value = false;
   }
 }
 
+function activeOperationMessage() {
+  return saving.value ? '商品正在保存，请等待完成后再离开' : '图片正在上传，请等待完成后再离开';
+}
+
+function blockActiveOperation() {
+  if (!saving.value && !imageUploading.value) return false;
+  message.warning(activeOperationMessage());
+  return true;
+}
+
 function confirmLeave() {
+  if (allowSaveNavigation) return true;
+  if (blockActiveOperation()) return false;
   return !dirty.value || window.confirm('商品资料尚未保存，确定离开当前页面吗？');
 }
 
@@ -252,7 +279,7 @@ function cancel() {
 }
 
 function handleBeforeUnload(event: BeforeUnloadEvent) {
-  if (!dirty.value || saving.value) return;
+  if (!dirty.value && !saving.value && !imageUploading.value) return;
   event.preventDefault();
   event.returnValue = '';
 }
@@ -266,8 +293,10 @@ watch(() => route.fullPath, () => {
 
 onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload));
 onBeforeUnmount(() => {
+  componentActive = false;
   latestProductRequestId += 1;
   latestOptionRequestId += 1;
+  latestSaveRequestId += 1;
   window.removeEventListener('beforeunload', handleBeforeUnload);
 });
 </script>

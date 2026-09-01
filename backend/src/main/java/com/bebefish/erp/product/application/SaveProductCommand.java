@@ -12,6 +12,7 @@ public record SaveProductCommand(
         String brand,
         ProductType type,
         Long mainImageFileId,
+        String status,
         String remark,
         List<Specification> specifications,
         List<SaveSkuCommand> skus
@@ -19,5 +20,23 @@ public record SaveProductCommand(
     public SaveProductCommand {
         specifications = specifications == null ? List.of() : List.copyOf(specifications);
         skus = skus == null ? List.of() : List.copyOf(skus);
+    }
+
+    public SaveProductCommand(
+            String productCode,
+            String itemNo,
+            String productName,
+            Long categoryId,
+            String brand,
+            ProductType type,
+            Long mainImageFileId,
+            String remark,
+            List<Specification> specifications,
+            List<SaveSkuCommand> skus
+    ) {
+        this(
+                productCode, itemNo, productName, categoryId, brand, type, mainImageFileId,
+                null, remark, specifications, skus
+        );
     }
 }

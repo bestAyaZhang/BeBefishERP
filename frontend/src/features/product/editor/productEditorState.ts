@@ -7,10 +7,15 @@ import type {
   ProductType,
   SkuForm
 } from '../types';
+import type { RecordStatus } from '../../masterdata/types';
 
 export const productEditorSteps = ['basic', 'sku', 'procurement', 'packaging', 'images', 'confirm'] as const;
 export const MAX_CARTON_QUANTITY = 2_147_483_647;
 export const CARTON_QUANTITY_ERROR = '装箱数必须为 1 到 2147483647 之间的整数';
+export const MAX_SAFE_MONEY = '900719925474.0991';
+export const MAX_SAFE_DIMENSION = '999999999.999';
+export const MAX_SAFE_VOLUME = '9007199254740.991';
+const PRODUCT_DIMENSION_NAMES = new Set(['口径', '高度', '容量', '重量']);
 
 export type ProductEditorStep = typeof productEditorSteps[number];
 export type PackagingMode = 'unified' | 'perSku';
@@ -55,7 +60,8 @@ export interface ProductEditorValidationContext {
 
 export interface ProductEditorState {
   productId: number | null;
-  loadedProductType: ProductType | null;
+  productType: ProductType;
+  status: RecordStatus;
   itemNo: string;
   productName: string;
   categoryId: number | null;
@@ -123,7 +129,9 @@ export function createBlankSku(): SkuForm {
     skuImageFileId: null,
     packageImageFileId: null,
     cartonImageFileId: null,
-    supplierQuotes: []
+    supplierQuotes: [],
+    defaultSku: false,
+    status: 'enabled'
   };
 }
 
@@ -208,14 +216,25 @@ export function insertSku(state: ProductEditorState, sku: SkuForm) {
   state.imagePreviewFileIds.package.push(inserted.packageImageFileId);
   state.imagePreviews.carton.push(state.packagingMode === 'unified' ? cartonPreview : '');
   state.imagePreviewFileIds.carton.push(inserted.cartonImageFileId);
+  state.skus = reconcileSkuDefaults(state.skus, inserted.defaultSku ? state.skus.length - 1 : undefined);
 }
 
 export function replaceSku(state: ProductEditorState, index: number, sku: SkuForm) {
   if (!state.skus[index]) return;
+  const replacedWasDefault = state.skus[index].defaultSku;
   const replacement = state.packagingMode === 'unified'
     ? { ...cloneSku(sku), ...state.unifiedPackaging }
     : cloneSku(sku);
   state.skus.splice(index, 1, replacement);
+  const preferredIndex = replacement.defaultSku && replacement.status === 'enabled'
+    ? index
+    : replacedWasDefault
+      ? undefined
+      : state.skus.findIndex((candidate) => candidate.defaultSku && candidate.status === 'enabled');
+  state.skus = reconcileSkuDefaults(
+    state.skus,
+    preferredIndex !== undefined && preferredIndex >= 0 ? preferredIndex : undefined
+  );
 }
 
 export function removeSku(state: ProductEditorState, index: number) {
@@ -224,6 +243,26 @@ export function removeSku(state: ProductEditorState, index: number) {
     state.imagePreviews[field].splice(index, 1);
     state.imagePreviewFileIds[field].splice(index, 1);
   }
+  state.skus = reconcileSkuDefaults(state.skus);
+}
+
+export function reconcileSkuDefaults(skus: SkuForm[], preferredIndex?: number): SkuForm[] {
+  const enabledIndexes = skus
+    .map((sku, index) => sku.status === 'enabled' ? index : -1)
+    .filter((index) => index >= 0);
+  if (enabledIndexes.length === 0) {
+    return skus.map((sku) => ({ ...cloneSku(sku), defaultSku: false }));
+  }
+  const currentDefault = skus.findIndex((sku) => sku.defaultSku && sku.status === 'enabled');
+  const defaultIndex = preferredIndex !== undefined && enabledIndexes.includes(preferredIndex)
+    ? preferredIndex
+    : currentDefault >= 0
+      ? currentDefault
+      : enabledIndexes[0];
+  return skus.map((sku, index) => ({
+    ...cloneSku(sku),
+    defaultSku: index === defaultIndex
+  }));
 }
 
 export function updateUnifiedPackaging(state: ProductEditorState, packaging: PackagingForm) {
@@ -331,7 +370,8 @@ export function createEditorState(product?: Product): ProductEditorState {
   const packagingMode = detectPackagingMode(skus);
   return {
     productId: product?.id ?? null,
-    loadedProductType: product?.productType ?? null,
+    productType: payload?.productType ?? 'simple',
+    status: payload?.status ?? 'enabled',
     itemNo: payload?.itemNo ?? '',
     productName: payload?.productName ?? '',
     categoryId: payload?.categoryId ?? null,
@@ -368,6 +408,17 @@ function isNegative(value: number | null) {
   return value !== null && value < 0;
 }
 
+export function isValidDecimal(value: number | null, integerDigits: number, fractionDigits: number) {
+  if (value === null) return true;
+  if (!Number.isFinite(value) || value < 0) return false;
+  const fixed = value.toFixed(fractionDigits);
+  if (Number(fixed) !== value) return false;
+  const [integerPart, fractionPart = ''] = fixed.split('.');
+  if (integerPart.replace(/^0+(?=\d)/, '').length > integerDigits) return false;
+  const scaled = BigInt(`${integerPart}${fractionPart}`);
+  return scaled <= BigInt(Number.MAX_SAFE_INTEGER);
+}
+
 export function validateStep(
   state: ProductEditorState,
   step: ProductEditorStep,
@@ -378,16 +429,37 @@ export function validateStep(
     if (isBlank(state.itemNo)) errors.itemNo = '请输入货号';
     if (isBlank(state.productName)) errors.productName = '请输入商品名称';
     if (state.categoryId === null) errors.categoryId = '请选择商品分类';
+    if (
+      state.productType === 'simple'
+      && (state.skus.length > 1
+        || state.specifications.some((specification) => !PRODUCT_DIMENSION_NAMES.has(specification.name.trim()))
+        || state.skus.some((sku) => sku.specificationValues.some((value) => !isBlank(value))))
+    ) {
+      errors.productType = '单规格商品不能包含规格维度或规格值';
+    }
   }
 
   if (step === 'sku') {
     if (state.skus.length === 0) return { skus: '请至少添加一个 SKU' };
+    const enabledSkus = state.skus.filter((sku) => sku.status === 'enabled');
+    const defaultSkus = state.skus.filter((sku) => sku.defaultSku);
+    if (enabledSkus.length === 0) errors.skus = '至少保留一个启用的 SKU';
+    else if (defaultSkus.length !== 1 || defaultSkus[0].status !== 'enabled') errors.skus = '请选择一个启用的默认 SKU';
     state.skus.forEach((sku, index) => {
       if (isBlank(sku.skuName)) errors[`skus.${index}.skuName`] = '请输入 SKU 名称';
       if (isBlank(sku.salesUnit)) errors[`skus.${index}.salesUnit`] = '请输入销售单位';
       if (isNegative(sku.defaultSalePrice)) errors[`skus.${index}.defaultSalePrice`] = '默认售价不能小于 0';
       if (isNegative(sku.standardCost)) errors[`skus.${index}.standardCost`] = '标准成本不能小于 0';
       if (isNegative(sku.safetyStockQuantity)) errors[`skus.${index}.safetyStockQuantity`] = '安全库存不能小于 0';
+      if (!isNegative(sku.defaultSalePrice) && !isValidDecimal(sku.defaultSalePrice, 15, 4)) {
+        errors[`skus.${index}.defaultSalePrice`] = '默认售价最多允许 15 位整数和 4 位小数';
+      }
+      if (!isNegative(sku.standardCost) && !isValidDecimal(sku.standardCost, 15, 4)) {
+        errors[`skus.${index}.standardCost`] = '标准成本最多允许 15 位整数和 4 位小数';
+      }
+      if (!isNegative(sku.safetyStockQuantity) && !isValidDecimal(sku.safetyStockQuantity, 14, 4)) {
+        errors[`skus.${index}.safetyStockQuantity`] = '安全库存最多允许 14 位整数和 4 位小数';
+      }
     });
   }
 
@@ -407,9 +479,13 @@ export function validateStep(
         supplierIds.add(quote.supplierId);
         if (!Number.isFinite(quote.purchasePrice) || quote.purchasePrice < 0) {
           errors[`${prefix}.purchasePrice`] = '采购价不能小于 0';
+        } else if (!isValidDecimal(quote.purchasePrice, 15, 4)) {
+          errors[`${prefix}.purchasePrice`] = '采购价最多允许 15 位整数和 4 位小数';
         }
         if (!Number.isFinite(quote.minPurchaseQuantity) || quote.minPurchaseQuantity <= 0) {
           errors[`${prefix}.minPurchaseQuantity`] = '最小采购量必须大于 0';
+        } else if (!isValidDecimal(quote.minPurchaseQuantity, 15, 4)) {
+          errors[`${prefix}.minPurchaseQuantity`] = '最小采购量最多允许 15 位整数和 4 位小数';
         }
         if (quote.defaultQuote && quote.status !== 'enabled') {
           errors[`${prefix}.defaultQuote`] = '禁用报价不能设为默认报价';
@@ -435,12 +511,30 @@ export function validateStep(
       gramWeightG: '克重不能小于 0',
       innerPackageWeightKg: '内包装重量不能小于 0'
     };
+    const packagingDecimalLimits: Partial<Record<keyof PackagingForm, [number, number, string]>> = {
+      packageLengthCm: [9, 3, '包装长最多允许 9 位整数和 3 位小数'],
+      packageWidthCm: [9, 3, '包装宽最多允许 9 位整数和 3 位小数'],
+      packageHeightCm: [9, 3, '包装高最多允许 9 位整数和 3 位小数'],
+      packageVolumeCm3: [15, 3, '包装体积最多允许 15 位整数和 3 位小数'],
+      innerPackageLengthCm: [9, 3, '内盒长最多允许 9 位整数和 3 位小数'],
+      innerPackageWidthCm: [9, 3, '内盒宽最多允许 9 位整数和 3 位小数'],
+      innerPackageHeightCm: [9, 3, '内盒高最多允许 9 位整数和 3 位小数'],
+      netWeightKg: [9, 3, '净重最多允许 9 位整数和 3 位小数'],
+      grossWeightKg: [9, 3, '毛重最多允许 9 位整数和 3 位小数'],
+      gramWeightG: [9, 3, '克重最多允许 9 位整数和 3 位小数'],
+      innerPackageWeightKg: [9, 3, '内包装重量最多允许 9 位整数和 3 位小数']
+    };
     state.skus.forEach((sku, index) => {
       for (const field of packagingFields) {
         if (!(field in packagingMessages)) continue;
         const value = sku[field];
         if (typeof value === 'number' && value < 0) {
           errors[`skus.${index}.${field}`] = packagingMessages[field] ?? '数值不能小于 0';
+        } else if (typeof value === 'number' && packagingDecimalLimits[field]) {
+          const [integerDigits, fractionDigits, message] = packagingDecimalLimits[field]!;
+          if (!isValidDecimal(value, integerDigits, fractionDigits)) {
+            errors[`skus.${index}.${field}`] = message;
+          }
         }
       }
       if (!isValidCartonQuantity(sku.cartonQuantity)) {
@@ -462,21 +556,13 @@ export function validateStep(
 
 export function toProductPayload(state: ProductEditorState): ProductFormPayload {
   const skus = state.skus.map(cloneSku);
-  const derivedType: ProductType = skus.length > 1
-    || skus.some((sku) => sku.specificationValues.some((value) => !isBlank(value)))
-    ? 'variant'
-    : 'simple';
-  const productType = state.loadedProductType === 'variant'
-    ? 'variant'
-    : state.loadedProductType === 'simple' && derivedType === 'simple'
-      ? 'simple'
-      : derivedType;
   return {
     itemNo: state.itemNo,
     productName: state.productName,
     categoryId: state.categoryId,
     brand: state.brand,
-    productType,
+    productType: state.productType,
+    status: state.status,
     mainImageFileId: state.mainImageFileId,
     remark: state.remark,
     specifications: state.specifications.map((specification) => ({

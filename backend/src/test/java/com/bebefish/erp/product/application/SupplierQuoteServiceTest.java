@@ -91,6 +91,20 @@ class SupplierQuoteServiceTest {
                 .isEqualByComparingTo("1.90");
     }
 
+    @Test
+    void rejectsStandaloneQuoteDecimalOverflowAndExcessScale() {
+        assertThatThrownBy(() -> service.saveQuote(10L, new SaveSupplierQuoteCommand(
+                1L, "SUP-ITEM", new BigDecimal("0.00001"), BigDecimal.ONE, false
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("采购价最多允许 15 位整数和 4 位小数");
+        assertThatThrownBy(() -> service.saveQuote(10L, new SaveSupplierQuoteCommand(
+                1L, "SUP-ITEM", BigDecimal.ONE, new BigDecimal("1000000000000000.0000"), false
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("最小采购量最多允许 15 位整数和 4 位小数");
+    }
+
     private SaveSupplierQuoteCommand quote(Long supplierId, String price, boolean isDefault) {
         return new SaveSupplierQuoteCommand(
                 supplierId, "SUP-ITEM", new BigDecimal(price), BigDecimal.ONE, isDefault

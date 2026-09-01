@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { productFixture } from '../productTestFixtures';
-import type { Product, ProductSupplierQuoteInput, SkuForm } from '../types';
+import type { RecordStatus } from '../../masterdata/types';
+import type { Product, ProductSupplierQuoteInput, ProductType, SkuForm } from '../types';
 import {
   applyUnifiedPackaging,
   createEditorState,
   detectPackagingMode,
   insertSku,
   packagingFromSku,
+  removeSku,
+  replaceSku,
   setEditorImageFileId,
   setEditorImagePreview,
   setDefaultQuote,
@@ -16,7 +19,9 @@ import {
   validateStep
 } from './productEditorState';
 
-function sku(overrides: Partial<SkuForm> = {}): SkuForm {
+type ContractSkuForm = SkuForm & { defaultSku: boolean; status: RecordStatus };
+
+function sku(overrides: Partial<ContractSkuForm> = {}): ContractSkuForm {
   return {
     skuCode: '',
     barcode: '',
@@ -43,6 +48,8 @@ function sku(overrides: Partial<SkuForm> = {}): SkuForm {
     packageImageFileId: null,
     cartonImageFileId: null,
     supplierQuotes: [],
+    defaultSku: true,
+    status: 'enabled',
     ...overrides
   };
 }
@@ -157,8 +164,8 @@ describe('product editor state', () => {
 
   it('synchronizes ids and previews across packaging mode transitions without leaking stale previews', () => {
     const state = createEditorState();
-    insertSku(state, sku({ skuName: '透明款' }));
-    insertSku(state, sku({ skuName: '烟灰款' }));
+    insertSku(state, sku({ skuName: '透明款', defaultSku: false }));
+    insertSku(state, sku({ skuName: '烟灰款', defaultSku: false }));
     setPackagingMode(state, 'perSku');
     state.skus[0].packageLengthCm = 42;
     state.skus[1].packageLengthCm = 44;
@@ -219,6 +226,48 @@ describe('product editor state', () => {
     expect(payload.skus[0].supplierQuotes?.[0].supplierId).toBe(4);
     expect(payload.skus[0].cartonImageFileId).toBe(91);
     expect(payload).not.toHaveProperty('packagingMode');
+  });
+
+  it('keeps exactly one enabled default SKU through insert, disable, and delete transitions', () => {
+    const state = createEditorState();
+    insertSku(state, sku({ skuName: '透明款', defaultSku: false }));
+    insertSku(state, sku({ skuName: '烟灰款', defaultSku: false }));
+
+    expect(state.skus.map((item) => [
+      (item as ContractSkuForm).defaultSku,
+      (item as ContractSkuForm).status
+    ])).toEqual([[true, 'enabled'], [false, 'enabled']]);
+
+    replaceSku(state, 0, sku({ skuName: '透明款', defaultSku: false, status: 'disabled' }));
+    expect(state.skus.map((item) => [
+      (item as ContractSkuForm).defaultSku,
+      (item as ContractSkuForm).status
+    ])).toEqual([[false, 'disabled'], [true, 'enabled']]);
+
+    removeSku(state, 1);
+    expect((state.skus[0] as ContractSkuForm).status).toBe('disabled');
+    expect((state.skus[0] as ContractSkuForm).defaultSku).toBe(false);
+    expect(validateStep(state, 'sku')).toEqual(expect.objectContaining({
+      skus: '至少保留一个启用的 SKU'
+    }));
+  });
+
+  it('hydrates and serializes explicit product and SKU lifecycle fields without deriving over them', () => {
+    const product = loadedProductFixture('variant');
+    product.status = 'disabled';
+    product.skus[0].defaultSku = true;
+    product.skus[0].status = 'disabled';
+
+    const state = createEditorState(product) as ReturnType<typeof createEditorState> & {
+      productType: ProductType;
+      status: RecordStatus;
+    };
+    const payload = toProductPayload(state) as ReturnType<typeof toProductPayload> & { status: RecordStatus };
+
+    expect(state.productType).toBe('variant');
+    expect(state.status).toBe('disabled');
+    expect(payload).toEqual(expect.objectContaining({ productType: 'variant', status: 'disabled' }));
+    expect(payload.skus[0]).toEqual(expect.objectContaining({ defaultSku: true, status: 'disabled' }));
   });
 
   it('hydrates every persisted field and response image preview for editing', () => {
@@ -342,6 +391,48 @@ describe('product editor state', () => {
     }));
   });
 
+  it('rejects decimal overflow, excess scale, and unsafe scaled integers before submission', () => {
+    const state = createEditorState();
+    state.skus = [sku({
+      defaultSalePrice: 1.00001,
+      standardCost: 1000000000000000,
+      safetyStockQuantity: 900719925474.0992,
+      packageLengthCm: 1000000000,
+      packageVolumeCm3: 9007199254740.992,
+      supplierQuotes: [quote({ purchasePrice: 1.00001, minPurchaseQuantity: 1.00001 })]
+    })];
+
+    expect(validateStep(state, 'sku')).toEqual(expect.objectContaining({
+      'skus.0.defaultSalePrice': '默认售价最多允许 15 位整数和 4 位小数',
+      'skus.0.standardCost': '标准成本最多允许 15 位整数和 4 位小数',
+      'skus.0.safetyStockQuantity': '安全库存最多允许 14 位整数和 4 位小数'
+    }));
+    expect(validateStep(state, 'procurement')).toEqual(expect.objectContaining({
+      'skus.0.supplierQuotes.0.purchasePrice': '采购价最多允许 15 位整数和 4 位小数',
+      'skus.0.supplierQuotes.0.minPurchaseQuantity': '最小采购量最多允许 15 位整数和 4 位小数'
+    }));
+    expect(validateStep(state, 'packaging')).toEqual(expect.objectContaining({
+      'skus.0.packageLengthCm': '包装长最多允许 9 位整数和 3 位小数',
+      'skus.0.packageVolumeCm3': '包装体积最多允许 15 位整数和 3 位小数'
+    }));
+  });
+
+  it('accepts exact decimal boundary values that remain safe in JavaScript', () => {
+    const state = createEditorState();
+    state.skus = [sku({
+      defaultSalePrice: 900719925474.0991,
+      standardCost: 900719925474.0991,
+      safetyStockQuantity: 900719925474.0991,
+      packageLengthCm: 999999999.999,
+      packageVolumeCm3: 9007199254740.991,
+      supplierQuotes: [quote({ purchasePrice: 900719925474.0991, minPurchaseQuantity: 900719925474.0991 })]
+    })];
+
+    expect(validateStep(state, 'sku')).toEqual({});
+    expect(validateStep(state, 'procurement')).toEqual({});
+    expect(validateStep(state, 'packaging')).toEqual({});
+  });
+
   it.each([
     1.5,
     0,
@@ -393,27 +484,25 @@ describe('product editor state', () => {
     expect(result[0]).not.toBe(quotes[0]);
   });
 
-  it('derives a new one-SKU product with specification values as variant', () => {
+  it('validates explicit product type against SKU and specification structure', () => {
     const state = createEditorState();
+    const contractState = state as typeof state & { productType: ProductType };
+    contractState.productType = 'simple';
+    state.specifications = [{ name: '颜色', values: ['透明'] }];
     state.skus = [sku({ specificationValues: ['透明'] })];
 
-    expect(toProductPayload(state).productType).toBe('variant');
+    expect(validateStep(state, 'basic')).toEqual(expect.objectContaining({
+      productType: '单规格商品不能包含规格维度或规格值'
+    }));
   });
 
-  it('preserves valid loaded simple and variant product types during hydration', () => {
+  it('preserves loaded simple and variant product types during hydration', () => {
     const loadedSimple = loadedProductFixture('simple');
     const loadedVariant = loadedProductFixture('variant');
 
-    expect(createEditorState(loadedSimple).loadedProductType).toBe('simple');
+    expect((createEditorState(loadedSimple) as ReturnType<typeof createEditorState> & { productType: ProductType }).productType).toBe('simple');
     expect(toProductPayload(createEditorState(loadedSimple)).productType).toBe('simple');
-    expect(createEditorState(loadedVariant).loadedProductType).toBe('variant');
+    expect((createEditorState(loadedVariant) as ReturnType<typeof createEditorState> & { productType: ProductType }).productType).toBe('variant');
     expect(toProductPayload(createEditorState(loadedVariant)).productType).toBe('variant');
-  });
-
-  it('promotes a loaded simple product when an edit adds specification values', () => {
-    const state = createEditorState(loadedProductFixture('simple'));
-    state.skus[0].specificationValues = ['透明'];
-
-    expect(toProductPayload(state).productType).toBe('variant');
   });
 });

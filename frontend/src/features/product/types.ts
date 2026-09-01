@@ -44,6 +44,8 @@ export interface SkuForm {
   packageImageFileId: number | null;
   cartonImageFileId: number | null;
   supplierQuotes?: ProductSupplierQuoteInput[];
+  defaultSku: boolean;
+  status: RecordStatus;
 }
 
 export interface ProductFormPayload {
@@ -52,6 +54,7 @@ export interface ProductFormPayload {
   categoryId: number | null;
   brand: string;
   productType: ProductType;
+  status: RecordStatus;
   mainImageFileId: number | null;
   remark: string;
   specifications: ProductSpecification[];

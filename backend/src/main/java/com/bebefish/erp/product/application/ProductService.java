@@ -136,14 +136,20 @@ public class ProductService {
         if (command.type() == null) {
             throw validation("产品类型不能为空");
         }
+        if (command.type() == ProductType.SIMPLE && command.specifications().stream()
+                .anyMatch(specification -> !PRODUCT_DIMENSION_NAMES.contains(specification.name()))) {
+            throw variantError("单规格产品不能定义 SKU 规格");
+        }
         ensureUniqueProduct(code, itemNo, id);
-        var skus = command.type() == ProductType.SIMPLE
-                ? simpleSkus(code, name, command.skus(), existing)
-                : variantSkus(code, name, command, existing);
+        var explicitSkuControls = hasExplicitSkuControls(command.skus());
+        var rawSkus = command.type() == ProductType.SIMPLE
+                ? simpleSkus(code, name, command.skus(), existing, explicitSkuControls)
+                : variantSkus(code, name, command, existing, explicitSkuControls);
+        var skus = normalizeSkuDefaults(rawSkus, explicitSkuControls);
         ensureUniqueSkus(skus, id);
         return new Product(
                 id, code, itemNo, name, command.categoryId(), optional(command.brand()), command.type(),
-                command.mainImageFileId(), existing == null ? "enabled" : existing.status(), optional(command.remark()),
+                command.mainImageFileId(), productStatus(command.status(), existing), optional(command.remark()),
                 command.specifications(), skus,
                 existing == null ? null : existing.createdAt(), existing == null ? null : existing.updatedAt()
         );
@@ -153,7 +159,8 @@ public class ProductService {
             String productCode,
             String productName,
             List<SaveSkuCommand> commands,
-            Product existing
+            Product existing,
+            boolean explicitSkuControls
     ) {
         if (commands.size() > 1) {
             checkDuplicateSkuCodes(commands, productCode);
@@ -172,7 +179,8 @@ public class ProductService {
                 productCode + "-DEFAULT",
                 productName,
                 List.of(),
-                true
+                true,
+                explicitSkuControls
         ));
     }
 
@@ -180,7 +188,8 @@ public class ProductService {
             String productCode,
             String productName,
             SaveProductCommand command,
-            Product existing
+            Product existing,
+            boolean explicitSkuControls
     ) {
         var skuSpecifications = command.specifications().stream()
                 .filter(specification -> !PRODUCT_DIMENSION_NAMES.contains(specification.name()))
@@ -188,7 +197,9 @@ public class ProductService {
         if (!command.skus().isEmpty()
                 && skuSpecifications.isEmpty()
                 && command.skus().stream().allMatch(sku -> sku.specificationValues().isEmpty())) {
-            return manualVariantSkus(productCode, productName, command.skus(), existing);
+            return manualVariantSkus(
+                    productCode, productName, command.skus(), existing, explicitSkuControls
+            );
         }
         List<SkuCombination> generated;
         try {
@@ -210,7 +221,8 @@ public class ProductService {
                 : command.skus();
         var usedCombinations = new HashSet<String>();
         var skus = new ArrayList<Sku>();
-        for (var skuCommand : commands) {
+        for (var index = 0; index < commands.size(); index++) {
+            var skuCommand = commands.get(index);
             var key = valuesKey(skuCommand.specificationValues());
             var combination = generatedByValues.get(key);
             if (combination == null || !usedCombinations.add(key)) {
@@ -222,7 +234,8 @@ public class ProductService {
                     combination.skuCode(),
                     productName + " - " + combination.displayText(),
                     combination.values(),
-                    false
+                    index == 0,
+                    explicitSkuControls
             ));
         }
         return List.copyOf(skus);
@@ -232,7 +245,8 @@ public class ProductService {
             String productCode,
             String productName,
             List<SaveSkuCommand> commands,
-            Product existing
+            Product existing,
+            boolean explicitSkuControls
     ) {
         var skus = new ArrayList<Sku>();
         for (var index = 0; index < commands.size(); index++) {
@@ -244,7 +258,8 @@ public class ProductService {
                     defaultCode,
                     productName + " - SKU " + (index + 1),
                     List.of(),
-                    index == 0
+                    index == 0,
+                    explicitSkuControls
             ));
         }
         return List.copyOf(skus);
@@ -256,7 +271,8 @@ public class ProductService {
             String defaultCode,
             String defaultName,
             List<String> values,
-            boolean isDefault
+            boolean legacyDefault,
+            boolean explicitSkuControls
     ) {
         if (command == null) {
             throw variantError("SKU 信息不能为空");
@@ -274,13 +290,17 @@ public class ProductService {
                 values.isEmpty() ? null : String.join(" / ", values),
                 values,
                 optional(command.salesUnit()) == null ? "件" : optional(command.salesUnit()),
-                nonNegative(command.defaultSalePrice(), "默认售价不能小于 0"),
-                nonNegative(command.standardCost(), "标准成本不能小于 0"),
-                nonNegative(command.safetyStockQuantity(), "安全库存不能小于 0"),
+                decimal(nonNegative(command.defaultSalePrice(), "默认售价不能小于 0"), 15, 4, "默认售价"),
+                decimal(nonNegative(command.standardCost(), "标准成本不能小于 0"), 15, 4, "标准成本"),
+                decimal(nonNegative(command.safetyStockQuantity(), "安全库存不能小于 0"), 14, 4, "安全库存"),
                 packaging,
                 command.skuImageFileId(),
-                isDefault,
-                "enabled"
+                explicitSkuControls
+                        ? command.defaultSku()
+                        : existing == null ? legacyDefault : existing.isDefault(),
+                explicitSkuControls
+                        ? normalizeStatus(command.status())
+                        : existing == null ? "enabled" : existing.status()
         );
     }
 
@@ -288,17 +308,17 @@ public class ProductService {
         if (command == null) {
             return null;
         }
-        var length = nonNegativeOrNull(command.lengthCm(), "包装长不能小于 0");
-        var width = nonNegativeOrNull(command.widthCm(), "包装宽不能小于 0");
-        var height = nonNegativeOrNull(command.heightCm(), "包装高不能小于 0");
-        var volume = nonNegativeOrNull(command.volumeCm3(), "包装体积不能小于 0");
-        var innerLength = nonNegativeOrNull(command.innerLengthCm(), "内盒长不能小于 0");
-        var innerWidth = nonNegativeOrNull(command.innerWidthCm(), "内盒宽不能小于 0");
-        var innerHeight = nonNegativeOrNull(command.innerHeightCm(), "内盒高不能小于 0");
-        var netWeight = nonNegativeOrNull(command.netWeightKg(), "净重不能小于 0");
-        var grossWeight = nonNegativeOrNull(command.grossWeightKg(), "毛重不能小于 0");
-        var gramWeight = nonNegativeOrNull(command.gramWeightG(), "克重不能小于 0");
-        var innerWeight = nonNegativeOrNull(command.innerWeightKg(), "内盒重量不能小于 0");
+        var length = decimal(nonNegativeOrNull(command.lengthCm(), "包装长不能小于 0"), 9, 3, "包装长");
+        var width = decimal(nonNegativeOrNull(command.widthCm(), "包装宽不能小于 0"), 9, 3, "包装宽");
+        var height = decimal(nonNegativeOrNull(command.heightCm(), "包装高不能小于 0"), 9, 3, "包装高");
+        var volume = decimal(nonNegativeOrNull(command.volumeCm3(), "包装体积不能小于 0"), 15, 3, "包装体积");
+        var innerLength = decimal(nonNegativeOrNull(command.innerLengthCm(), "内盒长不能小于 0"), 9, 3, "内盒长");
+        var innerWidth = decimal(nonNegativeOrNull(command.innerWidthCm(), "内盒宽不能小于 0"), 9, 3, "内盒宽");
+        var innerHeight = decimal(nonNegativeOrNull(command.innerHeightCm(), "内盒高不能小于 0"), 9, 3, "内盒高");
+        var netWeight = decimal(nonNegativeOrNull(command.netWeightKg(), "净重不能小于 0"), 9, 3, "净重");
+        var grossWeight = decimal(nonNegativeOrNull(command.grossWeightKg(), "毛重不能小于 0"), 9, 3, "毛重");
+        var gramWeight = decimal(nonNegativeOrNull(command.gramWeightG(), "克重不能小于 0"), 9, 3, "克重");
+        var innerWeight = decimal(nonNegativeOrNull(command.innerWeightKg(), "内盒重量不能小于 0"), 9, 3, "内盒重量");
         if (netWeight != null && grossWeight != null && grossWeight.compareTo(netWeight) < 0) {
             throw validation("毛重不能小于净重");
         }
@@ -306,7 +326,7 @@ public class ProductService {
             throw validation("装箱数必须大于 0");
         }
         if (volume == null && length != null && width != null && height != null) {
-            volume = length.multiply(width).multiply(height);
+            volume = decimal(length.multiply(width).multiply(height), 15, 3, "包装体积");
         }
         return new Packaging(
                 length, width, height, volume, innerLength, innerWidth, innerHeight,
@@ -314,6 +334,61 @@ public class ProductService {
                 optional(command.method()), command.cartonQuantity(),
                 command.packageImageFileId(), command.cartonImageFileId()
         );
+    }
+
+    private boolean hasExplicitSkuControls(List<SaveSkuCommand> commands) {
+        var anyDeclared = commands.stream().anyMatch(command ->
+                command.defaultSku() != null || optional(command.status()) != null
+        );
+        if (!anyDeclared) {
+            return false;
+        }
+        var allDeclared = commands.stream().allMatch(command ->
+                command.defaultSku() != null && optional(command.status()) != null
+        );
+        if (!allDeclared) {
+            throw validation("SKU 默认项和状态必须全部显式提交或全部省略");
+        }
+        return true;
+    }
+
+    private List<Sku> normalizeSkuDefaults(List<Sku> skus, boolean explicitSkuControls) {
+        if (explicitSkuControls) {
+            validateSkuDefaults(skus);
+            return skus;
+        }
+        var defaultCount = skus.stream().filter(Sku::isDefault).count();
+        var validDefaultCount = skus.stream()
+                .filter(Sku::isDefault)
+                .filter(sku -> "enabled".equals(sku.status()))
+                .count();
+        if (defaultCount == 1 && validDefaultCount == 1) {
+            return skus;
+        }
+        var fallback = skus.stream()
+                .filter(sku -> "enabled".equals(sku.status()))
+                .findFirst()
+                .orElseThrow(() -> validation("至少一个 SKU 必须启用"));
+        return skus.stream()
+                .map(sku -> sku.withState(sku == fallback, sku.status()))
+                .toList();
+    }
+
+    private void validateSkuDefaults(List<Sku> skus) {
+        var defaults = skus.stream().filter(Sku::isDefault).toList();
+        if (defaults.size() != 1) {
+            throw validation("商品必须且只能有一个默认 SKU");
+        }
+        if (!"enabled".equals(defaults.getFirst().status())) {
+            throw validation("默认 SKU 必须启用");
+        }
+    }
+
+    private String productStatus(String requestedStatus, Product existing) {
+        if (requestedStatus == null || requestedStatus.isBlank()) {
+            return existing == null ? "enabled" : existing.status();
+        }
+        return normalizeStatus(requestedStatus);
     }
 
     private void ensureUniqueProduct(String code, String itemNo, Long id) {
@@ -390,6 +465,10 @@ public class ProductService {
             throw validation(message);
         }
         return value;
+    }
+
+    private BigDecimal decimal(BigDecimal value, int integerDigits, int fractionDigits, String fieldName) {
+        return DecimalConstraints.requireFits(value, integerDigits, fractionDigits, fieldName);
     }
 
     private String required(String value, String message) {

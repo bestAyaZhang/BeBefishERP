@@ -74,6 +74,18 @@ class DashboardControllerTest {
     }
 
     @Test
+    void rejectsAuthenticatedUserWithoutDashboardPermission() throws Exception {
+        var token = tokenIssuer.issue(new UserAccount(
+                "13900000009", "unused", true, true, List.of("TESTER"), List.of("product:view")
+        ), "dashboard-controller-test-without-permission").accessToken();
+
+        mvc.perform(get("/api/dashboard/overview")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
     void rejectsUnsupportedPeriod() throws Exception {
         mvc.perform(get("/api/dashboard/overview")
                         .header("Authorization", bearer())

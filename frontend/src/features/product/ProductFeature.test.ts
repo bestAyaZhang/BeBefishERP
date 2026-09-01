@@ -6,6 +6,7 @@ import { httpProductService } from './httpProductService';
 import { productFixture, productPage } from './productTestFixtures';
 import type { Product, ProductFormPayload, ProductService } from './types';
 import ProductList from './components/ProductList.vue';
+import ProductTable from './components/ProductTable.vue';
 import { deduplicateCategories } from './productCategoryTree';
 
 function mockFetchApi(data: unknown) {
@@ -22,6 +23,7 @@ function productPayload(supplierQuotes?: ProductFormPayload['skus'][number]['sup
     categoryId: 1,
     brand: '共典',
     productType: 'simple',
+    status: 'enabled',
     mainImageFileId: null,
     remark: '',
     specifications: [],
@@ -50,7 +52,9 @@ function productPayload(supplierQuotes?: ProductFormPayload['skus'][number]['sup
       skuImageFileId: null,
       packageImageFileId: null,
       cartonImageFileId: null,
-      supplierQuotes
+      supplierQuotes,
+      defaultSku: true,
+      status: 'enabled'
     }]
   };
 }
@@ -205,6 +209,19 @@ async function mountCatalog(options: {
 }
 
 describe('Task 8 product catalog list', () => {
+  it('prefers the response category name when the local category lookup is stale', () => {
+    const product = catalogProduct(31, '分类响应优先', { categoryName: '服务端分类名' });
+    const wrapper = mount(ProductTable, {
+      props: {
+        products: [product],
+        categories: [{ ...catalogCategories[1], categoryName: '过期分类名' }]
+      }
+    });
+
+    expect(wrapper.get('[data-testid="product-category-31"]').text()).toContain('服务端分类名');
+    expect(wrapper.get('[data-testid="product-category-31"]').text()).not.toContain('过期分类名');
+  });
+
   it('filters from a parent category and resets the route page', async () => {
     const listProducts = vi.fn<ProductService['listProducts']>().mockImplementation((query) => (
       Promise.resolve(productPage([], 0, query.page, query.size))

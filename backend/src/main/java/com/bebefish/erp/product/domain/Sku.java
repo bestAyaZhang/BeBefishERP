@@ -42,4 +42,12 @@ public record Sku(
                 skuImageFileId, isDefault, status
         );
     }
+
+    public Sku withState(boolean nextDefault, String nextStatus) {
+        return new Sku(
+                id, code, barcode, name, specText, specificationValues,
+                salesUnit, defaultSalePrice, standardCost, safetyStockQuantity, packaging,
+                skuImageFileId, nextDefault, nextStatus
+        );
+    }
 }

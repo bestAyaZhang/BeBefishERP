@@ -15,6 +15,8 @@ public record SaveSkuCommand(
         BigDecimal safetyStockQuantity,
         PackagingCommand packaging,
         Long skuImageFileId,
+        Boolean defaultSku,
+        String status,
         List<ProductSupplierQuoteCommand> supplierQuotes
 ) {
     public SaveSkuCommand {
@@ -33,11 +35,31 @@ public record SaveSkuCommand(
             BigDecimal standardCost,
             BigDecimal safetyStockQuantity,
             PackagingCommand packaging,
+            Long skuImageFileId,
+            List<ProductSupplierQuoteCommand> supplierQuotes
+    ) {
+        this(
+                id, skuCode, barcode, skuName, specificationValues, salesUnit, defaultSalePrice,
+                standardCost, safetyStockQuantity, packaging, skuImageFileId, null, null, supplierQuotes
+        );
+    }
+
+    public SaveSkuCommand(
+            Long id,
+            String skuCode,
+            String barcode,
+            String skuName,
+            List<String> specificationValues,
+            String salesUnit,
+            BigDecimal defaultSalePrice,
+            BigDecimal standardCost,
+            BigDecimal safetyStockQuantity,
+            PackagingCommand packaging,
             Long skuImageFileId
     ) {
         this(
                 id, skuCode, barcode, skuName, specificationValues, salesUnit, defaultSalePrice,
-                standardCost, safetyStockQuantity, packaging, skuImageFileId, null
+                standardCost, safetyStockQuantity, packaging, skuImageFileId, null, null, null
         );
     }
 }

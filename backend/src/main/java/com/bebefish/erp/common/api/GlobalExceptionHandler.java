@@ -32,9 +32,13 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidationException(MethodArgumentNotValidException exception) {
+        var fieldError = exception.getBindingResult().getFieldError();
+        var message = fieldError == null || fieldError.getDefaultMessage() == null
+                ? "请求参数不完整或格式错误"
+                : fieldError.getDefaultMessage();
         return ResponseEntity
                 .badRequest()
-                .body(ApiResponse.failure("VALIDATION_FAILED", "请求参数不完整或格式错误", null));
+                .body(ApiResponse.failure("VALIDATION_FAILED", message, null));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
