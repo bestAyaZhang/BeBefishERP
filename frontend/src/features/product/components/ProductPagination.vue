@@ -37,31 +37,38 @@ function changeSize(event: Event) {
 <template>
   <footer
     data-testid="product-pagination"
-    class="flex min-w-0 flex-col items-stretch gap-3 border-t border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:gap-2 sm:px-5"
+    class="flex min-w-0 flex-col items-stretch gap-3 border-t border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 sm:px-5 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2"
   >
-    <span class="whitespace-nowrap sm:mr-auto">共 <strong class="font-semibold text-slate-900">{{ total }}</strong> 条</span>
-
-    <label
-      data-testid="product-page-size-control"
-      class="hidden items-center gap-2 whitespace-nowrap text-xs text-slate-500 sm:flex"
+    <div
+      data-testid="product-pagination-summary"
+      class="flex min-w-0 w-full items-center justify-between gap-3 lg:mr-auto lg:w-auto lg:flex-1"
     >
-      每页
-      <select
-        data-testid="product-page-size"
-        :value="size"
-        class="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-        aria-label="每页条数"
-        @change="changeSize"
+      <span class="min-w-0 truncate" :title="`共 ${total} 条`">
+        共 <strong class="font-semibold tabular-nums text-slate-900">{{ total }}</strong> 条
+      </span>
+
+      <label
+        data-testid="product-page-size-control"
+        class="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs text-slate-500"
       >
-        <option :value="10">10</option>
-        <option :value="20">20</option>
-        <option :value="50">50</option>
-      </select>
-    </label>
+        每页
+        <select
+          data-testid="product-page-size"
+          :value="size"
+          class="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          aria-label="每页条数"
+          @change="changeSize"
+        >
+          <option :value="10">10</option>
+          <option :value="20">20</option>
+          <option :value="50">50</option>
+        </select>
+      </label>
+    </div>
 
     <nav
       data-testid="product-pagination-mobile"
-      class="flex w-full min-w-0 items-center justify-between gap-2 sm:hidden"
+      class="flex w-full min-w-0 items-center justify-between gap-2 lg:hidden"
       aria-label="商品分页"
     >
       <button
@@ -89,7 +96,7 @@ function changeSize(event: Event) {
       </button>
     </nav>
 
-    <nav data-testid="product-pagination-desktop" class="hidden items-center gap-1 sm:flex" aria-label="商品分页">
+    <nav data-testid="product-pagination-desktop" class="hidden min-w-0 items-center gap-1 lg:flex" aria-label="商品分页">
       <button
         data-testid="product-page-prev"
         type="button"

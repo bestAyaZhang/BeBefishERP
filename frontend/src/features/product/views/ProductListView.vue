@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { masterdataService } from '../../masterdata/masterdataService';
 import type { Category } from '../../masterdata/types';
 import ProductList from '../components/ProductList.vue';
+import { deduplicateCategories } from '../productCategoryTree';
 import { productService } from '../productService';
 import type { Product } from '../types';
 
@@ -22,15 +23,34 @@ const categoryPageSize = 100;
 const maximumCategoryPages = 100;
 
 async function listAllCategories() {
-  const records: Category[] = [];
+  const categoriesById = new Map<number, Category>();
+  let expectedTotal = 0;
+  let totalPages = 1;
+
   for (let page = 1; page <= maximumCategoryPages; page += 1) {
     const result = await masterdataService.listCategories({ page, size: categoryPageSize });
-    records.push(...result.records);
-
     const responsePageSize = result.pageSize > 0 ? result.pageSize : categoryPageSize;
-    const totalPages = Math.max(1, Math.ceil(result.total / responsePageSize));
-    if (page >= totalPages || records.length >= result.total) return records;
-    if (result.records.length === 0) throw new Error('分类分页未返回剩余数据');
+    const responsePage = result.page > 0 ? result.page : page;
+    expectedTotal = Math.max(expectedTotal, result.total);
+    totalPages = Math.max(totalPages, responsePage, Math.max(1, Math.ceil(result.total / responsePageSize)));
+    if (totalPages > maximumCategoryPages) throw new Error('分类页数超过安全上限');
+
+    for (const category of result.records) {
+      const existing = categoriesById.get(category.id);
+      if (!existing) {
+        categoriesById.set(category.id, category);
+        continue;
+      }
+      const [selected] = deduplicateCategories([existing, category]);
+      if (selected) categoriesById.set(category.id, selected);
+    }
+
+    if (page >= totalPages) {
+      if (categoriesById.size < expectedTotal) {
+        throw new Error(`分类唯一记录不足：期望 ${expectedTotal}，实际 ${categoriesById.size}`);
+      }
+      return deduplicateCategories([...categoriesById.values()]);
+    }
   }
   throw new Error('分类页数超过安全上限');
 }

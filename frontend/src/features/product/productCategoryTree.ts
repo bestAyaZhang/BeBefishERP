@@ -15,6 +15,7 @@ function compareDuplicateCandidates(left: Category, right: Category) {
     || left.categoryCode.localeCompare(right.categoryCode)
     || left.categoryName.localeCompare(right.categoryName, 'zh-CN')
     || (left.parentId ?? 0) - (right.parentId ?? 0)
+    || left.level - right.level
     || left.status.localeCompare(right.status)
     || left.remark.localeCompare(right.remark);
 }

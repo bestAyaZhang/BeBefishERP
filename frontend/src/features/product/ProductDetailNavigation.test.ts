@@ -179,6 +179,68 @@ describe('product detail navigation', () => {
     expect(vi.mocked(productService.listProducts).mock.calls.filter(([query]) => query.size === 1)).toHaveLength(1);
   });
 
+  it('continues to the response-derived last page when duplicate rows satisfy the raw total early', async () => {
+    const category = (id: number): Category => ({
+      id,
+      categoryCode: `CAT-${id}`,
+      categoryName: `分类 ${id}`,
+      parentId: null,
+      level: 1,
+      sortOrder: id,
+      status: 'enabled',
+      remark: ''
+    });
+    vi.mocked(masterdataService.listCategories).mockImplementation(({ page }) => Promise.resolve({
+      records: page === 1 ? [category(1), category(2)] : page === 2 ? [category(1)] : [category(3)],
+      page,
+      pageSize: 1,
+      total: 3
+    }));
+    vi.mocked(productService.listProducts).mockImplementation((query) => Promise.resolve(
+      productPage(query.size === 1 ? [] : [{ ...product, categoryId: 3 }], 1, query.page, query.size)
+    ));
+
+    const wrapper = mount(ProductListView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(masterdataService.listCategories).toHaveBeenCalledTimes(3);
+    expect(masterdataService.listCategories).toHaveBeenNthCalledWith(3, { page: 3, size: 100 });
+    expect(wrapper.get('[data-testid="product-category-42"]').text()).toContain('分类 3');
+    expect(wrapper.find('[data-testid="category-tree-error"]').exists()).toBe(false);
+  });
+
+  it('rejects an incomplete unique category lookup after all declared pages while keeping products usable', async () => {
+    const repeatedCategory: Category = {
+      id: 1,
+      categoryCode: 'REPEATED',
+      categoryName: '重复分类',
+      parentId: null,
+      level: 1,
+      sortOrder: 1,
+      status: 'enabled',
+      remark: ''
+    };
+    vi.mocked(masterdataService.listCategories).mockImplementation(({ page }) => Promise.resolve({
+      records: [repeatedCategory],
+      page,
+      pageSize: 1,
+      total: 3
+    }));
+    vi.mocked(productService.listProducts).mockImplementation((query) => Promise.resolve(
+      productPage(query.size === 1 ? [] : [{ ...product, categoryId: 3 }], 1, query.page, query.size)
+    ));
+
+    const wrapper = mount(ProductListView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(masterdataService.listCategories).toHaveBeenCalledTimes(3);
+    expect(wrapper.find('[data-testid="product-row-42"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="category-tree-error"]').text()).toContain('分类加载失败');
+    const categoryCell = wrapper.get('[data-testid="product-category-42"]');
+    expect(categoryCell.text()).toContain('--');
+    expect(categoryCell.text()).toContain('分类加载失败');
+  });
+
   it('marks category lookup as failed while preserving the product table', async () => {
     vi.mocked(masterdataService.listCategories).mockRejectedValueOnce(new Error('分类接口不可用'));
     const wrapper = mount(ProductListView, { global: { plugins: [router] } });

@@ -9,6 +9,7 @@ import type { Product, ProductFormPayload, ProductService } from './types';
 import ProductDetailDrawer from './components/ProductDetailDrawer.vue';
 import ProductForm from './components/ProductForm.vue';
 import ProductList from './components/ProductList.vue';
+import { deduplicateCategories } from './productCategoryTree';
 
 function mockFetchApi(data: unknown) {
   vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(
@@ -744,6 +745,22 @@ describe('Task 8 product catalog list', () => {
     expect(wrapper.find('[data-testid="category-node-6"]').exists()).toBe(false);
   });
 
+  it('uses level as a deterministic tie-breaker when duplicate categories otherwise match', () => {
+    const lowerLevel: Category = {
+      id: 88,
+      categoryCode: 'LEVEL-TIE',
+      categoryName: '层级冲突分类',
+      parentId: null,
+      level: 1,
+      sortOrder: 1,
+      status: 'enabled',
+      remark: ''
+    };
+    const higherLevel = { ...lowerLevel, level: 2 };
+
+    expect(deduplicateCategories([higherLevel, lowerLevel])).toEqual([lowerLevel]);
+  });
+
   it('reconciles expansion state when categories refresh and expands newly reachable roots', async () => {
     const { wrapper } = await mountCatalog();
 
@@ -980,7 +997,33 @@ describe('Task 8 product catalog list', () => {
     }
   });
 
-  it('uses a compact mobile pagination contract while retaining full desktop controls', async () => {
+  it('keeps the page-size selector accessible in compact pagination and preserves filters when it changes', async () => {
+    const listProducts = vi.fn<ProductService['listProducts']>().mockImplementation((query) => (
+      Promise.resolve(productPage([], 240, query.page, query.size))
+    ));
+    const { router, wrapper } = await mountCatalog({
+      query: { categoryId: '12', keyword: 'CUP', page: '5', size: '20' },
+      service: catalogService(listProducts)
+    });
+    const summary = wrapper.get('[data-testid="product-pagination-summary"]');
+    const sizeControl = summary.get('[data-testid="product-page-size-control"]');
+
+    expect(summary.text()).toContain('共 240 条');
+    expect(sizeControl.classes()).toContain('flex');
+    expect(sizeControl.classes()).not.toContain('hidden');
+    expect(sizeControl.get('select').attributes('aria-label')).toBe('每页条数');
+
+    await sizeControl.get('select').setValue('50');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({
+      categoryId: '12', keyword: 'CUP', page: '1', size: '50'
+    });
+    expect(listProducts).toHaveBeenLastCalledWith({
+      page: 1, size: 50, categoryId: 12, keyword: 'CUP'
+    });
+  });
+
+  it('uses compact pagination through narrow desktop widths and restores full pages at lg', async () => {
     const { wrapper } = await mountCatalog({
       query: { page: '5', size: '20' },
       service: catalogService(vi.fn().mockResolvedValue(productPage([], 240, 5, 20)))
@@ -988,12 +1031,11 @@ describe('Task 8 product catalog list', () => {
     const pagination = wrapper.get('[data-testid="product-pagination"]');
 
     expect(pagination.classes()).toContain('flex-col');
-    expect(pagination.classes()).toContain('sm:flex-row');
-    expect(wrapper.get('[data-testid="product-page-size-control"]').classes()).toContain('hidden');
-    expect(wrapper.get('[data-testid="product-page-size-control"]').classes()).toContain('sm:flex');
-    expect(wrapper.get('[data-testid="product-pagination-mobile"]').classes()).toContain('sm:hidden');
+    expect(pagination.classes()).toContain('lg:flex-row');
+    expect(pagination.classes()).toContain('lg:flex-wrap');
+    expect(wrapper.get('[data-testid="product-pagination-mobile"]').classes()).toContain('lg:hidden');
     expect(wrapper.get('[data-testid="product-pagination-desktop"]').classes()).toContain('hidden');
-    expect(wrapper.get('[data-testid="product-pagination-desktop"]').classes()).toContain('sm:flex');
+    expect(wrapper.get('[data-testid="product-pagination-desktop"]').classes()).toContain('lg:flex');
   });
 
   it('ignores stale product responses when route queries change quickly', async () => {
