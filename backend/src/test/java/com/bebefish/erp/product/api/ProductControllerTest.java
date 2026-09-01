@@ -76,6 +76,7 @@ class ProductControllerTest {
         JsonNode created = createProduct();
         var productId = created.path("id").asLong();
         var skuId = created.path("skus").get(0).path("id").asLong();
+        var createdAt = created.path("createdAt").asText();
 
         mvc.perform(get("/api/products")
                         .header("Authorization", bearer(editToken))
@@ -88,7 +89,14 @@ class ProductControllerTest {
         mvc.perform(get("/api/products/{id}", productId)
                         .header("Authorization", bearer(editToken)))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.createdAt").isNotEmpty())
+                .andExpect(jsonPath("$.data.updatedAt").isNotEmpty())
+                .andExpect(jsonPath("$.data.skus[0].safetyStockQuantity").value(12.5))
                 .andExpect(jsonPath("$.data.skus[0].packageVolumeCm3").value(36456))
+                .andExpect(jsonPath("$.data.skus[0].innerPackageLengthCm").value(36))
+                .andExpect(jsonPath("$.data.skus[0].innerPackageWidthCm").value(25))
+                .andExpect(jsonPath("$.data.skus[0].innerPackageHeightCm").value(22))
+                .andExpect(jsonPath("$.data.skus[0].innerPackageWeightKg").value(1.1))
                 .andExpect(jsonPath("$.data.skus[0].cartonQuantity").value(12));
 
         var update = requestBody("T7-P100", "EW43245", "更新后的红酒杯", skuId);
@@ -98,6 +106,8 @@ class ProductControllerTest {
                         .content(objectMapper.writeValueAsString(update)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.productName").value("更新后的红酒杯"))
+                .andExpect(jsonPath("$.data.createdAt").value(createdAt))
+                .andExpect(jsonPath("$.data.updatedAt").isNotEmpty())
                 .andExpect(jsonPath("$.data.skus[0].id").value(skuId));
 
         mvc.perform(post("/api/products/{id}/status", productId)
@@ -202,6 +212,8 @@ class ProductControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.productCode").value("PRD-000001"))
                 .andExpect(jsonPath("$.data.skus[0].skuCode").value("PRD-000001-DEFAULT"))
+                .andExpect(jsonPath("$.data.createdAt").isNotEmpty())
+                .andExpect(jsonPath("$.data.updatedAt").isNotEmpty())
                 .andReturn().getResponse().getContentAsString();
         return objectMapper.readTree(response).path("data");
     }
@@ -217,12 +229,17 @@ class ProductControllerTest {
         sku.put("salesUnit", "只");
         sku.put("defaultSalePrice", "9.90");
         sku.put("standardCost", "2.20");
+        sku.put("safetyStockQuantity", "12.5");
         sku.put("packageLengthCm", "42");
         sku.put("packageWidthCm", "31");
         sku.put("packageHeightCm", "28");
+        sku.put("innerPackageLengthCm", "36");
+        sku.put("innerPackageWidthCm", "25");
+        sku.put("innerPackageHeightCm", "22");
         sku.put("netWeightKg", "8.5");
         sku.put("grossWeightKg", "9.2");
         sku.put("gramWeightG", "350");
+        sku.put("innerPackageWeightKg", "1.1");
         sku.put("packagingMethod", "彩盒");
         sku.put("cartonQuantity", 12);
         sku.put("skuImageFileId", imageId);

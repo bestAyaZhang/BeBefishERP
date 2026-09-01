@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import javax.sql.DataSource;
 
+import java.math.BigDecimal;
+
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -114,6 +116,25 @@ class FlywayMigrationTest {
         assertThatThrownBy(() -> insertSkuSpecValue(
                 firstProductId, firstProductSkuId, secondProductSpecId, secondProductValueId
         )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void addsSafetyStockAndInnerPackagingColumns() {
+        var columns = jdbc.queryForList(
+                "select column_name from information_schema.columns "
+                        + "where table_schema = database() and table_name = 'product_sku'",
+                String.class
+        );
+        assertThat(columns).contains(
+                "safety_stock_quantity", "inner_package_length_cm", "inner_package_width_cm",
+                "inner_package_height_cm", "inner_package_weight_kg"
+        );
+        var productId = insertProduct("P800", "ITEM800");
+        var skuId = insertSku(productId, "SKU800");
+        assertThat(jdbc.queryForObject(
+                "select safety_stock_quantity from product_sku where id = ?",
+                BigDecimal.class, skuId
+        )).isEqualByComparingTo("0");
     }
 
     private void insertWarehouse(String number, boolean isDefault, String status) {

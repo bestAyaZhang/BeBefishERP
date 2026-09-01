@@ -13,6 +13,7 @@ public record Sku(
         String salesUnit,
         BigDecimal defaultSalePrice,
         BigDecimal standardCost,
+        BigDecimal safetyStockQuantity,
         Packaging packaging,
         Long skuImageFileId,
         boolean isDefault,
@@ -29,7 +30,7 @@ public record Sku(
     public Sku withId(Long skuId) {
         return new Sku(
                 skuId, code, barcode, name, specText, specificationValues,
-                salesUnit, defaultSalePrice, standardCost, packaging,
+                salesUnit, defaultSalePrice, standardCost, safetyStockQuantity, packaging,
                 skuImageFileId, isDefault, status
         );
     }
@@ -37,7 +38,7 @@ public record Sku(
     public Sku withStandardCost(BigDecimal nextStandardCost) {
         return new Sku(
                 id, code, barcode, name, specText, specificationValues,
-                salesUnit, defaultSalePrice, nextStandardCost, packaging,
+                salesUnit, defaultSalePrice, nextStandardCost, safetyStockQuantity, packaging,
                 skuImageFileId, isDefault, status
         );
     }

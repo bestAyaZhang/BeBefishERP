@@ -203,11 +203,15 @@ class SalesDraftServiceTest {
         var sku = new Sku(
                 20L, "PRD-000001-001", "BAR-001", "透明款", "透明",
                 List.of("透明"), "只", new BigDecimal("12.00"), new BigDecimal("3.00"),
-                new Packaging(null, null, null, null, null, null, null, "彩盒", 48, null, null),
+                BigDecimal.ZERO,
+                new Packaging(
+                        null, null, null, null, null, null, null,
+                        null, null, null, null, "彩盒", 48, null, null
+                ),
                 null, false, "enabled"
         );
         return new Product(100L, "PRD-000001", "EW43245", "高硼硅玻璃杯", 1L, "共典",
-                ProductType.VARIANT, null, "enabled", null, List.of(), List.of(sku));
+                ProductType.VARIANT, null, "enabled", null, List.of(), List.of(sku), null, null);
     }
 
     private static final class InMemorySequenceRepository implements SalesOrderSequenceRepository {

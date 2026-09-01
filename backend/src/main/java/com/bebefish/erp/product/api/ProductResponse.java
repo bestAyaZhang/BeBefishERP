@@ -5,6 +5,7 @@ import com.bebefish.erp.product.domain.Product;
 import com.bebefish.erp.product.domain.Sku;
 import com.bebefish.erp.product.domain.Specification;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +24,9 @@ public record ProductResponse(
         String status,
         String remark,
         List<SpecificationResponse> specifications,
-        List<SkuResponse> skus
+        List<SkuResponse> skus,
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt
 ) {
     static ProductResponse from(Product product) {
         return from(product, (String) null, null);
@@ -43,7 +46,8 @@ public record ProductResponse(
                 product.brand(), product.type().name().toLowerCase(), product.mainImageFileId(),
                 imageUrls.get(product.mainImageFileId()), defaultSupplierName, product.status(), product.remark(),
                 product.specifications().stream().map(SpecificationResponse::from).toList(),
-                product.skus().stream().map(sku -> SkuResponse.from(sku, imageUrls)).toList()
+                product.skus().stream().map(sku -> SkuResponse.from(sku, imageUrls)).toList(),
+                product.createdAt(), product.updatedAt()
         );
     }
 
@@ -63,13 +67,18 @@ public record ProductResponse(
             String salesUnit,
             BigDecimal defaultSalePrice,
             BigDecimal standardCost,
+            BigDecimal safetyStockQuantity,
             BigDecimal packageLengthCm,
             BigDecimal packageWidthCm,
             BigDecimal packageHeightCm,
             BigDecimal packageVolumeCm3,
+            BigDecimal innerPackageLengthCm,
+            BigDecimal innerPackageWidthCm,
+            BigDecimal innerPackageHeightCm,
             BigDecimal netWeightKg,
             BigDecimal grossWeightKg,
             BigDecimal gramWeightG,
+            BigDecimal innerPackageWeightKg,
             String packagingMethod,
             Integer cartonQuantity,
             Long skuImageFileId,
@@ -90,13 +99,18 @@ public record ProductResponse(
             return new SkuResponse(
                     sku.id(), sku.code(), sku.barcode(), sku.name(), sku.specText(),
                     sku.specificationValues(), sku.salesUnit(), sku.defaultSalePrice(), sku.standardCost(),
+                    sku.safetyStockQuantity(),
                     packaging == null ? null : packaging.lengthCm(),
                     packaging == null ? null : packaging.widthCm(),
                     packaging == null ? null : packaging.heightCm(),
                     packaging == null ? null : packaging.volumeCm3(),
+                    packaging == null ? null : packaging.innerLengthCm(),
+                    packaging == null ? null : packaging.innerWidthCm(),
+                    packaging == null ? null : packaging.innerHeightCm(),
                     packaging == null ? null : packaging.netWeightKg(),
                     packaging == null ? null : packaging.grossWeightKg(),
                     packaging == null ? null : packaging.gramWeightG(),
+                    packaging == null ? null : packaging.innerWeightKg(),
                     packaging == null ? null : packaging.method(),
                     packaging == null ? null : packaging.cartonQuantity(),
                     sku.skuImageFileId(),

@@ -76,6 +76,29 @@ class ProductServiceTest {
     }
 
     @Test
+    void keepsSafetyStockAndInnerPackagingData() {
+        var result = service.createProduct(simpleProductWithSafetyStock(
+                "12.5", "36", "25", "22", "1.1"
+        ));
+
+        var sku = result.skus().getFirst();
+        assertThat(sku.safetyStockQuantity()).isEqualByComparingTo("12.5");
+        assertThat(sku.packaging().innerLengthCm()).isEqualByComparingTo("36");
+        assertThat(sku.packaging().innerWidthCm()).isEqualByComparingTo("25");
+        assertThat(sku.packaging().innerHeightCm()).isEqualByComparingTo("22");
+        assertThat(sku.packaging().innerWeightKg()).isEqualByComparingTo("1.1");
+    }
+
+    @Test
+    void rejectsNegativeSafetyStock() {
+        assertThatThrownBy(() -> service.createProduct(simpleProductWithSafetyStock(
+                "-1", "36", "25", "22", "1.1"
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("安全库存不能小于 0");
+    }
+
+    @Test
     void rejectsDuplicateItemNumber() {
         service.createProduct(simpleProduct(
                 "P100", "EW43245", packaging("1", "1", "1", null, "1", "1")
@@ -114,9 +137,9 @@ class ProductServiceTest {
                 null, null, List.of(),
                 List.of(
                         new SaveSkuCommand(null, null, null, "透明款", List.of(), "只",
-                                new BigDecimal("9.90"), new BigDecimal("2.20"), null, null),
+                                new BigDecimal("9.90"), new BigDecimal("2.20"), BigDecimal.ZERO, null, null),
                         new SaveSkuCommand(null, null, null, "烟灰款", List.of(), "只",
-                                new BigDecimal("10.90"), new BigDecimal("2.50"), null, null)
+                                new BigDecimal("10.90"), new BigDecimal("2.50"), BigDecimal.ZERO, null, null)
                 )
         );
 
@@ -138,9 +161,9 @@ class ProductServiceTest {
                 null, null, List.of(new Specification("口径", List.of("70±1mm"))),
                 List.of(
                         new SaveSkuCommand(null, null, null, "透明款", List.of(), "只",
-                                new BigDecimal("9.90"), new BigDecimal("2.20"), null, null),
+                                new BigDecimal("9.90"), new BigDecimal("2.20"), BigDecimal.ZERO, null, null),
                         new SaveSkuCommand(null, null, null, "烟灰款", List.of(), "只",
-                                new BigDecimal("10.90"), new BigDecimal("2.50"), null, null)
+                                new BigDecimal("10.90"), new BigDecimal("2.50"), BigDecimal.ZERO, null, null)
                 )
         );
 
@@ -254,6 +277,30 @@ class ProductServiceTest {
         );
     }
 
+    private SaveProductCommand simpleProductWithSafetyStock(
+            String safetyStock,
+            String innerLength,
+            String innerWidth,
+            String innerHeight,
+            String innerWeight
+    ) {
+        var packaging = new PackagingCommand(
+                new BigDecimal("42"), new BigDecimal("31"), new BigDecimal("28"), null,
+                decimal(innerLength), decimal(innerWidth), decimal(innerHeight),
+                new BigDecimal("8.5"), new BigDecimal("9.2"), new BigDecimal("350"),
+                decimal(innerWeight), "彩盒", 12, null, null
+        );
+        var sku = new SaveSkuCommand(
+                null, null, null, null, List.of(), "只",
+                new BigDecimal("9.90"), new BigDecimal("2.20"), decimal(safetyStock),
+                packaging, null
+        );
+        return new SaveProductCommand(
+                "P-SAFETY", "EW-SAFETY", "高脚红酒杯", 1L, "共典", SIMPLE,
+                null, null, List.of(), List.of(sku)
+        );
+    }
+
     private SaveSkuCommand sku(
             Long id,
             String code,
@@ -262,7 +309,7 @@ class ProductServiceTest {
     ) {
         return new SaveSkuCommand(
                 id, code, null, null, specificationValues, "只",
-                new BigDecimal("9.90"), new BigDecimal("2.20"), packaging, null
+                new BigDecimal("9.90"), new BigDecimal("2.20"), BigDecimal.ZERO, packaging, null
         );
     }
 
@@ -276,7 +323,8 @@ class ProductServiceTest {
     ) {
         return new PackagingCommand(
                 decimal(length), decimal(width), decimal(height), decimal(volume),
-                decimal(netWeight), decimal(grossWeight), new BigDecimal("350"),
+                null, null, null,
+                decimal(netWeight), decimal(grossWeight), new BigDecimal("350"), null,
                 "彩盒", 12, null, null
         );
     }

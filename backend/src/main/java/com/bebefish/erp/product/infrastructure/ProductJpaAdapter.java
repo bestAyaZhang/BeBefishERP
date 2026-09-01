@@ -31,7 +31,7 @@ import org.springframework.stereotype.Repository;
 public class ProductJpaAdapter implements ProductRepository {
     private static final Set<String> PRODUCT_DIMENSION_NAMES = Set.of("口径", "高度", "容量", "重量");
     private static final String PRODUCT_COLUMNS = "id, product_code, item_no, product_name, category_id, "
-            + "brand, product_type, main_image_file_id, status, remark";
+            + "brand, product_type, main_image_file_id, status, remark, created_at, updated_at";
     private final JdbcTemplate jdbc;
 
     public ProductJpaAdapter(JdbcTemplate jdbc) {
@@ -70,7 +70,7 @@ public class ProductJpaAdapter implements ProductRepository {
                 .filter(specification -> !PRODUCT_DIMENSION_NAMES.contains(specification.name()))
                 .toList();
         insertSkuSpecificationValues(productId, savedSkus, skuSpecifications, specificationIds);
-        return product.withIdentity(productId, savedSkus);
+        return findById(productId).orElseThrow(this::notFound);
     }
 
     @Override
@@ -109,7 +109,8 @@ public class ProductJpaAdapter implements ProductRepository {
         var skus = findSkus(id);
         return Optional.of(new Product(
                 row.id(), row.code(), row.itemNo(), row.name(), row.categoryId(), row.brand(),
-                row.type(), row.mainImageFileId(), row.status(), row.remark(), specifications, skus
+                row.type(), row.mainImageFileId(), row.status(), row.remark(), specifications, skus,
+                row.createdAt(), row.updatedAt()
         ));
     }
 
@@ -289,10 +290,12 @@ public class ProductJpaAdapter implements ProductRepository {
         if (sku.id() == null) {
             var id = insertAndReturnId(
                     "insert into product_sku (product_id, sku_code, barcode, sku_name, spec_text, sales_unit, "
-                            + "default_sale_price, standard_cost, package_length_cm, package_width_cm, package_height_cm, "
-                            + "package_volume_cm3, net_weight_kg, gross_weight_kg, gram_weight_g, packaging_method, "
-                            + "carton_quantity, sku_image_file_id, package_image_file_id, carton_image_file_id, is_default, "
-                            + "status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(3), now(3))",
+                            + "default_sale_price, standard_cost, safety_stock_quantity, package_length_cm, package_width_cm, "
+                            + "package_height_cm, package_volume_cm3, inner_package_length_cm, inner_package_width_cm, "
+                            + "inner_package_height_cm, net_weight_kg, gross_weight_kg, gram_weight_g, inner_package_weight_kg, "
+                            + "packaging_method, carton_quantity, sku_image_file_id, package_image_file_id, carton_image_file_id, "
+                            + "is_default, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                            + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(3), now(3))",
                     skuParameters(productId, sku, packaging)
             );
             return sku.withId(id);
@@ -305,10 +308,11 @@ public class ProductJpaAdapter implements ProductRepository {
         parameters.add(productId);
         var updated = jdbc.update(
                 "update product_sku set product_id=?, sku_code=?, barcode=?, sku_name=?, spec_text=?, sales_unit=?, "
-                        + "default_sale_price=?, standard_cost=?, package_length_cm=?, package_width_cm=?, package_height_cm=?, "
-                        + "package_volume_cm3=?, net_weight_kg=?, gross_weight_kg=?, gram_weight_g=?, packaging_method=?, "
-                        + "carton_quantity=?, sku_image_file_id=?, package_image_file_id=?, carton_image_file_id=?, is_default=?, "
-                        + "status=?, updated_at=now(3) where id=? and product_id=?",
+                        + "default_sale_price=?, standard_cost=?, safety_stock_quantity=?, package_length_cm=?, package_width_cm=?, "
+                        + "package_height_cm=?, package_volume_cm3=?, inner_package_length_cm=?, inner_package_width_cm=?, "
+                        + "inner_package_height_cm=?, net_weight_kg=?, gross_weight_kg=?, gram_weight_g=?, inner_package_weight_kg=?, "
+                        + "packaging_method=?, carton_quantity=?, sku_image_file_id=?, package_image_file_id=?, carton_image_file_id=?, "
+                        + "is_default=?, status=?, updated_at=now(3) where id=? and product_id=?",
                 parameters.toArray()
         );
         if (updated != 1) {
@@ -320,14 +324,18 @@ public class ProductJpaAdapter implements ProductRepository {
     private Object[] skuParameters(long productId, Sku sku, Packaging packaging) {
         return new Object[]{
                 productId, sku.code(), sku.barcode(), sku.name(), sku.specText(), sku.salesUnit(),
-                sku.defaultSalePrice(), sku.standardCost(),
+                sku.defaultSalePrice(), sku.standardCost(), sku.safetyStockQuantity(),
                 packaging == null ? null : packaging.lengthCm(),
                 packaging == null ? null : packaging.widthCm(),
                 packaging == null ? null : packaging.heightCm(),
                 packaging == null ? null : packaging.volumeCm3(),
+                packaging == null ? null : packaging.innerLengthCm(),
+                packaging == null ? null : packaging.innerWidthCm(),
+                packaging == null ? null : packaging.innerHeightCm(),
                 packaging == null ? null : packaging.netWeightKg(),
                 packaging == null ? null : packaging.grossWeightKg(),
                 packaging == null ? null : packaging.gramWeightG(),
+                packaging == null ? null : packaging.innerWeightKg(),
                 packaging == null ? null : packaging.method(),
                 packaging == null ? null : packaging.cartonQuantity(),
                 sku.skuImageFileId(),
@@ -432,8 +440,9 @@ public class ProductJpaAdapter implements ProductRepository {
         );
         return jdbc.query(
                 "select id, sku_code, barcode, sku_name, spec_text, sales_unit, default_sale_price, standard_cost, "
-                        + "package_length_cm, package_width_cm, package_height_cm, package_volume_cm3, net_weight_kg, "
-                        + "gross_weight_kg, gram_weight_g, packaging_method, carton_quantity, sku_image_file_id, "
+                        + "safety_stock_quantity, package_length_cm, package_width_cm, package_height_cm, package_volume_cm3, "
+                        + "inner_package_length_cm, inner_package_width_cm, inner_package_height_cm, net_weight_kg, "
+                        + "gross_weight_kg, gram_weight_g, inner_package_weight_kg, packaging_method, carton_quantity, sku_image_file_id, "
                         + "package_image_file_id, carton_image_file_id, is_default, status from product_sku "
                         + "where product_id = ? order by is_default desc, id asc",
                 (resultSet, rowNumber) -> {
@@ -448,14 +457,19 @@ public class ProductJpaAdapter implements ProductRepository {
                             resultSet.getString("sales_unit"),
                             resultSet.getBigDecimal("default_sale_price"),
                             resultSet.getBigDecimal("standard_cost"),
+                            resultSet.getBigDecimal("safety_stock_quantity"),
                             new Packaging(
                                     resultSet.getBigDecimal("package_length_cm"),
                                     resultSet.getBigDecimal("package_width_cm"),
                                     resultSet.getBigDecimal("package_height_cm"),
                                     resultSet.getBigDecimal("package_volume_cm3"),
+                                    resultSet.getBigDecimal("inner_package_length_cm"),
+                                    resultSet.getBigDecimal("inner_package_width_cm"),
+                                    resultSet.getBigDecimal("inner_package_height_cm"),
                                     resultSet.getBigDecimal("net_weight_kg"),
                                     resultSet.getBigDecimal("gross_weight_kg"),
                                     resultSet.getBigDecimal("gram_weight_g"),
+                                    resultSet.getBigDecimal("inner_package_weight_kg"),
                                     resultSet.getString("packaging_method"),
                                     getNullableInteger(resultSet, "carton_quantity"),
                                     getNullableLong(resultSet, "package_image_file_id"),
@@ -480,7 +494,9 @@ public class ProductJpaAdapter implements ProductRepository {
                 ProductType.valueOf(resultSet.getString("product_type").toUpperCase()),
                 getNullableLong(resultSet, "main_image_file_id"),
                 resultSet.getString("status"),
-                resultSet.getString("remark")
+                resultSet.getString("remark"),
+                resultSet.getTimestamp("created_at").toLocalDateTime(),
+                resultSet.getTimestamp("updated_at").toLocalDateTime()
         );
     }
 
@@ -528,7 +544,9 @@ public class ProductJpaAdapter implements ProductRepository {
             ProductType type,
             Long mainImageFileId,
             String status,
-            String remark
+            String remark,
+            java.time.LocalDateTime createdAt,
+            java.time.LocalDateTime updatedAt
     ) {
     }
 }

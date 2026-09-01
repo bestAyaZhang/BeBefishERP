@@ -105,7 +105,8 @@ public class ProductService {
         return new Product(
                 id, code, itemNo, name, command.categoryId(), optional(command.brand()), command.type(),
                 command.mainImageFileId(), existing == null ? "enabled" : existing.status(), optional(command.remark()),
-                command.specifications(), skus
+                command.specifications(), skus,
+                existing == null ? null : existing.createdAt(), existing == null ? null : existing.updatedAt()
         );
     }
 
@@ -121,7 +122,7 @@ public class ProductService {
         }
         var command = commands.isEmpty()
                 ? new SaveSkuCommand(null, null, null, null, List.of(), "件", BigDecimal.ZERO,
-                BigDecimal.ZERO, null, null)
+                BigDecimal.ZERO, BigDecimal.ZERO, null, null)
                 : commands.getFirst();
         if (!command.specificationValues().isEmpty()) {
             throw variantError("单规格产品不能填写规格值");
@@ -165,7 +166,7 @@ public class ProductService {
         var commands = command.skus().isEmpty()
                 ? generated.stream().map(combination -> new SaveSkuCommand(
                         null, combination.skuCode(), null, null, combination.values(), "件",
-                        BigDecimal.ZERO, BigDecimal.ZERO, null, null
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, null
                 )).toList()
                 : command.skus();
         var usedCombinations = new HashSet<String>();
@@ -236,6 +237,7 @@ public class ProductService {
                 optional(command.salesUnit()) == null ? "件" : optional(command.salesUnit()),
                 nonNegative(command.defaultSalePrice(), "默认售价不能小于 0"),
                 nonNegative(command.standardCost(), "标准成本不能小于 0"),
+                nonNegative(command.safetyStockQuantity(), "安全库存不能小于 0"),
                 packaging,
                 command.skuImageFileId(),
                 isDefault,
@@ -251,9 +253,13 @@ public class ProductService {
         var width = nonNegativeOrNull(command.widthCm(), "包装宽不能小于 0");
         var height = nonNegativeOrNull(command.heightCm(), "包装高不能小于 0");
         var volume = nonNegativeOrNull(command.volumeCm3(), "包装体积不能小于 0");
+        var innerLength = nonNegativeOrNull(command.innerLengthCm(), "内盒长不能小于 0");
+        var innerWidth = nonNegativeOrNull(command.innerWidthCm(), "内盒宽不能小于 0");
+        var innerHeight = nonNegativeOrNull(command.innerHeightCm(), "内盒高不能小于 0");
         var netWeight = nonNegativeOrNull(command.netWeightKg(), "净重不能小于 0");
         var grossWeight = nonNegativeOrNull(command.grossWeightKg(), "毛重不能小于 0");
         var gramWeight = nonNegativeOrNull(command.gramWeightG(), "克重不能小于 0");
+        var innerWeight = nonNegativeOrNull(command.innerWeightKg(), "内盒重量不能小于 0");
         if (netWeight != null && grossWeight != null && grossWeight.compareTo(netWeight) < 0) {
             throw validation("毛重不能小于净重");
         }
@@ -264,7 +270,8 @@ public class ProductService {
             volume = length.multiply(width).multiply(height);
         }
         return new Packaging(
-                length, width, height, volume, netWeight, grossWeight, gramWeight,
+                length, width, height, volume, innerLength, innerWidth, innerHeight,
+                netWeight, grossWeight, gramWeight, innerWeight,
                 optional(command.method()), command.cartonQuantity(),
                 command.packageImageFileId(), command.cartonImageFileId()
         );

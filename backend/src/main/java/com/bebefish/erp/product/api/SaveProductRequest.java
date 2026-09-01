@@ -62,13 +62,18 @@ public record SaveProductRequest(
             @Size(max = 20) String salesUnit,
             BigDecimal defaultSalePrice,
             BigDecimal standardCost,
+            BigDecimal safetyStockQuantity,
             BigDecimal packageLengthCm,
             BigDecimal packageWidthCm,
             BigDecimal packageHeightCm,
             BigDecimal packageVolumeCm3,
+            BigDecimal innerPackageLengthCm,
+            BigDecimal innerPackageWidthCm,
+            BigDecimal innerPackageHeightCm,
             BigDecimal netWeightKg,
             BigDecimal grossWeightKg,
             BigDecimal gramWeightG,
+            BigDecimal innerPackageWeightKg,
             @Size(max = 100) String packagingMethod,
             Integer cartonQuantity,
             Long skuImageFileId,
@@ -79,10 +84,12 @@ public record SaveProductRequest(
             return new SaveSkuCommand(
                     id, skuCode, barcode, skuName,
                     specificationValues == null ? List.of() : specificationValues,
-                    salesUnit, defaultSalePrice, standardCost,
+                    salesUnit, defaultSalePrice, standardCost, safetyStockQuantity,
                     new PackagingCommand(
                             packageLengthCm, packageWidthCm, packageHeightCm, packageVolumeCm3,
-                            netWeightKg, grossWeightKg, gramWeightG, packagingMethod, cartonQuantity,
+                            innerPackageLengthCm, innerPackageWidthCm, innerPackageHeightCm,
+                            netWeightKg, grossWeightKg, gramWeightG, innerPackageWeightKg,
+                            packagingMethod, cartonQuantity,
                             packageImageFileId, cartonImageFileId
                     ),
                     skuImageFileId

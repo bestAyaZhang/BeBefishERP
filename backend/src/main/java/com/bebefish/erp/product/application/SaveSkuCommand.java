@@ -12,6 +12,7 @@ public record SaveSkuCommand(
         String salesUnit,
         BigDecimal defaultSalePrice,
         BigDecimal standardCost,
+        BigDecimal safetyStockQuantity,
         PackagingCommand packaging,
         Long skuImageFileId
 ) {

@@ -138,7 +138,7 @@ class SupplierQuoteServiceTest {
     private static final class FakeProductRepository implements ProductRepository {
         private Sku sku = new Sku(
                 10L, "SKU-10", null, "测试 SKU", null, List.of(), "只",
-                BigDecimal.ZERO, BigDecimal.ONE, null, null, true, "enabled"
+                BigDecimal.ZERO, BigDecimal.ONE, BigDecimal.ZERO, null, null, true, "enabled"
         );
 
         @Override public boolean existsByProductCode(String code, Long excludedProductId) { return false; }
