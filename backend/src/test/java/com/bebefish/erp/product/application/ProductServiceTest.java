@@ -330,6 +330,47 @@ class ProductServiceTest {
         assertThat(quoteRepository.findById(removed.id())).isEmpty();
     }
 
+    @Test
+    void rejectsDuplicateQuoteIdsBeforeChangingAnyQuote() {
+        var first = quoteRepository.save(new SupplierQuote(
+                null, 10L, 1L, "FIRST", new BigDecimal("2.20"), BigDecimal.ONE, false, "enabled"
+        ));
+        quoteRepository.save(new SupplierQuote(
+                null, 10L, 2L, "SECOND", new BigDecimal("2.10"), BigDecimal.ONE, false, "enabled"
+        ));
+        var before = quoteRepository.findBySkuId(10L);
+
+        assertThatThrownBy(() -> quoteSynchronizer.synchronize(10L, List.of(
+                quote(first.id(), 1L, "1.90", "1", false, "enabled"),
+                quote(first.id(), 3L, "1.80", "1", false, "enabled")
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("供应商报价 ID 不能重复");
+        assertThat(quoteRepository.findBySkuId(10L)).containsExactlyElementsOf(before);
+    }
+
+    @Test
+    void rejectsQuoteIdFromAnotherSkuBeforeChangingAnyQuote() {
+        quoteRepository.save(new SupplierQuote(
+                null, 10L, 1L, "FIRST", new BigDecimal("2.20"), BigDecimal.ONE, false, "enabled"
+        ));
+        quoteRepository.save(new SupplierQuote(
+                null, 10L, 2L, "SECOND", new BigDecimal("2.10"), BigDecimal.ONE, false, "enabled"
+        ));
+        var foreign = quoteRepository.save(new SupplierQuote(
+                null, 11L, 3L, "FOREIGN", new BigDecimal("3.10"), BigDecimal.ONE, false, "enabled"
+        ));
+        var before = quoteRepository.findBySkuId(10L);
+
+        assertThatThrownBy(() -> quoteSynchronizer.synchronize(10L, List.of(
+                quote(foreign.id(), 3L, "1.80", "1", false, "enabled")
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("供应商报价不属于该 SKU");
+        assertThat(quoteRepository.findBySkuId(10L)).containsExactlyElementsOf(before);
+        assertThat(quoteRepository.findById(foreign.id())).contains(foreign);
+    }
+
     private SaveProductCommand simpleProduct(
             String productCode,
             String itemNo,

@@ -12,6 +12,7 @@ import com.bebefish.erp.auth.domain.TokenIssuer;
 import com.bebefish.erp.auth.domain.UserAccount;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -249,6 +250,23 @@ class ProductControllerTest {
     }
 
     @Test
+    void rejectsNullSupplierQuoteElementWithBadRequest() throws Exception {
+        var request = requestBody(null, "EW43258", "空报价元素商品", null);
+        skuInput(request).put("supplierQuotes", Collections.singletonList(null));
+
+        mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        assertThat(jdbc.queryForObject(
+                "select count(*) from product_spu where item_no = 'EW43258'", Long.class
+        )).isZero();
+    }
+
+    @Test
     void distinguishesOmittedAndEmptySupplierQuoteListsOnUpdate() throws Exception {
         var create = requestBody(null, "EW43254", "报价更新商品", null);
         skuInput(create).put("supplierQuotes", List.of(quoteInput("SUP-KEEP", "10.20")));
@@ -371,6 +389,67 @@ class ProductControllerTest {
                 "select count(*) from sku_supplier_quote where sku_id = ? and is_default = true",
                 Long.class, skuId
         )).isEqualTo(1);
+    }
+
+    @Test
+    void swapsSuppliersBetweenExistingQuotes() throws Exception {
+        var create = requestBody(null, "EW43257", "交换报价供应商商品", null);
+        skuInput(create).put("supplierQuotes", List.of(
+                quoteInput(quoteSupplierId, "SUP-SWAP-1", "10.20", true),
+                quoteInput(secondQuoteSupplierId, "SUP-SWAP-2", "9.80", false)
+        ));
+        var response = mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(create)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var product = objectMapper.readTree(response).path("data");
+        var productId = product.path("id").asLong();
+        var skuId = product.path("skus").get(0).path("id").asLong();
+        var firstQuoteId = jdbc.queryForObject(
+                "select id from sku_supplier_quote where sku_id = ? and supplier_id = ?",
+                Long.class, skuId, quoteSupplierId
+        );
+        var secondQuoteId = jdbc.queryForObject(
+                "select id from sku_supplier_quote where sku_id = ? and supplier_id = ?",
+                Long.class, skuId, secondQuoteSupplierId
+        );
+
+        var movedToSecondSupplier = new LinkedHashMap<>(
+                quoteInput(secondQuoteSupplierId, "SUP-SWAPPED-2", "8.80", false)
+        );
+        movedToSecondSupplier.put("id", firstQuoteId);
+        var movedToFirstSupplier = new LinkedHashMap<>(
+                quoteInput(quoteSupplierId, "SUP-SWAPPED-1", "9.10", true)
+        );
+        movedToFirstSupplier.put("id", secondQuoteId);
+        var update = requestBody(null, "EW43257", "已交换报价供应商", skuId);
+        skuInput(update).put("supplierQuotes", List.of(movedToSecondSupplier, movedToFirstSupplier));
+
+        mvc.perform(put("/api/products/{id}", productId)
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(update)))
+                .andExpect(status().isOk());
+
+        var firstSupplierQuote = jdbc.queryForMap(
+                "select supplier_item_no, purchase_price, is_default from sku_supplier_quote "
+                        + "where sku_id = ? and supplier_id = ?",
+                skuId, quoteSupplierId
+        );
+        var secondSupplierQuote = jdbc.queryForMap(
+                "select supplier_item_no, purchase_price, is_default from sku_supplier_quote "
+                        + "where sku_id = ? and supplier_id = ?",
+                skuId, secondQuoteSupplierId
+        );
+        assertThat(quoteCount(skuId)).isEqualTo(2);
+        assertThat(firstSupplierQuote.get("supplier_item_no")).isEqualTo("SUP-SWAPPED-1");
+        assertThat(firstSupplierQuote.get("purchase_price").toString()).startsWith("9.10");
+        assertThat(firstSupplierQuote.get("is_default")).isEqualTo(true);
+        assertThat(secondSupplierQuote.get("supplier_item_no")).isEqualTo("SUP-SWAPPED-2");
+        assertThat(secondSupplierQuote.get("purchase_price").toString()).startsWith("8.80");
+        assertThat(secondSupplierQuote.get("is_default")).isEqualTo(false);
     }
 
     @Test

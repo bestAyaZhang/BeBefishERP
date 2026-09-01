@@ -80,7 +80,7 @@ public record SaveProductRequest(
             Long skuImageFileId,
             Long packageImageFileId,
             Long cartonImageFileId,
-            List<@Valid SupplierQuoteInput> supplierQuotes
+            List<@NotNull @Valid SupplierQuoteInput> supplierQuotes
     ) {
         SaveSkuCommand toCommand() {
             return new SaveSkuCommand(
