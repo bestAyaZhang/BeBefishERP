@@ -1,10 +1,9 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import router from '../../router';
-import ProductDetailDrawer from './components/ProductDetailDrawer.vue';
 import ProductListView from './views/ProductListView.vue';
 import ProductDetailView from './views/ProductDetailView.vue';
-import type { Product, ProductService } from './types';
+import type { Product, ProductService, ProductSupplierQuote } from './types';
 import { productService } from './productService';
 import { productFixture, productPage } from './productTestFixtures';
 import { masterdataService } from '../masterdata/masterdataService';
@@ -31,6 +30,8 @@ vi.mock('../masterdata/masterdataService', () => ({
   }
 }));
 
+enableAutoUnmount(afterEach);
+
 const product = productFixture({
   id: 42,
   productCode: 'PRD-000042',
@@ -46,9 +47,118 @@ const product = productFixture({
   status: 'enabled'
 });
 
+const supplierQuote: ProductSupplierQuote = {
+  id: 301,
+  skuId: 21,
+  supplierId: 6,
+  supplierName: '义乌玻璃制品厂',
+  supplierItemNo: 'YW-021',
+  purchasePrice: 8.6,
+  minPurchaseQuantity: 120,
+  defaultQuote: true,
+  status: 'enabled'
+};
+
+const detailProduct = Object.assign(productFixture({
+  ...product,
+  mainImageFileId: 100,
+  mainImageUrl: '/uploads/product-main.png',
+  completenessPercent: 80,
+  completenessStatus: 'incomplete',
+  missingGroups: ['采购信息'],
+  createdAt: '2026-08-31T08:30:00.000Z',
+  updatedAt: '2026-09-01T10:45:00.000Z',
+  remark: '季度主推款',
+  specifications: [{ name: '颜色', values: ['透明', '烟灰'] }],
+  skus: [
+    {
+      id: 21,
+      skuCode: 'BBF-PUMP-021-WH',
+      barcode: '6970000000210',
+      skuName: '透明款',
+      specText: '颜色：透明',
+      specificationValues: ['透明'],
+      salesUnit: '个',
+      defaultSalePrice: 19.9,
+      standardCost: 8.6,
+      safetyStockQuantity: 20,
+      stockQuantity: 136,
+      packageLengthCm: 42,
+      packageWidthCm: 28,
+      packageHeightCm: 24,
+      packageVolumeCm3: 28224,
+      innerPackageLengthCm: 10,
+      innerPackageWidthCm: 10,
+      innerPackageHeightCm: 12,
+      netWeightKg: 8.4,
+      grossWeightKg: 9.1,
+      gramWeightG: 210,
+      innerPackageWeightKg: 0.23,
+      packagingMethod: '彩盒',
+      cartonQuantity: 40,
+      skuImageFileId: 201,
+      skuImageUrl: '/uploads/sku-21.png',
+      packageImageFileId: 202,
+      packageImageUrl: '/uploads/package-21.png',
+      cartonImageFileId: 203,
+      cartonImageUrl: '/uploads/carton-21.png',
+      supplierQuotes: [supplierQuote],
+      defaultSku: true,
+      status: 'enabled'
+    },
+    {
+      id: 22,
+      skuCode: 'BBF-PUMP-022-GY',
+      barcode: null,
+      skuName: '烟灰款',
+      specText: '颜色：烟灰',
+      specificationValues: ['烟灰'],
+      salesUnit: '个',
+      defaultSalePrice: 21,
+      standardCost: 9,
+      safetyStockQuantity: 12,
+      stockQuantity: 64,
+      packageLengthCm: 42,
+      packageWidthCm: 28,
+      packageHeightCm: 24,
+      packageVolumeCm3: 28224,
+      innerPackageLengthCm: 10,
+      innerPackageWidthCm: 10,
+      innerPackageHeightCm: 12,
+      netWeightKg: 8.4,
+      grossWeightKg: 9.1,
+      gramWeightG: 210,
+      innerPackageWeightKg: 0.23,
+      packagingMethod: '彩盒',
+      cartonQuantity: 40,
+      skuImageFileId: null,
+      skuImageUrl: null,
+      packageImageFileId: 202,
+      packageImageUrl: '/temporary/package-22.png',
+      cartonImageFileId: 203,
+      cartonImageUrl: '/temporary/carton-22.png',
+      supplierQuotes: [],
+      defaultSku: false,
+      status: 'disabled'
+    }
+  ],
+  status: 'enabled'
+}), { categoryName: '杯具 / 玻璃杯' }) as Product;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('product detail navigation', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    vi.mocked(productService.getProduct).mockReset();
     localStorage.setItem('bebefish_access_token', 'test-token');
     vi.mocked(productService.listProducts).mockResolvedValue(productPage([product]));
     vi.mocked(productService.getCategoryCounts).mockResolvedValue({});
@@ -253,46 +363,125 @@ describe('product detail navigation', () => {
     expect(categoryCell.text()).not.toContain('未分类');
   });
 
-  it('renders product detail as a page without drawer positioning or overlay', () => {
-    const wrapper = mount(ProductDetailDrawer, { props: { product, presentation: 'page' }, global: { plugins: [router] } });
-
-    expect(wrapper.find('[data-testid="product-detail-page"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="product-detail-drawer"]').exists()).toBe(false);
-    expect(wrapper.find('[aria-label="关闭商品详情抽屉"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('商品详情');
-  });
-
-  it('opens and closes a large image preview from the detail page', async () => {
-    const productWithImage: Product = {
-      ...product,
-      mainImageFileId: 100,
-      mainImageUrl: '/uploads/detail-main.png'
-    };
-    const wrapper = mount(ProductDetailDrawer, { props: { product: productWithImage, presentation: 'page' }, global: { plugins: [router] } });
-
-    await wrapper.get('[data-testid="product-detail-main-image"]').trigger('click');
-
-    const lightbox = document.body.querySelector('[data-testid="product-image-lightbox"]');
-    expect(lightbox).not.toBeNull();
-    expect(lightbox?.querySelector('img')?.getAttribute('src')).toBe('/uploads/detail-main.png');
-
-    const closeButton = document.body.querySelector('[data-testid="product-image-lightbox-close"]');
-    expect(closeButton).not.toBeNull();
-    (closeButton as HTMLButtonElement).click();
-    await wrapper.vm.$nextTick();
-    expect(document.body.querySelector('[data-testid="product-image-lightbox"]')).toBeNull();
-  });
-
-  it('falls back to the product list data when the detail request fails', async () => {
-    vi.mocked(productService.getProduct).mockRejectedValueOnce(new Error('详情接口暂不可用'));
+  it('renders a standalone read-only detail page with all six sections', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValueOnce(detailProduct);
     await router.push('/products/42');
-    await router.isReady();
-
     const wrapper = mount(ProductDetailView, { global: { plugins: [router] } });
     await flushPromises();
 
-    expect(productService.getProduct).toHaveBeenCalledWith(42);
-    expect(wrapper.text()).toContain('高硼硅玻璃杯');
-    expect(productService.listProducts).toHaveBeenCalledWith({ page: 1, size: 100 });
+    expect(wrapper.find('[data-testid="product-detail-drawer"]').exists()).toBe(false);
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="product-overview-section"]').text()).toContain('PRD-000042');
+    expect(wrapper.get('[data-testid="product-sku-section"]').text()).toContain('SKU 货号');
+    expect(wrapper.get('[data-testid="product-procurement-section"]').text()).toContain('义乌玻璃制品厂');
+    expect(wrapper.get('[data-testid="product-packaging-section"]').text()).toContain('统一包装');
+    expect(wrapper.find('[data-testid="product-images-section"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="product-audit-section"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="sku-image-21"]').attributes('src')).toContain('sku-21.png');
+    expect(wrapper.get('[data-testid="sku-item-number-21"]').text()).toBe('BBF-PUMP-021-WH');
+    expect(wrapper.find('input, select, textarea').exists()).toBe(false);
+
+    for (const excludedLabel of ['附件', '合规资料', '商品描述', '销售属性', '渠道售价']) {
+      expect(wrapper.text()).not.toContain(excludedLabel);
+    }
+  });
+
+  it('uses -- for absent values and invalid audit dates without inventing data', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValueOnce({
+      ...detailProduct,
+      brand: null,
+      createdAt: 'not-a-date',
+      updatedAt: ''
+    });
+    await router.push('/products/42');
+    const wrapper = mount(ProductDetailView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="product-brand"]').text()).toBe('--');
+    expect(wrapper.get('[data-testid="product-created-at"]').text()).toBe('--');
+    expect(wrapper.get('[data-testid="product-updated-at"]').text()).toBe('--');
+    expect(wrapper.get('[data-testid="procurement-empty-22"]').text()).toContain('暂无供应商报价');
+  });
+
+  it('replaces a failed image with a fixed ImageOff fallback', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValueOnce(detailProduct);
+    await router.push('/products/42');
+    const wrapper = mount(ProductDetailView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="sku-image-21"]').trigger('error');
+
+    expect(wrapper.find('[data-testid="sku-image-21"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="sku-image-21-fallback"]').exists()).toBe(true);
+  });
+
+  it('preserves the original route id when navigating to edit and returns to products', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValue(detailProduct);
+    await router.push('/products/0042');
+    const wrapper = mount(ProductDetailView, { global: { plugins: [router] } });
+    await flushPromises();
+    const push = vi.spyOn(router, 'push').mockResolvedValue(undefined);
+
+    await wrapper.get('[data-testid="edit-product"]').trigger('click');
+    expect(push).toHaveBeenCalledWith({ name: 'product-edit', params: { id: '0042' } });
+
+    await wrapper.get('[data-testid="product-detail-back"]').trigger('click');
+    expect(push).toHaveBeenCalledWith({ name: 'products' });
+  });
+
+  it('shows an initial skeleton and validates positive integer route ids', async () => {
+    const pendingProduct = deferred<Product>();
+    vi.mocked(productService.getProduct).mockReturnValueOnce(pendingProduct.promise);
+    await router.push('/products/42');
+    const loadingWrapper = mount(ProductDetailView, { global: { plugins: [router] } });
+
+    expect(loadingWrapper.find('[data-testid="product-detail-skeleton"]').exists()).toBe(true);
+    loadingWrapper.unmount();
+    pendingProduct.resolve(detailProduct);
+    await flushPromises();
+
+    vi.mocked(productService.getProduct).mockClear();
+    await router.push('/products/0');
+    const invalidWrapper = mount(ProductDetailView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(productService.getProduct).not.toHaveBeenCalled();
+    expect(invalidWrapper.get('[data-testid="product-detail-error"]').text()).toContain('商品编号无效');
+  });
+
+  it('retries a failed detail request in place', async () => {
+    vi.mocked(productService.getProduct)
+      .mockRejectedValueOnce(new Error('详情接口暂不可用'))
+      .mockResolvedValueOnce(detailProduct);
+    await router.push('/products/42');
+    const wrapper = mount(ProductDetailView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="product-detail-error"]').text()).toContain('详情接口暂不可用');
+    await wrapper.get('[data-testid="retry-product-detail"]').trigger('click');
+    await flushPromises();
+
+    expect(productService.getProduct).toHaveBeenCalledTimes(2);
+    expect(wrapper.get('[data-testid="product-detail-view"]').text()).toContain('高硼硅玻璃杯');
+  });
+
+  it('keeps the newest product when route requests resolve out of order', async () => {
+    const first = deferred<Product>();
+    const second = deferred<Product>();
+    const newerProduct = { ...detailProduct, id: 43, productName: '新路由商品', itemNo: 'NEW-043' };
+    vi.mocked(productService.getProduct).mockImplementation((id) => id === 42 ? first.promise : second.promise);
+    await router.push('/products/42');
+    const wrapper = mount(ProductDetailView, { global: { plugins: [router] } });
+    await router.push('/products/43');
+
+    second.resolve(newerProduct);
+    await flushPromises();
+    first.resolve(detailProduct);
+    await flushPromises();
+
+    expect(productService.getProduct).toHaveBeenNthCalledWith(1, 42);
+    expect(productService.getProduct).toHaveBeenNthCalledWith(2, 43);
+    expect(wrapper.text()).toContain('新路由商品');
+    expect(wrapper.text()).not.toContain('高硼硅玻璃杯');
   });
 });

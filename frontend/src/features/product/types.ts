@@ -62,6 +62,7 @@ export interface ProductSupplierQuote {
   id: number;
   skuId: number;
   supplierId: number;
+  supplierName?: string | null;
   supplierItemNo: string | null;
   purchasePrice: number;
   minPurchaseQuantity: number;
@@ -113,6 +114,7 @@ export interface Product {
   itemNo: string;
   productName: string;
   categoryId: number;
+  categoryName?: string | null;
   brand: string | null;
   productType: ProductType;
   mainImageFileId: number | null;

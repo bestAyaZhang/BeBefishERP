@@ -6,7 +6,6 @@ import type { Category } from '../masterdata/types';
 import { httpProductService } from './httpProductService';
 import { productFixture, productPage } from './productTestFixtures';
 import type { Product, ProductFormPayload, ProductService } from './types';
-import ProductDetailDrawer from './components/ProductDetailDrawer.vue';
 import ProductForm from './components/ProductForm.vue';
 import ProductList from './components/ProductList.vue';
 import { deduplicateCategories } from './productCategoryTree';
@@ -598,75 +597,6 @@ describe('product feature', () => {
     expect(wrapper.get('[data-testid="product-category"]').text()).toContain('玻璃杯');
   });
 
-  it('uses the approved prototype layout for the product detail drawer', async () => {
-    const product = productFixture({
-      id: 18,
-      productCode: 'PRD-000018',
-      itemNo: 'EW43249',
-      productName: '高脚玻璃杯',
-      categoryId: 1,
-      brand: '共典',
-      productType: 'simple',
-      mainImageFileId: 88,
-      mainImageUrl: '/uploads/glass.png',
-      remark: '',
-      specifications: [{ name: '容量', values: ['210'] }],
-      skus: [{
-        id: 180,
-        skuCode: 'PRD-000018-001',
-        barcode: 'EW43249',
-        skuName: '默认规格',
-        specificationValues: [],
-        salesUnit: '只',
-        defaultSalePrice: 19.9,
-        standardCost: 8,
-        packageLengthCm: 46.7,
-        packageWidthCm: 30.7,
-        packageHeightCm: 22.4,
-        packageVolumeCm3: 32000,
-        netWeightKg: 0.2,
-        grossWeightKg: 0.42,
-        gramWeightG: 200,
-        packagingMethod: '普盒/1*12*4/48*',
-        cartonQuantity: 48,
-        skuImageFileId: null,
-        packageImageFileId: null,
-        cartonImageFileId: null,
-        defaultSku: true,
-        status: 'enabled'
-      }],
-      defaultSupplierName: '义乌玻璃厂',
-      status: 'enabled'
-    });
-    const wrapper = mount(ProductDetailDrawer, { props: { product } });
-    const drawer = wrapper.get('[data-testid="product-detail-drawer"]');
-
-    expect(drawer.classes()).toContain('w-[50vw]');
-    expect(drawer.classes()).toContain('min-w-[620px]');
-    expect(drawer.classes()).toContain('max-w-[840px]');
-    expect(drawer.classes()).toContain('border-l');
-    expect(drawer.classes()).toContain('shadow-[0_24px_80px_rgba(31,45,74,0.24)]');
-    expect(drawer.text()).toContain('商品详情');
-    expect(drawer.text()).toContain('包装尺寸');
-    expect(drawer.text()).toContain('重量与条码');
-    expect(drawer.text()).toContain('图片资料');
-    expect(drawer.text()).toContain('资料完整度');
-    expect(wrapper.get('[data-testid="product-detail-drawer-sku"]').text()).toContain('SKU 信息');
-    expect(wrapper.get('[data-testid="product-detail-drawer-sku"]').text()).toContain('SKU 图片');
-    expect(wrapper.get('[data-testid="product-detail-drawer-sku"]').text()).toContain('货号');
-    expect(wrapper.get('[data-testid="product-detail-drawer-sku"]').text()).toContain('SKU 名称');
-    expect(wrapper.get('[data-testid="product-detail-drawer-sku"]').text()).toContain('容量：210ml');
-    expect(wrapper.findAll('[data-testid="product-detail-sku-card"]')).toHaveLength(1);
-    expect(wrapper.get('[data-testid="product-detail-sku-card"]').classes()).toContain('p-3');
-    expect(wrapper.get('[data-testid="product-detail-sku-fields"]').classes()).toContain('sm:grid-cols-2');
-    expect(wrapper.get('[data-testid="product-detail-sku-image"]').find('img').exists()).toBe(false);
-    expect(wrapper.get('[data-testid="product-detail-drawer-header"]').classes()).toContain('mb-6');
-    expect(wrapper.get('[data-testid="product-detail-drawer-summary"]').classes()).toContain('min-[1180px]:grid-cols-[260px_minmax(0,1fr)]');
-    expect(wrapper.get('[data-testid="edit-product-detail"]').text()).toContain('编辑资料');
-
-    await wrapper.get('[data-testid="close-product-detail-drawer"]').trigger('click');
-    expect(wrapper.emitted('close')).toHaveLength(1);
-  });
 });
 
 describe('Task 8 product catalog list', () => {
