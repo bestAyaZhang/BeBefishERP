@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DashboardOverview } from '../features/dashboard/types';
 import WorkbenchView from './WorkbenchView.vue';
 
@@ -86,6 +86,10 @@ describe('WorkbenchView', () => {
     dashboardMocks.getOverview.mockReset();
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('renders every api summary metric and the dense operation lists', async () => {
     dashboardMocks.getOverview.mockResolvedValue(overviewFixture);
 
@@ -127,6 +131,18 @@ describe('WorkbenchView', () => {
     expect(dashboardMocks.getOverview).toHaveBeenLastCalledWith('year');
     expect(yearButton.attributes('aria-pressed')).toBe('true');
     expect(weekButton.attributes('aria-pressed')).toBe('false');
+  });
+
+  it('does not request the already selected period again', async () => {
+    dashboardMocks.getOverview.mockResolvedValue(overviewFixture);
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="period-week"]').trigger('click');
+    await flushPromises();
+
+    expect(dashboardMocks.getOverview).toHaveBeenCalledTimes(1);
+    expect(dashboardMocks.getOverview).toHaveBeenCalledWith('week');
   });
 
   it('uses one stable chart area for sales bars and the order line', async () => {
@@ -200,6 +216,87 @@ describe('WorkbenchView', () => {
     await flushPromises();
 
     expect(wrapper.get('[data-testid="summary-salesAmount"]').text()).toContain('9,876.54');
+    expect(wrapper.get('[data-testid="period-year"]').attributes('aria-pressed')).toBe('true');
+  });
+
+  it('keeps loading active when an older request settles before the latest request', async () => {
+    const monthRequest = deferred<DashboardOverview>();
+    const yearRequest = deferred<DashboardOverview>();
+    dashboardMocks.getOverview
+      .mockResolvedValueOnce(overviewFixture)
+      .mockReturnValueOnce(monthRequest.promise)
+      .mockReturnValueOnce(yearRequest.promise);
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="period-month"]').trigger('click');
+    await wrapper.get('[data-testid="period-year"]').trigger('click');
+    monthRequest.resolve({
+      ...overviewFixture,
+      summary: { ...overviewFixture.summary, salesAmount: 111.11 }
+    });
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="dashboard-content"]').attributes('aria-busy')).toBe('true');
+    expect(wrapper.find('[data-testid="dashboard-loading"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="summary-salesAmount"]').text()).toContain('2,434.23');
+
+    yearRequest.resolve({
+      ...overviewFixture,
+      summary: { ...overviewFixture.summary, salesAmount: 9999 }
+    });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="dashboard-content"]').attributes('aria-busy')).toBe('false');
+  });
+
+  it('does not update component state or warn when a request settles after unmount', async () => {
+    const request = deferred<DashboardOverview>();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    dashboardMocks.getOverview.mockReturnValue(request.promise);
+    const wrapper = mountWorkbench();
+    const setupState = (wrapper.vm.$ as unknown as {
+      setupState: { overview: DashboardOverview | null };
+    }).setupState;
+
+    wrapper.unmount();
+    request.resolve(overviewFixture);
+    await flushPromises();
+
+    expect(setupState.overview).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('ignores an older response that settles after a failed request is retried', async () => {
+    const monthRequest = deferred<DashboardOverview>();
+    const retriedOverview: DashboardOverview = {
+      ...overviewFixture,
+      summary: { ...overviewFixture.summary, salesAmount: 7777.77 }
+    };
+    dashboardMocks.getOverview
+      .mockResolvedValueOnce(overviewFixture)
+      .mockReturnValueOnce(monthRequest.promise)
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce(retriedOverview);
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="period-month"]').trigger('click');
+    await wrapper.get('[data-testid="period-year"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="dashboard-error"]').text()).toContain('已保留上次数据');
+
+    await wrapper.get('[data-testid="dashboard-retry"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="summary-salesAmount"]').text()).toContain('7,777.77');
+
+    monthRequest.resolve({
+      ...overviewFixture,
+      summary: { ...overviewFixture.summary, salesAmount: 222.22 }
+    });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="summary-salesAmount"]').text()).toContain('7,777.77');
     expect(wrapper.get('[data-testid="period-year"]').attributes('aria-pressed')).toBe('true');
   });
 
