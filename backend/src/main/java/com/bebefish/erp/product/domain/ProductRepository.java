@@ -1,8 +1,11 @@
 package com.bebefish.erp.product.domain;
 
-import java.util.Optional;
-import java.util.Map;
 import java.math.BigDecimal;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -47,5 +50,35 @@ public interface ProductRepository {
 
     default Optional<String> findDefaultSupplierName(long productId) {
         return Optional.empty();
+    }
+
+    default ProductCatalogData loadCatalogData(Collection<Long> productIds) {
+        return ProductCatalogData.empty();
+    }
+
+    default Map<Long, Long> categoryCounts() {
+        return Map.of();
+    }
+
+    record ProductCatalogData(
+            Map<Long, BigDecimal> stockQuantityBySkuId,
+            Map<Long, List<SupplierQuote>> supplierQuotesBySkuId,
+            Map<Long, BigDecimal> defaultSalePriceByProductId,
+            Map<Long, String> defaultSupplierNameByProductId,
+            Map<Long, String> imageUrlByFileId
+    ) {
+        public ProductCatalogData {
+            stockQuantityBySkuId = Map.copyOf(stockQuantityBySkuId);
+            var copiedQuotes = new LinkedHashMap<Long, List<SupplierQuote>>();
+            supplierQuotesBySkuId.forEach((skuId, quotes) -> copiedQuotes.put(skuId, List.copyOf(quotes)));
+            supplierQuotesBySkuId = Map.copyOf(copiedQuotes);
+            defaultSalePriceByProductId = Map.copyOf(defaultSalePriceByProductId);
+            defaultSupplierNameByProductId = Map.copyOf(defaultSupplierNameByProductId);
+            imageUrlByFileId = Map.copyOf(imageUrlByFileId);
+        }
+
+        public static ProductCatalogData empty() {
+            return new ProductCatalogData(Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+        }
     }
 }

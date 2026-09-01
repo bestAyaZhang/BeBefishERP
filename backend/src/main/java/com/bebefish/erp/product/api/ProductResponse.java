@@ -1,12 +1,12 @@
 package com.bebefish.erp.product.api;
 
+import com.bebefish.erp.product.application.ProductCatalogMetrics;
 import com.bebefish.erp.product.domain.Packaging;
 import com.bebefish.erp.product.domain.Product;
 import com.bebefish.erp.product.domain.Sku;
 import com.bebefish.erp.product.domain.Specification;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -21,6 +21,12 @@ public record ProductResponse(
         Long mainImageFileId,
         String mainImageUrl,
         String defaultSupplierName,
+        BigDecimal totalStock,
+        BigDecimal totalSafetyStock,
+        BigDecimal defaultSalePrice,
+        int completenessPercent,
+        String completenessStatus,
+        List<String> missingGroups,
         String status,
         String remark,
         List<SpecificationResponse> specifications,
@@ -28,25 +34,22 @@ public record ProductResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
-    static ProductResponse from(Product product) {
-        return from(product, (String) null, null);
-    }
-
-    static ProductResponse from(Product product, String mainImageUrl, String defaultSupplierName) {
-        var imageUrls = new HashMap<Long, String>();
-        if (product.mainImageFileId() != null && mainImageUrl != null) {
-            imageUrls.put(product.mainImageFileId(), mainImageUrl);
-        }
-        return from(product, imageUrls, defaultSupplierName);
-    }
-
-    static ProductResponse from(Product product, Map<Long, String> imageUrls, String defaultSupplierName) {
+    static ProductResponse from(
+            Product product,
+            ProductCatalogMetrics metrics,
+            Map<Long, String> resolvedImageUrls
+    ) {
         return new ProductResponse(
                 product.id(), product.code(), product.itemNo(), product.name(), product.categoryId(),
                 product.brand(), product.type().name().toLowerCase(), product.mainImageFileId(),
-                imageUrls.get(product.mainImageFileId()), defaultSupplierName, product.status(), product.remark(),
+                resolvedImageUrls.get(product.mainImageFileId()), metrics.defaultSupplierName(),
+                metrics.totalStock(), metrics.totalSafetyStock(), metrics.defaultSalePrice(),
+                metrics.completeness().percent(), metrics.completeness().status(),
+                metrics.completeness().missingGroups(), product.status(), product.remark(),
                 product.specifications().stream().map(SpecificationResponse::from).toList(),
-                product.skus().stream().map(sku -> SkuResponse.from(sku, imageUrls)).toList(),
+                product.skus().stream().map(sku -> SkuResponse.from(
+                        sku, metrics.skus().get(sku.id()), resolvedImageUrls
+                )).toList(),
                 product.createdAt(), product.updatedAt()
         );
     }
@@ -68,6 +71,7 @@ public record ProductResponse(
             BigDecimal defaultSalePrice,
             BigDecimal standardCost,
             BigDecimal safetyStockQuantity,
+            BigDecimal stockQuantity,
             BigDecimal packageLengthCm,
             BigDecimal packageWidthCm,
             BigDecimal packageHeightCm,
@@ -87,19 +91,20 @@ public record ProductResponse(
             String packageImageUrl,
             Long cartonImageFileId,
             String cartonImageUrl,
+            List<SupplierQuoteResponse> supplierQuotes,
             boolean defaultSku,
             String status
     ) {
-        static SkuResponse from(Sku sku) {
-            return from(sku, Map.of());
-        }
-
-        static SkuResponse from(Sku sku, Map<Long, String> imageUrls) {
+        static SkuResponse from(
+                Sku sku,
+                ProductCatalogMetrics.SkuCatalogMetrics metrics,
+                Map<Long, String> imageUrls
+        ) {
             Packaging packaging = sku.packaging();
             return new SkuResponse(
                     sku.id(), sku.code(), sku.barcode(), sku.name(), sku.specText(),
                     sku.specificationValues(), sku.salesUnit(), sku.defaultSalePrice(), sku.standardCost(),
-                    sku.safetyStockQuantity(),
+                    sku.safetyStockQuantity(), metrics.stockQuantity(),
                     packaging == null ? null : packaging.lengthCm(),
                     packaging == null ? null : packaging.widthCm(),
                     packaging == null ? null : packaging.heightCm(),
@@ -119,6 +124,7 @@ public record ProductResponse(
                     packaging == null ? null : imageUrls.get(packaging.packageImageFileId()),
                     packaging == null ? null : packaging.cartonImageFileId(),
                     packaging == null ? null : imageUrls.get(packaging.cartonImageFileId()),
+                    metrics.supplierQuotes().stream().map(SupplierQuoteResponse::from).toList(),
                     sku.isDefault(), sku.status()
             );
         }

@@ -7,13 +7,18 @@ import com.bebefish.erp.product.domain.ProductRepository;
 import com.bebefish.erp.product.domain.ProductType;
 import com.bebefish.erp.product.domain.Sku;
 import com.bebefish.erp.product.domain.Specification;
+import com.bebefish.erp.product.domain.SupplierQuote;
+import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -156,6 +161,16 @@ public class ProductJpaAdapter implements ProductRepository {
     ) {
         var where = new ArrayList<String>();
         var parameters = new ArrayList<Object>();
+        var categoryCte = "";
+        if (categoryId != null) {
+            categoryCte = "with recursive selected_categories as ("
+                    + "select id from product_category where id = ? "
+                    + "union all "
+                    + "select child.id from product_category child "
+                    + "join selected_categories parent on child.parent_id = parent.id"
+                    + ") ";
+            parameters.add(categoryId);
+        }
         if (keyword != null) {
             where.add("(product.product_code like ? or product.item_no like ? or product.product_name like ? "
                     + "or exists (select 1 from product_sku sku where sku.product_id = product.id "
@@ -168,8 +183,7 @@ public class ProductJpaAdapter implements ProductRepository {
             parameters.add(pattern);
         }
         if (categoryId != null) {
-            where.add("product.category_id = ?");
-            parameters.add(categoryId);
+            where.add("product.category_id in (select id from selected_categories)");
         }
         if (supplierId != null) {
             where.add("exists (select 1 from sku_supplier_quote quote "
@@ -183,7 +197,7 @@ public class ProductJpaAdapter implements ProductRepository {
         }
         var whereSql = where.isEmpty() ? "" : " where " + String.join(" and ", where);
         var count = jdbc.queryForObject(
-                "select count(*) from product_spu product" + whereSql,
+                categoryCte + "select count(*) from product_spu product" + whereSql,
                 Long.class,
                 parameters.toArray()
         );
@@ -191,7 +205,7 @@ public class ProductJpaAdapter implements ProductRepository {
         pageParameters.add(pageable.getPageSize());
         pageParameters.add(pageable.getOffset());
         var ids = jdbc.queryForList(
-                "select product.id from product_spu product" + whereSql
+                categoryCte + "select product.id from product_spu product" + whereSql
                         + " order by product.product_name asc, product.id asc limit ? offset ?",
                 Long.class,
                 pageParameters.toArray()
@@ -237,6 +251,142 @@ public class ProductJpaAdapter implements ProductRepository {
                         + "and quote.status = 'enabled' and supplier.status = 'enabled'",
                 (resultSet, rowNumber) -> resultSet.getString("supplier_names"), productId
         ).stream().filter(value -> value != null && !value.isBlank()).findFirst();
+    }
+
+    @Override
+    public ProductCatalogData loadCatalogData(Collection<Long> productIds) {
+        var ids = productIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) {
+            return ProductCatalogData.empty();
+        }
+        var placeholders = placeholders(ids.size());
+        return new ProductCatalogData(
+                findStockQuantities(ids, placeholders),
+                findSupplierQuotes(ids, placeholders),
+                findDefaultSalePrices(ids, placeholders),
+                findDefaultSupplierNames(ids, placeholders),
+                findImageUrls(ids, placeholders)
+        );
+    }
+
+    @Override
+    public Map<Long, Long> categoryCounts() {
+        var counts = new LinkedHashMap<Long, Long>();
+        jdbc.query(
+                "with recursive category_descendants as ("
+                        + "select id as ancestor_id, id as descendant_id from product_category "
+                        + "union all "
+                        + "select tree.ancestor_id, child.id from product_category child "
+                        + "join category_descendants tree on child.parent_id = tree.descendant_id"
+                        + ") "
+                        + "select category.id as category_id, count(distinct product.id) as product_count "
+                        + "from product_category category "
+                        + "left join category_descendants tree on tree.ancestor_id = category.id "
+                        + "left join product_spu product on product.category_id = tree.descendant_id "
+                        + "group by category.id order by category.id",
+                (RowCallbackHandler) resultSet -> counts.put(
+                        resultSet.getLong("category_id"), resultSet.getLong("product_count")
+                )
+        );
+        return counts;
+    }
+
+    private Map<Long, BigDecimal> findStockQuantities(List<Long> productIds, String placeholders) {
+        var quantities = new HashMap<Long, BigDecimal>();
+        jdbc.query(
+                "select sku.id as sku_id, coalesce(sum(balance.quantity), 0) as stock_quantity "
+                        + "from product_sku sku "
+                        + "left join inventory_balance balance on balance.sku_id = sku.id "
+                        + "where sku.product_id in (" + placeholders + ") "
+                        + "group by sku.id",
+                (RowCallbackHandler) resultSet -> quantities.put(
+                        resultSet.getLong("sku_id"), resultSet.getBigDecimal("stock_quantity")
+                ),
+                productIds.toArray()
+        );
+        return quantities;
+    }
+
+    private Map<Long, List<SupplierQuote>> findSupplierQuotes(List<Long> productIds, String placeholders) {
+        var quotesBySkuId = new LinkedHashMap<Long, List<SupplierQuote>>();
+        jdbc.query(
+                "select quote.id, quote.sku_id, quote.supplier_id, quote.supplier_item_no, "
+                        + "quote.purchase_price, quote.min_purchase_quantity, quote.is_default, quote.status "
+                        + "from sku_supplier_quote quote "
+                        + "join product_sku sku on sku.id = quote.sku_id "
+                        + "where sku.product_id in (" + placeholders + ") "
+                        + "order by quote.sku_id, quote.is_default desc, quote.id asc",
+                (RowCallbackHandler) resultSet -> quotesBySkuId.computeIfAbsent(
+                        resultSet.getLong("sku_id"), ignored -> new ArrayList<>()
+                ).add(new SupplierQuote(
+                        resultSet.getLong("id"),
+                        resultSet.getLong("sku_id"),
+                        resultSet.getLong("supplier_id"),
+                        resultSet.getString("supplier_item_no"),
+                        resultSet.getBigDecimal("purchase_price"),
+                        resultSet.getBigDecimal("min_purchase_quantity"),
+                        resultSet.getBoolean("is_default"),
+                        resultSet.getString("status")
+                )),
+                productIds.toArray()
+        );
+        return quotesBySkuId;
+    }
+
+    private Map<Long, BigDecimal> findDefaultSalePrices(List<Long> productIds, String placeholders) {
+        var prices = new HashMap<Long, BigDecimal>();
+        jdbc.query(
+                "select product_id, default_sale_price from product_sku "
+                        + "where product_id in (" + placeholders + ") and is_default = true "
+                        + "order by id",
+                (RowCallbackHandler) resultSet -> prices.putIfAbsent(
+                        resultSet.getLong("product_id"), resultSet.getBigDecimal("default_sale_price")
+                ),
+                productIds.toArray()
+        );
+        return prices;
+    }
+
+    private Map<Long, String> findDefaultSupplierNames(List<Long> productIds, String placeholders) {
+        var names = new HashMap<Long, String>();
+        jdbc.query(
+                "select sku.product_id, "
+                        + "group_concat(distinct supplier.supplier_name order by supplier.supplier_name separator '、') "
+                        + "as supplier_names from product_sku sku "
+                        + "join sku_supplier_quote quote on quote.sku_id = sku.id "
+                        + "join supplier supplier on supplier.id = quote.supplier_id "
+                        + "where sku.product_id in (" + placeholders + ") "
+                        + "and quote.is_default = true and quote.status = 'enabled' and supplier.status = 'enabled' "
+                        + "group by sku.product_id",
+                (RowCallbackHandler) resultSet -> names.put(
+                        resultSet.getLong("product_id"), resultSet.getString("supplier_names")
+                ),
+                productIds.toArray()
+        );
+        return names;
+    }
+
+    private Map<Long, String> findImageUrls(List<Long> productIds, String placeholders) {
+        var urls = new HashMap<Long, String>();
+        var parameters = new ArrayList<Object>();
+        for (var ignored = 0; ignored < 4; ignored++) {
+            parameters.addAll(productIds);
+        }
+        jdbc.query(
+                "select file.id, file.access_url from file_asset file "
+                        + "join ("
+                        + "select main_image_file_id as file_id from product_spu where id in (" + placeholders + ") "
+                        + "union select sku_image_file_id from product_sku where product_id in (" + placeholders + ") "
+                        + "union select package_image_file_id from product_sku where product_id in (" + placeholders + ") "
+                        + "union select carton_image_file_id from product_sku where product_id in (" + placeholders + ")"
+                        + ") image_ref on image_ref.file_id = file.id "
+                        + "where file.status = 'enabled'",
+                (RowCallbackHandler) resultSet -> urls.put(
+                        resultSet.getLong("id"), resultSet.getString("access_url")
+                ),
+                parameters.toArray()
+        );
+        return urls;
     }
 
     private boolean exists(String sql, String value, Long excludedProductId) {
@@ -524,6 +674,10 @@ public class ProductJpaAdapter implements ProductRepository {
     private Integer getNullableInteger(java.sql.ResultSet resultSet, String column) throws java.sql.SQLException {
         var value = resultSet.getInt(column);
         return resultSet.wasNull() ? null : value;
+    }
+
+    private String placeholders(int count) {
+        return String.join(", ", Collections.nCopies(count, "?"));
     }
 
     private String typeValue(ProductType type) {

@@ -42,6 +42,10 @@ class ProductControllerTest {
 
     @BeforeEach
     void setUp() {
+        jdbc.update("delete balance from inventory_balance balance "
+                + "join product_sku sku on sku.id = balance.sku_id "
+                + "join product_spu product on product.id = sku.product_id "
+                + "where product.product_code like 'T7-%' or product.item_no like 'EW432%'");
         jdbc.update("delete quote from sku_supplier_quote quote "
                 + "join product_sku sku on sku.id = quote.sku_id "
                 + "join product_spu product on product.id = sku.product_id "
@@ -60,7 +64,10 @@ class ProductControllerTest {
         jdbc.update("delete from product_spu where product_code like 'T7-%' or item_no like 'EW432%'");
         jdbc.update("update business_code_sequence set next_value = 1 where sequence_name = 'product'");
         jdbc.update("delete from file_asset where storage_name like 'T7-%'");
+        jdbc.update("delete from warehouse where warehouse_no like 'T7-WH-%'");
         jdbc.update("delete from supplier where supplier_no in ('T7-SUP-1', 'T7-SUP-QUOTE', 'T7-SUP-QUOTE-2')");
+        jdbc.update("delete from product_category where category_code = 'T7-CAT-GRANDCHILD'");
+        jdbc.update("delete from product_category where category_code in ('T7-CAT-CHILD', 'T7-CAT-EMPTY')");
         jdbc.update("delete from product_category where category_code = 'T7-CAT'");
         jdbc.update("insert into product_category (category_code, category_name, level_no, sort_order, status, created_at, updated_at) "
                 + "values ('T7-CAT', '测试分类', 1, 0, 'enabled', now(3), now(3))");
@@ -474,6 +481,108 @@ class ProductControllerTest {
                 .andExpect(jsonPath("$.data.records[0].defaultSupplierName").value("义乌玻璃厂"));
     }
 
+    @Test
+    void returnsBatchCatalogMetricsAndAllSkuSupplierQuotes() throws Exception {
+        var request = requestBody(null, "EW43259", "聚合读模型商品", null);
+        request.put("productType", "variant");
+        var firstSku = new LinkedHashMap<>(skuInput(request));
+        firstSku.put("skuCode", "T7-CATALOG-SKU-1");
+        firstSku.put("skuName", "默认 SKU");
+        firstSku.put("defaultSalePrice", "9.90");
+        firstSku.put("safetyStockQuantity", "5.5");
+        firstSku.put("supplierQuotes", List.of(
+                quoteInput(quoteSupplierId, "T7-DEFAULT-QUOTE", "4.20", true),
+                Map.of(
+                        "supplierId", secondQuoteSupplierId,
+                        "supplierItemNo", "T7-DISABLED-QUOTE",
+                        "purchasePrice", "4.00",
+                        "minPurchaseQuantity", "2",
+                        "defaultQuote", false,
+                        "status", "disabled"
+                )
+        ));
+        var secondSku = new LinkedHashMap<>(skuInput(request));
+        secondSku.put("skuCode", "T7-CATALOG-SKU-2");
+        secondSku.put("skuName", "第二 SKU");
+        secondSku.put("defaultSalePrice", "19.90");
+        secondSku.put("safetyStockQuantity", "7.0");
+        secondSku.put("supplierQuotes", List.of(
+                quoteInput(secondQuoteSupplierId, "T7-SECOND-DEFAULT", "8.40", true)
+        ));
+        request.put("skus", List.of(firstSku, secondSku));
+
+        var response = mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var product = objectMapper.readTree(response).path("data");
+        var productId = product.path("id").asLong();
+        var firstSkuId = product.path("skus").get(0).path("id").asLong();
+        var secondSkuId = product.path("skus").get(1).path("id").asLong();
+        var firstWarehouseId = createWarehouse("T7-WH-1", "测试仓一");
+        var secondWarehouseId = createWarehouse("T7-WH-2", "测试仓二");
+        insertBalance(firstWarehouseId, firstSkuId, "6.25");
+        insertBalance(secondWarehouseId, firstSkuId, "3.25");
+        insertBalance(firstWarehouseId, secondSkuId, "4.00");
+        insertBalance(secondWarehouseId, secondSkuId, "5.00");
+
+        mvc.perform(get("/api/products")
+                        .header("Authorization", bearer(viewToken))
+                        .param("keyword", "EW43259"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records[0].totalStock").value(18.5))
+                .andExpect(jsonPath("$.data.records[0].totalSafetyStock").value(12.5))
+                .andExpect(jsonPath("$.data.records[0].defaultSalePrice").value(9.9))
+                .andExpect(jsonPath("$.data.records[0].completenessPercent").value(100))
+                .andExpect(jsonPath("$.data.records[0].completenessStatus").value("complete"))
+                .andExpect(jsonPath("$.data.records[0].missingGroups").isEmpty())
+                .andExpect(jsonPath("$.data.records[0].skus[0].stockQuantity").value(9.5))
+                .andExpect(jsonPath("$.data.records[0].skus[1].stockQuantity").value(9.0));
+
+        mvc.perform(get("/api/products/{id}", productId)
+                        .header("Authorization", bearer(viewToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalStock").value(18.5))
+                .andExpect(jsonPath("$.data.skus[0].supplierQuotes.length()").value(2))
+                .andExpect(jsonPath("$.data.skus[0].supplierQuotes[0].defaultQuote").value(true))
+                .andExpect(jsonPath("$.data.skus[0].supplierQuotes[1].status").value("disabled"))
+                .andExpect(jsonPath("$.data.skus[1].supplierQuotes.length()").value(1))
+                .andExpect(jsonPath("$.data.mainImageUrl").value("/uploads/T7-image.png"));
+    }
+
+    @Test
+    void includesDeepDescendantsInCategoryFilterAndCategoryCounts() throws Exception {
+        var childCategoryId = createCategory("T7-CAT-CHILD", "测试子分类", categoryId, 2);
+        var grandchildCategoryId = createCategory("T7-CAT-GRANDCHILD", "测试孙分类", childCategoryId, 3);
+        var emptyCategoryId = createCategory("T7-CAT-EMPTY", "测试空分类", categoryId, 2);
+        var request = requestBody(null, "EW43260", "孙分类商品", null);
+        request.put("categoryId", grandchildCategoryId);
+        mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/products")
+                        .header("Authorization", bearer(viewToken))
+                        .param("categoryId", Long.toString(categoryId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.records[0].itemNo").value("EW43260"));
+
+        var countsResponse = mvc.perform(get("/api/products/category-counts")
+                        .header("Authorization", bearer(viewToken)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var counts = objectMapper.readTree(countsResponse).path("data");
+        assertThat(counts.path(Long.toString(categoryId)).asLong()).isEqualTo(1);
+        assertThat(counts.path(Long.toString(childCategoryId)).asLong()).isEqualTo(1);
+        assertThat(counts.path(Long.toString(grandchildCategoryId)).asLong()).isEqualTo(1);
+        assertThat(counts.path(Long.toString(emptyCategoryId)).asLong()).isZero();
+    }
+
     private JsonNode createProduct() throws Exception {
         var response = mvc.perform(post("/api/products")
                         .header("Authorization", bearer(editToken))
@@ -558,6 +667,31 @@ class ProductControllerTest {
     private long quoteCount(long skuId) {
         return jdbc.queryForObject(
                 "select count(*) from sku_supplier_quote where sku_id = ?", Long.class, skuId
+        );
+    }
+
+    private long createWarehouse(String warehouseNo, String warehouseName) {
+        jdbc.update("insert into warehouse (warehouse_no, warehouse_name, is_default, status, created_at, updated_at) "
+                + "values (?, ?, false, 'enabled', now(3), now(3))", warehouseNo, warehouseName);
+        return jdbc.queryForObject(
+                "select id from warehouse where warehouse_no = ?", Long.class, warehouseNo
+        );
+    }
+
+    private void insertBalance(long warehouseId, long skuId, String quantity) {
+        jdbc.update("insert into inventory_balance "
+                        + "(warehouse_id, sku_id, quantity, version_no, created_at, updated_at) "
+                        + "values (?, ?, ?, 0, now(3), now(3))",
+                warehouseId, skuId, quantity);
+    }
+
+    private long createCategory(String code, String name, long parentId, int level) {
+        jdbc.update("insert into product_category "
+                        + "(category_code, category_name, parent_id, level_no, sort_order, status, created_at, updated_at) "
+                        + "values (?, ?, ?, ?, 0, 'enabled', now(3), now(3))",
+                code, name, parentId, level);
+        return jdbc.queryForObject(
+                "select id from product_category where category_code = ?", Long.class, code
         );
     }
 

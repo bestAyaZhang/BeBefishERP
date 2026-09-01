@@ -3,10 +3,14 @@ package com.bebefish.erp.product.api;
 import com.bebefish.erp.common.api.ApiResponse;
 import com.bebefish.erp.common.api.BusinessException;
 import com.bebefish.erp.common.api.PageResponse;
-import com.bebefish.erp.masterdata.api.ChangeMasterdataStatusRequest;
 import com.bebefish.erp.file.domain.FileAccessUrlResolver;
+import com.bebefish.erp.masterdata.api.ChangeMasterdataStatusRequest;
+import com.bebefish.erp.product.application.ProductCatalogMetrics;
+import com.bebefish.erp.product.application.ProductCatalogQueryService;
 import com.bebefish.erp.product.application.ProductService;
 import jakarta.validation.Valid;
+import java.util.List;
+import java.util.Map;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -19,16 +23,21 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/products")
 public class ProductController {
     private final ProductService service;
+    private final ProductCatalogQueryService catalogQueryService;
     private final FileAccessUrlResolver urlResolver;
 
-    public ProductController(ProductService service, FileAccessUrlResolver urlResolver) {
+    public ProductController(
+            ProductService service,
+            ProductCatalogQueryService catalogQueryService,
+            FileAccessUrlResolver urlResolver
+    ) {
         this.service = service;
+        this.catalogQueryService = catalogQueryService;
         this.urlResolver = urlResolver;
     }
 
@@ -46,8 +55,17 @@ public class ProductController {
         var products = service.listProducts(
                 keyword, categoryId, supplierId, status,
                 PageRequest.of(page - 1, size, Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")))
-        ).map(this::toResponse);
-        return ApiResponse.success(PageResponse.from(products));
+        );
+        var metrics = catalogQueryService.load(products.getContent());
+        return ApiResponse.success(PageResponse.from(products.map(
+                product -> toResponse(product, metrics.get(product.id()))
+        )));
+    }
+
+    @GetMapping("/category-counts")
+    @PreAuthorize("hasAuthority('product:view')")
+    public ApiResponse<Map<Long, Long>> categoryCounts() {
+        return ApiResponse.success(catalogQueryService.categoryCounts());
     }
 
     @GetMapping("/{id}")
@@ -81,11 +99,19 @@ public class ProductController {
     }
 
     private ProductResponse toResponse(com.bebefish.erp.product.domain.Product product) {
-        var imageUrls = service.imageUrls(product.id()).entrySet().stream()
+        var metrics = catalogQueryService.load(List.of(product)).get(product.id());
+        return toResponse(product, metrics);
+    }
+
+    private ProductResponse toResponse(
+            com.bebefish.erp.product.domain.Product product,
+            ProductCatalogMetrics metrics
+    ) {
+        var imageUrls = metrics.imageUrls().entrySet().stream()
                 .collect(java.util.stream.Collectors.toMap(
                         Map.Entry::getKey, entry -> urlResolver.resolve(entry.getValue())
                 ));
-        return ProductResponse.from(product, imageUrls, service.defaultSupplierName(product.id()));
+        return ProductResponse.from(product, metrics, imageUrls);
     }
 
     private void validatePage(int page, int size) {
