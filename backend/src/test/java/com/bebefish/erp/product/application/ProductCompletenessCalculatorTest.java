@@ -82,6 +82,27 @@ class ProductCompletenessCalculatorTest {
         assertThat(calculator.calculate(product, completeQuotes()).missingGroups()).isEmpty();
     }
 
+    @Test
+    void requiresAnEnabledSkuForImageCompleteness() {
+        var complete = completeProduct();
+        var enabledSku = complete.skus().getFirst();
+        var disabledSku = new Sku(
+                enabledSku.id(), enabledSku.code(), enabledSku.barcode(), enabledSku.name(), enabledSku.specText(),
+                enabledSku.specificationValues(), enabledSku.salesUnit(), enabledSku.defaultSalePrice(),
+                enabledSku.standardCost(), enabledSku.safetyStockQuantity(), enabledSku.packaging(),
+                enabledSku.skuImageFileId(), enabledSku.isDefault(), "disabled"
+        );
+        var product = productWithSkus(complete, List.of(disabledSku));
+
+        var result = calculator.calculate(product, Map.of());
+
+        assertThat(result.percent()).isEqualTo(20);
+        assertThat(result.status()).isEqualTo("incomplete");
+        assertThat(result.missingGroups()).containsExactly(
+                "SKU 信息", "采购信息", "包装重量", "图片资料"
+        );
+    }
+
     private Product productWithoutImagesOrQuotes() {
         var complete = completeProduct();
         var sku = complete.skus().getFirst();

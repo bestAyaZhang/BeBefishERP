@@ -57,3 +57,50 @@
 
 - 商品基础聚合分页装载仍保留既有 `findById` N+1，后续若列表页规模或 SKU/规格数量显著增长，建议单独任务批量化基础聚合装载并增加 SQL 计数测试。
 - 分类递归依赖 `product_category` 保持无环树结构；异常环数据会触及 MySQL 递归深度限制。现有业务约束下未新增持久化字段或迁移。
+
+## Fix Round 1
+
+### Status
+
+已修复审查指出的列表基础聚合 N+1 和无 enabled SKU 时图片完整度误判。Task 1/2 保存及报价语义、分类递归、批量指标 SQL 和响应字段均保持不变。
+
+### RED / GREEN 1 - 图片完整度空集合
+
+- 新增用例：商品基本信息和主图完整，但唯一 SKU 为 disabled；期望 `percent=20`，并按固定顺序缺失“SKU 信息、采购信息、包装重量、图片资料”。
+- RED 命令：`mvn -f backend/pom.xml -Dtest=ProductCompletenessCalculatorTest test`。
+- RED 结果：5 个测试中 1 个失败，期望 `20`、实际 `40`；其余 4 个通过，准确证明 `allMatch(empty)` 使图片资料错误得分。
+- GREEN：`imagesComplete` 同时要求 `enabledSkus` 非空；同一命令 5/5 通过。
+
+### RED / GREEN 2 - 列表基础聚合查询数
+
+- 新增仓储级集成测试 `ProductJpaAdapterQueryCountTest`。项目无现成 SQL 计数设施，因此测试使用仅存在于测试代码的 `DelegatingDataSource` 连接代理，统计真实 JDBC `prepareStatement` 次数；数据和查询均连接 `bebefish_erp_test`。
+- RED 命令：`mvn -f backend/pom.xml -Dtest=ProductJpaAdapterQueryCountTest test`。
+- RED 结果：2 个测试中查询数用例失败；页大小 1 为 6 条 SQL，页大小 2 增长到 10 条，期望固定为 6 条。空页用例通过并确认只执行 count 与分页 ID 两条 SQL。
+- GREEN：分页 ID 非空时，以四条参数化批量查询装载 `product_spu`、`product_spec` + `product_spec_value`、`product_sku_spec_value`、`product_sku`；页大小 1 和 2 均固定为 6 条 SQL，空页仍为 2 条。仓储测试 2/2 通过。
+- 测试同时断言分页 ID 顺序、规格值和 SKU 规格值组装，防止通过省略聚合数据来降低查询数。
+
+### Tests
+
+- Task 3 聚焦测试：`mvn -f backend/pom.xml '-Dtest=ProductCompletenessCalculatorTest,ProductJpaAdapterQueryCountTest,ProductControllerTest' test`，22/22 通过。
+- 完整后端回归：`mvn -q -f backend/pom.xml test`，169/169 通过，0 failures、0 errors、0 skipped。
+- 所有数据库测试仅使用 `bebefish_erp_test`，连接环境变量只在对应 Maven 命令进程中设置，未写入文件。
+
+### Files
+
+- `backend/src/main/java/com/bebefish/erp/product/application/ProductCompletenessCalculator.java`
+- `backend/src/main/java/com/bebefish/erp/product/infrastructure/ProductJpaAdapter.java`
+- `backend/src/test/java/com/bebefish/erp/product/application/ProductCompletenessCalculatorTest.java`
+- `backend/src/test/java/com/bebefish/erp/product/infrastructure/ProductJpaAdapterQueryCountTest.java`
+
+### Self Review
+
+- `findAll` 不再逐 ID 调用 `findById`；详情 `findById` 保留原行为。
+- 所有新增批量查询均使用按非空 ID 数量生成的 `?` 占位符和参数数组；`findAllByIds` 在空集合时立即返回，不会生成 `IN ()`。
+- SPU、规格、SKU 规格值和 SKU 按 `productId` 在内存归组，最终严格遍历分页 ID 列表组装，保持原分页排序。
+- 列表基础聚合固定为 count、分页 ID 和四条 hydration SQL；Task 3 既有库存、报价、默认价格、供应商及图片五条批量指标 SQL 保持固定，均不随商品或 SKU 数量增长。
+- 未新增统计快照、迁移或业务库操作，未修改 Task 1/2 持久化与报价三态语义，未编辑 SDD ledger。
+
+### Commit
+
+- 父提交：`b0fbdc7 feat: add product catalog read model`。
+- Fix Round 1 新提交消息：`fix: address product catalog review findings`。本报告与修复代码包含在同一新提交中，最终提交哈希见交付回复。

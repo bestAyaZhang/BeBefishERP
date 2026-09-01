@@ -210,7 +210,7 @@ public class ProductJpaAdapter implements ProductRepository {
                 Long.class,
                 pageParameters.toArray()
         );
-        var products = ids.stream().map(this::findById).flatMap(Optional::stream).toList();
+        var products = findAllByIds(ids);
         return new PageImpl<>(products, pageable, count == null ? 0 : count);
     }
 
@@ -576,6 +576,98 @@ public class ProductJpaAdapter implements ProductRepository {
                 .toList();
     }
 
+    private List<Product> findAllByIds(List<Long> productIds) {
+        if (productIds.isEmpty()) {
+            return List.of();
+        }
+        var placeholders = placeholders(productIds.size());
+        var rowsById = new HashMap<Long, ProductRow>();
+        jdbc.query(
+                "select " + PRODUCT_COLUMNS + " from product_spu where id in (" + placeholders + ")",
+                (RowCallbackHandler) resultSet -> {
+                    var row = productRow(resultSet);
+                    rowsById.put(row.id(), row);
+                },
+                productIds.toArray()
+        );
+        var specificationsByProductId = findSpecificationsByProductIds(productIds, placeholders);
+        var skusByProductId = findSkusByProductIds(productIds, placeholders);
+
+        var products = new ArrayList<Product>();
+        for (var productId : productIds) {
+            var row = rowsById.get(productId);
+            if (row == null) {
+                continue;
+            }
+            products.add(new Product(
+                    row.id(), row.code(), row.itemNo(), row.name(), row.categoryId(), row.brand(),
+                    row.type(), row.mainImageFileId(), row.status(), row.remark(),
+                    specificationsByProductId.getOrDefault(productId, List.of()),
+                    skusByProductId.getOrDefault(productId, List.of()),
+                    row.createdAt(), row.updatedAt()
+            ));
+        }
+        return products;
+    }
+
+    private Map<Long, List<Specification>> findSpecificationsByProductIds(
+            List<Long> productIds,
+            String placeholders
+    ) {
+        var valuesByProductId = new LinkedHashMap<Long, Map<String, List<String>>>();
+        jdbc.query(
+                "select spec.product_id, spec.spec_name, value.value_name from product_spec spec "
+                        + "join product_spec_value value on value.spec_id = spec.id "
+                        + "where spec.product_id in (" + placeholders + ") "
+                        + "order by spec.product_id, spec.sort_order asc, spec.id asc, "
+                        + "value.sort_order asc, value.id asc",
+                (RowCallbackHandler) resultSet -> valuesByProductId
+                        .computeIfAbsent(resultSet.getLong("product_id"), ignored -> new LinkedHashMap<>())
+                        .computeIfAbsent(resultSet.getString("spec_name"), ignored -> new ArrayList<>())
+                        .add(resultSet.getString("value_name")),
+                productIds.toArray()
+        );
+        var specificationsByProductId = new HashMap<Long, List<Specification>>();
+        valuesByProductId.forEach((productId, valuesByName) -> specificationsByProductId.put(
+                productId,
+                valuesByName.entrySet().stream()
+                        .map(entry -> new Specification(entry.getKey(), entry.getValue()))
+                        .toList()
+        ));
+        return specificationsByProductId;
+    }
+
+    private Map<Long, List<Sku>> findSkusByProductIds(List<Long> productIds, String placeholders) {
+        var specValuesBySkuId = new HashMap<Long, List<String>>();
+        jdbc.query(
+                "select link.sku_id, value.value_name from product_sku_spec_value link "
+                        + "join product_spec spec on spec.id = link.spec_id "
+                        + "join product_spec_value value on value.id = link.spec_value_id "
+                        + "where link.product_id in (" + placeholders + ") "
+                        + "order by link.product_id, link.sku_id, spec.sort_order asc, spec.id asc",
+                (RowCallbackHandler) resultSet -> specValuesBySkuId.computeIfAbsent(
+                        resultSet.getLong("sku_id"), ignored -> new ArrayList<>()
+                ).add(resultSet.getString("value_name")),
+                productIds.toArray()
+        );
+
+        var skusByProductId = new HashMap<Long, List<Sku>>();
+        jdbc.query(
+                "select product_id, id, sku_code, barcode, sku_name, spec_text, sales_unit, default_sale_price, "
+                        + "standard_cost, safety_stock_quantity, package_length_cm, package_width_cm, package_height_cm, "
+                        + "package_volume_cm3, inner_package_length_cm, inner_package_width_cm, inner_package_height_cm, "
+                        + "net_weight_kg, gross_weight_kg, gram_weight_g, inner_package_weight_kg, packaging_method, "
+                        + "carton_quantity, sku_image_file_id, package_image_file_id, carton_image_file_id, "
+                        + "is_default, status from product_sku where product_id in (" + placeholders + ") "
+                        + "order by product_id, is_default desc, id asc",
+                (RowCallbackHandler) resultSet -> skusByProductId.computeIfAbsent(
+                        resultSet.getLong("product_id"), ignored -> new ArrayList<>()
+                ).add(skuRow(resultSet, specValuesBySkuId)),
+                productIds.toArray()
+        );
+        return skusByProductId;
+    }
+
     private List<Sku> findSkus(long productId) {
         var specValuesBySku = new HashMap<Long, List<String>>();
         jdbc.query(
@@ -595,41 +687,44 @@ public class ProductJpaAdapter implements ProductRepository {
                         + "gross_weight_kg, gram_weight_g, inner_package_weight_kg, packaging_method, carton_quantity, sku_image_file_id, "
                         + "package_image_file_id, carton_image_file_id, is_default, status from product_sku "
                         + "where product_id = ? order by is_default desc, id asc",
-                (resultSet, rowNumber) -> {
-                    var id = resultSet.getLong("id");
-                    return new Sku(
-                            id,
-                            resultSet.getString("sku_code"),
-                            resultSet.getString("barcode"),
-                            resultSet.getString("sku_name"),
-                            resultSet.getString("spec_text"),
-                            specValuesBySku.getOrDefault(id, List.of()),
-                            resultSet.getString("sales_unit"),
-                            resultSet.getBigDecimal("default_sale_price"),
-                            resultSet.getBigDecimal("standard_cost"),
-                            resultSet.getBigDecimal("safety_stock_quantity"),
-                            new Packaging(
-                                    resultSet.getBigDecimal("package_length_cm"),
-                                    resultSet.getBigDecimal("package_width_cm"),
-                                    resultSet.getBigDecimal("package_height_cm"),
-                                    resultSet.getBigDecimal("package_volume_cm3"),
-                                    resultSet.getBigDecimal("inner_package_length_cm"),
-                                    resultSet.getBigDecimal("inner_package_width_cm"),
-                                    resultSet.getBigDecimal("inner_package_height_cm"),
-                                    resultSet.getBigDecimal("net_weight_kg"),
-                                    resultSet.getBigDecimal("gross_weight_kg"),
-                                    resultSet.getBigDecimal("gram_weight_g"),
-                                    resultSet.getBigDecimal("inner_package_weight_kg"),
-                                    resultSet.getString("packaging_method"),
-                                    getNullableInteger(resultSet, "carton_quantity"),
-                                    getNullableLong(resultSet, "package_image_file_id"),
-                                    getNullableLong(resultSet, "carton_image_file_id")
-                            ),
-                            getNullableLong(resultSet, "sku_image_file_id"),
-                            resultSet.getBoolean("is_default"),
-                            resultSet.getString("status")
-                    );
-                }, productId
+                (resultSet, rowNumber) -> skuRow(resultSet, specValuesBySku), productId
+        );
+    }
+
+    private Sku skuRow(java.sql.ResultSet resultSet, Map<Long, List<String>> specValuesBySkuId)
+            throws java.sql.SQLException {
+        var id = resultSet.getLong("id");
+        return new Sku(
+                id,
+                resultSet.getString("sku_code"),
+                resultSet.getString("barcode"),
+                resultSet.getString("sku_name"),
+                resultSet.getString("spec_text"),
+                specValuesBySkuId.getOrDefault(id, List.of()),
+                resultSet.getString("sales_unit"),
+                resultSet.getBigDecimal("default_sale_price"),
+                resultSet.getBigDecimal("standard_cost"),
+                resultSet.getBigDecimal("safety_stock_quantity"),
+                new Packaging(
+                        resultSet.getBigDecimal("package_length_cm"),
+                        resultSet.getBigDecimal("package_width_cm"),
+                        resultSet.getBigDecimal("package_height_cm"),
+                        resultSet.getBigDecimal("package_volume_cm3"),
+                        resultSet.getBigDecimal("inner_package_length_cm"),
+                        resultSet.getBigDecimal("inner_package_width_cm"),
+                        resultSet.getBigDecimal("inner_package_height_cm"),
+                        resultSet.getBigDecimal("net_weight_kg"),
+                        resultSet.getBigDecimal("gross_weight_kg"),
+                        resultSet.getBigDecimal("gram_weight_g"),
+                        resultSet.getBigDecimal("inner_package_weight_kg"),
+                        resultSet.getString("packaging_method"),
+                        getNullableInteger(resultSet, "carton_quantity"),
+                        getNullableLong(resultSet, "package_image_file_id"),
+                        getNullableLong(resultSet, "carton_image_file_id")
+                ),
+                getNullableLong(resultSet, "sku_image_file_id"),
+                resultSet.getBoolean("is_default"),
+                resultSet.getString("status")
         );
     }
 

@@ -79,7 +79,8 @@ public class ProductCompletenessCalculator {
     }
 
     private boolean imagesComplete(Product product, List<Sku> enabledSkus) {
-        return product.mainImageFileId() != null
+        return !enabledSkus.isEmpty()
+                && product.mainImageFileId() != null
                 && enabledSkus.stream().allMatch(sku -> sku.skuImageFileId() != null);
     }
 
