@@ -1,14 +1,138 @@
 <script setup lang="ts">
-import { ArrowDownRight, ArrowUpRight, PackageCheck, ShoppingCart, WalletCards, Warehouse } from 'lucide-vue-next';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { CircleAlert, RefreshCw } from 'lucide-vue-next';
+import DashboardSummaryGrid from '../features/dashboard/components/DashboardSummaryGrid.vue';
+import RecentOrderList from '../features/dashboard/components/RecentOrderList.vue';
+import SalesTrendPanel from '../features/dashboard/components/SalesTrendPanel.vue';
+import StockAlertList from '../features/dashboard/components/StockAlertList.vue';
+import { dashboardService } from '../features/dashboard/dashboardService';
+import type { DashboardOverview, DashboardPeriod } from '../features/dashboard/types';
 
-const realtimeStats = [{ label: '待付款', value: '0' }, { label: '待发货', value: '0' }, { label: '待售后', value: '0' }, { label: '待评价', value: '0' }];
-const summary = [{ label: '累计顾客数', value: '0', trend: 'up' }, { label: '累计商家数', value: '0', trend: 'down' }, { label: '访问次数(PV)', value: '0', trend: 'up' }, { label: '访问人数(UV)', value: '0', trend: 'down' }];
+const periodOptions: Array<{ value: DashboardPeriod; label: string }> = [
+  { value: 'week', label: '周' },
+  { value: 'month', label: '月' },
+  { value: 'year', label: '年' }
+];
+
+const period = ref<DashboardPeriod>('week');
+const loading = ref(false);
+const error = ref('');
+const overview = ref<DashboardOverview | null>(null);
+let latestRequestId = 0;
+
+async function loadOverview() {
+  const requestId = ++latestRequestId;
+  loading.value = true;
+  error.value = '';
+
+  try {
+    const result = await dashboardService.getOverview(period.value);
+    if (requestId !== latestRequestId) {
+      return;
+    }
+    overview.value = result;
+  } catch {
+    if (requestId !== latestRequestId) {
+      return;
+    }
+    error.value = overview.value
+      ? '数据更新失败，已保留上次数据。'
+      : '工作台数据加载失败，请稍后重试。';
+  } finally {
+    if (requestId === latestRequestId) {
+      loading.value = false;
+    }
+  }
+}
+
+function selectPeriod(nextPeriod: DashboardPeriod) {
+  if (period.value === nextPeriod) {
+    return;
+  }
+  period.value = nextPeriod;
+  void loadOverview();
+}
+
+onMounted(() => {
+  void loadOverview();
+});
+
+onBeforeUnmount(() => {
+  latestRequestId += 1;
+});
 </script>
 
 <template>
-  <section class="mx-auto max-w-[1440px] space-y-6">
-    <div class="flex flex-wrap items-center justify-between gap-4"><div><p class="text-sm font-bold text-slate-400">Dashboards</p><h1 class="mt-1 text-2xl font-black">工作台</h1></div><span class="rounded-xl bg-white px-4 py-2 text-sm font-bold text-slate-400 shadow-sm">今日经营概览</span></div>
-    <section class="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_14px_40px_rgba(31,45,74,0.04)]"><div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 px-6 py-5"><div><h2 class="text-xl font-black">实时交易</h2><p class="mt-1 text-sm font-medium text-slate-400">订单与库存处理状态</p></div><ShoppingCart class="h-6 w-6 text-[#536dff]" /></div><div class="grid grid-cols-2 divide-x divide-y divide-slate-100 md:grid-cols-4 md:divide-y-0"><article v-for="item in realtimeStats" :key="item.label" class="p-5"><p class="text-sm font-bold text-slate-400">{{ item.label }}</p><p class="mt-3 text-3xl font-black">{{ item.value }}</p></article></div></section>
-    <div class="grid gap-6 xl:grid-cols-[1.5fr_0.9fr]"><section class="rounded-[22px] border border-slate-200 bg-white p-6 shadow-[0_14px_40px_rgba(31,45,74,0.04)]"><div class="flex items-center justify-between"><h2 class="text-xl font-black">运营数据</h2><span class="text-sm font-bold text-slate-400">本月</span></div><div class="mt-6 grid gap-4 sm:grid-cols-2"><article v-for="item in summary" :key="item.label" class="rounded-2xl border border-slate-100 p-5"><div class="flex items-center justify-between"><span class="text-sm font-bold text-slate-400">{{ item.label }}</span><ArrowUpRight v-if="item.trend === 'up'" class="h-4 w-4 text-emerald-500" /><ArrowDownRight v-else class="h-4 w-4 text-rose-500" /></div><p class="mt-4 text-3xl font-black">{{ item.value }}</p></article></div></section><aside class="rounded-[22px] border border-slate-200 bg-white p-6 shadow-[0_14px_40px_rgba(31,45,74,0.04)]"><h2 class="text-xl font-black">快捷入口</h2><div class="mt-5 space-y-3"><RouterLink :to="{ name: 'sales-orders' }" class="flex items-center gap-3 rounded-xl border border-slate-100 p-4 font-bold hover:bg-slate-50"><WalletCards class="h-5 w-5 text-[#536dff]" />销售单据</RouterLink><RouterLink :to="{ name: 'products' }" class="flex items-center gap-3 rounded-xl border border-slate-100 p-4 font-bold hover:bg-slate-50"><PackageCheck class="h-5 w-5 text-[#36bee3]" />产品资料</RouterLink><RouterLink :to="{ name: 'inventory-balances' }" class="flex items-center gap-3 rounded-xl border border-slate-100 p-4 font-bold hover:bg-slate-50"><Warehouse class="h-5 w-5 text-[#7b45f5]" />库存管理</RouterLink></div></aside></div>
+  <section class="min-w-0 space-y-4">
+    <div class="flex min-h-9 items-center justify-end">
+      <div
+        class="inline-flex items-center rounded-md border border-slate-200 bg-white p-0.5"
+        role="group"
+        aria-label="经营数据周期"
+      >
+        <button
+          v-for="option in periodOptions"
+          :key="option.value"
+          :data-testid="`period-${option.value}`"
+          type="button"
+          class="flex h-7 min-w-12 items-center justify-center rounded px-3 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          :class="period === option.value ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'"
+          :aria-pressed="period === option.value"
+          @click="selectPeriod(option.value)"
+        >
+          {{ option.label }}
+        </button>
+      </div>
+    </div>
+
+    <div class="h-1" aria-hidden="true">
+      <div v-if="loading" data-testid="dashboard-loading" class="grid h-full grid-cols-3 gap-1">
+        <span class="animate-pulse bg-blue-500"></span>
+        <span class="animate-pulse bg-cyan-500 [animation-delay:120ms]"></span>
+        <span class="animate-pulse bg-emerald-500 [animation-delay:240ms]"></span>
+      </div>
+    </div>
+
+    <div
+      v-if="error"
+      data-testid="dashboard-error"
+      class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+      role="alert"
+    >
+      <span class="flex items-center gap-2">
+        <CircleAlert class="h-4 w-4 shrink-0" aria-hidden="true" />
+        {{ error }}
+      </span>
+      <button
+        data-testid="dashboard-retry"
+        type="button"
+        class="inline-flex h-8 items-center gap-1.5 rounded-md border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600"
+        @click="loadOverview"
+      >
+        <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" />
+        重新加载
+      </button>
+    </div>
+
+    <div v-if="overview" data-testid="dashboard-content" class="min-w-0 space-y-4" :aria-busy="loading">
+      <DashboardSummaryGrid :summary="overview.summary" />
+
+      <div class="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.8fr)]">
+        <SalesTrendPanel :points="overview.salesTrend" />
+        <StockAlertList :alerts="overview.stockAlerts" />
+      </div>
+
+      <RecentOrderList :orders="overview.recentOrders" />
+    </div>
+
+    <div v-else-if="loading" class="grid min-w-0 gap-4" aria-label="正在加载工作台数据">
+      <div class="grid gap-4 lg:grid-cols-3">
+        <div v-for="index in 3" :key="index" class="h-36 animate-pulse rounded-lg border border-slate-200 bg-slate-100"></div>
+      </div>
+      <div class="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.8fr)]">
+        <div class="min-h-[300px] animate-pulse rounded-lg border border-slate-200 bg-slate-100"></div>
+        <div class="min-h-[300px] animate-pulse rounded-lg border border-slate-200 bg-slate-100"></div>
+      </div>
+    </div>
   </section>
 </template>

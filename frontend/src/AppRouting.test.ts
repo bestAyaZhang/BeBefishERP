@@ -5,8 +5,18 @@ import router from './router';
 import { getCurrentUser } from './services/auth';
 import { ACCESS_TOKEN_STORAGE_KEY } from './types/auth';
 
+const dashboardMocks = vi.hoisted(() => ({
+  getOverview: vi.fn()
+}));
+
 vi.mock('./services/auth', () => ({
   getCurrentUser: vi.fn()
+}));
+
+vi.mock('./features/dashboard/dashboardService', () => ({
+  dashboardService: {
+    getOverview: dashboardMocks.getOverview
+  }
 }));
 
 describe('application routes', () => {
@@ -15,6 +25,24 @@ describe('application routes', () => {
   beforeEach(() => {
     localStorage.clear();
     localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, 'test-token');
+    dashboardMocks.getOverview.mockReset();
+    dashboardMocks.getOverview.mockResolvedValue({
+      summary: {
+        productCount: 0,
+        enabledProductCount: 0,
+        skuCount: 0,
+        enabledSupplierCount: 0,
+        zeroStockSkuCount: 0,
+        lowStockSkuCount: 0,
+        orderCount: 0,
+        salesAmount: 0,
+        outstandingAmount: 0,
+        draftOrderCount: 0
+      },
+      salesTrend: [],
+      stockAlerts: [],
+      recentOrders: []
+    });
   });
 
   afterEach(() => {
@@ -34,7 +62,7 @@ describe('application routes', () => {
     expect(wrapper.find('[data-testid="erp-sidebar"]').exists()).toBe(true);
   });
 
-  it('renders the existing workbench inside the shared ERP layout', async () => {
+  it('renders the live workbench inside the shared ERP layout', async () => {
     await router.push('/workbench');
     await router.isReady();
     wrapper = mount(App, { global: { plugins: [router] } });
@@ -42,8 +70,8 @@ describe('application routes', () => {
 
     expect(wrapper.find('[data-testid="erp-shell"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="workspace-prototype-content"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('实时交易');
-    expect(wrapper.text()).toContain('运营数据');
+    expect(wrapper.text()).toContain('商品与供应链');
+    expect(wrapper.text()).toContain('销售与订单趋势');
   });
 
   it('renders the product route with the live product master-data page', async () => {
@@ -93,14 +121,14 @@ describe('application routes', () => {
     wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
-    expect(wrapper.text()).toContain('实时交易');
+    expect(wrapper.text()).toContain('商品与供应链');
 
     await router.push('/products');
     await flushPromises();
 
     expect(router.currentRoute.value.name).toBe('products');
     expect(wrapper.text()).toContain('SKU 主数据');
-    expect(wrapper.text()).not.toContain('实时交易');
+    expect(wrapper.text()).not.toContain('商品与供应链');
   });
 
   it('opens the shared mobile navigation from the workbench header', async () => {
