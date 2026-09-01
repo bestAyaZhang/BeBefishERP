@@ -29,9 +29,9 @@ describe('application routes', () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain('分类管理');
-    expect(wrapper.get('[data-testid="prototype-erp-shell"]').classes()).toContain('lg:px-8');
-    expect(wrapper.get('[data-testid="prototype-layout-grid"]').classes()).toContain('lg:grid-cols-[244px_minmax(0,1fr)]');
-    expect(wrapper.find('[data-testid="prototype-sidebar-nav"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="erp-shell"]').classes()).not.toContain('lg:px-8');
+    expect(wrapper.get('[data-testid="erp-layout-grid"]').classes()).toContain('lg:grid-cols-[244px_minmax(0,1fr)]');
+    expect(wrapper.find('[data-testid="erp-sidebar"]').exists()).toBe(true);
   });
 
   it('renders the existing workbench inside the shared ERP layout', async () => {
@@ -40,7 +40,7 @@ describe('application routes', () => {
     wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="prototype-erp-shell"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="erp-shell"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="workspace-prototype-content"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('实时交易');
     expect(wrapper.text()).toContain('运营数据');
@@ -52,7 +52,7 @@ describe('application routes', () => {
     wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="prototype-erp-shell"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="erp-shell"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="product-list-page"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="product-filter-article"]').exists()).toBe(true);
     expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('Master Data');
@@ -65,7 +65,7 @@ describe('application routes', () => {
     wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="prototype-erp-shell"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="erp-shell"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="sales-create-page"]').exists()).toBe(true);
     expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('Sales');
     expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('Create Order');
@@ -111,7 +111,7 @@ describe('application routes', () => {
 
     await wrapper.get('button[aria-label="打开菜单"]').trigger('click');
 
-    expect(wrapper.find('[data-testid="prototype-mobile-navigation"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="erp-mobile-navigation"]').exists()).toBe(true);
   });
 
   it('restores menu permissions from the current-user API for a legacy token session', async () => {

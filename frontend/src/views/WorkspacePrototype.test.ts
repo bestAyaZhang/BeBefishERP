@@ -29,7 +29,7 @@ describe('WorkspacePrototype product catalog', () => {
     const wrapper = mount(WorkspacePrototype);
 
     expect(wrapper.find('[data-testid="workspace-prototype-content"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="prototype-sidebar-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="erp-sidebar"]').exists()).toBe(false);
   });
 
   it('opens product master data from the sidebar and filters SKU rows', async () => {

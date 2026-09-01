@@ -54,13 +54,15 @@ describe('SidebarNav', () => {
     expect(wrapper.text()).not.toContain('销售开单');
   });
 
-  it('uses the approved prototype navigation structure', () => {
+  it('uses the full-height ERP navigation structure without a card shell', () => {
     const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
 
-    expect(wrapper.find('[data-testid="prototype-sidebar-nav"]').exists()).toBe(true);
+    const sidebar = wrapper.get('[data-testid="erp-sidebar"]');
+    expect(sidebar.classes()).not.toContain('rounded-[24px]');
+    expect(sidebar.classes().some((name) => name.startsWith('shadow-'))).toBe(false);
     expect(wrapper.text()).toContain('Menu');
     expect(wrapper.text()).toContain('Topics');
-    expect(wrapper.find('[data-testid="prototype-sidebar-user"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="erp-sidebar-user"]').exists()).toBe(true);
   });
 
   it('renders menu items from the authenticated API permission data', () => {
