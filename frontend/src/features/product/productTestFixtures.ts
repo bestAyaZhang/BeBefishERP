@@ -2,6 +2,7 @@ import type { PageResult } from '../masterdata/types';
 import type { Product, ProductSku } from './types';
 
 type ProductResponseDefaults = Pick<Product,
+  | 'categoryName'
   | 'mainImageUrl'
   | 'defaultSupplierName'
   | 'totalStock'
@@ -54,6 +55,7 @@ export function productFixture(input: ProductFixture): Product {
   const defaultSku = skus.find((sku) => sku.defaultSku) ?? skus[0];
 
   return {
+    categoryName: null,
     mainImageUrl: null,
     defaultSupplierName: null,
     totalStock: skus.reduce((total, sku) => total + sku.stockQuantity, 0),

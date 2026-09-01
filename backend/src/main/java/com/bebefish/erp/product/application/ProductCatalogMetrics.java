@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 public record ProductCatalogMetrics(
+        String categoryName,
         BigDecimal totalStock,
         BigDecimal totalSafetyStock,
         BigDecimal defaultSalePrice,
@@ -20,9 +21,15 @@ public record ProductCatalogMetrics(
         imageUrls = Map.copyOf(imageUrls);
     }
 
-    public record SkuCatalogMetrics(BigDecimal stockQuantity, List<SupplierQuote> supplierQuotes) {
+    public record SkuCatalogMetrics(
+            BigDecimal stockQuantity,
+            List<CatalogSupplierQuote> supplierQuotes
+    ) {
         public SkuCatalogMetrics {
             supplierQuotes = List.copyOf(supplierQuotes);
         }
+    }
+
+    public record CatalogSupplierQuote(SupplierQuote quote, String supplierName) {
     }
 }

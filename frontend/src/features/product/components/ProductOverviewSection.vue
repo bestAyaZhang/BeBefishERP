@@ -10,9 +10,7 @@ import ProductDetailImage from './ProductDetailImage.vue';
 
 const props = defineProps<{ product: Product }>();
 
-const category = computed(() => (
-  props.product.categoryName?.trim() || (props.product.categoryId > 0 ? String(props.product.categoryId) : '--')
-));
+const category = computed(() => formatText(props.product.categoryName));
 const completenessLabel = computed(() => (
   props.product.completenessStatus === 'complete' ? '资料完整' : '待完善'
 ));

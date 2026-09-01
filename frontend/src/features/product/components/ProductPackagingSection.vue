@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { formatDimensions, formatText, formatWithUnit } from '../productDetailFormatting';
 import { getProductPackagingMode } from '../productPackaging';
 import type { ProductSku } from '../types';
+import ProductDetailImage from './ProductDetailImage.vue';
 
 const props = defineProps<{ skus: ProductSku[] }>();
 const mode = computed(() => getProductPackagingMode(props.skus));
@@ -31,6 +32,10 @@ const applicableSkus = computed(() => props.skus.map((sku) => sku.skuCode).join(
           <dd class="mt-1 text-sm font-bold text-[#25314d]">{{ formatDimensions(uniformSku.innerPackageLengthCm, uniformSku.innerPackageWidthCm, uniformSku.innerPackageHeightCm) }}</dd>
         </div>
         <div class="border-b border-slate-100 py-3">
+          <dt class="text-xs font-bold text-slate-400">包装体积</dt>
+          <dd class="mt-1 text-sm font-bold text-[#25314d]">{{ formatWithUnit(uniformSku.packageVolumeCm3, 'cm³') }}</dd>
+        </div>
+        <div class="border-b border-slate-100 py-3">
           <dt class="text-xs font-bold text-slate-400">装箱数量</dt>
           <dd class="mt-1 text-sm font-bold text-[#25314d]">{{ formatWithUnit(uniformSku.cartonQuantity, '件/箱') }}</dd>
         </div>
@@ -54,22 +59,47 @@ const applicableSkus = computed(() => props.skus.map((sku) => sku.skuCode).join(
           <dt class="text-xs font-bold text-slate-400">内盒重量</dt>
           <dd class="mt-1 text-sm font-bold text-[#25314d]">{{ formatWithUnit(uniformSku.innerPackageWeightKg, 'kg') }}</dd>
         </div>
+        <div class="border-b border-slate-100 py-3">
+          <dt class="text-xs font-bold text-slate-400">内盒包装图</dt>
+          <dd class="mt-2">
+            <ProductDetailImage
+              :src="uniformSku.packageImageUrl"
+              :alt="`${uniformSku.skuName || uniformSku.skuCode} 内盒包装图`"
+              :test-id="`packaging-package-image-${uniformSku.id}`"
+              size="small"
+            />
+          </dd>
+        </div>
+        <div class="border-b border-slate-100 py-3">
+          <dt class="text-xs font-bold text-slate-400">外箱图</dt>
+          <dd class="mt-2">
+            <ProductDetailImage
+              :src="uniformSku.cartonImageUrl"
+              :alt="`${uniformSku.skuName || uniformSku.skuCode} 外箱图`"
+              :test-id="`packaging-carton-image-${uniformSku.id}`"
+              size="small"
+            />
+          </dd>
+        </div>
       </dl>
     </template>
 
     <div v-else-if="skus.length" class="w-full overflow-x-auto">
-      <table class="min-w-[1280px] table-fixed text-left text-sm">
+      <table class="min-w-[1640px] table-fixed text-left text-sm">
         <thead class="border-b border-slate-200 text-xs font-bold text-slate-400">
           <tr>
             <th class="w-44 px-3 py-3">SKU 货号</th>
             <th class="w-48 px-3 py-3">外箱长宽高</th>
             <th class="w-48 px-3 py-3">内盒长宽高</th>
+            <th class="w-28 px-3 py-3">包装体积</th>
             <th class="w-28 px-3 py-3">装箱数量</th>
             <th class="w-28 px-3 py-3">包装方式</th>
             <th class="w-24 px-3 py-3">克重</th>
             <th class="w-24 px-3 py-3">净重</th>
             <th class="w-24 px-3 py-3">毛重</th>
             <th class="w-28 px-3 py-3">内盒重量</th>
+            <th class="w-24 px-3 py-3">内盒包装图</th>
+            <th class="w-24 px-3 py-3">外箱图</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100 text-slate-600">
@@ -77,12 +107,29 @@ const applicableSkus = computed(() => props.skus.map((sku) => sku.skuCode).join(
             <td class="break-all px-3 py-3 font-bold text-[#25314d]">{{ formatText(sku.skuCode) }}</td>
             <td class="px-3 py-3">{{ formatDimensions(sku.packageLengthCm, sku.packageWidthCm, sku.packageHeightCm) }}</td>
             <td class="px-3 py-3">{{ formatDimensions(sku.innerPackageLengthCm, sku.innerPackageWidthCm, sku.innerPackageHeightCm) }}</td>
+            <td class="px-3 py-3">{{ formatWithUnit(sku.packageVolumeCm3, 'cm³') }}</td>
             <td class="px-3 py-3">{{ formatWithUnit(sku.cartonQuantity, '件/箱') }}</td>
             <td class="px-3 py-3">{{ formatText(sku.packagingMethod) }}</td>
             <td class="px-3 py-3">{{ formatWithUnit(sku.gramWeightG, 'g') }}</td>
             <td class="px-3 py-3">{{ formatWithUnit(sku.netWeightKg, 'kg') }}</td>
             <td class="px-3 py-3">{{ formatWithUnit(sku.grossWeightKg, 'kg') }}</td>
             <td class="px-3 py-3">{{ formatWithUnit(sku.innerPackageWeightKg, 'kg') }}</td>
+            <td class="px-3 py-3">
+              <ProductDetailImage
+                :src="sku.packageImageUrl"
+                :alt="`${sku.skuName || sku.skuCode} 内盒包装图`"
+                :test-id="`packaging-package-image-${sku.id}`"
+                size="small"
+              />
+            </td>
+            <td class="px-3 py-3">
+              <ProductDetailImage
+                :src="sku.cartonImageUrl"
+                :alt="`${sku.skuName || sku.skuCode} 外箱图`"
+                :test-id="`packaging-carton-image-${sku.id}`"
+                size="small"
+              />
+            </td>
           </tr>
         </tbody>
       </table>

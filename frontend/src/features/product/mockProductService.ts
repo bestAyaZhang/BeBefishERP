@@ -1,6 +1,7 @@
 import type { PageResult, RecordStatus } from '../masterdata/types';
 import type {
   Product,
+  ProductCatalogSupplierQuote,
   ProductFormPayload,
   ProductQuery,
   ProductService,
@@ -21,6 +22,7 @@ const defaultSeed: Product[] = [{
   itemNo: 'GB-001',
   productName: '高硼硅玻璃杯',
   categoryId: 1,
+  categoryName: '杯具',
   brand: 'BeBefish',
   productType: 'variant',
   mainImageFileId: null,
@@ -40,11 +42,11 @@ const defaultSeed: Product[] = [{
   updatedAt: '2026-01-01T00:00:00.000Z'
 }];
 
-function cloneQuote(quote: ProductSupplierQuote): ProductSupplierQuote {
+function cloneQuote<T extends ProductSupplierQuote>(quote: T): T {
   return { ...quote };
 }
 
-function cloneSku(sku: ProductSku, supplierQuotes = sku.supplierQuotes): ProductSku {
+function cloneSku(sku: ProductSku, supplierQuotes: ProductCatalogSupplierQuote[] = sku.supplierQuotes): ProductSku {
   return {
     ...sku,
     specificationValues: [...sku.specificationValues],
@@ -70,7 +72,12 @@ function maxId(values: number[], floor: number) {
 
 export function createMockProductService(seed: Product[] = defaultSeed): MockProductService {
   let products = seed.map(cloneProduct);
-  let quotes = products.flatMap((product) => product.skus.flatMap((sku) => sku.supplierQuotes.map(cloneQuote)));
+  const supplierNames = new Map(products.flatMap((product) => product.skus.flatMap((sku) => (
+    sku.supplierQuotes.map((quote) => [quote.supplierId, quote.supplierName] as const)
+  ))));
+  let quotes: ProductSupplierQuote[] = products.flatMap((product) => product.skus.flatMap((sku) => (
+    sku.supplierQuotes.map(({ supplierName: _supplierName, ...quote }) => quote)
+  )));
   let nextProductId = maxId(products.map((product) => product.id), 99);
   let nextSkuId = maxId(products.flatMap((product) => product.skus.map((sku) => sku.id)), 999);
   let nextQuoteId = maxId(quotes.map((quote) => quote.id), 9999);
@@ -85,7 +92,12 @@ export function createMockProductService(seed: Product[] = defaultSeed): MockPro
       ...product,
       skus: product.skus.map((sku) => cloneSku(
         sku,
-        quotes.filter((quote) => quote.skuId === sku.id)
+        quotes
+          .filter((quote) => quote.skuId === sku.id)
+          .map((quote): ProductCatalogSupplierQuote => ({
+            ...quote,
+            supplierName: supplierNames.get(quote.supplierId) ?? `供应商 ${quote.supplierId}`
+          }))
       ))
     });
   }
@@ -161,6 +173,7 @@ export function createMockProductService(seed: Product[] = defaultSeed): MockPro
       itemNo: payload.itemNo,
       productName: payload.productName,
       categoryId: payload.categoryId ?? 0,
+      categoryName: current?.categoryName ?? null,
       brand: payload.brand || null,
       productType: payload.productType,
       mainImageFileId: payload.mainImageFileId,

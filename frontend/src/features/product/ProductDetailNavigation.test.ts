@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import router from '../../router';
 import ProductListView from './views/ProductListView.vue';
 import ProductDetailView from './views/ProductDetailView.vue';
-import type { Product, ProductService, ProductSupplierQuote } from './types';
+import type { Product, ProductCatalogSupplierQuote, ProductService } from './types';
 import { productService } from './productService';
 import { productFixture, productPage } from './productTestFixtures';
 import { masterdataService } from '../masterdata/masterdataService';
@@ -47,7 +47,7 @@ const product = productFixture({
   status: 'enabled'
 });
 
-const supplierQuote: ProductSupplierQuote = {
+const supplierQuote: ProductCatalogSupplierQuote = {
   id: 301,
   skuId: 21,
   supplierId: 6,
@@ -57,6 +57,18 @@ const supplierQuote: ProductSupplierQuote = {
   minPurchaseQuantity: 120,
   defaultQuote: true,
   status: 'enabled'
+};
+
+const disabledSupplierQuote: ProductCatalogSupplierQuote = {
+  id: 302,
+  skuId: 21,
+  supplierId: 7,
+  supplierName: '宁波包装制品厂',
+  supplierItemNo: 'NB-021',
+  purchasePrice: 8.9,
+  minPurchaseQuantity: 0,
+  defaultQuote: false,
+  status: 'disabled'
 };
 
 const detailProduct = Object.assign(productFixture({
@@ -102,7 +114,7 @@ const detailProduct = Object.assign(productFixture({
       packageImageUrl: '/uploads/package-21.png',
       cartonImageFileId: 203,
       cartonImageUrl: '/uploads/carton-21.png',
-      supplierQuotes: [supplierQuote],
+      supplierQuotes: [supplierQuote, disabledSupplierQuote],
       defaultSku: true,
       status: 'enabled'
     },
@@ -374,7 +386,14 @@ describe('product detail navigation', () => {
     expect(wrapper.get('[data-testid="product-overview-section"]').text()).toContain('PRD-000042');
     expect(wrapper.get('[data-testid="product-sku-section"]').text()).toContain('SKU 货号');
     expect(wrapper.get('[data-testid="product-procurement-section"]').text()).toContain('义乌玻璃制品厂');
+    expect(wrapper.get('[data-testid="product-procurement-section"]').text()).toContain('宁波包装制品厂');
+    expect(wrapper.get('[data-testid="product-procurement-section"]').text()).toContain('停用');
     expect(wrapper.get('[data-testid="product-packaging-section"]').text()).toContain('统一包装');
+    expect(wrapper.get('[data-testid="product-packaging-section"]').text()).toContain('28224 cm³');
+    expect(wrapper.get('[data-testid="product-packaging-section"]').text()).toContain('42 × 28 × 24 cm');
+    expect(wrapper.get('[data-testid="product-packaging-section"]').text()).toContain('10 × 10 × 12 cm');
+    expect(wrapper.get('[data-testid="packaging-package-image-21"]').attributes('src')).toContain('package-21.png');
+    expect(wrapper.get('[data-testid="packaging-carton-image-21"]').attributes('src')).toContain('carton-21.png');
     expect(wrapper.find('[data-testid="product-images-section"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="product-audit-section"]').exists()).toBe(true);
     expect(wrapper.get('[data-testid="sku-image-21"]').attributes('src')).toContain('sku-21.png');
@@ -415,7 +434,7 @@ describe('product detail navigation', () => {
     expect(wrapper.find('[data-testid="sku-image-21-fallback"]').exists()).toBe(true);
   });
 
-  it('preserves the original route id when navigating to edit and returns to products', async () => {
+  it('uses the loaded numeric product id for the canonical edit URL and returns to products', async () => {
     vi.mocked(productService.getProduct).mockResolvedValue(detailProduct);
     await router.push('/products/0042');
     const wrapper = mount(ProductDetailView, { global: { plugins: [router] } });
@@ -423,7 +442,8 @@ describe('product detail navigation', () => {
     const push = vi.spyOn(router, 'push').mockResolvedValue(undefined);
 
     await wrapper.get('[data-testid="edit-product"]').trigger('click');
-    expect(push).toHaveBeenCalledWith({ name: 'product-edit', params: { id: '0042' } });
+    expect(push).toHaveBeenCalledWith({ name: 'product-edit', params: { id: 42 } });
+    expect(router.resolve({ name: 'product-edit', params: { id: detailProduct.id } }).fullPath).toBe('/products/42/edit');
 
     await wrapper.get('[data-testid="product-detail-back"]').trigger('click');
     expect(push).toHaveBeenCalledWith({ name: 'products' });
@@ -436,6 +456,7 @@ describe('product detail navigation', () => {
     const loadingWrapper = mount(ProductDetailView, { global: { plugins: [router] } });
 
     expect(loadingWrapper.find('[data-testid="product-detail-skeleton"]').exists()).toBe(true);
+    expect(loadingWrapper.find('[data-testid="product-detail-back"]').exists()).toBe(true);
     loadingWrapper.unmount();
     pendingProduct.resolve(detailProduct);
     await flushPromises();
@@ -447,6 +468,7 @@ describe('product detail navigation', () => {
 
     expect(productService.getProduct).not.toHaveBeenCalled();
     expect(invalidWrapper.get('[data-testid="product-detail-error"]').text()).toContain('商品编号无效');
+    expect(invalidWrapper.find('[data-testid="product-detail-back"]').exists()).toBe(true);
   });
 
   it('retries a failed detail request in place', async () => {
@@ -458,6 +480,7 @@ describe('product detail navigation', () => {
     await flushPromises();
 
     expect(wrapper.get('[data-testid="product-detail-error"]').text()).toContain('详情接口暂不可用');
+    expect(wrapper.find('[data-testid="product-detail-back"]').exists()).toBe(true);
     await wrapper.get('[data-testid="retry-product-detail"]').trigger('click');
     await flushPromises();
 
@@ -483,5 +506,55 @@ describe('product detail navigation', () => {
     expect(productService.getProduct).toHaveBeenNthCalledWith(2, 43);
     expect(wrapper.text()).toContain('新路由商品');
     expect(wrapper.text()).not.toContain('高硼硅玻璃杯');
+  });
+
+  it('shows per-SKU package images when an image file id differs', async () => {
+    const perSkuProduct: Product = {
+      ...detailProduct,
+      skus: detailProduct.skus.map((sku) => sku.id === 22
+        ? { ...sku, packageImageFileId: 999 }
+        : sku)
+    };
+    vi.mocked(productService.getProduct).mockResolvedValueOnce(perSkuProduct);
+    await router.push('/products/42');
+    const wrapper = mount(ProductDetailView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const packaging = wrapper.get('[data-testid="product-packaging-section"]');
+    expect(packaging.text()).toContain('按 SKU 展示');
+    expect(packaging.get('[data-testid="packaging-package-image-21"]').attributes('src')).toContain('package-21.png');
+    expect(packaging.get('[data-testid="packaging-package-image-22"]').attributes('src')).toContain('package-22.png');
+    expect(packaging.get('[data-testid="packaging-carton-image-21"]').attributes('src')).toContain('carton-21.png');
+    expect(packaging.get('[data-testid="packaging-carton-image-22"]').attributes('src')).toContain('carton-22.png');
+
+    await packaging.get('[data-testid="packaging-package-image-22"]').trigger('error');
+    expect(packaging.find('[data-testid="packaging-package-image-22-fallback"]').exists()).toBe(true);
+  });
+
+  it('renders abnormal stock, quantity, dimensions and volume as -- while preserving zero', async () => {
+    const abnormalProduct: Product = {
+      ...detailProduct,
+      skus: detailProduct.skus.map((sku) => sku.id === 21
+        ? {
+            ...sku,
+            stockQuantity: Number.NaN,
+            safetyStockQuantity: Number.POSITIVE_INFINITY,
+            packageLengthCm: Number.NaN,
+            packageVolumeCm3: Number.POSITIVE_INFINITY,
+            supplierQuotes: sku.supplierQuotes.map((quote) => quote.id === 301
+              ? { ...quote, minPurchaseQuantity: Number.POSITIVE_INFINITY }
+              : quote)
+          }
+        : sku)
+    };
+    vi.mocked(productService.getProduct).mockResolvedValueOnce(abnormalProduct);
+    await router.push('/products/42');
+    const wrapper = mount(ProductDetailView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="product-sku-section"]').text()).not.toMatch(/NaN|Infinity/);
+    expect(wrapper.get('[data-testid="product-procurement-section"]').text()).not.toMatch(/NaN|Infinity/);
+    expect(wrapper.get('[data-testid="product-procurement-section"]').text()).toContain('0');
+    expect(wrapper.get('[data-testid="product-packaging-section"]').text()).not.toMatch(/NaN|Infinity/);
   });
 });

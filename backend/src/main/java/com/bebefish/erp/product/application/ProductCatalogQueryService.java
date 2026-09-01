@@ -1,6 +1,7 @@
 package com.bebefish.erp.product.application;
 
 import com.bebefish.erp.product.application.ProductCatalogMetrics.SkuCatalogMetrics;
+import com.bebefish.erp.product.application.ProductCatalogMetrics.CatalogSupplierQuote;
 import com.bebefish.erp.product.domain.Product;
 import com.bebefish.erp.product.domain.ProductRepository;
 import com.bebefish.erp.product.domain.SupplierQuote;
@@ -56,13 +57,19 @@ public class ProductCatalogQueryService {
                 var supplierQuotes = catalogData.supplierQuotesBySkuId()
                         .getOrDefault(sku.id(), List.of());
                 quotesBySkuId.put(sku.id(), supplierQuotes);
-                skuMetrics.put(sku.id(), new SkuCatalogMetrics(stockQuantity, supplierQuotes));
+                var catalogQuotes = supplierQuotes.stream()
+                        .map(quote -> new CatalogSupplierQuote(
+                                quote, catalogData.supplierNameByQuoteId().get(quote.id())
+                        ))
+                        .toList();
+                skuMetrics.put(sku.id(), new SkuCatalogMetrics(stockQuantity, catalogQuotes));
                 totalStock = totalStock.add(stockQuantity);
                 totalSafetyStock = totalSafetyStock.add(orZero(sku.safetyStockQuantity()));
             }
 
             var imageUrls = imageUrls(product, catalogData.imageUrlByFileId());
             metricsByProductId.put(product.id(), new ProductCatalogMetrics(
+                    catalogData.categoryNameByProductId().get(product.id()),
                     totalStock,
                     totalSafetyStock,
                     catalogData.defaultSalePriceByProductId().get(product.id()),

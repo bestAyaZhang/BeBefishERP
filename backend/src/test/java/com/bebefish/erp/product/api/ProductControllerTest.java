@@ -532,6 +532,7 @@ class ProductControllerTest {
                         .header("Authorization", bearer(viewToken))
                         .param("keyword", "EW43259"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records[0].categoryName").value("测试分类"))
                 .andExpect(jsonPath("$.data.records[0].totalStock").value(18.5))
                 .andExpect(jsonPath("$.data.records[0].totalSafetyStock").value(12.5))
                 .andExpect(jsonPath("$.data.records[0].defaultSalePrice").value(9.9))
@@ -539,15 +540,24 @@ class ProductControllerTest {
                 .andExpect(jsonPath("$.data.records[0].completenessStatus").value("complete"))
                 .andExpect(jsonPath("$.data.records[0].missingGroups").isEmpty())
                 .andExpect(jsonPath("$.data.records[0].skus[0].stockQuantity").value(9.5))
+                .andExpect(jsonPath("$.data.records[0].skus[0].supplierQuotes[0].supplierName")
+                        .value("商品报价供应商"))
+                .andExpect(jsonPath("$.data.records[0].skus[0].supplierQuotes[1].supplierName")
+                        .value("商品报价供应商二"))
                 .andExpect(jsonPath("$.data.records[0].skus[1].stockQuantity").value(9.0));
 
         mvc.perform(get("/api/products/{id}", productId)
                         .header("Authorization", bearer(viewToken)))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.categoryName").value("测试分类"))
                 .andExpect(jsonPath("$.data.totalStock").value(18.5))
                 .andExpect(jsonPath("$.data.skus[0].supplierQuotes.length()").value(2))
                 .andExpect(jsonPath("$.data.skus[0].supplierQuotes[0].defaultQuote").value(true))
+                .andExpect(jsonPath("$.data.skus[0].supplierQuotes[0].supplierName")
+                        .value("商品报价供应商"))
                 .andExpect(jsonPath("$.data.skus[0].supplierQuotes[1].status").value("disabled"))
+                .andExpect(jsonPath("$.data.skus[0].supplierQuotes[1].supplierName")
+                        .value("商品报价供应商二"))
                 .andExpect(jsonPath("$.data.skus[1].supplierQuotes.length()").value(1))
                 .andExpect(jsonPath("$.data.mainImageUrl").value("/uploads/T7-image.png"));
     }

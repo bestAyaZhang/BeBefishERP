@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { formatMoney, formatRecordStatus, formatText } from '../productDetailFormatting';
-import type { ProductSku, ProductSupplierQuote } from '../types';
+import type { ProductCatalogSupplierQuote, ProductSku } from '../types';
 
 const props = defineProps<{ skus: ProductSku[] }>();
 
 interface ProcurementRow {
   sku: ProductSku;
-  quote: ProductSupplierQuote | null;
+  quote: ProductCatalogSupplierQuote | null;
 }
 
 const rows = computed<ProcurementRow[]>(() => props.skus.flatMap<ProcurementRow>((sku) => (

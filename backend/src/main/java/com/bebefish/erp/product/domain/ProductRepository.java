@@ -63,8 +63,10 @@ public interface ProductRepository {
     record ProductCatalogData(
             Map<Long, BigDecimal> stockQuantityBySkuId,
             Map<Long, List<SupplierQuote>> supplierQuotesBySkuId,
+            Map<Long, String> supplierNameByQuoteId,
             Map<Long, BigDecimal> defaultSalePriceByProductId,
             Map<Long, String> defaultSupplierNameByProductId,
+            Map<Long, String> categoryNameByProductId,
             Map<Long, String> imageUrlByFileId
     ) {
         public ProductCatalogData {
@@ -72,13 +74,17 @@ public interface ProductRepository {
             var copiedQuotes = new LinkedHashMap<Long, List<SupplierQuote>>();
             supplierQuotesBySkuId.forEach((skuId, quotes) -> copiedQuotes.put(skuId, List.copyOf(quotes)));
             supplierQuotesBySkuId = Map.copyOf(copiedQuotes);
+            supplierNameByQuoteId = Map.copyOf(supplierNameByQuoteId);
             defaultSalePriceByProductId = Map.copyOf(defaultSalePriceByProductId);
             defaultSupplierNameByProductId = Map.copyOf(defaultSupplierNameByProductId);
+            categoryNameByProductId = Map.copyOf(categoryNameByProductId);
             imageUrlByFileId = Map.copyOf(imageUrlByFileId);
         }
 
         public static ProductCatalogData empty() {
-            return new ProductCatalogData(Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+            return new ProductCatalogData(
+                    Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of()
+            );
         }
     }
 }

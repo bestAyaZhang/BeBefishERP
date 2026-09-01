@@ -260,11 +260,14 @@ public class ProductJpaAdapter implements ProductRepository {
             return ProductCatalogData.empty();
         }
         var placeholders = placeholders(ids.size());
+        var supplierQuoteData = findSupplierQuotes(ids, placeholders);
         return new ProductCatalogData(
                 findStockQuantities(ids, placeholders),
-                findSupplierQuotes(ids, placeholders),
+                supplierQuoteData.quotesBySkuId(),
+                supplierQuoteData.supplierNameByQuoteId(),
                 findDefaultSalePrices(ids, placeholders),
                 findDefaultSupplierNames(ids, placeholders),
+                findCategoryNames(ids, placeholders),
                 findImageUrls(ids, placeholders)
         );
     }
@@ -307,30 +310,37 @@ public class ProductJpaAdapter implements ProductRepository {
         return quantities;
     }
 
-    private Map<Long, List<SupplierQuote>> findSupplierQuotes(List<Long> productIds, String placeholders) {
+    private CatalogSupplierQuoteData findSupplierQuotes(List<Long> productIds, String placeholders) {
         var quotesBySkuId = new LinkedHashMap<Long, List<SupplierQuote>>();
+        var supplierNameByQuoteId = new HashMap<Long, String>();
         jdbc.query(
                 "select quote.id, quote.sku_id, quote.supplier_id, quote.supplier_item_no, "
-                        + "quote.purchase_price, quote.min_purchase_quantity, quote.is_default, quote.status "
+                        + "quote.purchase_price, quote.min_purchase_quantity, quote.is_default, quote.status, "
+                        + "supplier.supplier_name "
                         + "from sku_supplier_quote quote "
                         + "join product_sku sku on sku.id = quote.sku_id "
+                        + "join supplier supplier on supplier.id = quote.supplier_id "
                         + "where sku.product_id in (" + placeholders + ") "
                         + "order by quote.sku_id, quote.is_default desc, quote.id asc",
-                (RowCallbackHandler) resultSet -> quotesBySkuId.computeIfAbsent(
-                        resultSet.getLong("sku_id"), ignored -> new ArrayList<>()
-                ).add(new SupplierQuote(
-                        resultSet.getLong("id"),
-                        resultSet.getLong("sku_id"),
-                        resultSet.getLong("supplier_id"),
-                        resultSet.getString("supplier_item_no"),
-                        resultSet.getBigDecimal("purchase_price"),
-                        resultSet.getBigDecimal("min_purchase_quantity"),
-                        resultSet.getBoolean("is_default"),
-                        resultSet.getString("status")
-                )),
+                (RowCallbackHandler) resultSet -> {
+                    var quoteId = resultSet.getLong("id");
+                    quotesBySkuId.computeIfAbsent(
+                            resultSet.getLong("sku_id"), ignored -> new ArrayList<>()
+                    ).add(new SupplierQuote(
+                            quoteId,
+                            resultSet.getLong("sku_id"),
+                            resultSet.getLong("supplier_id"),
+                            resultSet.getString("supplier_item_no"),
+                            resultSet.getBigDecimal("purchase_price"),
+                            resultSet.getBigDecimal("min_purchase_quantity"),
+                            resultSet.getBoolean("is_default"),
+                            resultSet.getString("status")
+                    ));
+                    supplierNameByQuoteId.put(quoteId, resultSet.getString("supplier_name"));
+                },
                 productIds.toArray()
         );
-        return quotesBySkuId;
+        return new CatalogSupplierQuoteData(quotesBySkuId, supplierNameByQuoteId);
     }
 
     private Map<Long, BigDecimal> findDefaultSalePrices(List<Long> productIds, String placeholders) {
@@ -361,6 +371,24 @@ public class ProductJpaAdapter implements ProductRepository {
                 (RowCallbackHandler) resultSet -> names.put(
                         resultSet.getLong("product_id"), resultSet.getString("supplier_names")
                 ),
+                productIds.toArray()
+        );
+        return names;
+    }
+
+    private Map<Long, String> findCategoryNames(List<Long> productIds, String placeholders) {
+        var names = new HashMap<Long, String>();
+        jdbc.query(
+                "select product.id as product_id, category.category_name "
+                        + "from product_spu product "
+                        + "left join product_category category on category.id = product.category_id "
+                        + "where product.id in (" + placeholders + ")",
+                (RowCallbackHandler) resultSet -> {
+                    var categoryName = resultSet.getString("category_name");
+                    if (categoryName != null) {
+                        names.put(resultSet.getLong("product_id"), categoryName);
+                    }
+                },
                 productIds.toArray()
         );
         return names;
@@ -796,6 +824,12 @@ public class ProductJpaAdapter implements ProductRepository {
             String remark,
             java.time.LocalDateTime createdAt,
             java.time.LocalDateTime updatedAt
+    ) {
+    }
+
+    private record CatalogSupplierQuoteData(
+            Map<Long, List<SupplierQuote>> quotesBySkuId,
+            Map<Long, String> supplierNameByQuoteId
     ) {
     }
 }

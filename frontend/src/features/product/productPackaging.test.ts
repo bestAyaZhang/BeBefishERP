@@ -8,6 +8,7 @@ const basePackaging: PackagingComparableSku = {
   packageLengthCm: 42,
   packageWidthCm: 28,
   packageHeightCm: 24,
+  packageVolumeCm3: 28224,
   innerPackageLengthCm: 10,
   innerPackageWidthCm: 10,
   innerPackageHeightCm: null,
@@ -36,6 +37,13 @@ describe('getProductPackagingMode', () => {
     ])).toBe('per-sku');
   });
 
+  it('switches to per-sku when only the package volume differs', () => {
+    expect(getProductPackagingMode([
+      basePackaging,
+      { ...basePackaging, packageVolumeCm3: 28224.01 }
+    ])).toBe('per-sku');
+  });
+
   it('switches to per-sku when an image file id differs', () => {
     expect(getProductPackagingMode([
       basePackaging,
@@ -58,7 +66,8 @@ describe('getProductPackagingMode', () => {
       innerPackageLengthCm: 10,
       packageHeightCm: 24,
       packageWidthCm: 28,
-      packageLengthCm: 42
+      packageLengthCm: 42,
+      packageVolumeCm3: 28224
     };
 
     expect(getProductPackagingMode([basePackaging, reordered])).toBe('uniform');

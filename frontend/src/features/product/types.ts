@@ -62,12 +62,15 @@ export interface ProductSupplierQuote {
   id: number;
   skuId: number;
   supplierId: number;
-  supplierName?: string | null;
   supplierItemNo: string | null;
   purchasePrice: number;
   minPurchaseQuantity: number;
   defaultQuote: boolean;
   status: RecordStatus;
+}
+
+export interface ProductCatalogSupplierQuote extends ProductSupplierQuote {
+  supplierName: string;
 }
 
 export interface ProductSku {
@@ -101,7 +104,7 @@ export interface ProductSku {
   packageImageUrl: string | null;
   cartonImageFileId: number | null;
   cartonImageUrl: string | null;
-  supplierQuotes: ProductSupplierQuote[];
+  supplierQuotes: ProductCatalogSupplierQuote[];
   defaultSku: boolean;
   status: RecordStatus;
 }
@@ -114,7 +117,7 @@ export interface Product {
   itemNo: string;
   productName: string;
   categoryId: number;
-  categoryName?: string | null;
+  categoryName: string | null;
   brand: string | null;
   productType: ProductType;
   mainImageFileId: number | null;

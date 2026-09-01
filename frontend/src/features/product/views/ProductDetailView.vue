@@ -68,7 +68,8 @@ function backToList() {
 }
 
 function editProduct() {
-  void router.push({ name: 'product-edit', params: { id: rawRouteId(route.params.id) } });
+  if (!product.value) return;
+  void router.push({ name: 'product-edit', params: { id: product.value.id } });
 }
 
 function retry() {
@@ -87,6 +88,27 @@ onBeforeUnmount(() => {
 
 <template>
   <section data-testid="product-detail-view" class="mx-auto w-full max-w-[1600px] overflow-x-hidden">
+    <header class="mb-4 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div class="flex min-w-0 items-center gap-3">
+        <button data-testid="product-detail-back" type="button" class="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600 transition hover:border-[#536dff] hover:text-[#536dff]" @click="backToList">
+          <ArrowLeft class="h-4 w-4" aria-hidden="true" />
+          返回商品列表
+        </button>
+        <div class="min-w-0 border-l border-slate-200 pl-3">
+          <div v-if="product && !loading && !errorMessage" class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <h1 class="min-w-0 break-words text-lg font-black text-[#25314d]">{{ product.productName }}</h1>
+            <span class="text-xs font-bold text-slate-400">{{ product.itemNo }}</span>
+            <span class="text-xs font-bold" :class="product.status === 'enabled' ? 'text-emerald-600' : 'text-slate-400'">{{ formatProductStatus(product.status) }}</span>
+          </div>
+          <h1 v-else class="text-base font-black text-[#25314d]">商品详情</h1>
+        </div>
+      </div>
+      <button v-if="product && !loading && !errorMessage" data-testid="edit-product" type="button" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#536dff] px-4 text-sm font-bold text-white transition hover:bg-[#465eea] sm:self-auto" @click="editProduct">
+        <Pencil class="h-4 w-4" aria-hidden="true" />
+        编辑商品
+      </button>
+    </header>
+
     <div v-if="loading" data-testid="product-detail-skeleton" class="space-y-4" aria-label="正在加载商品详情">
       <div class="h-16 animate-pulse rounded-lg border border-slate-200 bg-white"></div>
       <div v-for="index in 6" :key="index" class="h-40 animate-pulse rounded-lg border border-slate-200 bg-white"></div>
@@ -102,26 +124,6 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-else-if="product">
-      <header class="mb-4 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-        <div class="flex min-w-0 items-center gap-3">
-          <button data-testid="product-detail-back" type="button" class="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600 transition hover:border-[#536dff] hover:text-[#536dff]" @click="backToList">
-            <ArrowLeft class="h-4 w-4" aria-hidden="true" />
-            返回商品列表
-          </button>
-          <div class="min-w-0 border-l border-slate-200 pl-3">
-            <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <h1 class="min-w-0 break-words text-lg font-black text-[#25314d]">{{ product.productName }}</h1>
-              <span class="text-xs font-bold text-slate-400">{{ product.itemNo }}</span>
-              <span class="text-xs font-bold" :class="product.status === 'enabled' ? 'text-emerald-600' : 'text-slate-400'">{{ formatProductStatus(product.status) }}</span>
-            </div>
-          </div>
-        </div>
-        <button data-testid="edit-product" type="button" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#536dff] px-4 text-sm font-bold text-white transition hover:bg-[#465eea] sm:self-auto" @click="editProduct">
-          <Pencil class="h-4 w-4" aria-hidden="true" />
-          编辑商品
-        </button>
-      </header>
-
       <div class="space-y-4">
         <ProductOverviewSection :product="product" />
         <ProductSkuSection :skus="product.skus" />

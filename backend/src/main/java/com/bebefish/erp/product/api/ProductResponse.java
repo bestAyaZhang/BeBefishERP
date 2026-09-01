@@ -16,6 +16,7 @@ public record ProductResponse(
         String itemNo,
         String productName,
         Long categoryId,
+        String categoryName,
         String brand,
         String productType,
         Long mainImageFileId,
@@ -41,7 +42,7 @@ public record ProductResponse(
     ) {
         return new ProductResponse(
                 product.id(), product.code(), product.itemNo(), product.name(), product.categoryId(),
-                product.brand(), product.type().name().toLowerCase(), product.mainImageFileId(),
+                metrics.categoryName(), product.brand(), product.type().name().toLowerCase(), product.mainImageFileId(),
                 resolvedImageUrls.get(product.mainImageFileId()), metrics.defaultSupplierName(),
                 metrics.totalStock(), metrics.totalSafetyStock(), metrics.defaultSalePrice(),
                 metrics.completeness().percent(), metrics.completeness().status(),
@@ -91,7 +92,7 @@ public record ProductResponse(
             String packageImageUrl,
             Long cartonImageFileId,
             String cartonImageUrl,
-            List<SupplierQuoteResponse> supplierQuotes,
+            List<CatalogSupplierQuoteResponse> supplierQuotes,
             boolean defaultSku,
             String status
     ) {
@@ -124,8 +125,31 @@ public record ProductResponse(
                     packaging == null ? null : imageUrls.get(packaging.packageImageFileId()),
                     packaging == null ? null : packaging.cartonImageFileId(),
                     packaging == null ? null : imageUrls.get(packaging.cartonImageFileId()),
-                    metrics.supplierQuotes().stream().map(SupplierQuoteResponse::from).toList(),
+                    metrics.supplierQuotes().stream().map(CatalogSupplierQuoteResponse::from).toList(),
                     sku.isDefault(), sku.status()
+            );
+        }
+    }
+
+    public record CatalogSupplierQuoteResponse(
+            Long id,
+            Long skuId,
+            Long supplierId,
+            String supplierName,
+            String supplierItemNo,
+            BigDecimal purchasePrice,
+            BigDecimal minPurchaseQuantity,
+            boolean defaultQuote,
+            String status
+    ) {
+        static CatalogSupplierQuoteResponse from(
+                ProductCatalogMetrics.CatalogSupplierQuote catalogQuote
+        ) {
+            var quote = catalogQuote.quote();
+            return new CatalogSupplierQuoteResponse(
+                    quote.id(), quote.skuId(), quote.supplierId(), catalogQuote.supplierName(),
+                    quote.supplierItemNo(), quote.purchasePrice(), quote.minPurchaseQuantity(),
+                    quote.isDefault(), quote.status()
             );
         }
     }

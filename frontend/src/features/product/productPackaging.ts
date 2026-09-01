@@ -6,6 +6,7 @@ type PackagingField =
   | 'packageLengthCm'
   | 'packageWidthCm'
   | 'packageHeightCm'
+  | 'packageVolumeCm3'
   | 'innerPackageLengthCm'
   | 'innerPackageWidthCm'
   | 'innerPackageHeightCm'
@@ -25,6 +26,7 @@ const PACKAGING_FIELDS: readonly PackagingField[] = [
   'packageLengthCm',
   'packageWidthCm',
   'packageHeightCm',
+  'packageVolumeCm3',
   'innerPackageLengthCm',
   'innerPackageWidthCm',
   'innerPackageHeightCm',

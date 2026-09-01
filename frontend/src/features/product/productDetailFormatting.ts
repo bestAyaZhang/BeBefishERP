@@ -15,11 +15,41 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
   day: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
-  hour12: false
+  hour12: false,
+  timeZone: 'Asia/Shanghai'
 });
+
+const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
+const LOCAL_DATE_TIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?$/;
+
+function parseDate(value: string): Date {
+  const match = LOCAL_DATE_TIME_PATTERN.exec(value);
+  if (!match) return new Date(value);
+
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText = '0', fractionText = ''] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const millisecond = Number(fractionText.padEnd(3, '0').slice(0, 3));
+  const localClock = Date.UTC(year, month - 1, day, hour, minute, second, millisecond);
+  const normalized = new Date(localClock);
+
+  if (normalized.getUTCFullYear() !== year
+    || normalized.getUTCMonth() !== month - 1
+    || normalized.getUTCDate() !== day
+    || normalized.getUTCHours() !== hour
+    || normalized.getUTCMinutes() !== minute
+    || normalized.getUTCSeconds() !== second) return new Date(Number.NaN);
+
+  return new Date(localClock - SHANGHAI_OFFSET_MS);
+}
 
 export function formatText(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return EMPTY_VALUE;
+  if (typeof value === 'number' && !Number.isFinite(value)) return EMPTY_VALUE;
   const text = String(value).trim();
   return text || EMPTY_VALUE;
 }
@@ -41,15 +71,15 @@ export function formatDimensions(
   width: number | null | undefined,
   height: number | null | undefined
 ): string {
-  if (length === null || length === undefined
-    || width === null || width === undefined
-    || height === null || height === undefined) return EMPTY_VALUE;
+  if (length === null || length === undefined || !Number.isFinite(length)
+    || width === null || width === undefined || !Number.isFinite(width)
+    || height === null || height === undefined || !Number.isFinite(height)) return EMPTY_VALUE;
   return `${length} × ${width} × ${height} cm`;
 }
 
 export function formatDate(value: string | null | undefined): string {
   if (!value) return EMPTY_VALUE;
-  const date = new Date(value);
+  const date = parseDate(value);
   return Number.isNaN(date.getTime()) ? EMPTY_VALUE : dateFormatter.format(date);
 }
 

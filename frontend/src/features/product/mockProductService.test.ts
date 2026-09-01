@@ -9,6 +9,7 @@ function seedProduct(): Product {
     itemNo: 'ITEM-001',
     productName: '测试商品',
     categoryId: 2,
+    categoryName: '测试分类',
     brand: null,
     productType: 'simple',
     mainImageFileId: null,
@@ -58,6 +59,7 @@ function seedProduct(): Product {
         id: 21,
         skuId: 11,
         supplierId: 3,
+        supplierName: '测试供应商',
         supplierItemNo: null,
         purchasePrice: 6.8,
         minPurchaseQuantity: 48,
@@ -134,6 +136,12 @@ describe('mock product service', () => {
 
   it('keeps embedded and standalone quote reads consistent after save and delete', async () => {
     const service = createMockProductService([seedProduct()]);
+    const expectConsistentReads = async () => {
+      const embedded = (await service.getProduct(1)).skus[0].supplierQuotes;
+      const standalone = await service.listSupplierQuotes(11);
+      expect(embedded.map(({ supplierName: _supplierName, ...quote }) => quote)).toEqual(standalone);
+      expect(embedded.every((quote) => quote.supplierName.length > 0)).toBe(true);
+    };
     const saved = await service.saveSupplierQuote(11, {
       supplierId: 4,
       supplierItemNo: 'SUP-004',
@@ -143,11 +151,11 @@ describe('mock product service', () => {
       syncStandardCost: false
     });
 
-    expect((await service.getProduct(1)).skus[0].supplierQuotes).toEqual(await service.listSupplierQuotes(11));
+    await expectConsistentReads();
 
     await service.deleteSupplierQuote(11, saved.id);
 
-    expect((await service.getProduct(1)).skus[0].supplierQuotes).toEqual(await service.listSupplierQuotes(11));
+    await expectConsistentReads();
     expect(await service.listSupplierQuotes(11)).toHaveLength(1);
   });
 
