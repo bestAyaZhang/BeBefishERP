@@ -105,7 +105,7 @@ async function loadOptions() {
   else errors.push(categoryResult.reason instanceof Error ? categoryResult.reason.message : '分类加载失败');
   if (supplierResult.status === 'fulfilled') suppliers.value = supplierResult.value;
   else errors.push(supplierResult.reason instanceof Error ? supplierResult.reason.message : '供应商加载失败');
-  optionError.value = errors.join('；');
+  optionError.value = [...new Set(errors)].join('；');
 }
 
 function setInitialState(product?: Product) {

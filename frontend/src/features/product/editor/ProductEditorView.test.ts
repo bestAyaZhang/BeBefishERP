@@ -500,9 +500,12 @@ describe('Task 10 product editor', () => {
     expect(invalid.wrapper.find('[data-testid="product-editor-back"]').exists()).toBe(true);
     invalid.wrapper.unmount();
 
-    vi.mocked(masterdataService.listCategories).mockRejectedValueOnce(new Error('分类加载失败'));
+    vi.mocked(masterdataService.listCategories).mockRejectedValueOnce(new Error('接口服务暂不可用'));
+    vi.mocked(masterdataService.listSuppliers).mockRejectedValueOnce(new Error('接口服务暂不可用'));
     const lookupError = await mountEditor();
-    expect(lookupError.wrapper.get('[data-testid="product-editor-option-error"]').text()).toContain('分类加载失败');
+    const optionError = lookupError.wrapper.get('[data-testid="product-editor-option-error"]').text();
+    expect(optionError).toContain('接口服务暂不可用');
+    expect(optionError.match(/接口服务暂不可用/g)).toHaveLength(1);
     expect(lookupError.wrapper.find('[data-testid="retry-editor-options"]').exists()).toBe(true);
     lookupError.wrapper.unmount();
 
