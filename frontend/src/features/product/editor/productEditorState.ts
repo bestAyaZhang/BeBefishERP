@@ -411,11 +411,12 @@ function isNegative(value: number | null) {
 export function isValidDecimal(value: number | null, integerDigits: number, fractionDigits: number) {
   if (value === null) return true;
   if (!Number.isFinite(value) || value < 0) return false;
-  const fixed = value.toFixed(fractionDigits);
-  if (Number(fixed) !== value) return false;
-  const [integerPart, fractionPart = ''] = fixed.split('.');
-  if (integerPart.replace(/^0+(?=\d)/, '').length > integerDigits) return false;
-  const scaled = BigInt(`${integerPart}${fractionPart}`);
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(String(value));
+  if (!match) return false;
+  const integerPart = match[1] ?? '';
+  const fractionPart = match[2] ?? '';
+  if (integerPart.length > integerDigits || fractionPart.length > fractionDigits) return false;
+  const scaled = BigInt(`${integerPart}${fractionPart.padEnd(fractionDigits, '0')}`);
   return scaled <= BigInt(Number.MAX_SAFE_INTEGER);
 }
 
@@ -429,6 +430,10 @@ export function validateStep(
     if (isBlank(state.itemNo)) errors.itemNo = '请输入货号';
     if (isBlank(state.productName)) errors.productName = '请输入商品名称';
     if (state.categoryId === null) errors.categoryId = '请选择商品分类';
+  }
+
+  if (step === 'sku') {
+    if (state.skus.length === 0) return { skus: '请至少添加一个 SKU' };
     if (
       state.productType === 'simple'
       && (state.skus.length > 1
@@ -437,10 +442,6 @@ export function validateStep(
     ) {
       errors.productType = '单规格商品不能包含规格维度或规格值';
     }
-  }
-
-  if (step === 'sku') {
-    if (state.skus.length === 0) return { skus: '请至少添加一个 SKU' };
     const enabledSkus = state.skus.filter((sku) => sku.status === 'enabled');
     const defaultSkus = state.skus.filter((sku) => sku.defaultSku);
     if (enabledSkus.length === 0) errors.skus = '至少保留一个启用的 SKU';

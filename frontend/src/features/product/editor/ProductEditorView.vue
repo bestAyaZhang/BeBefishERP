@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { AlertCircle, ArrowLeft, Check, ChevronLeft, ChevronRight, LoaderCircle, RotateCcw, Save } from 'lucide-vue-next';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router';
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter, type RouteLocationNormalized } from 'vue-router';
 import { message } from '../../../components/feedback/message';
 import { masterdataService } from '../../masterdata/masterdataService';
 import type { Category, PageResult, Supplier } from '../../masterdata/types';
@@ -48,8 +48,9 @@ const initialSnapshot = ref(serializeState(state.value));
 let latestProductRequestId = 0;
 let latestOptionRequestId = 0;
 let latestSaveRequestId = 0;
+let routeGeneration = 0;
 let componentActive = true;
-let allowSaveNavigation = false;
+let expectedSavedProductId: number | null = null;
 
 const currentStep = computed(() => stepDefinitions[currentStepIndex.value] ?? stepDefinitions[0]);
 const isEdit = computed(() => route.name === 'product-edit');
@@ -233,28 +234,29 @@ async function submit() {
   }
 
   const requestId = ++latestSaveRequestId;
-  const sourceRoute = route.fullPath;
+  const sourceRouteGeneration = routeGeneration;
   const wasCreate = state.value.productId === null;
+  expectedSavedProductId = null;
   saving.value = true;
   try {
     const payload = toProductPayload(state.value);
     const saved = state.value.productId === null
       ? await productService.createProduct(payload)
       : await productService.updateProduct(state.value.productId, payload);
-    if (!componentActive || requestId !== latestSaveRequestId || route.fullPath !== sourceRoute) return;
+    if (!componentActive || requestId !== latestSaveRequestId || routeGeneration !== sourceRouteGeneration) return;
     initialSnapshot.value = serializeState(state.value);
     message.success(wasCreate ? '商品已创建' : '商品已更新');
-    allowSaveNavigation = true;
+    expectedSavedProductId = saved.id;
     try {
       await router.push({ name: 'product-detail', params: { id: saved.id } });
     } finally {
-      allowSaveNavigation = false;
+      expectedSavedProductId = null;
     }
   } catch (error) {
-    if (!componentActive || requestId !== latestSaveRequestId || route.fullPath !== sourceRoute) return;
+    if (!componentActive || requestId !== latestSaveRequestId || routeGeneration !== sourceRouteGeneration) return;
     message.error(error instanceof Error ? error.message : '商品保存失败');
   } finally {
-    if (requestId === latestSaveRequestId) saving.value = false;
+    if (requestId === latestSaveRequestId && routeGeneration === sourceRouteGeneration) saving.value = false;
   }
 }
 
@@ -268,8 +270,12 @@ function blockActiveOperation() {
   return true;
 }
 
-function confirmLeave() {
-  if (allowSaveNavigation) return true;
+function confirmLeave(to: RouteLocationNormalized) {
+  if (
+    expectedSavedProductId !== null
+    && to.name === 'product-detail'
+    && String(to.params.id) === String(expectedSavedProductId)
+  ) return true;
   if (blockActiveOperation()) return false;
   return !dirty.value || window.confirm('商品资料尚未保存，确定离开当前页面吗？');
 }
@@ -284,10 +290,12 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
   event.returnValue = '';
 }
 
-onBeforeRouteLeave(() => confirmLeave());
-onBeforeRouteUpdate(() => confirmLeave());
+onBeforeRouteLeave((to) => confirmLeave(to));
+onBeforeRouteUpdate((to) => confirmLeave(to));
 
 watch(() => route.fullPath, () => {
+  routeGeneration += 1;
+  expectedSavedProductId = null;
   void loadEditor();
 }, { immediate: true });
 
@@ -297,6 +305,7 @@ onBeforeUnmount(() => {
   latestProductRequestId += 1;
   latestOptionRequestId += 1;
   latestSaveRequestId += 1;
+  expectedSavedProductId = null;
   window.removeEventListener('beforeunload', handleBeforeUnload);
 });
 </script>

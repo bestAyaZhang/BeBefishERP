@@ -409,6 +409,58 @@ describe('Task 10 product editor', () => {
     expect(wrapper.get('[data-testid="sku-row-0"]').text()).toContain('烟灰款');
   });
 
+  it('lets a loaded variant enter SKU cleanup after switching to simple and blocks submission until reconciled', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    const { wrapper } = await mountEditor('/products/42/edit');
+
+    await wrapper.get('[data-testid="product-type"]').setValue('simple');
+    await next(wrapper);
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('SKU 信息');
+
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('SKU 信息');
+    expect(productService.createProduct).not.toHaveBeenCalled();
+    expect(productService.updateProduct).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-testid="edit-sku-0"]').trigger('click');
+    await wrapper.get('[data-testid="sku-dialog-specification"]').setValue('');
+    await wrapper.get('[data-testid="sku-dialog-save"]').trigger('click');
+    await wrapper.get('[data-testid="step-basic"]').trigger('click');
+    await wrapper.get('button[aria-label="删除规格 1"]').trigger('click');
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    await flushPromises();
+
+    expect(productService.updateProduct).toHaveBeenCalledWith(42, expect.objectContaining({
+      productType: 'simple',
+      specifications: [],
+      skus: [expect.objectContaining({ specificationValues: [] })]
+    }));
+  });
+
+  it('renders an SKU error and keeps exponent-form numeric input away from save APIs', async () => {
+    const product = completeProduct();
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct({
+      skus: [{ ...product.skus[0], defaultSalePrice: 1e21 }]
+    }));
+    const { wrapper } = await mountEditor('/products/42/edit');
+
+    await wrapper.get('[data-testid="step-sku"]').trigger('click');
+    await wrapper.get('[data-testid="edit-sku-0"]').trigger('click');
+    await wrapper.get('[data-testid="sku-dialog-sale-price"]').setValue('1e21');
+    await wrapper.get('[data-testid="sku-dialog-cancel"]').trigger('click');
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    if (wrapper.find('[data-testid="submit-product"]').exists()) {
+      await wrapper.get('[data-testid="submit-product"]').trigger('click');
+      await flushPromises();
+    }
+
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('SKU 信息');
+    expect(wrapper.get('[data-testid="sku-row-0"]').text()).toContain('默认售价最多允许 15 位整数和 4 位小数');
+    expect(productService.createProduct).not.toHaveBeenCalled();
+    expect(productService.updateProduct).not.toHaveBeenCalled();
+  });
+
   it('traps modal focus, closes on Escape, and restores the SKU opener focus', async () => {
     const { wrapper } = await mountEditor();
     await fillBasic(wrapper);
@@ -881,6 +933,74 @@ describe('Task 10 product editor', () => {
     await flushPromises();
     expect(secondPush).not.toHaveBeenCalled();
     expect(messages.value).toHaveLength(0);
+  });
+
+  it('permanently invalidates a pending save after an A-to-B-to-A route cycle', async () => {
+    const pending = deferred<Product>();
+    vi.mocked(productService.createProduct).mockReturnValueOnce(pending.promise);
+    const { router, wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await next(wrapper);
+    await addSku(wrapper, '透明款', 'A-1');
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    const push = vi.spyOn(router, 'push');
+    const routeRef = router.currentRoute as unknown as { value: typeof router.currentRoute.value };
+
+    routeRef.value = {
+      ...routeRef.value,
+      fullPath: '/products/new?revision=2',
+      query: { revision: '2' }
+    };
+    await flushPromises();
+    routeRef.value = {
+      ...routeRef.value,
+      fullPath: '/products/new',
+      query: {}
+    };
+    await flushPromises();
+    push.mockClear();
+    clearMessages();
+
+    pending.resolve(completeProduct({ id: 77 }));
+    await flushPromises();
+
+    expect(push).not.toHaveBeenCalled();
+    expect(messages.value).toHaveLength(0);
+  });
+
+  it('authorizes only the exact saved detail target while save navigation is pending', async () => {
+    const pendingSave = deferred<Product>();
+    const savedNavigationStarted = deferred<void>();
+    const releaseSavedNavigation = deferred<void>();
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    vi.mocked(productService.updateProduct).mockReturnValueOnce(pendingSave.promise);
+    const { router, wrapper } = await mountEditor('/products/42/edit');
+    const confirm = vi.mocked(window.confirm);
+    const originalPush = router.push.bind(router);
+    vi.spyOn(router, 'push').mockImplementation(async (to) => {
+      if (router.resolve(to).name === 'product-detail') {
+        savedNavigationStarted.resolve(undefined);
+        await releaseSavedNavigation.promise;
+      }
+      return originalPush(to);
+    });
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+
+    pendingSave.resolve(completeProduct({ id: 77 }));
+    await savedNavigationStarted.promise;
+    await originalPush({ name: 'product-detail', params: { id: 999 } });
+
+    expect(router.currentRoute.value.name).toBe('product-edit');
+    expect(router.currentRoute.value.params.id).toBe('42');
+    expect(messages.value.at(-1)?.text).toContain('商品正在保存');
+
+    releaseSavedNavigation.resolve(undefined);
+    await flushPromises();
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(router.currentRoute.value).toMatchObject({ name: 'product-detail', params: { id: '77' } });
   });
 
   it('guards only real unsaved changes for route and browser navigation', async () => {

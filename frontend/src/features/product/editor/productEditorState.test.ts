@@ -7,6 +7,7 @@ import {
   createEditorState,
   detectPackagingMode,
   insertSku,
+  isValidDecimal,
   packagingFromSku,
   removeSku,
   replaceSku,
@@ -417,6 +418,12 @@ describe('product editor state', () => {
     }));
   });
 
+  it('returns false instead of throwing for finite numbers rendered in exponent form', () => {
+    expect(() => isValidDecimal(1e21, 15, 4)).not.toThrow();
+    expect(isValidDecimal(1e21, 15, 4)).toBe(false);
+    expect(isValidDecimal(Number.MAX_VALUE, 15, 4)).toBe(false);
+  });
+
   it('accepts exact decimal boundary values that remain safe in JavaScript', () => {
     const state = createEditorState();
     state.skus = [sku({
@@ -484,16 +491,44 @@ describe('product editor state', () => {
     expect(result[0]).not.toBe(quotes[0]);
   });
 
-  it('validates explicit product type against SKU and specification structure', () => {
-    const state = createEditorState();
-    const contractState = state as typeof state & { productType: ProductType };
-    contractState.productType = 'simple';
-    state.specifications = [{ name: '颜色', values: ['透明'] }];
-    state.skus = [sku({ specificationValues: ['透明'] })];
+  it('moves variant-to-simple structural cleanup from Basic to the SKU boundary', () => {
+    const product = loadedProductFixture('variant');
+    product.specifications = [{ name: '容量', values: ['500ml'] }];
+    product.skus = [
+      { ...product.skus[0], specificationValues: [] },
+      {
+        ...product.skus[0],
+        id: 521,
+        skuCode: 'PRD-000052-002',
+        skuName: '备用 SKU',
+        specificationValues: [],
+        defaultSku: false
+      }
+    ];
+    const state = createEditorState(product);
+    state.productType = 'simple';
 
-    expect(validateStep(state, 'basic')).toEqual(expect.objectContaining({
+    expect(validateStep(state, 'basic')).toEqual({});
+    expect(validateStep(state, 'sku')).toEqual(expect.objectContaining({
       productType: '单规格商品不能包含规格维度或规格值'
     }));
+
+    state.skus = [state.skus[0]];
+    expect(validateStep(state, 'sku')).toEqual({});
+
+    state.specifications = [{ name: '颜色', values: ['透明'] }];
+    expect(validateStep(state, 'sku')).toEqual(expect.objectContaining({
+      productType: '单规格商品不能包含规格维度或规格值'
+    }));
+
+    state.specifications = [{ name: '容量', values: ['500ml'] }];
+    state.skus[0].specificationValues = ['500ml'];
+    expect(validateStep(state, 'sku')).toEqual(expect.objectContaining({
+      productType: '单规格商品不能包含规格维度或规格值'
+    }));
+
+    state.skus[0].specificationValues = [];
+    expect(validateStep(state, 'sku')).toEqual({});
   });
 
   it('preserves loaded simple and variant product types during hydration', () => {
