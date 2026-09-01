@@ -7,6 +7,7 @@ import ProductDetailView from './views/ProductDetailView.vue';
 import type { Product, ProductService } from './types';
 import { productService } from './productService';
 import { productFixture, productPage } from './productTestFixtures';
+import { masterdataService } from '../masterdata/masterdataService';
 
 vi.mock('./productService', () => ({
   productService: {
@@ -23,7 +24,7 @@ vi.mock('./productService', () => ({
   } satisfies ProductService
 }));
 
-vi.mock('../../masterdata/masterdataService', () => ({
+vi.mock('../masterdata/masterdataService', () => ({
   masterdataService: {
     listCategories: vi.fn().mockResolvedValue({ records: [], page: 1, pageSize: 100, total: 0 })
   }
@@ -46,13 +47,17 @@ const product = productFixture({
 
 describe('product detail navigation', () => {
   beforeEach(async () => {
+    vi.clearAllMocks();
     localStorage.setItem('bebefish_access_token', 'test-token');
     vi.mocked(productService.listProducts).mockResolvedValue(productPage([product]));
+    vi.mocked(productService.getCategoryCounts).mockResolvedValue({});
+    vi.mocked(masterdataService.listCategories).mockResolvedValue({ records: [], page: 1, pageSize: 100, total: 0 });
     await router.push('/products');
     await router.isReady();
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     localStorage.clear();
   });
 
@@ -69,6 +74,37 @@ describe('product detail navigation', () => {
     expect(router.currentRoute.value.name).toBe('product-detail');
     expect(router.currentRoute.value.params.id).toBe('42');
     expect(wrapper.find('[data-testid="product-detail-drawer"]').exists()).toBe(false);
+  });
+
+  it('opens the standalone product creation route from the list toolbar', async () => {
+    const wrapper = mount(ProductListView, { global: { plugins: [router] } });
+    await flushPromises();
+    const push = vi.spyOn(router, 'push');
+
+    await wrapper.get('[data-testid="add-product"]').trigger('click');
+    await flushPromises();
+    await push.mock.results.at(-1)?.value;
+
+    expect(push).toHaveBeenCalledWith({ name: 'product-new' });
+    expect(router.currentRoute.value.name).toBe('product-new');
+  });
+
+  it('keeps the product list usable when category counts fail and retries only the tree area', async () => {
+    vi.mocked(productService.getCategoryCounts)
+      .mockRejectedValueOnce(new Error('分类数量暂不可用'))
+      .mockResolvedValueOnce({ 1: 1 });
+    const wrapper = mount(ProductListView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="product-row-42"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="category-tree-error"]').text()).toContain('商品数量加载失败');
+
+    await wrapper.get('[data-testid="category-tree-error"] button').trigger('click');
+    await flushPromises();
+
+    expect(productService.getCategoryCounts).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="category-tree-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="product-row-42"]').exists()).toBe(true);
   });
 
   it('renders product detail as a page without drawer positioning or overlay', () => {
