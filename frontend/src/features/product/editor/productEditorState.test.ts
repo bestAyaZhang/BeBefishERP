@@ -5,9 +5,14 @@ import {
   applyUnifiedPackaging,
   createEditorState,
   detectPackagingMode,
+  insertSku,
   packagingFromSku,
+  setEditorImageFileId,
+  setEditorImagePreview,
   setDefaultQuote,
+  setPackagingMode,
   toProductPayload,
+  updateUnifiedPackaging,
   validateStep
 } from './productEditorState';
 
@@ -64,6 +69,46 @@ function quote(overrides: Partial<ProductSupplierQuoteInput> = {}): ProductSuppl
   };
 }
 
+function loadedProductFixture(productType: Product['productType']): Product {
+  return productFixture({
+    id: productType === 'simple' ? 51 : 52,
+    productCode: productType === 'simple' ? 'PRD-000051' : 'PRD-000052',
+    itemNo: productType === 'simple' ? 'BBF-051' : 'BBF-052',
+    productName: '已加载商品',
+    categoryId: 8,
+    brand: null,
+    productType,
+    mainImageFileId: null,
+    status: 'enabled',
+    remark: null,
+    specifications: [],
+    skus: [{
+      id: productType === 'simple' ? 510 : 520,
+      skuCode: productType === 'simple' ? 'PRD-000051-DEFAULT' : 'PRD-000052-001',
+      barcode: null,
+      skuName: '默认 SKU',
+      specificationValues: [],
+      salesUnit: '只',
+      defaultSalePrice: 0,
+      standardCost: 0,
+      packageLengthCm: null,
+      packageWidthCm: null,
+      packageHeightCm: null,
+      packageVolumeCm3: null,
+      netWeightKg: null,
+      grossWeightKg: null,
+      gramWeightG: null,
+      packagingMethod: null,
+      cartonQuantity: null,
+      skuImageFileId: null,
+      packageImageFileId: null,
+      cartonImageFileId: null,
+      defaultSku: true,
+      status: 'enabled'
+    }]
+  });
+}
+
 describe('product editor state', () => {
   it('copies unified packaging to every sku without sharing object references', () => {
     const result = applyUnifiedPackaging(twoSkus, unifiedPackaging);
@@ -71,6 +116,84 @@ describe('product editor state', () => {
     expect(result.map((item) => item.innerPackageLengthCm)).toEqual([36, 36]);
     expect(result.map((item) => item.cartonImageFileId)).toEqual([91, 91]);
     expect(result[0]).not.toBe(result[1]);
+  });
+
+  it('gives a SKU added in unified mode every packaging field and synchronized image preview', () => {
+    const state = createEditorState();
+    insertSku(state, sku({ skuName: '透明款', supplierQuotes: [quote()] }));
+    updateUnifiedPackaging(state, {
+      packageLengthCm: 42,
+      packageWidthCm: 31,
+      packageHeightCm: 28,
+      packageVolumeCm3: 36456,
+      innerPackageLengthCm: 36,
+      innerPackageWidthCm: 25,
+      innerPackageHeightCm: 22,
+      netWeightKg: 8.5,
+      grossWeightKg: 9.2,
+      gramWeightG: 350,
+      innerPackageWeightKg: 1.1,
+      packagingMethod: '彩盒',
+      cartonQuantity: 12,
+      packageImageFileId: null,
+      cartonImageFileId: null
+    });
+    setEditorImageFileId(state, 'package', null, 90);
+    setEditorImagePreview(state, 'package', null, '/uploads/package.png');
+    setEditorImageFileId(state, 'carton', null, 91);
+    setEditorImagePreview(state, 'carton', null, '/uploads/carton.png');
+
+    const added = sku({ skuName: '烟灰款', supplierQuotes: [quote({ supplierId: 8 })] });
+    insertSku(state, added);
+
+    expect(packagingFromSku(state.skus[1])).toEqual(state.unifiedPackaging);
+    expect(state.skus[1]).not.toBe(state.skus[0]);
+    expect(state.skus[1].supplierQuotes).not.toBe(added.supplierQuotes);
+    expect(state.imagePreviews.package).toEqual(['/uploads/package.png', '/uploads/package.png']);
+    expect(state.imagePreviews.carton).toEqual(['/uploads/carton.png', '/uploads/carton.png']);
+    expect(state.imagePreviewFileIds.package).toEqual([90, 90]);
+    expect(state.imagePreviewFileIds.carton).toEqual([91, 91]);
+  });
+
+  it('synchronizes ids and previews across packaging mode transitions without leaking stale previews', () => {
+    const state = createEditorState();
+    insertSku(state, sku({ skuName: '透明款' }));
+    insertSku(state, sku({ skuName: '烟灰款' }));
+    setPackagingMode(state, 'perSku');
+    state.skus[0].packageLengthCm = 42;
+    state.skus[1].packageLengthCm = 44;
+    setEditorImageFileId(state, 'package', 0, 90);
+    setEditorImagePreview(state, 'package', 0, '/uploads/package-90.png');
+    setEditorImageFileId(state, 'package', 1, 92);
+    setEditorImagePreview(state, 'package', 1, '/uploads/package-92.png');
+
+    setPackagingMode(state, 'unified');
+
+    expect(state.skus.map((item) => item.packageLengthCm)).toEqual([42, 42]);
+    expect(state.skus.map((item) => item.packageImageFileId)).toEqual([90, 90]);
+    expect(state.imagePreviews.package).toEqual(['/uploads/package-90.png', '/uploads/package-90.png']);
+    expect(state.imagePreviewFileIds.package).toEqual([90, 90]);
+
+    setPackagingMode(state, 'perSku');
+    expect(state.imagePreviews.package).toEqual(['/uploads/package-90.png', '/uploads/package-90.png']);
+    state.imagePreviewFileIds.package[0] = 999;
+    state.imagePreviews.package[0] = '/uploads/stale.png';
+    setPackagingMode(state, 'unified');
+    expect(state.imagePreviews.package).toEqual(['', '']);
+    expect(state.imagePreviewFileIds.package).toEqual([90, 90]);
+  });
+
+  it('clears a unified preview when a packaging update changes its file id', () => {
+    const state = createEditorState();
+    insertSku(state, sku({ skuName: '透明款' }));
+    setEditorImageFileId(state, 'package', null, 90);
+    setEditorImagePreview(state, 'package', null, '/uploads/package-90.png');
+
+    updateUnifiedPackaging(state, { ...state.unifiedPackaging, packageImageFileId: 91 });
+
+    expect(state.skus[0].packageImageFileId).toBe(91);
+    expect(state.imagePreviews.package).toEqual(['']);
+    expect(state.imagePreviewFileIds.package).toEqual([91]);
   });
 
   it('detects per sku mode when one weight differs', () => {
@@ -193,6 +316,50 @@ describe('product editor state', () => {
     });
   });
 
+  it('mirrors backend nonnegative SKU amounts and packaging relationships', () => {
+    const state = createEditorState();
+    state.skus = [sku({
+      defaultSalePrice: -0.01,
+      standardCost: -1,
+      safetyStockQuantity: -2,
+      packageLengthCm: -3,
+      innerPackageWeightKg: -0.1,
+      netWeightKg: 3.2,
+      grossWeightKg: 3.1,
+      cartonQuantity: 0
+    })];
+
+    expect(validateStep(state, 'sku')).toEqual(expect.objectContaining({
+      'skus.0.defaultSalePrice': '默认售价不能小于 0',
+      'skus.0.standardCost': '标准成本不能小于 0',
+      'skus.0.safetyStockQuantity': '安全库存不能小于 0'
+    }));
+    expect(validateStep(state, 'packaging')).toEqual(expect.objectContaining({
+      'skus.0.packageLengthCm': '包装长不能小于 0',
+      'skus.0.innerPackageWeightKg': '内包装重量不能小于 0',
+      'skus.0.grossWeightKg': '毛重不能小于净重',
+      'skus.0.cartonQuantity': '装箱数必须大于 0'
+    }));
+  });
+
+  it('mirrors backend supplier quote validity, uniqueness, status, and default rules', () => {
+    const state = createEditorState();
+    state.skus = [sku({ supplierQuotes: [
+      quote({ supplierId: 4, minPurchaseQuantity: 0, defaultQuote: true, status: 'disabled' }),
+      quote({ supplierId: 4, purchasePrice: -0.01, defaultQuote: true }),
+      quote({ supplierId: 99 })
+    ] })];
+
+    expect(validateStep(state, 'procurement', { validSupplierIds: new Set([4, 8]) })).toEqual(expect.objectContaining({
+      'skus.0.supplierQuotes.0.minPurchaseQuantity': '最小采购量必须大于 0',
+      'skus.0.supplierQuotes.0.defaultQuote': '禁用报价不能设为默认报价',
+      'skus.0.supplierQuotes.1.supplierId': '同一 SKU 的供应商报价不能重复',
+      'skus.0.supplierQuotes.1.purchasePrice': '采购价不能小于 0',
+      'skus.0.supplierQuotes.2.supplierId': '请选择有效供应商',
+      'skus.0.supplierQuotes': '每个 SKU 最多只能有一个默认报价'
+    }));
+  });
+
   it('keeps exactly one default supplier quote in a sku', () => {
     const quotes = [quote({ supplierId: 4, defaultQuote: true }), quote({ supplierId: 8 })];
 
@@ -202,11 +369,27 @@ describe('product editor state', () => {
     expect(result[0]).not.toBe(quotes[0]);
   });
 
-  it('preserves a loaded single-SKU product type in the update payload', () => {
+  it('derives a new one-SKU product with specification values as variant', () => {
     const state = createEditorState();
-    state.productType = 'simple';
     state.skus = [sku({ specificationValues: ['透明'] })];
 
-    expect(toProductPayload(state).productType).toBe('simple');
+    expect(toProductPayload(state).productType).toBe('variant');
+  });
+
+  it('preserves valid loaded simple and variant product types during hydration', () => {
+    const loadedSimple = loadedProductFixture('simple');
+    const loadedVariant = loadedProductFixture('variant');
+
+    expect(createEditorState(loadedSimple).loadedProductType).toBe('simple');
+    expect(toProductPayload(createEditorState(loadedSimple)).productType).toBe('simple');
+    expect(createEditorState(loadedVariant).loadedProductType).toBe('variant');
+    expect(toProductPayload(createEditorState(loadedVariant)).productType).toBe('variant');
+  });
+
+  it('promotes a loaded simple product when an edit adds specification values', () => {
+    const state = createEditorState(loadedProductFixture('simple'));
+    state.skus[0].specificationValues = ['透明'];
+
+    expect(toProductPayload(state).productType).toBe('variant');
   });
 });

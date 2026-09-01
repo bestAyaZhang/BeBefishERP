@@ -17,58 +17,88 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:fileId': [value: number | null];
   'update:preview': [value: string];
+  'update:uploading': [value: boolean];
 }>();
 
 const inputId = `image-upload-${Math.random().toString(36).slice(2)}`;
 const previewUrl = ref(props.preview);
+const committedPreview = ref(props.preview);
 const status = ref<UploadStatus>(props.fileId !== null || Boolean(props.preview) ? 'uploaded' : 'idle');
 const error = ref('');
 const ownedBlobUrls = new Set<string>();
+let requestGeneration = 0;
+let mounted = true;
+let uploading = false;
 
 watch(() => props.preview, (value) => {
+  if (value === previewUrl.value) return;
+  invalidatePendingRequest();
+  revokeOwned(previewUrl.value);
   previewUrl.value = value;
-  if (value && status.value === 'idle') status.value = 'uploaded';
+  committedPreview.value = value;
+  status.value = value ? 'uploaded' : 'idle';
+  error.value = '';
 });
 
 function revokeOwned(url: string) {
   if (!ownedBlobUrls.has(url)) return;
   ownedBlobUrls.delete(url);
-  URL.revokeObjectURL(url);
+  URL.revokeObjectURL?.(url);
+}
+
+function setUploading(value: boolean) {
+  if (uploading === value) return;
+  uploading = value;
+  emit('update:uploading', value);
+}
+
+function invalidatePendingRequest() {
+  requestGeneration += 1;
+  setUploading(false);
 }
 
 async function upload(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
-  const previousPreview = previewUrl.value;
+  invalidatePendingRequest();
+  revokeOwned(previewUrl.value);
+  const generation = requestGeneration;
   const localPreview = URL.createObjectURL(file);
   ownedBlobUrls.add(localPreview);
   previewUrl.value = localPreview;
   status.value = 'uploading';
   error.value = '';
+  setUploading(true);
   try {
     const uploaded = await props.service.uploadImage(file);
+    if (!mounted || generation !== requestGeneration) return;
     emit('update:fileId', uploaded.id);
     const nextPreview = uploaded.url || localPreview;
     if (uploaded.url) revokeOwned(localPreview);
-    if (previousPreview !== nextPreview) revokeOwned(previousPreview);
     previewUrl.value = nextPreview;
+    committedPreview.value = nextPreview;
     emit('update:preview', nextPreview);
     status.value = 'uploaded';
   } catch (cause) {
+    if (!mounted || generation !== requestGeneration) return;
     revokeOwned(localPreview);
-    previewUrl.value = previousPreview;
+    previewUrl.value = committedPreview.value;
     status.value = 'error';
     error.value = cause instanceof Error ? cause.message : '图片上传失败';
     message.error(error.value);
   } finally {
+    if (mounted && generation === requestGeneration) setUploading(false);
+    if (generation !== requestGeneration) revokeOwned(localPreview);
     input.value = '';
   }
 }
 
 function remove() {
+  invalidatePendingRequest();
   revokeOwned(previewUrl.value);
   previewUrl.value = '';
+  committedPreview.value = '';
   status.value = 'idle';
   error.value = '';
   emit('update:fileId', null);
@@ -88,6 +118,8 @@ function statusLabel() {
 }
 
 onBeforeUnmount(() => {
+  mounted = false;
+  invalidatePendingRequest();
   for (const url of [...ownedBlobUrls]) revokeOwned(url);
 });
 </script>

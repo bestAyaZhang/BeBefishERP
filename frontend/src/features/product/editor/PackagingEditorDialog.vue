@@ -44,14 +44,14 @@ const fields: Array<{ field: NumericPackagingField; label: string; testId: strin
 ];
 
 const draft = ref<SkuForm>();
-const error = ref('');
+const errors = ref<Partial<Record<NumericPackagingField, string>>>({});
 
 watch(
   () => [props.open, props.sku] as const,
   ([open]) => {
     if (!open || !props.sku) return;
     draft.value = cloneSku(props.sku);
-    error.value = '';
+    errors.value = {};
   },
   { immediate: true, deep: true }
 );
@@ -64,22 +64,24 @@ function updateNumber(field: NumericPackagingField, event: Event) {
 
 function save() {
   if (!draft.value) return;
-  const hasNegative = fields.some(({ field }) => {
-    const value = draft.value?.[field];
-    return typeof value === 'number' && value < 0;
-  });
-  if (hasNegative) {
-    error.value = '包装和重量数值不能小于 0';
-    return;
+  const nextErrors: Partial<Record<NumericPackagingField, string>> = {};
+  for (const { field, label } of fields) {
+    const value = draft.value[field];
+    if (typeof value === 'number' && value < 0) nextErrors[field] = `${label.replace(/\s*\(.+\)$/, '')}不能小于 0`;
+  }
+  if (draft.value.cartonQuantity !== null && draft.value.cartonQuantity <= 0) {
+    nextErrors.cartonQuantity = '装箱数必须大于 0';
   }
   if (
-    draft.value.netWeightKg !== null
+    !nextErrors.grossWeightKg
+    && draft.value.netWeightKg !== null
     && draft.value.grossWeightKg !== null
     && draft.value.grossWeightKg < draft.value.netWeightKg
   ) {
-    error.value = '毛重不能小于净重';
-    return;
+    nextErrors.grossWeightKg = '毛重不能小于净重';
   }
+  errors.value = nextErrors;
+  if (Object.keys(nextErrors).length > 0) return;
   emit('save', cloneSku(draft.value));
 }
 </script>
@@ -111,11 +113,13 @@ function save() {
               :data-testid="`packaging-dialog-${field.testId}`"
               :value="draft[field.field] ?? ''"
               type="number"
-              min="0"
+              :min="field.field === 'cartonQuantity' ? '1' : '0'"
               :step="field.step"
-              class="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold tabular-nums text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15"
+              class="h-11 w-full rounded-lg border bg-white px-3 text-sm font-semibold tabular-nums text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15"
+              :class="errors[field.field] ? 'border-rose-400' : 'border-slate-300'"
               @input="updateNumber(field.field, $event)"
             />
+            <span v-if="errors[field.field]" :data-testid="`packaging-dialog-${field.testId}-error`" class="block text-xs text-rose-600">{{ errors[field.field] }}</span>
           </label>
           <label class="space-y-2 text-sm font-bold text-slate-600 sm:col-span-2 lg:col-span-3">
             <span>包装方式</span>
@@ -123,7 +127,6 @@ function save() {
           </label>
           <div class="flex min-h-11 items-end text-sm font-semibold text-slate-500">包装图片在“图片资料”步骤维护。</div>
         </div>
-        <p v-if="error" class="mt-5 rounded-lg bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{{ error }}</p>
       </div>
 
       <footer data-testid="packaging-dialog-footer" class="sticky bottom-0 z-10 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">

@@ -3,7 +3,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import type { SkuForm } from '../../types';
 import SkuEditorDialog from '../SkuEditorDialog.vue';
-import type { ProductEditorState } from '../productEditorState';
+import { insertSku, removeSku as removeSkuFromState, replaceSku, type ProductEditorState } from '../productEditorState';
 
 const state = defineModel<ProductEditorState>({ required: true });
 const props = defineProps<{ errors: Record<string, string> }>();
@@ -24,25 +24,20 @@ function openEdit(index: number) {
 
 function saveSku(sku: SkuForm) {
   if (editingIndex.value === null) {
-    state.value.skus.push(sku);
-    state.value.imagePreviews.sku.push('');
-    state.value.imagePreviews.package.push('');
-    state.value.imagePreviews.carton.push('');
+    insertSku(state.value, sku);
   } else {
-    state.value.skus.splice(editingIndex.value, 1, sku);
+    replaceSku(state.value, editingIndex.value, sku);
   }
   dialogOpen.value = false;
 }
 
 function removeSku(index: number) {
-  state.value.skus.splice(index, 1);
-  state.value.imagePreviews.sku.splice(index, 1);
-  state.value.imagePreviews.package.splice(index, 1);
-  state.value.imagePreviews.carton.splice(index, 1);
+  removeSkuFromState(state.value, index);
 }
 
 function skuError(index: number) {
-  return props.errors[`skus.${index}.skuName`] ?? props.errors[`skus.${index}.salesUnit`] ?? '';
+  const prefix = `skus.${index}.`;
+  return Object.entries(props.errors).find(([field]) => field.startsWith(prefix))?.[1] ?? '';
 }
 </script>
 

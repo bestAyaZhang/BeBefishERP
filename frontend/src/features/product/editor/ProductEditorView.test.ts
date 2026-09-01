@@ -125,7 +125,7 @@ function completeProduct(overrides: Partial<Product> = {}): Product {
         purchasePrice: 8.6,
         minPurchaseQuantity: 24,
         defaultQuote: true,
-        status: 'disabled'
+        status: 'enabled'
       }],
       defaultSku: true,
       status: 'enabled'
@@ -161,7 +161,10 @@ async function mountEditor(path = '/products/new') {
   });
   await router.push(path);
   await router.isReady();
-  const wrapper = mount({ template: '<router-view />' }, { global: { plugins: [router] } });
+  const wrapper = mount(
+    { template: '<router-view />' },
+    { attachTo: document.body, global: { plugins: [router] } }
+  );
   await flushPromises();
   return { router, wrapper };
 }
@@ -321,10 +324,20 @@ describe('Task 10 product editor', () => {
 
     await wrapper.get('[data-testid="add-sku"]').trigger('click');
     const dialog = wrapper.get('[data-testid="sku-editor-dialog"]');
-    expect(dialog.classes()).toContain('w-[min(960px,calc(100vw-48px))]');
-    expect(dialog.get('[data-testid="sku-dialog-body"]').classes()).toContain('max-h-[calc(100vh-180px)]');
-    expect(dialog.get('[data-testid="sku-dialog-body"]').classes()).toContain('overflow-y-auto');
-    expect(dialog.get('[data-testid="sku-dialog-footer"]').classes()).toContain('sticky');
+    const dialogBody = dialog.get('[data-testid="sku-dialog-body"]');
+    const dialogFooter = dialog.get('[data-testid="sku-dialog-footer"]');
+    const lastDialogInput = dialog.get('[data-testid="sku-dialog-safety-stock"]');
+    expect(dialog.attributes('role')).toBe('dialog');
+    expect(dialogBody.element.contains(dialogFooter.element)).toBe(false);
+    expect(dialog.element.compareDocumentPosition(dialogFooter.element) & Node.DOCUMENT_POSITION_CONTAINED_BY).toBeTruthy();
+    (lastDialogInput.element as HTMLInputElement).focus();
+    expect(document.activeElement).toBe(lastDialogInput.element);
+    await dialog.get('[data-testid="sku-dialog-sale-price"]').setValue('-1');
+    await dialog.get('[data-testid="sku-dialog-name"]').setValue('数值无效');
+    await dialog.get('[data-testid="sku-dialog-save"]').trigger('click');
+    expect(dialog.get('[data-testid="sku-dialog-sale-price-error"]').text()).toContain('默认售价不能小于 0');
+    expect(wrapper.find('[data-testid="sku-row-0"]').exists()).toBe(false);
+    await dialog.get('[data-testid="sku-dialog-sale-price"]').setValue('0');
     await dialog.get('[data-testid="sku-dialog-name"]').setValue('不会保存');
     await dialog.get('[data-testid="sku-dialog-cancel"]').trigger('click');
     expect(wrapper.find('[data-testid="sku-row-0"]').exists()).toBe(false);
@@ -363,6 +376,26 @@ describe('Task 10 product editor', () => {
     expect(wrapper.get<HTMLInputElement>('[data-testid="quote-default-0-0"]').element.checked).toBe(true);
   });
 
+  it('starts quotes valid and reconciles defaults when quote status changes', async () => {
+    const { wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await next(wrapper);
+    await addSku(wrapper, '透明款', 'A-1');
+    await next(wrapper);
+
+    await wrapper.get('[data-testid="add-quote-0"]').trigger('click');
+    await wrapper.get('[data-testid="quote-supplier-0-0"]').setValue('4');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="quote-price-0-0"]').element.value).toBe('0');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="quote-min-quantity-0-0"]').element.value).toBe('1');
+    await wrapper.get('[data-testid="add-quote-0"]').trigger('click');
+    await wrapper.get('[data-testid="quote-default-0-1"]').setValue(true);
+    await wrapper.get('[data-testid="quote-status-0-1"]').setValue('disabled');
+
+    expect(wrapper.get<HTMLInputElement>('[data-testid="quote-default-0-0"]').element.checked).toBe(true);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="quote-default-0-1"]').element.checked).toBe(false);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="quote-default-0-1"]').element.disabled).toBe(true);
+  });
+
   it('shows the invalid supplier field and stays on procurement', async () => {
     const { wrapper } = await mountEditor();
     await fillBasic(wrapper);
@@ -390,11 +423,18 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
     await wrapper.get('[data-testid="edit-packaging-1"]').trigger('click');
     const dialog = wrapper.get('[data-testid="packaging-editor-dialog"]');
-    expect(dialog.classes()).toContain('w-[min(960px,calc(100vw-48px))]');
-    expect(dialog.get('[data-testid="packaging-dialog-body"]').classes()).toContain('max-h-[calc(100vh-180px)]');
-    expect(dialog.get('[data-testid="packaging-dialog-body"]').classes()).toContain('overflow-y-auto');
-    expect(dialog.get('[data-testid="packaging-dialog-body"]').classes()).toContain('pb-8');
-    expect(dialog.get('[data-testid="packaging-dialog-footer"]').classes()).toContain('sticky');
+    const dialogBody = dialog.get('[data-testid="packaging-dialog-body"]');
+    const dialogFooter = dialog.get('[data-testid="packaging-dialog-footer"]');
+    const lastDialogInput = dialog.get('[data-testid="packaging-dialog-method"]');
+    expect(dialog.attributes('role')).toBe('dialog');
+    expect(dialogBody.element.contains(dialogFooter.element)).toBe(false);
+    expect(dialog.element.compareDocumentPosition(dialogFooter.element) & Node.DOCUMENT_POSITION_CONTAINED_BY).toBeTruthy();
+    (lastDialogInput.element as HTMLInputElement).focus();
+    expect(document.activeElement).toBe(lastDialogInput.element);
+    await dialog.get('[data-testid="packaging-dialog-carton-quantity"]').setValue('0');
+    await dialog.get('[data-testid="packaging-dialog-save"]').trigger('click');
+    expect(dialog.get('[data-testid="packaging-dialog-carton-quantity-error"]').text()).toContain('装箱数必须大于 0');
+    await dialog.get('[data-testid="packaging-dialog-carton-quantity"]').setValue('12');
     expect(dialog.get<HTMLInputElement>('[data-testid="packaging-dialog-package-length"]').element.value).toBe('42');
     await dialog.get('[data-testid="packaging-dialog-package-length"]').setValue('44');
     await dialog.get('[data-testid="packaging-dialog-cancel"]').trigger('click');
@@ -410,6 +450,27 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
     expect(wrapper.get('[data-testid="packaging-row-0"]').text()).toContain('42');
     expect(wrapper.get('[data-testid="packaging-row-1"]').text()).toContain('42');
+  });
+
+  it('inherits unified packaging data and matching previews when a SKU is added later', async () => {
+    const { wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await next(wrapper);
+    await addSku(wrapper, '透明款', 'A-1');
+    await next(wrapper);
+    await next(wrapper);
+    await wrapper.get('[data-testid="unified-package-length"]').setValue('42');
+    await next(wrapper);
+    await upload(wrapper, 'package-image-unified', 'package.png');
+
+    await wrapper.get('[data-testid="step-sku"]').trigger('click');
+    await addSku(wrapper, '烟灰款', 'A-2');
+    await wrapper.get('[data-testid="step-packaging"]').trigger('click');
+    await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
+    expect(wrapper.get('[data-testid="packaging-row-1"]').text()).toContain('42');
+
+    await wrapper.get('[data-testid="step-images"]').trigger('click');
+    expect(wrapper.get('[data-testid="package-image-1-preview"]').attributes('src')).toBe('/uploads/package.png');
   });
 
   it('keeps previews through upload errors, removes associations, and revokes blob urls', async () => {
@@ -437,6 +498,37 @@ describe('Task 10 product editor', () => {
     expect(wrapper.get('[data-testid="product-main-image-status"]').text()).toContain('未上传');
   });
 
+  it('blocks advancing and submission while an image upload is pending', async () => {
+    const pending = deferred<{ id: number; url: string; originalFileName: string }>();
+    vi.mocked(productService.uploadImage).mockReturnValueOnce(pending.promise);
+    const { wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await next(wrapper);
+    await addSku(wrapper, '透明款', 'A-1');
+    await next(wrapper);
+    await next(wrapper);
+    await next(wrapper);
+
+    const input = wrapper.get('[data-testid="product-main-image"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['image'], 'pending-main.png', { type: 'image/png' })]
+    });
+    await input.trigger('change');
+
+    expect(wrapper.get('[data-testid="image-upload-blocker"]').text()).toContain('图片正在上传');
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="next-step"]').element.disabled).toBe(true);
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('图片资料');
+    expect(productService.createProduct).not.toHaveBeenCalled();
+    expect(productService.updateProduct).not.toHaveBeenCalled();
+
+    pending.resolve({ id: 201, url: '/uploads/main.png', originalFileName: 'pending-main.png' });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="image-upload-blocker"]').exists()).toBe(false);
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="next-step"]').element.disabled).toBe(false);
+  });
+
   it('guards only real unsaved changes for route and browser navigation', async () => {
     const { router, wrapper } = await mountEditor();
     const confirm = vi.mocked(window.confirm);
@@ -462,6 +554,54 @@ describe('Task 10 product editor', () => {
     expect(router.currentRoute.value.name).toBe('products');
   });
 
+  it('does not dirty or prompt for a UI-only packaging mode change', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    const { router, wrapper } = await mountEditor('/products/42/edit');
+    const confirm = vi.mocked(window.confirm);
+
+    await wrapper.get('[data-testid="step-packaging"]').trigger('click');
+    await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
+
+    expect(wrapper.text()).not.toContain('有未保存更改');
+    await router.push({ name: 'products' });
+    expect(confirm).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.name).toBe('products');
+  });
+
+  it('does not prompt during successful save navigation', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    const { router, wrapper } = await mountEditor('/products/42/edit');
+    const confirm = vi.mocked(window.confirm);
+    await wrapper.get('[data-testid="product-name"]').setValue('已保存商品');
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    await flushPromises();
+
+    expect(productService.updateProduct).toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.name).toBe('product-detail');
+  });
+
+  it('loads a same-route product id change after the dirty guard is accepted', async () => {
+    const nextProduct = deferred<Product>();
+    vi.mocked(productService.getProduct).mockImplementation((id) => (
+      id === 42 ? Promise.resolve(completeProduct()) : nextProduct.promise
+    ));
+    const { router, wrapper } = await mountEditor('/products/42/edit');
+    const confirm = vi.mocked(window.confirm);
+    confirm.mockReturnValue(true);
+    await wrapper.get('[data-testid="product-name"]').setValue('未保存旧商品');
+
+    await router.push('/products/43/edit');
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(wrapper.find('[data-testid="product-editor-loading"]').exists()).toBe(true);
+    nextProduct.resolve(completeProduct({ id: 43, productName: '新商品' }));
+    await flushPromises();
+
+    expect(wrapper.get<HTMLInputElement>('[data-testid="product-name"]').element.value).toBe('新商品');
+    expect(router.currentRoute.value.params.id).toBe('43');
+  });
+
   it('returns to the first invalid step and keeps the current step when saving fails', async () => {
     vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
     vi.mocked(productService.updateProduct).mockRejectedValue(new Error('保存接口暂不可用'));
@@ -482,6 +622,25 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="step-confirm"]').trigger('click');
     expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('基础信息');
     expect(wrapper.text()).toContain('请输入商品名称');
+  });
+
+  it('returns final validation to the exact first invalid backend field without calling the API', async () => {
+    const base = completeProduct();
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct({
+      skus: [{
+        ...base.skus[0],
+        defaultSalePrice: -0.01,
+        supplierQuotes: [{ ...base.skus[0].supplierQuotes[0], minPurchaseQuantity: 0 }]
+      }]
+    }));
+    const { wrapper } = await mountEditor('/products/42/edit');
+
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('SKU 信息');
+    expect(wrapper.get('[data-testid="sku-row-0"]').text()).toContain('默认售价不能小于 0');
+    expect(productService.updateProduct).not.toHaveBeenCalled();
+    expect(productService.createProduct).not.toHaveBeenCalled();
   });
 
   it('shows safe loading, invalid-id, lookup-error, and newest-route states', async () => {

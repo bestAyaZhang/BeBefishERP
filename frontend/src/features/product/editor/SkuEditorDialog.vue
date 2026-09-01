@@ -34,6 +34,15 @@ function save() {
   const nextErrors: Record<string, string> = {};
   if (!draft.value.skuName.trim()) nextErrors.skuName = '请输入 SKU 名称';
   if (!draft.value.salesUnit.trim()) nextErrors.salesUnit = '请输入销售单位';
+  if (draft.value.defaultSalePrice !== null && draft.value.defaultSalePrice < 0) {
+    nextErrors.defaultSalePrice = '默认售价不能小于 0';
+  }
+  if (draft.value.standardCost !== null && draft.value.standardCost < 0) {
+    nextErrors.standardCost = '标准成本不能小于 0';
+  }
+  if (draft.value.safetyStockQuantity !== null && draft.value.safetyStockQuantity < 0) {
+    nextErrors.safetyStockQuantity = '安全库存不能小于 0';
+  }
   errors.value = nextErrors;
   if (Object.keys(nextErrors).length > 0) return;
   emit('save', {
@@ -94,15 +103,18 @@ function save() {
           </label>
           <label class="space-y-2 text-sm font-bold text-slate-600">
             <span>默认售价</span>
-            <input data-testid="sku-dialog-sale-price" v-model.number="draft.defaultSalePrice" type="number" min="0" step="0.01" class="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold tabular-nums text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15" />
+            <input data-testid="sku-dialog-sale-price" v-model.number="draft.defaultSalePrice" type="number" min="0" step="0.01" class="h-11 w-full rounded-lg border bg-white px-3 text-sm font-semibold tabular-nums text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15" :class="errors.defaultSalePrice ? 'border-rose-400' : 'border-slate-300'" />
+            <span v-if="errors.defaultSalePrice" data-testid="sku-dialog-sale-price-error" class="block text-xs text-rose-600">{{ errors.defaultSalePrice }}</span>
           </label>
           <label class="space-y-2 text-sm font-bold text-slate-600">
             <span>标准成本</span>
-            <input data-testid="sku-dialog-standard-cost" v-model.number="draft.standardCost" type="number" min="0" step="0.01" class="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold tabular-nums text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15" />
+            <input data-testid="sku-dialog-standard-cost" v-model.number="draft.standardCost" type="number" min="0" step="0.01" class="h-11 w-full rounded-lg border bg-white px-3 text-sm font-semibold tabular-nums text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15" :class="errors.standardCost ? 'border-rose-400' : 'border-slate-300'" />
+            <span v-if="errors.standardCost" class="block text-xs text-rose-600">{{ errors.standardCost }}</span>
           </label>
           <label class="space-y-2 text-sm font-bold text-slate-600">
             <span>安全库存</span>
-            <input data-testid="sku-dialog-safety-stock" v-model.number="draft.safetyStockQuantity" type="number" min="0" step="0.01" class="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold tabular-nums text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15" />
+            <input data-testid="sku-dialog-safety-stock" v-model.number="draft.safetyStockQuantity" type="number" min="0" step="0.01" class="h-11 w-full rounded-lg border bg-white px-3 text-sm font-semibold tabular-nums text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15" :class="errors.safetyStockQuantity ? 'border-rose-400' : 'border-slate-300'" />
+            <span v-if="errors.safetyStockQuantity" class="block text-xs text-rose-600">{{ errors.safetyStockQuantity }}</span>
           </label>
         </div>
       </div>

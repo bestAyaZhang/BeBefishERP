@@ -41,6 +41,7 @@ const categories = ref<Category[]>([]);
 const suppliers = ref<Supplier[]>([]);
 const loading = ref(false);
 const saving = ref(false);
+const imageUploading = ref(false);
 const loadError = ref('');
 const optionError = ref('');
 const initialSnapshot = ref(serializeState(state.value));
@@ -112,6 +113,7 @@ function setInitialState(product?: Product) {
   state.value = createEditorState(product);
   currentStepIndex.value = 0;
   validationErrors.value = {};
+  imageUploading.value = false;
   initialSnapshot.value = serializeState(state.value);
 }
 
@@ -148,7 +150,9 @@ async function loadEditor() {
 }
 
 function stepErrors(step: ProductEditorStep) {
-  return validateStep(state.value, step);
+  return validateStep(state.value, step, {
+    validSupplierIds: new Set(suppliers.value.map((supplier) => supplier.id))
+  });
 }
 
 async function focusFirstError(errors: Record<string, string>) {
@@ -178,6 +182,7 @@ function firstInvalidStep(targetIndex = productEditorSteps.length - 1) {
 
 async function goToStep(index: number) {
   if (index < 0 || index >= stepDefinitions.length) return;
+  if (imageUploading.value && currentStep.value.id === 'images' && index > currentStepIndex.value) return;
   if (index > currentStepIndex.value) {
     const invalid = firstInvalidStep(index - 1);
     if (invalid) {
@@ -192,6 +197,7 @@ async function goToStep(index: number) {
 }
 
 async function nextStep() {
+  if (imageUploading.value && currentStep.value.id === 'images') return;
   const errors = stepErrors(currentStep.value.id);
   validationErrors.value = errors;
   if (Object.keys(errors).length > 0) {
@@ -208,6 +214,11 @@ function previousStep() {
 }
 
 async function submit() {
+  if (imageUploading.value) {
+    currentStepIndex.value = productEditorSteps.indexOf('images');
+    message.error('图片正在上传，请等待上传完成后再保存');
+    return;
+  }
   const invalid = firstInvalidStep();
   if (invalid) {
     currentStepIndex.value = invalid.index;
@@ -327,22 +338,25 @@ onBeforeUnmount(() => {
         <ProductSkuStep v-else-if="currentStep.id === 'sku'" v-model="state" :errors="validationErrors" />
         <ProductProcurementStep v-else-if="currentStep.id === 'procurement'" v-model="state" :suppliers="availableSuppliers" :errors="validationErrors" />
         <ProductPackagingStep v-else-if="currentStep.id === 'packaging'" v-model="state" :errors="validationErrors" />
-        <ProductImagesStep v-else-if="currentStep.id === 'images'" v-model="state" :service="productService" />
+        <ProductImagesStep v-else-if="currentStep.id === 'images'" v-model="state" :service="productService" @update:uploading="imageUploading = $event" />
         <ProductConfirmStep v-else :state="state" :categories="availableCategories" :suppliers="availableSuppliers" />
       </section>
 
       <footer class="sticky bottom-0 z-20 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-7">
-        <button data-testid="cancel-product" type="button" class="h-10 rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-600 hover:bg-slate-50" @click="cancel">取消</button>
+        <div class="flex min-w-0 flex-col gap-1">
+          <button data-testid="cancel-product" type="button" class="h-10 self-start rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-600 hover:bg-slate-50" @click="cancel">取消</button>
+          <p v-if="imageUploading" data-testid="image-upload-blocker" class="text-xs font-bold text-amber-700">图片正在上传，请等待完成后继续</p>
+        </div>
         <div class="flex gap-2">
           <button v-if="currentStepIndex > 0" data-testid="previous-step" type="button" class="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-600 hover:bg-slate-50" @click="previousStep">
             <ChevronLeft class="h-4 w-4" aria-hidden="true" />
             上一步
           </button>
-          <button v-if="currentStepIndex < stepDefinitions.length - 1" data-testid="next-step" type="button" class="inline-flex h-10 items-center gap-2 rounded-lg bg-[#536dff] px-4 text-sm font-bold text-white hover:bg-[#435be0]" @click="nextStep">
+          <button v-if="currentStepIndex < stepDefinitions.length - 1" data-testid="next-step" type="button" :disabled="imageUploading && currentStep.id === 'images'" class="inline-flex h-10 items-center gap-2 rounded-lg bg-[#536dff] px-4 text-sm font-bold text-white hover:bg-[#435be0] disabled:cursor-not-allowed disabled:opacity-60" @click="nextStep">
             下一步
             <ChevronRight class="h-4 w-4" aria-hidden="true" />
           </button>
-          <button v-else data-testid="submit-product" type="button" :disabled="saving" class="inline-flex h-10 items-center gap-2 rounded-lg bg-[#536dff] px-5 text-sm font-bold text-white hover:bg-[#435be0] disabled:cursor-not-allowed disabled:opacity-60" @click="submit">
+          <button v-else data-testid="submit-product" type="button" :disabled="saving || imageUploading" class="inline-flex h-10 items-center gap-2 rounded-lg bg-[#536dff] px-5 text-sm font-bold text-white hover:bg-[#435be0] disabled:cursor-not-allowed disabled:opacity-60" @click="submit">
             <LoaderCircle v-if="saving" class="h-4 w-4 animate-spin" aria-hidden="true" />
             <Save v-else class="h-4 w-4" aria-hidden="true" />
             {{ saving ? '保存中...' : '保存商品' }}

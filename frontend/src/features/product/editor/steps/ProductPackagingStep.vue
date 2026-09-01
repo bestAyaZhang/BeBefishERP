@@ -4,11 +4,11 @@ import { computed, ref } from 'vue';
 import type { SkuForm } from '../../types';
 import PackagingEditorDialog from '../PackagingEditorDialog.vue';
 import {
-  applyUnifiedPackaging,
-  packagingFromSku,
+  setPackagingMode,
   type PackagingForm,
   type PackagingMode,
-  type ProductEditorState
+  type ProductEditorState,
+  updateUnifiedPackaging
 } from '../productEditorState';
 
 const state = defineModel<ProductEditorState>({ required: true });
@@ -35,28 +35,23 @@ const fields: Array<{ field: NumericPackagingField; label: string; testId: strin
 const dialogIndex = ref<number | null>(null);
 const dialogSku = computed(() => dialogIndex.value === null ? undefined : state.value.skus[dialogIndex.value]);
 
-function applyUnified() {
-  state.value.skus = applyUnifiedPackaging(state.value.skus, state.value.unifiedPackaging);
-}
-
 function switchMode(mode: PackagingMode) {
-  if (mode === state.value.packagingMode) return;
-  if (mode === 'unified') {
-    state.value.unifiedPackaging = packagingFromSku(state.value.skus[0]);
-    applyUnified();
-  }
-  state.value.packagingMode = mode;
+  setPackagingMode(state.value, mode);
 }
 
 function updateNumber(field: NumericPackagingField, event: Event) {
   const raw = (event.target as HTMLInputElement).value;
-  state.value.unifiedPackaging[field] = raw === '' ? null : Number(raw);
-  applyUnified();
+  updateUnifiedPackaging(state.value, {
+    ...state.value.unifiedPackaging,
+    [field]: raw === '' ? null : Number(raw)
+  });
 }
 
 function updateMethod(event: Event) {
-  state.value.unifiedPackaging.packagingMethod = (event.target as HTMLInputElement).value;
-  applyUnified();
+  updateUnifiedPackaging(state.value, {
+    ...state.value.unifiedPackaging,
+    packagingMethod: (event.target as HTMLInputElement).value
+  });
 }
 
 function saveSku(sku: SkuForm) {

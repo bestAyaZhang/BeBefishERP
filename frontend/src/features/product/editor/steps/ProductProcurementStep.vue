@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Plus, Trash2 } from 'lucide-vue-next';
 import type { Supplier } from '../../../masterdata/types';
-import { setDefaultQuote, type ProductEditorState } from '../productEditorState';
+import { reconcileQuoteDefaults, setDefaultQuote, type ProductEditorState } from '../productEditorState';
 
 const state = defineModel<ProductEditorState>({ required: true });
 const props = defineProps<{
@@ -22,10 +22,12 @@ function addQuote(skuIndex: number) {
     supplierId: 0,
     supplierItemNo: '',
     purchasePrice: 0,
-    minPurchaseQuantity: 0,
-    defaultQuote: quotes.length === 0,
+    minPurchaseQuantity: 1,
+    defaultQuote: !quotes.some((quote) => quote.defaultQuote && quote.status === 'enabled'),
     status: 'enabled'
   });
+  const sku = state.value.skus[skuIndex];
+  if (sku) sku.supplierQuotes = reconcileQuoteDefaults(quotes);
 }
 
 function makeDefault(skuIndex: number, quoteIndex: number) {
@@ -34,13 +36,20 @@ function makeDefault(skuIndex: number, quoteIndex: number) {
   sku.supplierQuotes = setDefaultQuote(quotesFor(skuIndex), quoteIndex);
 }
 
+function changeStatus(skuIndex: number, quoteIndex: number, event: Event) {
+  const sku = state.value.skus[skuIndex];
+  const quote = sku?.supplierQuotes?.[quoteIndex];
+  if (!sku || !quote) return;
+  quote.status = (event.target as HTMLSelectElement).value as 'enabled' | 'disabled';
+  sku.supplierQuotes = reconcileQuoteDefaults(sku.supplierQuotes ?? []);
+}
+
 function removeQuote(skuIndex: number, quoteIndex: number) {
   const sku = state.value.skus[skuIndex];
   if (!sku) return;
   const quotes = quotesFor(skuIndex);
-  const removedDefault = quotes[quoteIndex]?.defaultQuote ?? false;
   quotes.splice(quoteIndex, 1);
-  if (removedDefault && quotes.length > 0) sku.supplierQuotes = setDefaultQuote(quotes, 0);
+  sku.supplierQuotes = reconcileQuoteDefaults(quotes);
 }
 
 function fieldError(skuIndex: number, quoteIndex: number, field: string) {
@@ -85,16 +94,23 @@ function fieldError(skuIndex: number, quoteIndex: number, field: string) {
                 <p v-if="fieldError(skuIndex, quoteIndex, 'supplierId')" :data-testid="`quote-supplier-error-${skuIndex}-${quoteIndex}`" class="mt-1 text-xs font-bold text-rose-600">{{ fieldError(skuIndex, quoteIndex, 'supplierId') }}</p>
               </td>
               <td class="px-3 py-3"><input v-model="quote.supplierItemNo" maxlength="100" class="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-[#536dff]" /></td>
-              <td class="px-3 py-3"><input :data-testid="`quote-price-${skuIndex}-${quoteIndex}`" v-model.number="quote.purchasePrice" type="number" min="0" step="0.01" class="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-semibold tabular-nums outline-none focus:border-[#536dff]" /></td>
-              <td class="px-3 py-3"><input :data-testid="`quote-min-quantity-${skuIndex}-${quoteIndex}`" v-model.number="quote.minPurchaseQuantity" type="number" min="0" step="0.01" class="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-semibold tabular-nums outline-none focus:border-[#536dff]" /></td>
+              <td class="px-3 py-3 align-top">
+                <input :data-testid="`quote-price-${skuIndex}-${quoteIndex}`" v-model.number="quote.purchasePrice" type="number" min="0" step="0.01" class="h-10 w-full rounded-lg border px-3 text-sm font-semibold tabular-nums outline-none focus:border-[#536dff]" :class="fieldError(skuIndex, quoteIndex, 'purchasePrice') ? 'border-rose-400' : 'border-slate-300'" />
+                <p v-if="fieldError(skuIndex, quoteIndex, 'purchasePrice')" class="mt-1 text-xs font-bold text-rose-600">{{ fieldError(skuIndex, quoteIndex, 'purchasePrice') }}</p>
+              </td>
+              <td class="px-3 py-3 align-top">
+                <input :data-testid="`quote-min-quantity-${skuIndex}-${quoteIndex}`" v-model.number="quote.minPurchaseQuantity" type="number" min="0.01" step="0.01" class="h-10 w-full rounded-lg border px-3 text-sm font-semibold tabular-nums outline-none focus:border-[#536dff]" :class="fieldError(skuIndex, quoteIndex, 'minPurchaseQuantity') ? 'border-rose-400' : 'border-slate-300'" />
+                <p v-if="fieldError(skuIndex, quoteIndex, 'minPurchaseQuantity')" class="mt-1 text-xs font-bold text-rose-600">{{ fieldError(skuIndex, quoteIndex, 'minPurchaseQuantity') }}</p>
+              </td>
               <td class="px-3 py-3">
-                <select v-model="quote.status" class="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-[#25314d] outline-none focus:border-[#536dff]">
+                <select :data-testid="`quote-status-${skuIndex}-${quoteIndex}`" :value="quote.status" class="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-[#25314d] outline-none focus:border-[#536dff]" @change="changeStatus(skuIndex, quoteIndex, $event)">
                   <option value="enabled">启用</option>
                   <option value="disabled">停用</option>
                 </select>
               </td>
               <td class="px-3 py-3 text-center">
-                <input :data-testid="`quote-default-${skuIndex}-${quoteIndex}`" :checked="quote.defaultQuote" type="radio" :name="`default-quote-${skuIndex}`" class="h-4 w-4 accent-[#536dff]" :aria-label="`设为 ${sku.skuName} 默认报价`" @change="makeDefault(skuIndex, quoteIndex)" />
+                <input :data-testid="`quote-default-${skuIndex}-${quoteIndex}`" :checked="quote.defaultQuote" :disabled="quote.status !== 'enabled'" type="radio" :name="`default-quote-${skuIndex}`" class="h-4 w-4 accent-[#536dff] disabled:cursor-not-allowed disabled:opacity-50" :aria-label="`设为 ${sku.skuName} 默认报价`" @change="makeDefault(skuIndex, quoteIndex)" />
+                <p v-if="fieldError(skuIndex, quoteIndex, 'defaultQuote')" class="mt-1 text-xs font-bold text-rose-600">{{ fieldError(skuIndex, quoteIndex, 'defaultQuote') }}</p>
               </td>
               <td class="px-3 py-3 text-right">
                 <button :data-testid="`remove-quote-${skuIndex}-${quoteIndex}`" type="button" class="grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label="删除报价" @click="removeQuote(skuIndex, quoteIndex)">

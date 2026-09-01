@@ -1,28 +1,31 @@
 <script setup lang="ts">
 import type { ProductService } from '../../types';
 import ProductImageUpload from '../ProductImageUpload.vue';
-import { applyUnifiedPackaging, type ProductEditorState } from '../productEditorState';
+import {
+  setEditorImageFileId,
+  setEditorImagePreview,
+  type ProductEditorImageKind,
+  type ProductEditorState
+} from '../productEditorState';
 
 const state = defineModel<ProductEditorState>({ required: true });
 defineProps<{ service: ProductService }>();
+const emit = defineEmits<{ 'update:uploading': [value: boolean] }>();
+const activeUploads = new Set<string>();
 
-function ensurePreviewSlots() {
-  while (state.value.imagePreviews.sku.length < state.value.skus.length) state.value.imagePreviews.sku.push('');
-  while (state.value.imagePreviews.package.length < state.value.skus.length) state.value.imagePreviews.package.push('');
-  while (state.value.imagePreviews.carton.length < state.value.skus.length) state.value.imagePreviews.carton.push('');
+function setUploading(key: string, value: boolean) {
+  if (value) activeUploads.add(key);
+  else activeUploads.delete(key);
+  emit('update:uploading', activeUploads.size > 0);
 }
 
-function setUnifiedImage(field: 'packageImageFileId' | 'cartonImageFileId', fileId: number | null) {
-  state.value.unifiedPackaging[field] = fileId;
-  state.value.skus = applyUnifiedPackaging(state.value.skus, state.value.unifiedPackaging);
+function setImageFileId(kind: ProductEditorImageKind, index: number | null, fileId: number | null) {
+  setEditorImageFileId(state.value, kind, index, fileId);
 }
 
-function setUnifiedPreview(field: 'package' | 'carton', preview: string) {
-  ensurePreviewSlots();
-  state.value.imagePreviews[field] = state.value.skus.map(() => preview);
+function setImagePreview(kind: ProductEditorImageKind, index: number | null, preview: string) {
+  setEditorImagePreview(state.value, kind, index, preview);
 }
-
-ensurePreviewSlots();
 </script>
 
 <template>
@@ -31,11 +34,14 @@ ensurePreviewSlots();
       <h3 class="text-sm font-black text-[#25314d]">商品主图</h3>
       <div class="mt-3 max-w-md">
         <ProductImageUpload
-          v-model:file-id="state.mainImageFileId"
-          v-model:preview="state.imagePreviews.main"
+          :file-id="state.mainImageFileId"
+          :preview="state.imagePreviews.main"
           :service="service"
           label="商品主图"
           test-id="product-main-image"
+          @update:file-id="setImageFileId('main', null, $event)"
+          @update:preview="setImagePreview('main', null, $event)"
+          @update:uploading="setUploading('main', $event)"
         />
       </div>
     </section>
@@ -46,11 +52,14 @@ ensurePreviewSlots();
         <div v-for="(sku, index) in state.skus" :key="sku.id ?? `sku-${index}`" class="min-w-0">
           <p class="mb-2 truncate text-xs font-bold text-slate-500">{{ sku.skuName || sku.skuCode }}</p>
           <ProductImageUpload
-            v-model:file-id="sku.skuImageFileId"
-            v-model:preview="state.imagePreviews.sku[index]"
+            :file-id="sku.skuImageFileId"
+            :preview="state.imagePreviews.sku[index] ?? ''"
             :service="service"
             :label="`${sku.skuName || `SKU ${index + 1}`} 图片`"
             :test-id="`sku-image-${index}`"
+            @update:file-id="setImageFileId('sku', index, $event)"
+            @update:preview="setImagePreview('sku', index, $event)"
+            @update:uploading="setUploading(`sku-${index}`, $event)"
           />
         </div>
       </div>
@@ -68,8 +77,9 @@ ensurePreviewSlots();
           :service="service"
           label="内包装图片"
           test-id="package-image-unified"
-          @update:file-id="setUnifiedImage('packageImageFileId', $event)"
-          @update:preview="setUnifiedPreview('package', $event)"
+          @update:file-id="setImageFileId('package', null, $event)"
+          @update:preview="setImagePreview('package', null, $event)"
+          @update:uploading="setUploading('package-unified', $event)"
         />
         <ProductImageUpload
           :file-id="state.unifiedPackaging.cartonImageFileId"
@@ -77,8 +87,9 @@ ensurePreviewSlots();
           :service="service"
           label="外箱图片"
           test-id="carton-image-unified"
-          @update:file-id="setUnifiedImage('cartonImageFileId', $event)"
-          @update:preview="setUnifiedPreview('carton', $event)"
+          @update:file-id="setImageFileId('carton', null, $event)"
+          @update:preview="setImagePreview('carton', null, $event)"
+          @update:uploading="setUploading('carton-unified', $event)"
         />
       </div>
       <div v-else class="mt-4 divide-y divide-slate-200 border-y border-slate-200">
@@ -86,18 +97,24 @@ ensurePreviewSlots();
           <p class="mb-3 text-sm font-black text-[#25314d]">{{ sku.skuName || sku.skuCode }}</p>
           <div class="grid gap-4 lg:grid-cols-2">
             <ProductImageUpload
-              v-model:file-id="sku.packageImageFileId"
-              v-model:preview="state.imagePreviews.package[index]"
+              :file-id="sku.packageImageFileId"
+              :preview="state.imagePreviews.package[index] ?? ''"
               :service="service"
               label="内包装图片"
               :test-id="`package-image-${index}`"
+              @update:file-id="setImageFileId('package', index, $event)"
+              @update:preview="setImagePreview('package', index, $event)"
+              @update:uploading="setUploading(`package-${index}`, $event)"
             />
             <ProductImageUpload
-              v-model:file-id="sku.cartonImageFileId"
-              v-model:preview="state.imagePreviews.carton[index]"
+              :file-id="sku.cartonImageFileId"
+              :preview="state.imagePreviews.carton[index] ?? ''"
               :service="service"
               label="外箱图片"
               :test-id="`carton-image-${index}`"
+              @update:file-id="setImageFileId('carton', index, $event)"
+              @update:preview="setImagePreview('carton', index, $event)"
+              @update:uploading="setUploading(`carton-${index}`, $event)"
             />
           </div>
         </div>
