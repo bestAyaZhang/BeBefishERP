@@ -31,6 +31,9 @@ const chart = {
 
 const plotWidth = chart.width - chart.left - chart.right;
 const plotHeight = chart.height - chart.top - chart.bottom;
+const DEFAULT_AXIS_INTERVALS = 4;
+const MAX_AXIS_INTERVALS = 6;
+const SCIENTIFIC_AXIS_THRESHOLD = 1e12;
 const chartUid = useId();
 const titleId = `${chartUid}-sales-trend-title`;
 const descriptionId = `${chartUid}-sales-trend-description`;
@@ -72,42 +75,118 @@ const maxSales = computed(() => metricMax('sales'));
 const maxOrders = computed(() => metricMax('orders'));
 
 function nearestNiceStep(rawStep: number) {
-  if (rawStep <= 0) {
-    return 1;
+  if (!Number.isFinite(rawStep) || rawStep <= 0) {
+    return null;
   }
   const magnitude = 10 ** Math.floor(Math.log10(rawStep));
   const normalized = rawStep / magnitude;
+  if (!Number.isFinite(magnitude) || !Number.isFinite(normalized)) {
+    return null;
+  }
   const candidates = [1, 2, 2.5, 5, 10];
   const nearest = candidates.reduce((best, candidate) => (
     Math.abs(candidate - normalized) < Math.abs(best - normalized) ? candidate : best
   ));
-  return nearest * magnitude;
+  const step = nearest * magnitude;
+  return Number.isFinite(step) && step > 0 ? step : null;
 }
 
-function buildAxis(maxValue: number, kind: 'money' | 'count') {
-  if (maxValue <= 0) {
-    return {
-      max: 0,
-      ticks: [{ value: 0, label: '0', y: chart.top + plotHeight }] satisfies AxisTick[]
-    };
+function formatAxisValue(value: number, kind: 'money' | 'count') {
+  if (!Number.isFinite(value)) {
+    return '--';
+  }
+  if (Math.abs(value) >= SCIENTIFIC_AXIS_THRESHOLD) {
+    return value.toExponential(2);
+  }
+  return (kind === 'money' ? axisMoneyFormatter : countFormatter).format(value);
+}
+
+function zeroAxis() {
+  return {
+    max: 0,
+    ticks: [{ value: 0, label: '0', y: chart.top + plotHeight }] satisfies AxisTick[]
+  };
+}
+
+function createAxisTicks(axisMax: number, intervalCount: number, kind: 'money' | 'count') {
+  if (
+    !Number.isFinite(axisMax)
+    || axisMax <= 0
+    || !Number.isFinite(intervalCount)
+    || !Number.isInteger(intervalCount)
+    || intervalCount < 1
+    || intervalCount > MAX_AXIS_INTERVALS
+  ) {
+    return null;
   }
 
-  const rawStep = maxValue / 4;
-  const step = kind === 'count'
-    ? Math.max(1, Math.ceil(nearestNiceStep(rawStep)))
-    : nearestNiceStep(rawStep);
-  const axisMax = Math.ceil(maxValue / step) * step;
-  const intervalCount = Math.round(axisMax / step);
-  const formatter = kind === 'money' ? axisMoneyFormatter : countFormatter;
   const ticks: AxisTick[] = Array.from({ length: intervalCount + 1 }, (_, index) => {
-    const value = axisMax - step * index;
+    const remainingIntervals = intervalCount - index;
+    const proportionalValue = index === intervalCount
+      ? 0
+      : (axisMax / intervalCount) * remainingIntervals;
+    const value = kind === 'count' ? Math.round(proportionalValue) : proportionalValue;
     return {
       value,
-      label: formatter.format(value),
+      label: formatAxisValue(value, kind),
       y: chart.top + (plotHeight * index) / intervalCount
     };
   });
-  return { max: axisMax, ticks };
+
+  return ticks.every((tick) => Number.isFinite(tick.value) && Number.isFinite(tick.y))
+    ? ticks
+    : null;
+}
+
+function fallbackAxis(maxValue: number, kind: 'money' | 'count') {
+  const ticks = createAxisTicks(maxValue, DEFAULT_AXIS_INTERVALS, kind);
+  return ticks ? { max: maxValue, ticks } : zeroAxis();
+}
+
+function buildAxis(maxValue: number, kind: 'money' | 'count') {
+  if (!Number.isFinite(maxValue) || maxValue <= 0) {
+    return zeroAxis();
+  }
+
+  const rawStep = maxValue / DEFAULT_AXIS_INTERVALS;
+  const niceStep = nearestNiceStep(rawStep);
+  if (niceStep === null) {
+    return fallbackAxis(maxValue, kind);
+  }
+
+  const step = kind === 'count'
+    ? Math.max(1, Math.ceil(niceStep))
+    : niceStep;
+  if (!Number.isFinite(step) || step <= 0) {
+    return fallbackAxis(maxValue, kind);
+  }
+
+  const intervalMultiplier = Math.ceil(maxValue / step);
+  const axisMax = intervalMultiplier * step;
+  const intervalCount = Math.round(axisMax / step);
+  const axisIsUsable = Number.isFinite(intervalMultiplier)
+    && intervalMultiplier >= 1
+    && intervalMultiplier <= MAX_AXIS_INTERVALS
+    && Number.isFinite(axisMax)
+    && axisMax >= maxValue
+    && Number.isFinite(intervalCount)
+    && Number.isInteger(intervalCount)
+    && intervalCount >= 1
+    && intervalCount <= MAX_AXIS_INTERVALS;
+  if (!axisIsUsable) {
+    return fallbackAxis(maxValue, kind);
+  }
+
+  const ticks = createAxisTicks(axisMax, intervalCount, kind);
+  return ticks ? { max: axisMax, ticks } : fallbackAxis(maxValue, kind);
+}
+
+function metricRatio(metric: MetricValue, axisMax: number) {
+  if (!metric.valid || !Number.isFinite(axisMax) || axisMax <= 0) {
+    return 0;
+  }
+  const ratio = metric.value / axisMax;
+  return Number.isFinite(ratio) ? Math.min(1, Math.max(0, ratio)) : 0;
 }
 
 const salesAxis = computed(() => buildAxis(maxSales.value, 'money'));
@@ -120,12 +199,8 @@ const barWidth = computed(() => Math.max(4, Math.min(34, (plotWidth / Math.max(p
 const chartPoints = computed(() => parsedPoints.value.map((point, index) => {
   const slotWidth = plotWidth / Math.max(parsedPoints.value.length, 1);
   const x = chart.left + slotWidth * (index + 0.5);
-  const barHeight = point.sales.valid && salesAxis.value.max > 0
-    ? (point.sales.value / salesAxis.value.max) * plotHeight
-    : 0;
-  const orderY = point.orders.valid && orderAxis.value.max > 0
-    ? chart.top + plotHeight - (point.orders.value / orderAxis.value.max) * plotHeight
-    : chart.top + plotHeight;
+  const barHeight = metricRatio(point.sales, salesAxis.value.max) * plotHeight;
+  const orderY = chart.top + plotHeight - metricRatio(point.orders, orderAxis.value.max) * plotHeight;
   return {
     ...point,
     index,

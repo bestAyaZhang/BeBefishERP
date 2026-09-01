@@ -35,6 +35,48 @@ describe('SalesTrendPanel', () => {
     expect(orderTicks.every((tick) => /^\d+$/.test(tick))).toBe(true);
   });
 
+  it('renders capped finite axes and coordinates for Number.MAX_VALUE', () => {
+    const wrapper = mount(SalesTrendPanel, {
+      props: {
+        points: [
+          { date: '2026-08-31', month: null, salesAmount: Number.MAX_VALUE, orderCount: Number.MAX_VALUE },
+          { date: '2026-09-01', month: null, salesAmount: Number.MAX_VALUE, orderCount: Number.MAX_VALUE }
+        ]
+      }
+    });
+
+    const salesTicks = wrapper.findAll('[data-testid="left-axis-tick"]');
+    const orderTicks = wrapper.findAll('[data-testid="right-axis-tick"]');
+    expect(salesTicks.length).toBeGreaterThan(1);
+    expect(salesTicks.length).toBeLessThanOrEqual(7);
+    expect(orderTicks.length).toBeGreaterThan(1);
+    expect(orderTicks.length).toBeLessThanOrEqual(7);
+    expect([...salesTicks, ...orderTicks].every((tick) => (
+      tick.text().length > 0
+      && tick.text().length <= 24
+      && !/NaN|Infinity/.test(tick.text())
+    ))).toBe(true);
+
+    const bars = wrapper.findAll('[data-testid="sales-bar"]');
+    const orderPoints = wrapper.findAll('[data-testid="order-point"]');
+    expect(bars).toHaveLength(2);
+    expect(orderPoints).toHaveLength(2);
+    expect(wrapper.findAll('[data-testid="order-line"]')).toHaveLength(1);
+
+    for (const bar of bars) {
+      expect(['x', 'y', 'width', 'height'].every((attribute) => (
+        Number.isFinite(Number(bar.attributes(attribute)))
+      ))).toBe(true);
+    }
+    for (const point of orderPoints) {
+      expect(['cx', 'cy', 'r'].every((attribute) => (
+        Number.isFinite(Number(point.attributes(attribute)))
+      ))).toBe(true);
+    }
+    expect(wrapper.get('[data-testid="order-line"]').attributes('d')).not.toMatch(/NaN|Infinity/);
+    expect(wrapper.get('[data-testid="sales-trend-data-table"]').text()).not.toContain('--');
+  });
+
   it('describes the svg and exposes every bucket in an assistive data table', () => {
     const wrapper = mount(SalesTrendPanel, { props: { points: validPoints } });
     const svg = wrapper.get('[data-testid="sales-trend-svg"]');
