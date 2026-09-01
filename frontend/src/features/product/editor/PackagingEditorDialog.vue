@@ -2,7 +2,12 @@
 import { Save, X } from 'lucide-vue-next';
 import { ref, watch } from 'vue';
 import type { SkuForm } from '../types';
-import { cloneSku } from './productEditorState';
+import {
+  CARTON_QUANTITY_ERROR,
+  cloneSku,
+  isValidCartonQuantity,
+  MAX_CARTON_QUANTITY
+} from './productEditorState';
 
 const props = defineProps<{
   open: boolean;
@@ -69,8 +74,8 @@ function save() {
     const value = draft.value[field];
     if (typeof value === 'number' && value < 0) nextErrors[field] = `${label.replace(/\s*\(.+\)$/, '')}不能小于 0`;
   }
-  if (draft.value.cartonQuantity !== null && draft.value.cartonQuantity <= 0) {
-    nextErrors.cartonQuantity = '装箱数必须大于 0';
+  if (!isValidCartonQuantity(draft.value.cartonQuantity)) {
+    nextErrors.cartonQuantity = CARTON_QUANTITY_ERROR;
   }
   if (
     !nextErrors.grossWeightKg
@@ -114,6 +119,7 @@ function save() {
               :value="draft[field.field] ?? ''"
               type="number"
               :min="field.field === 'cartonQuantity' ? '1' : '0'"
+              :max="field.field === 'cartonQuantity' ? MAX_CARTON_QUANTITY : undefined"
               :step="field.step"
               class="h-11 w-full rounded-lg border bg-white px-3 text-sm font-semibold tabular-nums text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15"
               :class="errors[field.field] ? 'border-rose-400' : 'border-slate-300'"

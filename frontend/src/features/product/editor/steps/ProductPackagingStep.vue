@@ -4,6 +4,7 @@ import { computed, ref } from 'vue';
 import type { SkuForm } from '../../types';
 import PackagingEditorDialog from '../PackagingEditorDialog.vue';
 import {
+  MAX_CARTON_QUANTITY,
   setPackagingMode,
   type PackagingForm,
   type PackagingMode,
@@ -86,7 +87,8 @@ function formatDimensions(sku: SkuForm) {
           :data-testid="`unified-${field.testId}`"
           :value="state.unifiedPackaging[field.field] ?? ''"
           type="number"
-          min="0"
+          :min="field.field === 'cartonQuantity' ? 1 : 0"
+          :max="field.field === 'cartonQuantity' ? MAX_CARTON_QUANTITY : undefined"
           :step="field.step"
           class="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold tabular-nums text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15"
           @input="updateNumber(field.field, $event)"

@@ -9,6 +9,8 @@ import type {
 } from '../types';
 
 export const productEditorSteps = ['basic', 'sku', 'procurement', 'packaging', 'images', 'confirm'] as const;
+export const MAX_CARTON_QUANTITY = 2_147_483_647;
+export const CARTON_QUANTITY_ERROR = '装箱数必须为 1 到 2147483647 之间的整数';
 
 export type ProductEditorStep = typeof productEditorSteps[number];
 export type PackagingMode = 'unified' | 'perSku';
@@ -66,6 +68,15 @@ export interface ProductEditorState {
   unifiedPackaging: PackagingForm;
   imagePreviews: ProductEditorImagePreviews;
   imagePreviewFileIds: ProductEditorImagePreviewFileIds;
+}
+
+export function isValidCartonQuantity(value: number | null) {
+  return value === null || (
+    Number.isFinite(value)
+    && Number.isInteger(value)
+    && value >= 1
+    && value <= MAX_CARTON_QUANTITY
+  );
 }
 
 const packagingFields: ReadonlyArray<keyof PackagingForm> = [
@@ -432,8 +443,8 @@ export function validateStep(
           errors[`skus.${index}.${field}`] = packagingMessages[field] ?? '数值不能小于 0';
         }
       }
-      if (sku.cartonQuantity !== null && sku.cartonQuantity <= 0) {
-        errors[`skus.${index}.cartonQuantity`] = '装箱数必须大于 0';
+      if (!isValidCartonQuantity(sku.cartonQuantity)) {
+        errors[`skus.${index}.cartonQuantity`] = CARTON_QUANTITY_ERROR;
       }
       if (
         !errors[`skus.${index}.grossWeightKg`]

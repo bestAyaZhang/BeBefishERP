@@ -433,7 +433,7 @@ describe('Task 10 product editor', () => {
     expect(document.activeElement).toBe(lastDialogInput.element);
     await dialog.get('[data-testid="packaging-dialog-carton-quantity"]').setValue('0');
     await dialog.get('[data-testid="packaging-dialog-save"]').trigger('click');
-    expect(dialog.get('[data-testid="packaging-dialog-carton-quantity-error"]').text()).toContain('装箱数必须大于 0');
+    expect(dialog.get('[data-testid="packaging-dialog-carton-quantity-error"]').text()).toContain('装箱数必须为 1 到 2147483647 之间的整数');
     await dialog.get('[data-testid="packaging-dialog-carton-quantity"]').setValue('12');
     expect(dialog.get<HTMLInputElement>('[data-testid="packaging-dialog-package-length"]').element.value).toBe('42');
     await dialog.get('[data-testid="packaging-dialog-package-length"]').setValue('44');
@@ -450,6 +450,80 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
     expect(wrapper.get('[data-testid="packaging-row-0"]').text()).toContain('42');
     expect(wrapper.get('[data-testid="packaging-row-1"]').text()).toContain('42');
+  });
+
+  it('sets Java integer constraints on the unified carton quantity input', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    const { wrapper } = await mountEditor('/products/42/edit');
+    await wrapper.get('[data-testid="step-packaging"]').trigger('click');
+
+    const input = wrapper.get('[data-testid="unified-carton-quantity"]');
+    expect(input.attributes()).toMatchObject({ min: '1', step: '1', max: '2147483647' });
+  });
+
+  it('sets Java integer constraints on the per-SKU carton quantity input', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    const { wrapper } = await mountEditor('/products/42/edit');
+    await wrapper.get('[data-testid="step-packaging"]').trigger('click');
+    await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
+    await wrapper.get('[data-testid="edit-packaging-0"]').trigger('click');
+
+    const input = wrapper.get('[data-testid="packaging-dialog-carton-quantity"]');
+    expect(input.attributes()).toMatchObject({ min: '1', step: '1', max: '2147483647' });
+  });
+
+  it.each(['1.5', '2147483648'])('rejects per-SKU carton quantity %s without committing the dialog', async (cartonQuantity) => {
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    const { wrapper } = await mountEditor('/products/42/edit');
+    await wrapper.get('[data-testid="step-packaging"]').trigger('click');
+    await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
+    await wrapper.get('[data-testid="edit-packaging-0"]').trigger('click');
+
+    await wrapper.get('[data-testid="packaging-dialog-carton-quantity"]').setValue(cartonQuantity);
+    await wrapper.get('[data-testid="packaging-dialog-save"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="packaging-dialog-carton-quantity-error"]').text()).toContain('装箱数必须为 1 到 2147483647 之间的整数');
+    expect(wrapper.find('[data-testid="packaging-editor-dialog"]').exists()).toBe(true);
+  });
+
+  it.each(['1', '2147483647'])('commits valid per-SKU carton quantity %s', async (cartonQuantity) => {
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    const { wrapper } = await mountEditor('/products/42/edit');
+    await wrapper.get('[data-testid="step-packaging"]').trigger('click');
+    await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
+    await wrapper.get('[data-testid="edit-packaging-0"]').trigger('click');
+
+    await wrapper.get('[data-testid="packaging-dialog-carton-quantity"]').setValue(cartonQuantity);
+    await wrapper.get('[data-testid="packaging-dialog-save"]').trigger('click');
+    expect(wrapper.find('[data-testid="packaging-editor-dialog"]').exists()).toBe(false);
+
+    await wrapper.get('[data-testid="edit-packaging-0"]').trigger('click');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-carton-quantity"]').element.value).toBe(cartonQuantity);
+  });
+
+  it.each([
+    { path: '/products/new', cartonQuantity: '1.5', operation: 'create' },
+    { path: '/products/42/edit', cartonQuantity: '2147483648', operation: 'update' }
+  ])('keeps invalid carton quantity $cartonQuantity away from the $operation API', async ({ path, cartonQuantity }) => {
+    if (path.includes('/edit')) vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    const { wrapper } = await mountEditor(path);
+    if (path === '/products/new') {
+      await fillBasic(wrapper);
+      await next(wrapper);
+      await addSku(wrapper, '透明款', 'A-1');
+    }
+    await wrapper.get('[data-testid="step-packaging"]').trigger('click');
+    await wrapper.get('[data-testid="unified-carton-quantity"]').setValue(cartonQuantity);
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    if (wrapper.find('[data-testid="submit-product"]').exists()) {
+      await wrapper.get('[data-testid="submit-product"]').trigger('click');
+      await flushPromises();
+    }
+
+    expect(productService.createProduct).not.toHaveBeenCalled();
+    expect(productService.updateProduct).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('包装/重量');
+    expect(wrapper.text()).toContain('装箱数必须为 1 到 2147483647 之间的整数');
   });
 
   it('inherits unified packaging data and matching previews when a SKU is added later', async () => {

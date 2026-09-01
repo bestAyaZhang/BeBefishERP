@@ -338,8 +338,32 @@ describe('product editor state', () => {
       'skus.0.packageLengthCm': '包装长不能小于 0',
       'skus.0.innerPackageWeightKg': '内包装重量不能小于 0',
       'skus.0.grossWeightKg': '毛重不能小于净重',
-      'skus.0.cartonQuantity': '装箱数必须大于 0'
+      'skus.0.cartonQuantity': '装箱数必须为 1 到 2147483647 之间的整数'
     }));
+  });
+
+  it.each([
+    1.5,
+    0,
+    -1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    2147483648
+  ])('rejects carton quantity %s outside the Java positive integer range', (cartonQuantity) => {
+    const state = createEditorState();
+    state.skus = [sku({ cartonQuantity })];
+
+    expect(validateStep(state, 'packaging')).toEqual({
+      'skus.0.cartonQuantity': '装箱数必须为 1 到 2147483647 之间的整数'
+    });
+  });
+
+  it.each([1, 2147483647])('accepts carton quantity %s within the Java positive integer range', (cartonQuantity) => {
+    const state = createEditorState();
+    state.skus = [sku({ cartonQuantity })];
+
+    expect(validateStep(state, 'packaging')).toEqual({});
   });
 
   it('mirrors backend supplier quote validity, uniqueness, status, and default rules', () => {
