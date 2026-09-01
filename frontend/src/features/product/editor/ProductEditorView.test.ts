@@ -419,6 +419,7 @@ describe('Task 10 product editor', () => {
 
     await wrapper.get('[data-testid="step-confirm"]').trigger('click');
     expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('SKU 信息');
+    expect(wrapper.text()).toContain('请删除多余 SKU，并编辑保留的 SKU 清空 SKU 规格值；若仍有 SKU 规格定义，请返回基础信息删除。');
     expect(productService.createProduct).not.toHaveBeenCalled();
     expect(productService.updateProduct).not.toHaveBeenCalled();
 

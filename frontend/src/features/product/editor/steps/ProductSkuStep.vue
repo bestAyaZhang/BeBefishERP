@@ -52,6 +52,10 @@ function skuError(index: number) {
     </div>
 
     <p v-if="errors.skus" class="mt-4 rounded-lg bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{{ errors.skus }}</p>
+    <div v-if="errors.productType" role="alert" class="mt-4 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">
+      <p class="font-bold">{{ errors.productType }}</p>
+      <p class="mt-1 font-semibold">请删除多余 SKU，并编辑保留的 SKU 清空 SKU 规格值；若仍有 SKU 规格定义，请返回基础信息删除。</p>
+    </div>
 
     <div v-if="state.skus.length" class="mt-5 overflow-x-auto border-y border-slate-200">
       <table class="w-full min-w-[760px] border-collapse text-left text-sm">
