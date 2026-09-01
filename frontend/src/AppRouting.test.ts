@@ -87,6 +87,31 @@ describe('application routes', () => {
     expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('Products');
   });
 
+  it('renders the final product create, detail, and edit route surfaces', async () => {
+    await router.push('/products/new');
+    await router.isReady();
+    wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe('product-new');
+    expect(wrapper.find('[data-testid="product-editor-view"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('New Product');
+
+    await router.push('/products/1');
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe('product-detail');
+    expect(wrapper.find('[data-testid="product-detail-view"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('Product Detail');
+
+    await router.push('/products/1/edit');
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe('product-edit');
+    expect(wrapper.find('[data-testid="product-editor-view"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('Edit Product');
+  });
+
   it('renders the sales order create route with the live order form', async () => {
     await router.push('/sales/create');
     await router.isReady();
