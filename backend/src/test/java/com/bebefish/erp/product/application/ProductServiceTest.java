@@ -11,8 +11,11 @@ import com.bebefish.erp.product.domain.Product;
 import com.bebefish.erp.product.domain.ProductRepository;
 import com.bebefish.erp.product.domain.Sku;
 import com.bebefish.erp.product.domain.Specification;
+import com.bebefish.erp.product.domain.SupplierQuote;
+import com.bebefish.erp.product.domain.SupplierQuoteRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,12 +29,18 @@ import org.springframework.data.domain.Pageable;
 
 class ProductServiceTest {
     private FakeProductRepository repository;
+    private FakeSupplierQuoteRepository quoteRepository;
+    private ProductSupplierQuoteSynchronizer quoteSynchronizer;
     private ProductService service;
 
     @BeforeEach
     void setUp() {
         repository = new FakeProductRepository();
-        service = new ProductService(repository, new DefaultSkuCombinationGenerator());
+        quoteRepository = new FakeSupplierQuoteRepository();
+        quoteSynchronizer = new ProductSupplierQuoteSynchronizer(quoteRepository);
+        service = new ProductService(
+                repository, new DefaultSkuCombinationGenerator(), quoteRepository, quoteSynchronizer
+        );
     }
 
     @Test
@@ -265,6 +274,62 @@ class ProductServiceTest {
         assertThat(updated.status()).isEqualTo("disabled");
     }
 
+    @Test
+    void rejectsDuplicateSuppliersInOneSkuQuoteList() {
+        assertThatThrownBy(() -> quoteSynchronizer.synchronize(10L, List.of(
+                quote(null, 1L, "2.20", "1", false, "enabled"),
+                quote(null, 1L, "2.10", "1", false, "enabled")
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("同一 SKU 的供应商报价不能重复");
+    }
+
+    @Test
+    void rejectsMultipleEnabledDefaultQuotesForOneSku() {
+        assertThatThrownBy(() -> quoteSynchronizer.synchronize(10L, List.of(
+                quote(null, 1L, "2.20", "1", true, "enabled"),
+                quote(null, 2L, "2.10", "1", true, "enabled")
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("同一 SKU 最多只能有一个启用的默认报价");
+    }
+
+    @Test
+    void rejectsNegativePurchasePriceDuringProductQuoteSync() {
+        assertThatThrownBy(() -> quoteSynchronizer.synchronize(10L, List.of(
+                quote(null, 1L, "-0.01", "1", false, "enabled")
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("采购价不能小于 0");
+    }
+
+    @Test
+    void rejectsNonPositiveMinimumPurchaseQuantityDuringProductQuoteSync() {
+        assertThatThrownBy(() -> quoteSynchronizer.synchronize(10L, List.of(
+                quote(null, 1L, "2.20", "0", false, "enabled")
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("最小采购量必须大于 0");
+    }
+
+    @Test
+    void deletesOmittedQuotesAndUpdatesRetainedQuotes() {
+        var retained = quoteRepository.save(new SupplierQuote(
+                null, 10L, 1L, "OLD", new BigDecimal("2.20"), BigDecimal.ONE, false, "enabled"
+        ));
+        var removed = quoteRepository.save(new SupplierQuote(
+                null, 10L, 2L, "REMOVE", new BigDecimal("2.10"), BigDecimal.ONE, false, "enabled"
+        ));
+
+        quoteSynchronizer.synchronize(10L, List.of(
+                quote(retained.id(), 1L, "2.00", "5", true, "enabled")
+        ));
+
+        assertThat(quoteRepository.findById(retained.id()).orElseThrow().purchasePrice())
+                .isEqualByComparingTo("2.00");
+        assertThat(quoteRepository.findById(removed.id())).isEmpty();
+    }
+
     private SaveProductCommand simpleProduct(
             String productCode,
             String itemNo,
@@ -331,6 +396,67 @@ class ProductServiceTest {
 
     private BigDecimal decimal(String value) {
         return value == null ? null : new BigDecimal(value);
+    }
+
+    private ProductSupplierQuoteCommand quote(
+            Long id,
+            long supplierId,
+            String price,
+            String minQuantity,
+            boolean defaultQuote,
+            String status
+    ) {
+        return new ProductSupplierQuoteCommand(
+                id, supplierId, "SUP-ITEM", decimal(price), decimal(minQuantity), defaultQuote, status
+        );
+    }
+
+    private static final class FakeSupplierQuoteRepository implements SupplierQuoteRepository {
+        private final AtomicLong sequence = new AtomicLong();
+        private final Map<Long, SupplierQuote> quotes = new LinkedHashMap<>();
+
+        @Override
+        public boolean existsBySkuIdAndSupplierId(long skuId, long supplierId, Long excludedQuoteId) {
+            return quotes.values().stream().anyMatch(quote -> quote.skuId() == skuId
+                    && quote.supplierId() == supplierId && !quote.id().equals(excludedQuoteId));
+        }
+
+        @Override
+        public SupplierQuote save(SupplierQuote quote) {
+            var id = quote.id() == null ? sequence.incrementAndGet() : quote.id();
+            sequence.accumulateAndGet(id, Math::max);
+            var saved = new SupplierQuote(
+                    id, quote.skuId(), quote.supplierId(), quote.supplierItemNo(), quote.purchasePrice(),
+                    quote.minPurchaseQuantity(), quote.isDefault(), quote.status()
+            );
+            quotes.put(id, saved);
+            return saved;
+        }
+
+        @Override
+        public Optional<SupplierQuote> findById(long id) {
+            return Optional.ofNullable(quotes.get(id));
+        }
+
+        @Override
+        public List<SupplierQuote> findBySkuId(long skuId) {
+            return quotes.values().stream().filter(quote -> quote.skuId() == skuId).toList();
+        }
+
+        @Override
+        public void clearDefault(long skuId) {
+            quotes.replaceAll((id, quote) -> quote.skuId() == skuId ? quote.withDefault(false) : quote);
+        }
+
+        @Override
+        public void deleteBySkuIds(Collection<Long> skuIds) {
+            quotes.values().removeIf(quote -> skuIds.contains(quote.skuId()));
+        }
+
+        @Override
+        public void deleteBySkuIdExcept(long skuId, Collection<Long> retainedQuoteIds) {
+            quotes.values().removeIf(quote -> quote.skuId() == skuId && !retainedQuoteIds.contains(quote.id()));
+        }
     }
 
     private static final class FakeProductRepository implements ProductRepository {

@@ -8,6 +8,7 @@ import com.bebefish.erp.product.domain.ProductType;
 import com.bebefish.erp.product.domain.Sku;
 import com.bebefish.erp.product.domain.SkuCombination;
 import com.bebefish.erp.product.domain.SkuCombinationGenerator;
+import com.bebefish.erp.product.domain.SupplierQuoteRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,24 +28,33 @@ public class ProductService {
     private static final Set<String> PRODUCT_DIMENSION_NAMES = Set.of("口径", "高度", "容量", "重量");
     private final ProductRepository repository;
     private final SkuCombinationGenerator combinationGenerator;
+    private final SupplierQuoteRepository supplierQuoteRepository;
+    private final ProductSupplierQuoteSynchronizer supplierQuoteSynchronizer;
 
     public ProductService(
             ProductRepository repository,
-            SkuCombinationGenerator combinationGenerator
+            SkuCombinationGenerator combinationGenerator,
+            SupplierQuoteRepository supplierQuoteRepository,
+            ProductSupplierQuoteSynchronizer supplierQuoteSynchronizer
     ) {
         this.repository = repository;
         this.combinationGenerator = combinationGenerator;
+        this.supplierQuoteRepository = supplierQuoteRepository;
+        this.supplierQuoteSynchronizer = supplierQuoteSynchronizer;
     }
 
     @Transactional
     public Product createProduct(SaveProductCommand command) {
-        return repository.save(toProduct(null, command, null, repository.nextProductCode()));
+        var product = toProduct(null, command, null, repository.nextProductCode());
+        return saveProductWithSupplierQuotes(product, command.skus());
     }
 
     @Transactional
     public Product updateProduct(long id, SaveProductCommand command) {
         var existing = getProduct(id);
-        return repository.save(toProduct(id, command, existing, existing.code()));
+        var product = toProduct(id, command, existing, existing.code());
+        deleteRemovedSkuQuotes(existing, product);
+        return saveProductWithSupplierQuotes(product, command.skus());
     }
 
     @Transactional(readOnly = true)
@@ -82,6 +92,35 @@ public class ProductService {
     @Transactional
     public Product changeStatus(long id, String status) {
         return repository.save(getProduct(id).withStatus(normalizeStatus(status)));
+    }
+
+    private Product saveProductWithSupplierQuotes(Product product, List<SaveSkuCommand> skuCommands) {
+        var saved = repository.save(product);
+        for (var index = 0; index < skuCommands.size(); index++) {
+            var quoteCommands = skuCommands.get(index).supplierQuotes();
+            if (quoteCommands == null) {
+                continue;
+            }
+            var skuCode = product.skus().get(index).code();
+            var savedSku = saved.skus().stream()
+                    .filter(sku -> sku.code().equals(skuCode))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("商品保存后未找到对应 SKU"));
+            supplierQuoteSynchronizer.synchronize(savedSku.id(), quoteCommands);
+        }
+        return saved;
+    }
+
+    private void deleteRemovedSkuQuotes(Product existing, Product product) {
+        var retainedSkuIds = product.skus().stream()
+                .map(Sku::id)
+                .filter(skuId -> skuId != null)
+                .collect(java.util.stream.Collectors.toSet());
+        var removedSkuIds = existing.skus().stream()
+                .map(Sku::id)
+                .filter(skuId -> !retainedSkuIds.contains(skuId))
+                .toList();
+        supplierQuoteRepository.deleteBySkuIds(removedSkuIds);
     }
 
     private Product toProduct(Long id, SaveProductCommand command, Product existing, String generatedCode) {

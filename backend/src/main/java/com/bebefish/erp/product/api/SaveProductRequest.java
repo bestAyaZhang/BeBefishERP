@@ -2,6 +2,7 @@ package com.bebefish.erp.product.api;
 
 import com.bebefish.erp.common.api.BusinessException;
 import com.bebefish.erp.product.application.PackagingCommand;
+import com.bebefish.erp.product.application.ProductSupplierQuoteCommand;
 import com.bebefish.erp.product.application.SaveProductCommand;
 import com.bebefish.erp.product.application.SaveSkuCommand;
 import com.bebefish.erp.product.domain.ProductType;
@@ -78,7 +79,8 @@ public record SaveProductRequest(
             Integer cartonQuantity,
             Long skuImageFileId,
             Long packageImageFileId,
-            Long cartonImageFileId
+            Long cartonImageFileId,
+            List<@Valid SupplierQuoteInput> supplierQuotes
     ) {
         SaveSkuCommand toCommand() {
             return new SaveSkuCommand(
@@ -92,7 +94,26 @@ public record SaveProductRequest(
                             packagingMethod, cartonQuantity,
                             packageImageFileId, cartonImageFileId
                     ),
-                    skuImageFileId
+                    skuImageFileId,
+                    supplierQuotes == null
+                            ? null
+                            : supplierQuotes.stream().map(SupplierQuoteInput::toCommand).toList()
+            );
+        }
+    }
+
+    public record SupplierQuoteInput(
+            Long id,
+            Long supplierId,
+            @Size(max = 100) String supplierItemNo,
+            BigDecimal purchasePrice,
+            BigDecimal minPurchaseQuantity,
+            boolean defaultQuote,
+            @Size(max = 20) String status
+    ) {
+        ProductSupplierQuoteCommand toCommand() {
+            return new ProductSupplierQuoteCommand(
+                    id, supplierId, supplierItemNo, purchasePrice, minPurchaseQuantity, defaultQuote, status
             );
         }
     }

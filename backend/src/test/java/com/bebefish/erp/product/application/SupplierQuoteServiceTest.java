@@ -11,6 +11,7 @@ import com.bebefish.erp.product.domain.Sku;
 import com.bebefish.erp.product.domain.SupplierQuote;
 import com.bebefish.erp.product.domain.SupplierQuoteRepository;
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -132,6 +133,16 @@ class SupplierQuoteServiceTest {
             quotes.replaceAll((id, quote) -> quote.skuId() == skuId
                     ? quote.withDefault(false)
                     : quote);
+        }
+
+        @Override
+        public void deleteBySkuIds(Collection<Long> skuIds) {
+            quotes.values().removeIf(quote -> skuIds.contains(quote.skuId()));
+        }
+
+        @Override
+        public void deleteBySkuIdExcept(long skuId, Collection<Long> retainedQuoteIds) {
+            quotes.values().removeIf(quote -> quote.skuId() == skuId && !retainedQuoteIds.contains(quote.id()));
         }
     }
 

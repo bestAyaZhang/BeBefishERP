@@ -5,7 +5,11 @@ import com.bebefish.erp.product.domain.SupplierQuote;
 import com.bebefish.erp.product.domain.SupplierQuoteRepository;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -99,6 +103,39 @@ public class SupplierQuoteJpaAdapter implements SupplierQuoteRepository {
                         + "where sku_id = ? and is_default = true",
                 skuId
         );
+    }
+
+    @Override
+    public void deleteBySkuIds(Collection<Long> skuIds) {
+        var ids = skuIds.stream().filter(Objects::nonNull).toList();
+        if (ids.isEmpty()) {
+            return;
+        }
+        jdbc.update(
+                "delete from sku_supplier_quote where sku_id in (" + placeholders(ids.size()) + ")",
+                ids.toArray()
+        );
+    }
+
+    @Override
+    public void deleteBySkuIdExcept(long skuId, Collection<Long> retainedQuoteIds) {
+        var ids = retainedQuoteIds.stream().filter(Objects::nonNull).toList();
+        if (ids.isEmpty()) {
+            jdbc.update("delete from sku_supplier_quote where sku_id = ?", skuId);
+            return;
+        }
+        var parameters = new ArrayList<Object>();
+        parameters.add(skuId);
+        parameters.addAll(ids);
+        jdbc.update(
+                "delete from sku_supplier_quote where sku_id = ? and id not in ("
+                        + placeholders(ids.size()) + ")",
+                parameters.toArray()
+        );
+    }
+
+    private String placeholders(int count) {
+        return String.join(", ", Collections.nCopies(count, "?"));
     }
 
     private long insertAndReturnId(String sql, Object... parameters) {

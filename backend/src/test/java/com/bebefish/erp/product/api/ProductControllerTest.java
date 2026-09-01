@@ -1,6 +1,7 @@
 package com.bebefish.erp.product.api;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -35,6 +36,8 @@ class ProductControllerTest {
     private String viewToken;
     private long categoryId;
     private long imageId;
+    private long quoteSupplierId;
+    private long secondQuoteSupplierId;
 
     @BeforeEach
     void setUp() {
@@ -56,7 +59,7 @@ class ProductControllerTest {
         jdbc.update("delete from product_spu where product_code like 'T7-%' or item_no like 'EW432%'");
         jdbc.update("update business_code_sequence set next_value = 1 where sequence_name = 'product'");
         jdbc.update("delete from file_asset where storage_name like 'T7-%'");
-        jdbc.update("delete from supplier where supplier_no = 'T7-SUP-1'");
+        jdbc.update("delete from supplier where supplier_no in ('T7-SUP-1', 'T7-SUP-QUOTE', 'T7-SUP-QUOTE-2')");
         jdbc.update("delete from product_category where category_code = 'T7-CAT'");
         jdbc.update("insert into product_category (category_code, category_name, level_no, sort_order, status, created_at, updated_at) "
                 + "values ('T7-CAT', '测试分类', 1, 0, 'enabled', now(3), now(3))");
@@ -67,6 +70,16 @@ class ProductControllerTest {
                 + "size_bytes, status, created_at, updated_at) values ('T7.png', 'T7-image.png', 'uploads/T7-image.png', "
                 + "'/uploads/T7-image.png', 'image/png', 1, 'enabled', now(3), now(3))");
         imageId = jdbc.queryForObject("select id from file_asset where storage_name = 'T7-image.png'", Long.class);
+        jdbc.update("insert into supplier (supplier_no, supplier_name, status, created_at, updated_at) "
+                + "values ('T7-SUP-QUOTE', '商品报价供应商', 'enabled', now(3), now(3))");
+        quoteSupplierId = jdbc.queryForObject(
+                "select id from supplier where supplier_no = 'T7-SUP-QUOTE'", Long.class
+        );
+        jdbc.update("insert into supplier (supplier_no, supplier_name, status, created_at, updated_at) "
+                + "values ('T7-SUP-QUOTE-2', '商品报价供应商二', 'enabled', now(3), now(3))");
+        secondQuoteSupplierId = jdbc.queryForObject(
+                "select id from supplier where supplier_no = 'T7-SUP-QUOTE-2'", Long.class
+        );
         editToken = token("product:view", "product:edit");
         viewToken = token("product:view");
     }
@@ -183,6 +196,184 @@ class ProductControllerTest {
     }
 
     @Test
+    void savesSupplierQuotesWithProduct() throws Exception {
+        var request = requestBody(null, "EW43252", "带报价商品", null);
+        skuInput(request).put("supplierQuotes", List.of(Map.of(
+                "supplierId", quoteSupplierId,
+                "supplierItemNo", "SUP-PUMP-01",
+                "purchasePrice", "61.20",
+                "minPurchaseQuantity", "12",
+                "defaultQuote", true,
+                "status", "enabled"
+        )));
+
+        var response = mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var skuId = objectMapper.readTree(response).path("data").path("skus").get(0).path("id").asLong();
+        var quote = jdbc.queryForMap(
+                "select supplier_item_no, purchase_price, is_default from sku_supplier_quote where sku_id = ?",
+                skuId
+        );
+
+        assertThat(quote.get("supplier_item_no")).isEqualTo("SUP-PUMP-01");
+        assertThat(quote.get("purchase_price").toString()).startsWith("61.20");
+        assertThat(quote.get("is_default")).isEqualTo(true);
+    }
+
+    @Test
+    void rollsBackProductWhenSupplierQuoteReferencesMissingSupplier() throws Exception {
+        var request = requestBody(null, "EW43253", "无效报价商品", null);
+        skuInput(request).put("supplierQuotes", List.of(
+                quoteInput(quoteSupplierId, "VALID-BEFORE-FAILURE", "60.20", true),
+                quoteInput(Long.MAX_VALUE, "INVALID-SUPPLIER", "61.20", false)
+        ));
+
+        mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isBetween(400, 599));
+
+        var productCount = jdbc.queryForObject(
+                "select count(*) from product_spu where item_no = 'EW43253'", Long.class
+        );
+        assertThat(productCount).isZero();
+        assertThat(jdbc.queryForObject(
+                "select count(*) from sku_supplier_quote where supplier_item_no = 'VALID-BEFORE-FAILURE'",
+                Long.class
+        )).isZero();
+    }
+
+    @Test
+    void distinguishesOmittedAndEmptySupplierQuoteListsOnUpdate() throws Exception {
+        var create = requestBody(null, "EW43254", "报价更新商品", null);
+        skuInput(create).put("supplierQuotes", List.of(quoteInput("SUP-KEEP", "10.20")));
+        var response = mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(create)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var product = objectMapper.readTree(response).path("data");
+        var productId = product.path("id").asLong();
+        var skuId = product.path("skus").get(0).path("id").asLong();
+
+        var omitted = requestBody(null, "EW43254", "未提交报价字段", skuId);
+        mvc.perform(put("/api/products/{id}", productId)
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(omitted)))
+                .andExpect(status().isOk());
+        assertThat(quoteCount(skuId)).isEqualTo(1);
+
+        var empty = requestBody(null, "EW43254", "清空报价", skuId);
+        skuInput(empty).put("supplierQuotes", List.of());
+        mvc.perform(put("/api/products/{id}", productId)
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(empty)))
+                .andExpect(status().isOk());
+        assertThat(quoteCount(skuId)).isZero();
+    }
+
+    @Test
+    void deletesQuotesBeforeRemovingSkuFromProduct() throws Exception {
+        var create = requestBody(null, "EW43255", "多规格报价商品", null);
+        create.put("productType", "variant");
+        var firstSku = new LinkedHashMap<>(skuInput(create));
+        firstSku.put("skuCode", "T7-QUOTE-SKU-1");
+        firstSku.put("skuName", "保留款");
+        firstSku.put("supplierQuotes", List.of(quoteInput("SUP-KEEP", "10.20")));
+        var secondSku = new LinkedHashMap<>(skuInput(create));
+        secondSku.put("skuCode", "T7-QUOTE-SKU-2");
+        secondSku.put("skuName", "删除款");
+        secondSku.put("supplierQuotes", List.of(quoteInput("SUP-REMOVE", "11.20")));
+        create.put("skus", List.of(firstSku, secondSku));
+
+        var response = mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(create)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var product = objectMapper.readTree(response).path("data");
+        var productId = product.path("id").asLong();
+        var retainedSkuId = product.path("skus").get(0).path("id").asLong();
+        var removedSkuId = product.path("skus").get(1).path("id").asLong();
+
+        var update = requestBody(null, "EW43255", "删除一个规格", retainedSkuId);
+        update.put("productType", "variant");
+        skuInput(update).put("skuCode", "T7-QUOTE-SKU-1");
+        skuInput(update).put("skuName", "保留款");
+        mvc.perform(put("/api/products/{id}", productId)
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(update)))
+                .andExpect(status().isOk());
+
+        assertThat(quoteCount(retainedSkuId)).isEqualTo(1);
+        assertThat(quoteCount(removedSkuId)).isZero();
+        assertThat(jdbc.queryForObject(
+                "select count(*) from product_sku where id = ?", Long.class, removedSkuId
+        )).isZero();
+    }
+
+    @Test
+    void switchesDefaultQuoteRegardlessOfRequestOrder() throws Exception {
+        var create = requestBody(null, "EW43256", "默认报价切换商品", null);
+        skuInput(create).put("supplierQuotes", List.of(
+                quoteInput(quoteSupplierId, "SUP-DEFAULT-1", "10.20", true),
+                quoteInput(secondQuoteSupplierId, "SUP-DEFAULT-2", "9.80", false)
+        ));
+        var response = mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(create)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var product = objectMapper.readTree(response).path("data");
+        var productId = product.path("id").asLong();
+        var skuId = product.path("skus").get(0).path("id").asLong();
+        var firstQuoteId = jdbc.queryForObject(
+                "select id from sku_supplier_quote where sku_id = ? and supplier_id = ?",
+                Long.class, skuId, quoteSupplierId
+        );
+        var secondQuoteId = jdbc.queryForObject(
+                "select id from sku_supplier_quote where sku_id = ? and supplier_id = ?",
+                Long.class, skuId, secondQuoteSupplierId
+        );
+
+        var update = requestBody(null, "EW43256", "已切换默认报价", skuId);
+        var secondQuote = new LinkedHashMap<>(
+                quoteInput(secondQuoteSupplierId, "SUP-DEFAULT-2", "9.80", true)
+        );
+        secondQuote.put("id", secondQuoteId);
+        var firstQuote = new LinkedHashMap<>(
+                quoteInput(quoteSupplierId, "SUP-DEFAULT-1", "10.20", false)
+        );
+        firstQuote.put("id", firstQuoteId);
+        skuInput(update).put("supplierQuotes", List.of(secondQuote, firstQuote));
+
+        mvc.perform(put("/api/products/{id}", productId)
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(update)))
+                .andExpect(status().isOk());
+
+        assertThat(jdbc.queryForObject(
+                "select is_default from sku_supplier_quote where id = ?", Boolean.class, secondQuoteId
+        )).isTrue();
+        assertThat(jdbc.queryForObject(
+                "select count(*) from sku_supplier_quote where sku_id = ? and is_default = true",
+                Long.class, skuId
+        )).isEqualTo(1);
+    }
+
+    @Test
     void returnsImageAndDefaultSupplierForProductListDisplay() throws Exception {
         JsonNode created = createProduct();
         var skuId = created.path("skus").get(0).path("id").asLong();
@@ -258,6 +449,37 @@ class ProductControllerTest {
         product.put("specifications", List.of());
         product.put("skus", List.of(sku));
         return product;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> skuInput(Map<String, Object> product) {
+        return (Map<String, Object>) ((List<?>) product.get("skus")).getFirst();
+    }
+
+    private Map<String, Object> quoteInput(String supplierItemNo, String purchasePrice) {
+        return quoteInput(quoteSupplierId, supplierItemNo, purchasePrice, true);
+    }
+
+    private Map<String, Object> quoteInput(
+            long supplierId,
+            String supplierItemNo,
+            String purchasePrice,
+            boolean defaultQuote
+    ) {
+        return Map.of(
+                "supplierId", supplierId,
+                "supplierItemNo", supplierItemNo,
+                "purchasePrice", purchasePrice,
+                "minPurchaseQuantity", "1",
+                "defaultQuote", defaultQuote,
+                "status", "enabled"
+        );
+    }
+
+    private long quoteCount(long skuId) {
+        return jdbc.queryForObject(
+                "select count(*) from sku_supplier_quote where sku_id = ?", Long.class, skuId
+        );
     }
 
     private String token(String... permissions) {
