@@ -7,6 +7,16 @@ export interface ProductSpecification {
   values: string[];
 }
 
+export interface ProductSupplierQuoteInput {
+  id?: number;
+  supplierId: number;
+  supplierItemNo: string;
+  purchasePrice: number;
+  minPurchaseQuantity: number;
+  defaultQuote: boolean;
+  status: RecordStatus;
+}
+
 export interface SkuForm {
   id?: number;
   skuCode: string;
@@ -16,13 +26,19 @@ export interface SkuForm {
   salesUnit: string;
   defaultSalePrice: number | null;
   standardCost: number | null;
+  safetyStockQuantity?: number | null;
+  stockQuantity?: number;
   packageLengthCm: number | null;
   packageWidthCm: number | null;
   packageHeightCm: number | null;
   packageVolumeCm3: number | null;
+  innerPackageLengthCm?: number | null;
+  innerPackageWidthCm?: number | null;
+  innerPackageHeightCm?: number | null;
   netWeightKg: number | null;
   grossWeightKg: number | null;
   gramWeightG: number | null;
+  innerPackageWeightKg?: number | null;
   packagingMethod: string;
   cartonQuantity: number | null;
   skuImageFileId: number | null;
@@ -31,6 +47,7 @@ export interface SkuForm {
   packageImageUrl?: string | null;
   cartonImageFileId: number | null;
   cartonImageUrl?: string | null;
+  supplierQuotes?: ProductSupplierQuoteInput[];
   defaultSku: boolean;
   status?: RecordStatus;
 }
@@ -47,12 +64,46 @@ export interface ProductFormPayload {
   skus: SkuForm[];
 }
 
-export interface Product extends ProductFormPayload {
+export interface SupplierQuote extends ProductSupplierQuoteInput {
+  id: number;
+  skuId: number;
+}
+
+export interface ProductSku extends SkuForm {
+  id: number;
+  skuCode: string;
+  specText: string;
+  safetyStockQuantity: number | null;
+  stockQuantity: number;
+  innerPackageLengthCm: number | null;
+  innerPackageWidthCm: number | null;
+  innerPackageHeightCm: number | null;
+  innerPackageWeightKg: number | null;
+  skuImageUrl: string | null;
+  packageImageUrl: string | null;
+  cartonImageUrl: string | null;
+  supplierQuotes: SupplierQuote[];
+  status: RecordStatus;
+}
+
+export type ProductCompletenessStatus = 'complete' | 'incomplete';
+
+export interface Product extends Omit<ProductFormPayload, 'skus'> {
   id: number;
   productCode: string;
+  categoryId: number;
   status: RecordStatus;
-  mainImageUrl?: string | null;
-  defaultSupplierName?: string | null;
+  mainImageUrl: string | null;
+  defaultSupplierName: string | null;
+  totalStock: number;
+  totalSafetyStock: number;
+  defaultSalePrice: number | null;
+  completenessPercent: number;
+  completenessStatus: ProductCompletenessStatus;
+  missingGroups: string[];
+  skus: ProductSku[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ProductQuery {
@@ -74,17 +125,6 @@ export interface SkuSummary {
   status: RecordStatus;
 }
 
-export interface SupplierQuote {
-  id: number;
-  skuId: number;
-  supplierId: number;
-  supplierItemNo: string;
-  purchasePrice: number;
-  minPurchaseQuantity: number;
-  defaultQuote: boolean;
-  status: RecordStatus;
-}
-
 export interface SaveSupplierQuotePayload {
   supplierId: number;
   supplierItemNo: string;
@@ -102,6 +142,7 @@ export interface UploadedImage {
 
 export interface ProductService {
   listProducts(query: ProductQuery): Promise<PageResult<Product>>;
+  getCategoryCounts(): Promise<Record<number, number>>;
   getProduct(id: number): Promise<Product>;
   createProduct(payload: ProductFormPayload): Promise<Product>;
   updateProduct(id: number, payload: ProductFormPayload): Promise<Product>;

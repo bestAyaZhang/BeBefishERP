@@ -6,10 +6,12 @@ import ProductListView from './views/ProductListView.vue';
 import ProductDetailView from './views/ProductDetailView.vue';
 import type { Product, ProductService } from './types';
 import { productService } from './productService';
+import { productFixture } from './productTestFixtures';
 
 vi.mock('./productService', () => ({
   productService: {
     listProducts: vi.fn(),
+    getCategoryCounts: vi.fn(),
     getProduct: vi.fn(),
     createProduct: vi.fn(),
     updateProduct: vi.fn(),
@@ -27,7 +29,7 @@ vi.mock('../../masterdata/masterdataService', () => ({
   }
 }));
 
-const product: Product = {
+const product = productFixture({
   id: 42,
   productCode: 'PRD-000042',
   itemNo: 'GLASS-042',
@@ -40,7 +42,7 @@ const product: Product = {
   specifications: [{ name: '容量', values: ['210ml'] }],
   skus: [],
   status: 'enabled'
-};
+});
 
 describe('product detail navigation', () => {
   beforeEach(async () => {

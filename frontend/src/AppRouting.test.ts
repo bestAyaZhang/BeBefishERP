@@ -34,16 +34,16 @@ describe('application routes', () => {
     expect(wrapper.find('[data-testid="prototype-sidebar-nav"]').exists()).toBe(true);
   });
 
-  it('renders the workbench with the approved dashboard prototype layout', async () => {
+  it('renders the existing workbench inside the shared ERP layout', async () => {
     await router.push('/workbench');
     await router.isReady();
     wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
     expect(wrapper.find('[data-testid="prototype-erp-shell"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="workspace-prototype-content"]').exists()).toBe(true);
-    expect(wrapper.text()).toContain('实时数据');
-    expect(wrapper.text()).toContain('项目进度');
+    expect(wrapper.find('[data-testid="workspace-prototype-content"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('实时交易');
+    expect(wrapper.text()).toContain('运营数据');
   });
 
   it('renders the product route with the live product master-data page', async () => {
@@ -93,23 +93,23 @@ describe('application routes', () => {
     wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
-    expect(wrapper.text()).toContain('实时数据');
+    expect(wrapper.text()).toContain('实时交易');
 
     await router.push('/products');
     await flushPromises();
 
     expect(router.currentRoute.value.name).toBe('products');
     expect(wrapper.text()).toContain('SKU 主数据');
-    expect(wrapper.text()).not.toContain('实时数据');
+    expect(wrapper.text()).not.toContain('实时交易');
   });
 
-  it('opens the shared mobile navigation from the workbench prototype header', async () => {
+  it('opens the shared mobile navigation from the workbench header', async () => {
     await router.push('/workbench');
     await router.isReady();
     wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
-    await wrapper.get('button[aria-label="Open navigation"]').trigger('click');
+    await wrapper.get('button[aria-label="打开菜单"]').trigger('click');
 
     expect(wrapper.find('[data-testid="prototype-mobile-navigation"]').exists()).toBe(true);
   });

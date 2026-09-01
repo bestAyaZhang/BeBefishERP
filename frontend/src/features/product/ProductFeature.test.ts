@@ -2,13 +2,119 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { clearMessages, messages } from '../../components/feedback/message';
-import type { Product, ProductService } from './types';
+import { httpProductService } from './httpProductService';
+import { productFixture } from './productTestFixtures';
+import type { Product, ProductFormPayload, ProductService } from './types';
 import ProductDetailDrawer from './components/ProductDetailDrawer.vue';
 import ProductForm from './components/ProductForm.vue';
 import ProductList from './components/ProductList.vue';
 
+function mockFetchApi(data: unknown) {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(
+    JSON.stringify({ code: 'SUCCESS', message: '操作成功', data }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } }
+  ))));
+}
+
+function productPayload(supplierQuotes?: ProductFormPayload['skus'][number]['supplierQuotes']): ProductFormPayload {
+  return {
+    itemNo: 'EW43249',
+    productName: '高脚玻璃杯',
+    categoryId: 1,
+    brand: '共典',
+    productType: 'simple',
+    mainImageFileId: null,
+    remark: '',
+    specifications: [],
+    skus: [{
+      skuCode: 'SKU-EW43249',
+      barcode: 'EW43249',
+      skuName: '默认规格',
+      specificationValues: [],
+      salesUnit: '只',
+      defaultSalePrice: 19.9,
+      standardCost: 8,
+      safetyStockQuantity: 12,
+      packageLengthCm: 42,
+      packageWidthCm: 31,
+      packageHeightCm: 28,
+      packageVolumeCm3: 36456,
+      innerPackageLengthCm: 36,
+      innerPackageWidthCm: 25,
+      innerPackageHeightCm: 22,
+      netWeightKg: 8.5,
+      grossWeightKg: 9.2,
+      gramWeightG: 350,
+      innerPackageWeightKg: 1.1,
+      packagingMethod: '彩盒',
+      cartonQuantity: 12,
+      skuImageFileId: null,
+      packageImageFileId: null,
+      cartonImageFileId: null,
+      supplierQuotes,
+      defaultSku: true,
+      status: 'enabled'
+    }]
+  };
+}
+
+describe('http product service contracts', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('serializes SKU purchasing and packaging fields', async () => {
+    mockFetchApi({});
+    const payload = productPayload([{
+      supplierId: 3,
+      supplierItemNo: 'SUP-EW43249',
+      purchasePrice: 6.8,
+      minPurchaseQuantity: 48,
+      defaultQuote: true,
+      status: 'enabled'
+    }]);
+
+    await httpProductService.createProduct(payload);
+
+    const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body));
+    expect(body.skus[0]).toEqual(expect.objectContaining({
+      safetyStockQuantity: 12,
+      innerPackageLengthCm: 36,
+      innerPackageWidthCm: 25,
+      innerPackageHeightCm: 22,
+      innerPackageWeightKg: 1.1
+    }));
+    expect(body.skus[0].supplierQuotes[0]).toEqual(expect.objectContaining({
+      supplierId: 3,
+      supplierItemNo: 'SUP-EW43249'
+    }));
+  });
+
+  it('distinguishes omitted supplier quotes from explicitly clearing them', async () => {
+    mockFetchApi({});
+
+    await httpProductService.createProduct(productPayload(undefined));
+    await httpProductService.createProduct(productPayload([]));
+
+    const omittedBody = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body));
+    const clearedBody = JSON.parse(String(vi.mocked(fetch).mock.calls[1][1]?.body));
+    expect(omittedBody.skus[0]).not.toHaveProperty('supplierQuotes');
+    expect(clearedBody.skus[0].supplierQuotes).toEqual([]);
+  });
+
+  it('returns numeric category counts from the API envelope', async () => {
+    mockFetchApi({ 1: 4, 8: 0 });
+
+    const counts = await httpProductService.getCategoryCounts();
+
+    expect(counts).toEqual({ 1: 4, 8: 0 });
+    expect(fetch).toHaveBeenCalledWith('/api/products/category-counts', expect.any(Object));
+  });
+});
+
 const fakeProductService: ProductService = {
   listProducts: vi.fn(),
+  getCategoryCounts: vi.fn(),
   getProduct: vi.fn(),
   createProduct: vi.fn(),
   updateProduct: vi.fn(),
@@ -161,7 +267,7 @@ describe('product feature', () => {
   });
 
   it('hydrates existing product and packaging images when editing', () => {
-    const product: Product = {
+    const product = productFixture({
       id: 22,
       productCode: 'PRD-000022',
       itemNo: 'GLASS-022',
@@ -201,7 +307,7 @@ describe('product feature', () => {
         status: 'enabled'
       }],
       status: 'enabled'
-    };
+    });
     const wrapper = mount(ProductForm, { props: { service: fakeProductService, initialValue: product } });
 
     expect(wrapper.get('[data-testid="product-main-image-preview"]').attributes('src')).toBe('/uploads/main.png');
@@ -347,7 +453,7 @@ describe('product feature', () => {
 
   it('updates an existing product instead of creating a duplicate', async () => {
     vi.clearAllMocks();
-    const existing: Product = {
+    const existing = productFixture({
       id: 18,
       productCode: 'GLASS-018',
       itemNo: 'GB-018',
@@ -383,7 +489,7 @@ describe('product feature', () => {
         status: 'enabled'
       }],
       status: 'enabled'
-    };
+    });
     vi.mocked(fakeProductService.updateProduct).mockResolvedValue(existing);
 
     const wrapper = mount(ProductForm, { props: { service: fakeProductService, initialValue: existing } });
@@ -688,7 +794,7 @@ describe('product feature', () => {
   });
 
   it('keeps SKU details in the product detail drawer instead of expanding list rows', async () => {
-    const product: Product = {
+    const product = productFixture({
       id: 101,
       productCode: 'PRD-000101',
       itemNo: 'GB-101',
@@ -724,7 +830,7 @@ describe('product feature', () => {
         status: 'enabled'
       }],
       status: 'enabled'
-    };
+    });
     const service: ProductService = {
       ...fakeProductService,
       listProducts: vi.fn().mockResolvedValue({ records: [product], page: 1, pageSize: 20, total: 1 })
@@ -809,7 +915,7 @@ describe('product feature', () => {
   });
 
   it('applies dropdown filters only after clicking the search button', async () => {
-    const makeProduct = (id: number, brand: string): Product => ({
+    const makeProduct = (id: number, brand: string): Product => productFixture({
       id,
       productCode: `PRD-${id}`,
       itemNo: `ITEM-${id}`,
@@ -877,7 +983,7 @@ describe('product feature', () => {
   });
 
   it('uses the approved prototype layout for the product detail drawer', async () => {
-    const product: Product = {
+    const product = productFixture({
       id: 18,
       productCode: 'PRD-000018',
       itemNo: 'EW43249',
@@ -915,7 +1021,7 @@ describe('product feature', () => {
       }],
       defaultSupplierName: '义乌玻璃厂',
       status: 'enabled'
-    };
+    });
     const wrapper = mount(ProductDetailDrawer, { props: { product } });
     const drawer = wrapper.get('[data-testid="product-detail-drawer"]');
 

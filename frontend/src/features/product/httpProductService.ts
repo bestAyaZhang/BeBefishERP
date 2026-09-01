@@ -6,6 +6,12 @@ function listPath(query: ProductQuery) { const params = new URLSearchParams({ pa
 
 export const httpProductService: ProductService = {
   listProducts: (query) => request<PageResult<Product>>(listPath(query)),
+  getCategoryCounts: async () => {
+    const counts = await request<Record<string, number>>('/api/products/category-counts');
+    return Object.fromEntries(
+      Object.entries(counts).map(([categoryId, count]) => [Number(categoryId), count])
+    ) as Record<number, number>;
+  },
   getProduct: (id) => request<Product>(`/api/products/${id}`),
   createProduct: (payload: ProductFormPayload) => request<Product>('/api/products', { method: 'POST', body: JSON.stringify(payload) }),
   updateProduct: (id, payload) => request<Product>(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),

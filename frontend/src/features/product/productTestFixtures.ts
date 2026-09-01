@@ -1,0 +1,69 @@
+import type { Product, ProductSku } from './types';
+
+type ProductResponseDefaults = Pick<Product,
+  | 'mainImageUrl'
+  | 'defaultSupplierName'
+  | 'totalStock'
+  | 'totalSafetyStock'
+  | 'defaultSalePrice'
+  | 'completenessPercent'
+  | 'completenessStatus'
+  | 'missingGroups'
+  | 'createdAt'
+  | 'updatedAt'
+>;
+
+type ProductSkuResponseDefaults = Pick<ProductSku,
+  | 'specText'
+  | 'safetyStockQuantity'
+  | 'stockQuantity'
+  | 'innerPackageLengthCm'
+  | 'innerPackageWidthCm'
+  | 'innerPackageHeightCm'
+  | 'innerPackageWeightKg'
+  | 'skuImageUrl'
+  | 'packageImageUrl'
+  | 'cartonImageUrl'
+  | 'supplierQuotes'
+>;
+
+type ProductSkuFixture = Omit<ProductSku, keyof ProductSkuResponseDefaults>
+  & Partial<ProductSkuResponseDefaults>;
+
+type ProductFixture = Omit<Product, keyof ProductResponseDefaults | 'skus'>
+  & Partial<ProductResponseDefaults>
+  & { skus: ProductSkuFixture[] };
+
+export function productFixture(input: ProductFixture): Product {
+  const { skus: inputSkus, ...product } = input;
+  const skus = inputSkus.map((sku): ProductSku => ({
+    specText: sku.specificationValues.join(' / '),
+    safetyStockQuantity: null,
+    stockQuantity: 0,
+    innerPackageLengthCm: null,
+    innerPackageWidthCm: null,
+    innerPackageHeightCm: null,
+    innerPackageWeightKg: null,
+    skuImageUrl: null,
+    packageImageUrl: null,
+    cartonImageUrl: null,
+    supplierQuotes: [],
+    ...sku
+  }));
+  const defaultSku = skus.find((sku) => sku.defaultSku) ?? skus[0];
+
+  return {
+    mainImageUrl: null,
+    defaultSupplierName: null,
+    totalStock: skus.reduce((total, sku) => total + sku.stockQuantity, 0),
+    totalSafetyStock: skus.reduce((total, sku) => total + (sku.safetyStockQuantity ?? 0), 0),
+    defaultSalePrice: defaultSku?.defaultSalePrice ?? null,
+    completenessPercent: 0,
+    completenessStatus: 'incomplete',
+    missingGroups: [],
+    createdAt: '2026-09-01T00:00:00',
+    updatedAt: '2026-09-01T00:00:00',
+    ...product,
+    skus
+  };
+}

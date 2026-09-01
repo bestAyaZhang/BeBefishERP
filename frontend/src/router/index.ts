@@ -11,14 +11,22 @@ const placeholderPages: RouteRecordRaw[] = [
   {
     path: 'workbench',
     name: 'workbench',
-    component: () => import('../views/WorkspacePrototype.vue'),
-    props: { initialSection: 'dashboard', loadLiveData: true },
-    meta: { ownsPrototypeHeader: true }
+    component: () => import('../views/WorkbenchView.vue')
   },
   {
     path: 'products',
     name: 'products',
     component: () => import('../features/product/views/ProductListView.vue')
+  },
+  {
+    path: 'products/new',
+    name: 'product-new',
+    component: () => import('../features/product/editor/ProductEditorView.vue')
+  },
+  {
+    path: 'products/:id/edit',
+    name: 'product-edit',
+    component: () => import('../features/product/editor/ProductEditorView.vue')
   },
   {
     path: 'products/:id',
