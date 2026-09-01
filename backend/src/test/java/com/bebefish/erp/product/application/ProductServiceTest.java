@@ -337,6 +337,42 @@ class ProductServiceTest {
     }
 
     @Test
+    void legacyUpdatePreservesRetainedEnabledPersistedDefaultSku() {
+        var created = service.createProduct(new SaveProductCommand(
+                "IGNORED", "EW-LEGACY-DEFAULT", "旧客户端商品", 1L, "共典", VARIANT,
+                null, null, List.of(),
+                List.of(
+                        new SaveSkuCommand(
+                                null, "LEGACY-FIRST", null, "普通款", List.of(), "只",
+                                new BigDecimal("9.90"), new BigDecimal("2.20"), BigDecimal.ZERO,
+                                null, null, false, "enabled", null
+                        ),
+                        new SaveSkuCommand(
+                                null, "LEGACY-DEFAULT", null, "默认款", List.of(), "只",
+                                new BigDecimal("10.90"), new BigDecimal("2.50"), BigDecimal.ZERO,
+                                null, null, true, "enabled", null
+                        )
+                )
+        ));
+        var retainedFirst = created.skus().getFirst();
+        var persistedDefault = created.skus().get(1);
+        var update = new SaveProductCommand(
+                created.code(), created.itemNo(), created.name(), created.categoryId(),
+                created.brand(), VARIANT, null, null, List.of(),
+                List.of(
+                        sku(null, "LEGACY-NEW", List.of(), null),
+                        sku(retainedFirst.id(), retainedFirst.code(), List.of(), null),
+                        sku(persistedDefault.id(), persistedDefault.code(), List.of(), null)
+                )
+        );
+
+        var updated = service.updateProduct(created.id(), update);
+
+        assertThat(updated.skus()).filteredOn(Sku::isDefault).singleElement()
+                .extracting(Sku::id).isEqualTo(persistedDefault.id());
+    }
+
+    @Test
     void updatingDisabledProductKeepsItsDisabledStatus() {
         var created = service.createProduct(simpleProduct(
                 "P401", "EW70001", packaging("1", "1", "1", null, "1", "1")

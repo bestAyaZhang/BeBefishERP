@@ -145,7 +145,7 @@ public class ProductService {
         var rawSkus = command.type() == ProductType.SIMPLE
                 ? simpleSkus(code, name, command.skus(), existing, explicitSkuControls)
                 : variantSkus(code, name, command, existing, explicitSkuControls);
-        var skus = normalizeSkuDefaults(rawSkus, explicitSkuControls);
+        var skus = normalizeSkuDefaults(rawSkus, explicitSkuControls, existing);
         ensureUniqueSkus(skus, id);
         return new Product(
                 id, code, itemNo, name, command.categoryId(), optional(command.brand()), command.type(),
@@ -352,25 +352,31 @@ public class ProductService {
         return true;
     }
 
-    private List<Sku> normalizeSkuDefaults(List<Sku> skus, boolean explicitSkuControls) {
+    private List<Sku> normalizeSkuDefaults(
+            List<Sku> skus,
+            boolean explicitSkuControls,
+            Product existing
+    ) {
         if (explicitSkuControls) {
             validateSkuDefaults(skus);
             return skus;
         }
-        var defaultCount = skus.stream().filter(Sku::isDefault).count();
-        var validDefaultCount = skus.stream()
+        var persistedDefaultId = existing == null ? null : existing.skus().stream()
                 .filter(Sku::isDefault)
                 .filter(sku -> "enabled".equals(sku.status()))
-                .count();
-        if (defaultCount == 1 && validDefaultCount == 1) {
-            return skus;
-        }
-        var fallback = skus.stream()
+                .map(Sku::id)
+                .findFirst()
+                .orElse(null);
+        var selectedDefault = skus.stream()
+                .filter(sku -> persistedDefaultId != null && persistedDefaultId.equals(sku.id()))
                 .filter(sku -> "enabled".equals(sku.status()))
                 .findFirst()
-                .orElseThrow(() -> validation("至少一个 SKU 必须启用"));
+                .orElseGet(() -> skus.stream()
+                        .filter(sku -> "enabled".equals(sku.status()))
+                        .findFirst()
+                        .orElseThrow(() -> validation("至少一个 SKU 必须启用")));
         return skus.stream()
-                .map(sku -> sku.withState(sku == fallback, sku.status()))
+                .map(sku -> sku.withState(sku == selectedDefault, sku.status()))
                 .toList();
     }
 
