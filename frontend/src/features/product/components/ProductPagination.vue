@@ -37,11 +37,14 @@ function changeSize(event: Event) {
 <template>
   <footer
     data-testid="product-pagination"
-    class="flex min-w-0 flex-wrap items-center gap-2 border-t border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 sm:px-5"
+    class="flex min-w-0 flex-col items-stretch gap-3 border-t border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:gap-2 sm:px-5"
   >
-    <span class="mr-auto whitespace-nowrap">共 <strong class="font-semibold text-slate-900">{{ total }}</strong> 条</span>
+    <span class="whitespace-nowrap sm:mr-auto">共 <strong class="font-semibold text-slate-900">{{ total }}</strong> 条</span>
 
-    <label class="flex items-center gap-2 whitespace-nowrap text-xs text-slate-500">
+    <label
+      data-testid="product-page-size-control"
+      class="hidden items-center gap-2 whitespace-nowrap text-xs text-slate-500 sm:flex"
+    >
       每页
       <select
         data-testid="product-page-size"
@@ -56,7 +59,37 @@ function changeSize(event: Event) {
       </select>
     </label>
 
-    <nav class="flex items-center gap-1" aria-label="商品分页">
+    <nav
+      data-testid="product-pagination-mobile"
+      class="flex w-full min-w-0 items-center justify-between gap-2 sm:hidden"
+      aria-label="商品分页"
+    >
+      <button
+        data-testid="product-page-prev-mobile"
+        type="button"
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition enabled:hover:border-blue-400 enabled:hover:text-blue-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-300"
+        :disabled="page <= 1"
+        aria-label="上一页"
+        @click="emit('change-page', page - 1)"
+      >
+        <ChevronLeft class="h-4 w-4" aria-hidden="true" />
+      </button>
+      <span class="min-w-0 truncate px-2 text-center tabular-nums" :title="`第 ${page} / ${pageCount} 页`">
+        第 {{ page }} / {{ pageCount }} 页
+      </span>
+      <button
+        data-testid="product-page-next-mobile"
+        type="button"
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition enabled:hover:border-blue-400 enabled:hover:text-blue-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-300"
+        :disabled="page >= pageCount"
+        aria-label="下一页"
+        @click="emit('change-page', page + 1)"
+      >
+        <ChevronRight class="h-4 w-4" aria-hidden="true" />
+      </button>
+    </nav>
+
+    <nav data-testid="product-pagination-desktop" class="hidden items-center gap-1 sm:flex" aria-label="商品分页">
       <button
         data-testid="product-page-prev"
         type="button"

@@ -8,6 +8,7 @@ import type { Product, ProductService } from './types';
 import { productService } from './productService';
 import { productFixture, productPage } from './productTestFixtures';
 import { masterdataService } from '../masterdata/masterdataService';
+import type { Category } from '../masterdata/types';
 
 vi.mock('./productService', () => ({
   productService: {
@@ -70,10 +71,38 @@ describe('product detail navigation', () => {
     await flushPromises();
     await push.mock.results.at(-1)?.value;
 
+    expect(push).toHaveBeenCalledTimes(1);
     expect(push).toHaveBeenCalledWith({ name: 'product-detail', params: { id: 42 } });
     expect(router.currentRoute.value.name).toBe('product-detail');
     expect(router.currentRoute.value.params.id).toBe('42');
     expect(wrapper.find('[data-testid="product-detail-drawer"]').exists()).toBe(false);
+  });
+
+  it('opens product detail exactly once from row Enter with link semantics', async () => {
+    const wrapper = mount(ProductListView, { global: { plugins: [router] } });
+    await flushPromises();
+    const push = vi.spyOn(router, 'push');
+    const row = wrapper.get('[data-testid="product-row-42"]');
+
+    expect(row.attributes('role')).toBe('link');
+    expect(row.attributes('aria-label')).toContain('高硼硅玻璃杯');
+    await row.trigger('keyup.enter');
+    await flushPromises();
+
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith({ name: 'product-detail', params: { id: 42 } });
+  });
+
+  it('opens product detail exactly once when the detail button receives Enter', async () => {
+    const wrapper = mount(ProductListView, { global: { plugins: [router] } });
+    await flushPromises();
+    const push = vi.spyOn(router, 'push');
+
+    await wrapper.get('[data-testid="product-detail-42"]').trigger('keydown.enter');
+    await flushPromises();
+
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith({ name: 'product-detail', params: { id: 42 } });
   });
 
   it('opens the standalone product creation route from the list toolbar', async () => {
@@ -103,8 +132,63 @@ describe('product detail navigation', () => {
     await flushPromises();
 
     expect(productService.getCategoryCounts).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(productService.listProducts).mock.calls.filter(([query]) => query.size === 1)).toHaveLength(1);
     expect(wrapper.find('[data-testid="category-tree-error"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="product-row-42"]').exists()).toBe(true);
+  });
+
+  it('loads every category page without a status filter and resolves disabled category names', async () => {
+    const firstPageCategories: Category[] = Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      categoryCode: `CAT-${index + 1}`,
+      categoryName: `分类 ${index + 1}`,
+      parentId: null,
+      level: 1,
+      sortOrder: index + 1,
+      status: 'enabled',
+      remark: ''
+    }));
+    const disabledCategory: Category = {
+      id: 101,
+      categoryCode: 'LEGACY',
+      categoryName: '已停用历史分类',
+      parentId: null,
+      level: 1,
+      sortOrder: 101,
+      status: 'disabled',
+      remark: ''
+    };
+    const disabledCategoryProduct: Product = { ...product, categoryId: 101 };
+    vi.mocked(masterdataService.listCategories).mockImplementation((query) => Promise.resolve({
+      records: query.page === 1 ? firstPageCategories : [disabledCategory],
+      page: query.page,
+      pageSize: 100,
+      total: 101
+    }));
+    vi.mocked(productService.listProducts).mockImplementation((query) => Promise.resolve(
+      productPage(query.size === 1 ? [] : [disabledCategoryProduct], 137, query.page, query.size)
+    ));
+
+    const wrapper = mount(ProductListView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(masterdataService.listCategories).toHaveBeenNthCalledWith(1, { page: 1, size: 100 });
+    expect(masterdataService.listCategories).toHaveBeenNthCalledWith(2, { page: 2, size: 100 });
+    expect(wrapper.get('[data-testid="product-category-42"]').text()).toContain('已停用历史分类');
+    expect(wrapper.get('[data-testid="category-node-all"]').text()).toContain('137');
+    expect(vi.mocked(productService.listProducts).mock.calls.filter(([query]) => query.size === 1)).toHaveLength(1);
+  });
+
+  it('marks category lookup as failed while preserving the product table', async () => {
+    vi.mocked(masterdataService.listCategories).mockRejectedValueOnce(new Error('分类接口不可用'));
+    const wrapper = mount(ProductListView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="product-row-42"]').exists()).toBe(true);
+    const categoryCell = wrapper.get('[data-testid="product-category-42"]');
+    expect(categoryCell.text()).toContain('--');
+    expect(categoryCell.text()).toContain('分类加载失败');
+    expect(categoryCell.text()).not.toContain('未分类');
   });
 
   it('renders product detail as a page without drawer positioning or overlay', () => {

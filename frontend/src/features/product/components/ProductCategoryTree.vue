@@ -2,13 +2,10 @@
 import { ChevronDown, ChevronRight, FolderTree, RefreshCw, Search } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 import type { Category } from '../../masterdata/types';
-
-interface CategoryNode extends Category {
-  children: CategoryNode[];
-}
+import { buildProductCategoryTree, type ProductCategoryNode } from '../productCategoryTree';
 
 interface CategoryRow {
-  node: CategoryNode;
+  node: ProductCategoryNode;
   depth: number;
   expanded: boolean;
   hasVisibleChildren: boolean;
@@ -17,12 +14,14 @@ interface CategoryRow {
 const props = withDefaults(defineProps<{
   categories?: Category[];
   categoryCounts?: Record<number, number>;
+  allProductTotal?: number | null;
   selectedCategoryId?: number;
   loading?: boolean;
   error?: string;
 }>(), {
   categories: () => [],
   categoryCounts: () => ({}),
+  allProductTotal: null,
   selectedCategoryId: undefined,
   loading: false,
   error: ''
@@ -35,42 +34,20 @@ const emit = defineEmits<{
 
 const searchKeyword = ref('');
 const expandedIds = ref<Set<number>>(new Set());
-let initializedExpansion = false;
+let knownRootIds = new Set<number>();
 
-function compareCategories(left: Category, right: Category) {
-  return left.sortOrder - right.sortOrder
-    || left.categoryName.localeCompare(right.categoryName, 'zh-CN')
-    || left.id - right.id;
-}
+const treeModel = computed(() => buildProductCategoryTree(props.categories));
+const tree = computed(() => treeModel.value.roots);
 
-const tree = computed<CategoryNode[]>(() => {
-  const nodes = new Map<number, CategoryNode>();
-  for (const category of props.categories) {
-    nodes.set(category.id, { ...category, children: [] });
+watch(treeModel, (model) => {
+  const existingIds = new Set(model.categories.map((category) => category.id));
+  const nextRootIds = new Set(model.roots.map((root) => root.id));
+  const nextExpandedIds = new Set([...expandedIds.value].filter((id) => existingIds.has(id)));
+  for (const rootId of nextRootIds) {
+    if (!knownRootIds.has(rootId)) nextExpandedIds.add(rootId);
   }
-
-  const roots: CategoryNode[] = [];
-  for (const node of nodes.values()) {
-    const parent = node.parentId === null ? undefined : nodes.get(node.parentId);
-    if (parent && parent.id !== node.id) {
-      parent.children.push(node);
-    } else {
-      roots.push(node);
-    }
-  }
-
-  const sortNodes = (items: CategoryNode[]) => {
-    items.sort(compareCategories);
-    items.forEach((item) => sortNodes(item.children));
-  };
-  sortNodes(roots);
-  return roots;
-});
-
-watch(tree, (roots) => {
-  if (initializedExpansion || roots.length === 0) return;
-  expandedIds.value = new Set(roots.map((root) => root.id));
-  initializedExpansion = true;
+  expandedIds.value = nextExpandedIds;
+  knownRootIds = nextRootIds;
 }, { immediate: true });
 
 const normalizedSearch = computed(() => searchKeyword.value.trim().toLocaleLowerCase('zh-CN'));
@@ -80,17 +57,16 @@ const matchingState = computed(() => {
   const autoExpandedIds = new Set<number>();
   if (!normalizedSearch.value) return { visibleIds, autoExpandedIds };
 
-  const nodeById = new Map(props.categories.map((category) => [category.id, category]));
-  for (const category of props.categories) {
+  for (const category of treeModel.value.categories) {
     if (!category.categoryName.toLocaleLowerCase('zh-CN').includes(normalizedSearch.value)) continue;
     visibleIds.add(category.id);
-    let parentId = category.parentId;
+    let parentId = treeModel.value.parentById.get(category.id) ?? null;
     const visited = new Set<number>([category.id]);
     while (parentId !== null && !visited.has(parentId)) {
       visited.add(parentId);
       visibleIds.add(parentId);
       autoExpandedIds.add(parentId);
-      parentId = nodeById.get(parentId)?.parentId ?? null;
+      parentId = treeModel.value.parentById.get(parentId) ?? null;
     }
   }
   return { visibleIds, autoExpandedIds };
@@ -101,7 +77,7 @@ const rows = computed<CategoryRow[]>(() => {
   const searchActive = Boolean(normalizedSearch.value);
   const visibleIds = matchingState.value.visibleIds;
 
-  const visit = (nodes: CategoryNode[], depth: number) => {
+  const visit = (nodes: ProductCategoryNode[], depth: number) => {
     for (const node of nodes) {
       if (searchActive && !visibleIds.has(node.id)) continue;
       const visibleChildren = searchActive
@@ -118,11 +94,6 @@ const rows = computed<CategoryRow[]>(() => {
   visit(tree.value, 0);
   return result;
 });
-
-const allProductCount = computed(() => tree.value.reduce(
-  (total, root) => total + (props.categoryCounts[root.id] ?? 0),
-  0
-));
 
 function toggleCategory(categoryId: number) {
   if (normalizedSearch.value) return;
@@ -185,7 +156,7 @@ function toggleCategory(categoryId: number) {
         >
           <span class="w-4 shrink-0"></span>
           <span class="min-w-0 flex-1 truncate" title="全部商品">全部商品</span>
-          <span class="shrink-0 text-xs tabular-nums text-slate-400">{{ allProductCount }}</span>
+          <span class="shrink-0 text-xs tabular-nums text-slate-400">{{ allProductTotal ?? '--' }}</span>
         </button>
 
         <div v-if="normalizedSearch && rows.length === 0" data-testid="category-empty" class="px-3 py-8 text-center text-xs text-slate-500">

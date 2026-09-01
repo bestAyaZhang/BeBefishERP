@@ -181,6 +181,8 @@ async function mountCatalog(options: {
   service?: ProductService;
   categories?: Category[];
   categoryCounts?: Record<number, number>;
+  allProductTotal?: number;
+  categoryLookupFailed?: boolean;
 } = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -188,17 +190,20 @@ async function mountCatalog(options: {
   });
   await router.push({ name: 'products', query: options.query });
   await router.isReady();
+  const replace = vi.spyOn(router, 'replace');
   const service = options.service ?? catalogService(vi.fn().mockResolvedValue(productPage([])));
   const wrapper = mount(ProductList, {
     props: {
       service,
       categories: options.categories ?? catalogCategories,
-      categoryCounts: options.categoryCounts ?? { 12: 5, 13: 3, 14: 2, 20: 4 }
+      categoryCounts: options.categoryCounts ?? { 12: 5, 13: 3, 14: 2, 20: 4 },
+      allProductTotal: options.allProductTotal ?? 9,
+      categoryLookupFailed: options.categoryLookupFailed ?? false
     } as never,
     global: { plugins: [router] }
   });
   await flushPromises();
-  return { router, service, wrapper };
+  return { replace, router, service, wrapper };
 }
 
 describe('product feature', () => {
@@ -704,6 +709,78 @@ describe('Task 8 product catalog list', () => {
     expect(wrapper.find('[data-testid^="category-delete"]').exists()).toBe(false);
   });
 
+  it('uses the authoritative unfiltered total for all products', async () => {
+    const { wrapper } = await mountCatalog({
+      allProductTotal: 137,
+      categoryCounts: { 12: 5, 13: 3, 14: 2, 20: 4 }
+    });
+
+    expect(wrapper.get('[data-testid="category-node-all"]').text()).toContain('137');
+    expect(wrapper.get('[data-testid="category-node-all"]').text()).not.toContain('9');
+  });
+
+  it('deduplicates dirty categories and promotes orphaned or cyclic paths so every id appears once', async () => {
+    const dirtyCategories: Category[] = [
+      { id: 1, categoryCode: 'A', categoryName: '重复保留项', parentId: null, level: 1, sortOrder: 1, status: 'enabled', remark: '' },
+      { id: 1, categoryCode: 'Z', categoryName: '重复后项', parentId: null, level: 1, sortOrder: 9, status: 'disabled', remark: '' },
+      { id: 2, categoryCode: 'ORPHAN', categoryName: '孤儿分类', parentId: 999, level: 2, sortOrder: 2, status: 'enabled', remark: '' },
+      { id: 3, categoryCode: 'SELF', categoryName: '自环分类', parentId: 3, level: 2, sortOrder: 3, status: 'enabled', remark: '' },
+      { id: 4, categoryCode: 'CYCLE-A', categoryName: '双环 A', parentId: 5, level: 2, sortOrder: 4, status: 'enabled', remark: '' },
+      { id: 5, categoryCode: 'CYCLE-B', categoryName: '双环 B', parentId: 4, level: 2, sortOrder: 5, status: 'enabled', remark: '' },
+      { id: 6, categoryCode: 'CYCLE-CHILD', categoryName: '依附环节点', parentId: 4, level: 3, sortOrder: 6, status: 'enabled', remark: '' },
+      { id: 7, categoryCode: 'ORPHAN-CHILD', categoryName: '孤儿子节点', parentId: 2, level: 3, sortOrder: 7, status: 'enabled', remark: '' }
+    ];
+    const { wrapper } = await mountCatalog({ categories: dirtyCategories, allProductTotal: 7 });
+
+    for (const id of [1, 2, 3, 4, 5, 6, 7]) {
+      expect(wrapper.findAll(`[data-testid="category-node-${id}"]`)).toHaveLength(1);
+    }
+    expect(wrapper.get('[data-testid="category-node-1"]').text()).toContain('重复保留项');
+    expect(wrapper.text()).not.toContain('重复后项');
+
+    await wrapper.get('[data-testid="category-search"]').setValue('双环');
+    expect(wrapper.find('[data-testid="category-node-4"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="category-node-5"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="category-node-6"]').exists()).toBe(false);
+  });
+
+  it('reconciles expansion state when categories refresh and expands newly reachable roots', async () => {
+    const { wrapper } = await mountCatalog();
+
+    await wrapper.get('[data-testid="category-toggle-12"]').trigger('click');
+    expect(wrapper.find('[data-testid="category-node-13"]').exists()).toBe(false);
+
+    await wrapper.setProps({
+      categories: [
+        { id: 30, categoryCode: 'NEW', categoryName: '新根分类', parentId: null, level: 1, sortOrder: 1, status: 'enabled', remark: '' },
+        { id: 31, categoryCode: 'NEW-CHILD', categoryName: '新根子分类', parentId: 30, level: 2, sortOrder: 1, status: 'enabled', remark: '' }
+      ]
+    } as never);
+    expect(wrapper.find('[data-testid="category-node-31"]').exists()).toBe(true);
+
+    await wrapper.setProps({
+      categories: [
+        { id: 12, categoryCode: 'DRINKWARE', categoryName: '杯具', parentId: null, level: 1, sortOrder: 1, status: 'enabled', remark: '' },
+        { id: 15, categoryCode: 'REATTACHED', categoryName: '重新接入子分类', parentId: 12, level: 2, sortOrder: 1, status: 'enabled', remark: '' }
+      ]
+    } as never);
+    expect(wrapper.find('[data-testid="category-node-15"]').exists()).toBe(true);
+  });
+
+  it('shows an explicit lookup error instead of mislabeling a product category', async () => {
+    const product = catalogProduct(42, '分类待恢复商品', { categoryId: 999 });
+    const { wrapper } = await mountCatalog({
+      categories: [],
+      categoryLookupFailed: true,
+      service: catalogService(mockListProducts(productPage([product])))
+    });
+
+    const categoryCell = wrapper.get('[data-testid="product-category-42"]');
+    expect(categoryCell.text()).toContain('--');
+    expect(categoryCell.text()).toContain('分类加载失败');
+    expect(categoryCell.text()).not.toContain('未分类');
+  });
+
   it('keeps item number or sku as the only right-side query field and searches on Enter', async () => {
     const listProducts = vi.fn<ProductService['listProducts']>().mockImplementation((query) => (
       Promise.resolve(productPage([], 0, query.page, query.size))
@@ -736,6 +813,39 @@ describe('Task 8 product catalog list', () => {
     await flushPromises();
     expect(router.currentRoute.value.query).toEqual({ categoryId: '12', page: '1', size: '20' });
     expect(listProducts).toHaveBeenLastCalledWith({ page: 1, size: 20, categoryId: 12 });
+  });
+
+  it('does not request while the keyword is only a draft', async () => {
+    const listProducts = vi.fn<ProductService['listProducts']>().mockResolvedValue(productPage([]));
+    const { wrapper } = await mountCatalog({
+      query: { page: '1', size: '20' },
+      service: catalogService(listProducts)
+    });
+
+    expect(listProducts).toHaveBeenCalledTimes(1);
+    await wrapper.get('[data-testid="product-keyword"]').setValue('NOT-SUBMITTED');
+    await flushPromises();
+    expect(listProducts).toHaveBeenCalledTimes(1);
+  });
+
+  it('canonicalizes malformed query once before issuing a single request', async () => {
+    const listProducts = vi.fn<ProductService['listProducts']>().mockResolvedValue(productPage([]));
+    const { replace, router } = await mountCatalog({
+      query: {
+        categoryId: ['12', '13'],
+        keyword: '   ',
+        page: '-7',
+        size: '999'
+      },
+      service: catalogService(listProducts)
+    });
+    await flushPromises();
+
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledWith({ query: { page: '1', size: '20' } });
+    expect(router.currentRoute.value.query).toEqual({ page: '1', size: '20' });
+    expect(listProducts).toHaveBeenCalledTimes(1);
+    expect(listProducts).toHaveBeenCalledWith({ page: 1, size: 20 });
   });
 
   it('restores valid route state and safely normalizes array or negative query values', async () => {
@@ -824,6 +934,68 @@ describe('Task 8 product catalog list', () => {
     expect(wrapper.emitted('create-product')).toHaveLength(1);
   });
 
+  it('falls back after an image error and retries when the same product receives a new url', async () => {
+    const brokenProduct = catalogProduct(42, '图片异常商品', {
+      mainImageFileId: 1,
+      mainImageUrl: '/uploads/broken.png'
+    });
+    const recoveredProduct = catalogProduct(42, '图片异常商品', {
+      mainImageFileId: 2,
+      mainImageUrl: '/uploads/recovered.png'
+    });
+    const listProducts = vi.fn<ProductService['listProducts']>()
+      .mockResolvedValueOnce(productPage([brokenProduct]))
+      .mockResolvedValueOnce(productPage([recoveredProduct]));
+    const { router, wrapper } = await mountCatalog({
+      query: { page: '1', size: '20' },
+      service: catalogService(listProducts)
+    });
+
+    await wrapper.get('[data-testid="product-image-42"]').trigger('error');
+    expect(wrapper.find('[data-testid="product-image-42"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="product-image-placeholder-42"]').exists()).toBe(true);
+
+    await router.push({ query: { keyword: 'RECOVERED', page: '1', size: '20' } });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="product-image-42"]').attributes('src')).toBe('/uploads/recovered.png');
+    expect(wrapper.find('[data-testid="product-image-placeholder-42"]').exists()).toBe(false);
+  });
+
+  it('keeps large stock and price values inside fixed truncating numeric cells', async () => {
+    const product = catalogProduct(42, '大数值商品', {
+      totalStock: 9876543210123.125,
+      defaultSalePrice: 9876543210.99
+    });
+    const { wrapper } = await mountCatalog({
+      service: catalogService(mockListProducts(productPage([product])))
+    });
+
+    const stock = wrapper.get('[data-testid="product-stock-42"]');
+    const price = wrapper.get('[data-testid="product-price-42"]');
+    for (const cell of [stock, price]) {
+      expect(cell.classes()).toContain('overflow-hidden');
+      expect(cell.get('span').classes()).toContain('truncate');
+      expect(cell.get('span').classes()).toContain('tabular-nums');
+      expect(cell.get('span').attributes('title')).toBeTruthy();
+    }
+  });
+
+  it('uses a compact mobile pagination contract while retaining full desktop controls', async () => {
+    const { wrapper } = await mountCatalog({
+      query: { page: '5', size: '20' },
+      service: catalogService(vi.fn().mockResolvedValue(productPage([], 240, 5, 20)))
+    });
+    const pagination = wrapper.get('[data-testid="product-pagination"]');
+
+    expect(pagination.classes()).toContain('flex-col');
+    expect(pagination.classes()).toContain('sm:flex-row');
+    expect(wrapper.get('[data-testid="product-page-size-control"]').classes()).toContain('hidden');
+    expect(wrapper.get('[data-testid="product-page-size-control"]').classes()).toContain('sm:flex');
+    expect(wrapper.get('[data-testid="product-pagination-mobile"]').classes()).toContain('sm:hidden');
+    expect(wrapper.get('[data-testid="product-pagination-desktop"]').classes()).toContain('hidden');
+    expect(wrapper.get('[data-testid="product-pagination-desktop"]').classes()).toContain('sm:flex');
+  });
+
   it('ignores stale product responses when route queries change quickly', async () => {
     const firstRequest = deferred<ReturnType<typeof productPage>>();
     const secondRequest = deferred<ReturnType<typeof productPage>>();
@@ -864,6 +1036,17 @@ describe('Task 8 product catalog list', () => {
     expect(router.currentRoute.value.query).toEqual({ keyword: 'RETRY', page: '1', size: '20' });
     expect(wrapper.text()).toContain('重试结果');
     expect(wrapper.find('[data-testid="product-list-error"]').exists()).toBe(false);
+  });
+
+  it('shows only the retry error when the initial product request fails', async () => {
+    const listProducts = vi.fn<ProductService['listProducts']>().mockRejectedValue(new Error('首次加载失败'));
+    const { wrapper } = await mountCatalog({
+      query: { page: '1', size: '20' },
+      service: catalogService(listProducts)
+    });
+
+    expect(wrapper.get('[data-testid="product-list-error"]').text()).toContain('首次加载失败');
+    expect(wrapper.find('[data-testid="product-empty"]').exists()).toBe(false);
   });
 
   it('shows an explicit empty state without production sample rows', async () => {

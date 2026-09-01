@@ -10,30 +10,76 @@ import type { Product } from '../types';
 const router = useRouter();
 const categories = ref<Category[]>([]);
 const categoryCounts = ref<Record<number, number>>({});
+const allProductTotal = ref<number | null>(null);
+const categoryLookupFailed = ref(false);
 const categoryLoading = ref(false);
 const categoryError = ref('');
 let latestCategoryRequestId = 0;
+let latestTotalRequestId = 0;
+let pendingTotalRequest: Promise<number> | null = null;
+
+const categoryPageSize = 100;
+const maximumCategoryPages = 100;
+
+async function listAllCategories() {
+  const records: Category[] = [];
+  for (let page = 1; page <= maximumCategoryPages; page += 1) {
+    const result = await masterdataService.listCategories({ page, size: categoryPageSize });
+    records.push(...result.records);
+
+    const responsePageSize = result.pageSize > 0 ? result.pageSize : categoryPageSize;
+    const totalPages = Math.max(1, Math.ceil(result.total / responsePageSize));
+    if (page >= totalPages || records.length >= result.total) return records;
+    if (result.records.length === 0) throw new Error('分类分页未返回剩余数据');
+  }
+  throw new Error('分类页数超过安全上限');
+}
+
+function loadAllProductTotal() {
+  if (allProductTotal.value !== null) return Promise.resolve(allProductTotal.value);
+  if (pendingTotalRequest) return pendingTotalRequest;
+
+  const requestId = ++latestTotalRequestId;
+  const request = productService.listProducts({ page: 1, size: 1 })
+    .then((result) => {
+      if (requestId === latestTotalRequestId) allProductTotal.value = result.total;
+      return result.total;
+    })
+    .finally(() => {
+      if (pendingTotalRequest === request) pendingTotalRequest = null;
+    });
+  pendingTotalRequest = request;
+  return request;
+}
 
 async function loadCategories() {
   const requestId = ++latestCategoryRequestId;
   categoryLoading.value = true;
   categoryError.value = '';
 
-  const [categoryResult, countResult] = await Promise.allSettled([
-    masterdataService.listCategories({ page: 1, size: 100, status: 'enabled' }),
-    productService.getCategoryCounts()
+  const [categoryResult, countResult, totalResult] = await Promise.allSettled([
+    listAllCategories(),
+    productService.getCategoryCounts(),
+    loadAllProductTotal()
   ]);
   if (requestId !== latestCategoryRequestId) return;
 
   const failures: string[] = [];
-  if (categoryResult.status === 'fulfilled') categories.value = categoryResult.value.records;
-  else failures.push('分类');
+  if (categoryResult.status === 'fulfilled') {
+    categories.value = categoryResult.value;
+    categoryLookupFailed.value = false;
+  } else {
+    categoryLookupFailed.value = categories.value.length === 0;
+    failures.push('分类');
+  }
 
   if (countResult.status === 'fulfilled' && countResult.value && typeof countResult.value === 'object') {
     categoryCounts.value = countResult.value;
   } else {
     failures.push('商品数量');
   }
+
+  if (totalResult.status === 'rejected') failures.push('全部商品总数');
 
   if (failures.length > 0) categoryError.value = `${failures.join('和')}加载失败，可单独重试。`;
   categoryLoading.value = false;
@@ -53,6 +99,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   latestCategoryRequestId += 1;
+  latestTotalRequestId += 1;
 });
 </script>
 
@@ -62,6 +109,8 @@ onBeforeUnmount(() => {
       :service="productService"
       :categories="categories"
       :category-counts="categoryCounts"
+      :all-product-total="allProductTotal"
+      :category-lookup-failed="categoryLookupFailed"
       :category-loading="categoryLoading"
       :category-error="categoryError"
       @retry-categories="loadCategories"

@@ -1,24 +1,56 @@
 <script setup lang="ts">
 import { ImageOff, PackageSearch } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
 import type { Category } from '../../masterdata/types';
 import type { Product } from '../types';
 
 const props = withDefaults(defineProps<{
   products?: Product[];
   categories?: Category[];
+  categoryLookupFailed?: boolean;
   loading?: boolean;
+  showEmpty?: boolean;
 }>(), {
   products: () => [],
   categories: () => [],
-  loading: false
+  categoryLookupFailed: false,
+  loading: false,
+  showEmpty: true
 });
 
 const emit = defineEmits<{
   'open-product': [product: Product];
 }>();
 
-function categoryName(product: Product) {
-  return props.categories.find((category) => category.id === product.categoryId)?.categoryName ?? '未分类';
+const categoryNames = computed(() => new Map(
+  props.categories.map((category) => [category.id, category.categoryName])
+));
+const failedImageUrls = ref<Record<number, string>>({});
+
+function categoryDisplay(product: Product) {
+  if (product.categoryId != null && categoryNames.value.has(product.categoryId)) {
+    return { label: categoryNames.value.get(product.categoryId)!, hint: '' };
+  }
+  if (props.categoryLookupFailed) {
+    return { label: '--', hint: '分类加载失败' };
+  }
+  return {
+    label: '--',
+    hint: product.categoryId == null ? '未设置分类' : '分类不存在'
+  };
+}
+
+function hasProductImage(product: Product) {
+  return Boolean(product.mainImageUrl)
+    && failedImageUrls.value[product.id] !== product.mainImageUrl;
+}
+
+function markImageFailed(product: Product) {
+  if (!product.mainImageUrl) return;
+  failedImageUrls.value = {
+    ...failedImageUrls.value,
+    [product.id]: product.mainImageUrl
+  };
 }
 
 function formatNumber(value: number | null | undefined) {
@@ -60,7 +92,7 @@ function openProduct(product: Product) {
             </span>
           </td>
         </tr>
-        <tr v-else-if="products.length === 0">
+        <tr v-else-if="showEmpty && products.length === 0">
           <td colspan="8" class="h-56 px-5 text-center">
             <div data-testid="product-empty" class="mx-auto flex max-w-xs flex-col items-center text-slate-500">
               <PackageSearch class="mb-3 h-8 w-8 text-slate-300" aria-hidden="true" />
@@ -75,9 +107,11 @@ function openProduct(product: Product) {
           :key="product.id"
           :data-testid="`product-row-${product.id}`"
           tabindex="0"
+          role="link"
+          :aria-label="`查看${product.productName}详情`"
           class="cursor-pointer transition-colors hover:bg-slate-50 focus-visible:bg-blue-50 focus-visible:outline-none"
           @click="openProduct(product)"
-          @keyup.enter="openProduct(product)"
+          @keyup.enter.self="openProduct(product)"
         >
           <td class="px-5 py-3.5 align-middle">
             <div class="flex min-w-0 items-center gap-3">
@@ -86,13 +120,19 @@ function openProduct(product: Product) {
                 class="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-50 text-slate-400"
               >
                 <img
-                  v-if="product.mainImageUrl"
+                  v-if="hasProductImage(product)"
                   :data-testid="`product-image-${product.id}`"
-                  :src="product.mainImageUrl"
+                  :src="product.mainImageUrl ?? undefined"
                   :alt="product.productName"
                   class="h-full w-full object-cover"
+                  @error="markImageFailed(product)"
                 />
-                <ImageOff v-else class="h-5 w-5" aria-hidden="true" />
+                <ImageOff
+                  v-else
+                  :data-testid="`product-image-placeholder-${product.id}`"
+                  class="h-5 w-5"
+                  aria-hidden="true"
+                />
               </div>
               <div class="min-w-0">
                 <p class="truncate font-semibold text-slate-900" :title="product.productName">{{ product.productName }}</p>
@@ -100,8 +140,15 @@ function openProduct(product: Product) {
               </div>
             </div>
           </td>
-          <td class="px-4 py-3.5 align-middle">
-            <p class="truncate" :title="categoryName(product)">{{ categoryName(product) }}</p>
+          <td :data-testid="`product-category-${product.id}`" class="px-4 py-3.5 align-middle">
+            <p class="truncate" :title="categoryDisplay(product).label">{{ categoryDisplay(product).label }}</p>
+            <p
+              v-if="categoryDisplay(product).hint"
+              class="mt-1 truncate text-xs text-slate-400"
+              :title="categoryDisplay(product).hint"
+            >
+              {{ categoryDisplay(product).hint }}
+            </p>
           </td>
           <td class="px-4 py-3.5 align-middle">
             <p class="truncate font-medium text-slate-800" :title="product.brand || '未设置品牌'">{{ product.brand || '未设置品牌' }}</p>
@@ -109,11 +156,21 @@ function openProduct(product: Product) {
               {{ product.defaultSupplierName || '未设置供应商' }}
             </p>
           </td>
-          <td class="px-4 py-3.5 text-right align-middle font-medium tabular-nums text-slate-900" :title="formatNumber(product.totalStock)">
-            {{ formatNumber(product.totalStock) }}
+          <td
+            :data-testid="`product-stock-${product.id}`"
+            class="w-[110px] max-w-[110px] overflow-hidden px-4 py-3.5 text-right align-middle font-medium text-slate-900"
+          >
+            <span class="block truncate tabular-nums" :title="formatNumber(product.totalStock)">
+              {{ formatNumber(product.totalStock) }}
+            </span>
           </td>
-          <td class="px-4 py-3.5 text-right align-middle font-medium tabular-nums text-slate-900" :title="formatPrice(product.defaultSalePrice)">
-            {{ formatPrice(product.defaultSalePrice) }}
+          <td
+            :data-testid="`product-price-${product.id}`"
+            class="w-[120px] max-w-[120px] overflow-hidden px-4 py-3.5 text-right align-middle font-medium text-slate-900"
+          >
+            <span class="block truncate tabular-nums" :title="formatPrice(product.defaultSalePrice)">
+              {{ formatPrice(product.defaultSalePrice) }}
+            </span>
           </td>
           <td class="px-4 py-3.5 align-middle">
             <span
@@ -139,6 +196,7 @@ function openProduct(product: Product) {
               type="button"
               class="whitespace-nowrap font-medium text-blue-600 transition hover:text-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               @click.stop="openProduct(product)"
+              @keydown.enter.stop.prevent="openProduct(product)"
             >
               查看详情
             </button>

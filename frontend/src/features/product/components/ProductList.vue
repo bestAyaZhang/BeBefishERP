@@ -22,13 +22,17 @@ const props = withDefaults(defineProps<{
   service: ProductService;
   categories?: Category[];
   categoryCounts?: Record<number, number>;
+  allProductTotal?: number | null;
   categoryLoading?: boolean;
   categoryError?: string;
+  categoryLookupFailed?: boolean;
 }>(), {
   categories: () => [],
   categoryCounts: () => ({}),
+  allProductTotal: null,
   categoryLoading: false,
-  categoryError: ''
+  categoryError: '',
+  categoryLookupFailed: false
 });
 
 const emit = defineEmits<{
@@ -43,6 +47,7 @@ const result = ref<PageResult<Product>>({ records: [], page: 1, pageSize: defaul
 const keywordDraft = ref('');
 const loading = ref(false);
 const errorMessage = ref('');
+const hasSuccessfulLoad = ref(false);
 let latestRequestId = 0;
 
 function singleQueryValue(value: unknown) {
@@ -67,13 +72,25 @@ const routeState = computed<CatalogRouteState>(() => {
   return { categoryId, keyword, page, size };
 });
 
-function serializeRouteState(state: CatalogRouteState) {
+function serializeRouteState(state: CatalogRouteState): Record<string, string> {
   return {
     ...(state.categoryId ? { categoryId: String(state.categoryId) } : {}),
     ...(state.keyword ? { keyword: state.keyword } : {}),
     page: String(state.page),
     size: String(state.size)
   };
+}
+
+function isCanonicalQuery(query: Record<string, unknown>, canonical: Record<string, string>) {
+  const queryKeys = Object.keys(query).sort();
+  const canonicalKeys = Object.keys(canonical).sort();
+  if (queryKeys.length !== canonicalKeys.length) return false;
+
+  return canonicalKeys.every((key, index) => (
+    queryKeys[index] === key
+    && typeof query[key] === 'string'
+    && query[key] === canonical[key]
+  ));
 }
 
 function productQuery(state: CatalogRouteState): ProductQuery {
@@ -99,6 +116,7 @@ async function loadProducts(state: CatalogRouteState = routeState.value) {
       return;
     }
     result.value = nextResult;
+    hasSuccessfulLoad.value = true;
   } catch (error) {
     if (requestId !== latestRequestId) return;
     errorMessage.value = error instanceof Error && error.message
@@ -137,8 +155,16 @@ function changeSize(size: number) {
   void updateRoute({ ...routeState.value, size, page: 1 });
 }
 
-watch(routeState, (state) => {
+watch(() => route.query, (query) => {
+  const state = routeState.value;
   keywordDraft.value = state.keyword ?? '';
+  const canonical = serializeRouteState(state);
+
+  if (!isCanonicalQuery(query, canonical)) {
+    void router.replace({ query: canonical });
+    return;
+  }
+
   void loadProducts(state);
 }, { immediate: true });
 
@@ -153,6 +179,7 @@ onBeforeUnmount(() => {
       <ProductCategoryTree
         :categories="categories"
         :category-counts="categoryCounts"
+        :all-product-total="allProductTotal"
         :selected-category-id="routeState.categoryId"
         :loading="categoryLoading"
         :error="categoryError"
@@ -237,7 +264,9 @@ onBeforeUnmount(() => {
         <ProductTable
           :products="result.records"
           :categories="categories"
+          :category-lookup-failed="categoryLookupFailed"
           :loading="loading"
+          :show-empty="hasSuccessfulLoad && !errorMessage"
           @open-product="emit('open-product', $event)"
         />
         <ProductPagination
