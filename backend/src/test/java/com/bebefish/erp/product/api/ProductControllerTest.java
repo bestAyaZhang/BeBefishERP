@@ -12,6 +12,7 @@ import com.bebefish.erp.auth.domain.TokenIssuer;
 import com.bebefish.erp.auth.domain.UserAccount;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -117,6 +118,10 @@ class ProductControllerTest {
                 .andExpect(jsonPath("$.data.skus[0].innerPackageLengthCm").value(36))
                 .andExpect(jsonPath("$.data.skus[0].innerPackageWidthCm").value(25))
                 .andExpect(jsonPath("$.data.skus[0].innerPackageHeightCm").value(22))
+                .andExpect(jsonPath("$.data.skus[0].productLengthCm").value(12.5))
+                .andExpect(jsonPath("$.data.skus[0].productWidthCm").value(8.25))
+                .andExpect(jsonPath("$.data.skus[0].productHeightCm").value(20.0))
+                .andExpect(jsonPath("$.data.skus[0].capacityMl").value(450.0))
                 .andExpect(jsonPath("$.data.skus[0].innerPackageWeightKg").value(1.1))
                 .andExpect(jsonPath("$.data.skus[0].cartonQuantity").value(12));
 
@@ -129,7 +134,11 @@ class ProductControllerTest {
                 .andExpect(jsonPath("$.data.productName").value("更新后的红酒杯"))
                 .andExpect(jsonPath("$.data.createdAt").value(createdAt))
                 .andExpect(jsonPath("$.data.updatedAt").isNotEmpty())
-                .andExpect(jsonPath("$.data.skus[0].id").value(skuId));
+                .andExpect(jsonPath("$.data.skus[0].id").value(skuId))
+                .andExpect(jsonPath("$.data.skus[0].productLengthCm").value(12.5))
+                .andExpect(jsonPath("$.data.skus[0].productWidthCm").value(8.25))
+                .andExpect(jsonPath("$.data.skus[0].productHeightCm").value(20.0))
+                .andExpect(jsonPath("$.data.skus[0].capacityMl").value(450.0));
 
         mvc.perform(post("/api/products/{id}/status", productId)
                         .header("Authorization", bearer(editToken))
@@ -328,6 +337,20 @@ class ProductControllerTest {
                         .content(objectMapper.writeValueAsString(scale)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("内盒重量最多允许 9 位整数和 3 位小数"));
+    }
+
+    @Test
+    void rejectsInvalidProductPhysicalValues() throws Exception {
+        for (var value : List.of("-0.001", "1.0001")) {
+            var request = requestBody(null, "INVALID-PHYSICAL-" + value, "无效物理数据", null);
+            skuInput(request).put("productLengthCm", value);
+            mvc.perform(post("/api/products")
+                            .header("Authorization", bearer(editToken))
+                            .contentType(APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        }
     }
 
     @Test
@@ -797,6 +820,10 @@ class ProductControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.productCode").value("PRD-000001"))
                 .andExpect(jsonPath("$.data.skus[0].skuCode").value("PRD-000001-DEFAULT"))
+                .andExpect(jsonPath("$.data.skus[0].productLengthCm").value(12.5))
+                .andExpect(jsonPath("$.data.skus[0].productWidthCm").value(8.25))
+                .andExpect(jsonPath("$.data.skus[0].productHeightCm").value(20.0))
+                .andExpect(jsonPath("$.data.skus[0].capacityMl").value(450.0))
                 .andExpect(jsonPath("$.data.createdAt").isNotEmpty())
                 .andExpect(jsonPath("$.data.updatedAt").isNotEmpty())
                 .andReturn().getResponse().getContentAsString();
@@ -821,6 +848,10 @@ class ProductControllerTest {
         sku.put("innerPackageLengthCm", "36");
         sku.put("innerPackageWidthCm", "25");
         sku.put("innerPackageHeightCm", "22");
+        sku.put("productLengthCm", new BigDecimal("12.500"));
+        sku.put("productWidthCm", new BigDecimal("8.250"));
+        sku.put("productHeightCm", new BigDecimal("20.000"));
+        sku.put("capacityMl", new BigDecimal("450.000"));
         sku.put("netWeightKg", "8.5");
         sku.put("grossWeightKg", "9.2");
         sku.put("gramWeightG", "350");

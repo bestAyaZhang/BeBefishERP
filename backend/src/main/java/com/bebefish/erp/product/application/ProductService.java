@@ -315,6 +315,10 @@ public class ProductService {
         var innerLength = decimal(nonNegativeOrNull(command.innerLengthCm(), "内盒长不能小于 0"), 9, 3, "内盒长");
         var innerWidth = decimal(nonNegativeOrNull(command.innerWidthCm(), "内盒宽不能小于 0"), 9, 3, "内盒宽");
         var innerHeight = decimal(nonNegativeOrNull(command.innerHeightCm(), "内盒高不能小于 0"), 9, 3, "内盒高");
+        var productLength = decimal(nonNegativeOrNull(command.productLengthCm(), "产品长不能小于 0"), 9, 3, "产品长");
+        var productWidth = decimal(nonNegativeOrNull(command.productWidthCm(), "产品宽不能小于 0"), 9, 3, "产品宽");
+        var productHeight = decimal(nonNegativeOrNull(command.productHeightCm(), "产品高不能小于 0"), 9, 3, "产品高");
+        var capacity = decimal(nonNegativeOrNull(command.capacityMl(), "容量不能小于 0"), 9, 3, "容量");
         var netWeight = decimal(nonNegativeOrNull(command.netWeightKg(), "净重不能小于 0"), 9, 3, "净重");
         var grossWeight = decimal(nonNegativeOrNull(command.grossWeightKg(), "毛重不能小于 0"), 9, 3, "毛重");
         var gramWeight = decimal(nonNegativeOrNull(command.gramWeightG(), "克重不能小于 0"), 9, 3, "克重");
@@ -330,6 +334,7 @@ public class ProductService {
         }
         return new Packaging(
                 length, width, height, volume, innerLength, innerWidth, innerHeight,
+                productLength, productWidth, productHeight, capacity,
                 netWeight, grossWeight, gramWeight, innerWeight,
                 optional(command.method()), command.cartonQuantity(),
                 command.packageImageFileId(), command.cartonImageFileId()

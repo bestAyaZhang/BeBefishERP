@@ -134,6 +134,7 @@ class ProductCompletenessCalculatorTest {
         return new Packaging(
                 new BigDecimal("42"), new BigDecimal("31"), new BigDecimal("28"),
                 new BigDecimal("36456"), null, null, null,
+                null, null, null, null,
                 new BigDecimal("8.5"), new BigDecimal("9.2"), null, null,
                 null, 12, null, null
         );

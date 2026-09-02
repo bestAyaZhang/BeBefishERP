@@ -95,6 +95,18 @@ public record SaveProductRequest(
             @DecimalMin(value = "0", message = "内盒高不能小于 0")
             @Digits(integer = 9, fraction = 3, message = "内盒高最多允许 9 位整数和 3 位小数")
             BigDecimal innerPackageHeightCm,
+            @DecimalMin(value = "0", message = "产品长不能小于 0")
+            @Digits(integer = 9, fraction = 3, message = "产品长最多允许 9 位整数和 3 位小数")
+            BigDecimal productLengthCm,
+            @DecimalMin(value = "0", message = "产品宽不能小于 0")
+            @Digits(integer = 9, fraction = 3, message = "产品宽最多允许 9 位整数和 3 位小数")
+            BigDecimal productWidthCm,
+            @DecimalMin(value = "0", message = "产品高不能小于 0")
+            @Digits(integer = 9, fraction = 3, message = "产品高最多允许 9 位整数和 3 位小数")
+            BigDecimal productHeightCm,
+            @DecimalMin(value = "0", message = "容量不能小于 0")
+            @Digits(integer = 9, fraction = 3, message = "容量最多允许 9 位整数和 3 位小数")
+            BigDecimal capacityMl,
             @DecimalMin(value = "0", message = "净重不能小于 0")
             @Digits(integer = 9, fraction = 3, message = "净重最多允许 9 位整数和 3 位小数")
             BigDecimal netWeightKg,
@@ -124,6 +136,7 @@ public record SaveProductRequest(
                     new PackagingCommand(
                             packageLengthCm, packageWidthCm, packageHeightCm, packageVolumeCm3,
                             innerPackageLengthCm, innerPackageWidthCm, innerPackageHeightCm,
+                            productLengthCm, productWidthCm, productHeightCm, capacityMl,
                             netWeightKg, grossWeightKg, gramWeightG, innerPackageWeightKg,
                             packagingMethod, cartonQuantity,
                             packageImageFileId, cartonImageFileId

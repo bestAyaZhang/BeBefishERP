@@ -206,6 +206,7 @@ class SalesDraftServiceTest {
                 BigDecimal.ZERO,
                 new Packaging(
                         null, null, null, null, null, null, null,
+                        null, null, null, null,
                         null, null, null, null, "彩盒", 48, null, null
                 ),
                 null, false, "enabled"

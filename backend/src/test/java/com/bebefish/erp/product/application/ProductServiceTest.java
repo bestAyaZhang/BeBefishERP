@@ -161,7 +161,10 @@ class ProductServiceTest {
         var packaging = new PackagingCommand(
                 decimal("999999999.999"), decimal("999999999.999"), decimal("999999999.999"),
                 decimal("999999999999999.999"), decimal("999999999.999"), decimal("999999999.999"),
+                decimal("999999999.999"),
                 decimal("999999999.999"), decimal("999999999.999"), decimal("999999999.999"),
+                decimal("999999999.999"),
+                decimal("999999999.999"), decimal("999999999.999"),
                 decimal("999999999.999"), decimal("999999999.999"), "彩盒", Integer.MAX_VALUE, null, null
         );
         var sku = new SaveSkuCommand(
@@ -530,6 +533,7 @@ class ProductServiceTest {
         var packaging = new PackagingCommand(
                 new BigDecimal("42"), new BigDecimal("31"), new BigDecimal("28"), null,
                 decimal(innerLength), decimal(innerWidth), decimal(innerHeight),
+                null, null, null, null,
                 new BigDecimal("8.5"), new BigDecimal("9.2"), new BigDecimal("350"),
                 decimal(innerWeight), "彩盒", 12, null, null
         );
@@ -567,6 +571,7 @@ class ProductServiceTest {
         return new PackagingCommand(
                 decimal(length), decimal(width), decimal(height), decimal(volume),
                 null, null, null,
+                null, null, null, null,
                 decimal(netWeight), decimal(grossWeight), new BigDecimal("350"), null,
                 "彩盒", 12, null, null
         );
