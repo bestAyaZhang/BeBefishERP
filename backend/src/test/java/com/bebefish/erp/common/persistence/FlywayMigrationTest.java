@@ -152,7 +152,40 @@ class FlywayMigrationTest {
     }
 
     @Test
-    void upgradesRepresentativeLegacyRowsFromV7ToV8WithoutDataLoss() {
+    void addsProductPhysicalAttributeColumns() {
+        var columns = jdbc.queryForList(
+                "select column_name from information_schema.columns "
+                        + "where table_schema = database() and table_name = 'product_sku'",
+                String.class
+        );
+        assertThat(columns).contains(
+                "product_length_cm",
+                "product_width_cm",
+                "product_height_cm",
+                "capacity_ml"
+        );
+
+        var productId = insertProduct("P900", "ITEM900");
+        var skuId = insertSku(productId, "SKU900");
+        var physical = jdbc.queryForMap("""
+                select product_length_cm, product_width_cm, product_height_cm, capacity_ml
+                from product_sku
+                where id = ?
+                """, skuId);
+        assertThat(physical)
+                .containsEntry("product_length_cm", null)
+                .containsEntry("product_width_cm", null)
+                .containsEntry("product_height_cm", null)
+                .containsEntry("capacity_ml", null);
+
+        assertThatThrownBy(() -> jdbc.update(
+                "update product_sku set product_length_cm = -1 where id = ?",
+                skuId
+        )).isInstanceOf(DataAccessException.class);
+    }
+
+    @Test
+    void upgradesRepresentativeLegacyRowsFromV7ToLatestWithoutDataLoss() {
         var v7 = Flyway.configure()
                 .dataSource(dataSource)
                 .cleanDisabled(false)
@@ -188,7 +221,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("8");
+        )).isEqualTo("9");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId
@@ -202,7 +235,8 @@ class FlywayMigrationTest {
         var sku = jdbc.queryForMap(
                 "select barcode, default_sale_price, standard_cost, package_length_cm, net_weight_kg, "
                         + "is_default, status, safety_stock_quantity, inner_package_length_cm, "
-                        + "inner_package_width_cm, inner_package_height_cm, inner_package_weight_kg "
+                        + "inner_package_width_cm, inner_package_height_cm, inner_package_weight_kg, "
+                        + "product_length_cm, product_width_cm, product_height_cm, capacity_ml "
                         + "from product_sku where sku_code = 'SKU-V7-UPGRADE'"
         );
         assertThat((BigDecimal) sku.get("default_sale_price")).isEqualByComparingTo("19.9000");
@@ -216,7 +250,11 @@ class FlywayMigrationTest {
                 .containsEntry("inner_package_length_cm", null)
                 .containsEntry("inner_package_width_cm", null)
                 .containsEntry("inner_package_height_cm", null)
-                .containsEntry("inner_package_weight_kg", null);
+                .containsEntry("inner_package_weight_kg", null)
+                .containsEntry("product_length_cm", null)
+                .containsEntry("product_width_cm", null)
+                .containsEntry("product_height_cm", null)
+                .containsEntry("capacity_ml", null);
 
         assertThatThrownBy(() -> jdbc.update(
                 "update product_sku set safety_stock_quantity = -0.0001 where sku_code = 'SKU-V7-UPGRADE'"
