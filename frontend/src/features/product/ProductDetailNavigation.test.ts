@@ -141,10 +141,10 @@ const detailProduct = Object.assign(productFixture({
       innerPackageLengthCm: 10,
       innerPackageWidthCm: 10,
       innerPackageHeightCm: 12,
-      productLengthCm: 14,
-      productWidthCm: 9.5,
-      productHeightCm: 21,
-      capacityMl: null,
+      productLengthCm: 12.5,
+      productWidthCm: 8.25,
+      productHeightCm: 20,
+      capacityMl: 450,
       netWeightKg: 8.4,
       grossWeightKg: 9.1,
       gramWeightG: 210,
@@ -585,7 +585,14 @@ describe('product detail navigation', () => {
     const perSkuProduct: Product = {
       ...detailProduct,
       skus: detailProduct.skus.map((sku) => sku.id === 22
-        ? { ...sku, packageImageFileId: 999 }
+        ? {
+            ...sku,
+            productLengthCm: 14,
+            productWidthCm: 9.5,
+            productHeightCm: 21,
+            capacityMl: null,
+            packageImageFileId: 999
+          }
         : sku)
     };
     vi.mocked(productService.getProduct).mockResolvedValueOnce(perSkuProduct);
