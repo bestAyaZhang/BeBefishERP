@@ -664,6 +664,9 @@ describe('Task 10 product editor', () => {
     expect(wrapper.get('[data-testid="packaging-product-length-unit"]').text()).toBe('cm');
     expect(wrapper.get('[data-testid="packaging-capacity-unit"]').text()).toBe('ml');
     expect(wrapper.findAll('[data-testid="packaging-product-dimension-separator"]')).toHaveLength(2);
+    for (const testId of ['packaging-product-length', 'packaging-product-width', 'packaging-product-height', 'packaging-capacity']) {
+      expect(wrapper.get(`[data-testid="${testId}"]`).attributes()).toMatchObject({ min: '0', max: '999999999.999', step: '0.001' });
+    }
 
     await wrapper.get('[data-testid="packaging-product-length"]').setValue('12.5');
     await wrapper.get('[data-testid="packaging-product-width"]').setValue('8.25');
@@ -679,6 +682,9 @@ describe('Task 10 product editor', () => {
     expect(wrapper.get('[data-testid="packaging-dialog-product-length-unit"]').text()).toBe('cm');
     expect(wrapper.get('[data-testid="packaging-dialog-capacity-unit"]').text()).toBe('ml');
     expect(wrapper.findAll('[data-testid="packaging-dialog-product-dimension-separator"]')).toHaveLength(2);
+    for (const testId of ['packaging-dialog-product-length', 'packaging-dialog-product-width', 'packaging-dialog-product-height', 'packaging-dialog-capacity']) {
+      expect(wrapper.get(`[data-testid="${testId}"]`).attributes()).toMatchObject({ min: '0', max: '999999999.999', step: '0.001' });
+    }
 
     await wrapper.get('[data-testid="packaging-dialog-product-length"]').setValue('13.5');
     await wrapper.get('[data-testid="packaging-dialog-product-width"]').setValue('9.25');
@@ -698,6 +704,51 @@ describe('Task 10 product editor', () => {
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-width"]').element.value).toBe('9.25');
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-height"]').element.value).toBe('21');
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-capacity"]').element.value).toBe('500');
+  });
+
+  it('normalizes a cleared product physical input to null', async () => {
+    const { wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await next(wrapper);
+    await addSku(wrapper, '透明款', 'A-1');
+    await next(wrapper);
+    await next(wrapper);
+
+    await wrapper.get('[data-testid="packaging-capacity"]').setValue('450');
+    await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
+    await wrapper.get('[data-testid="edit-packaging-0"]').trigger('click');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-capacity"]').element.value).toBe('450');
+    await wrapper.get('[data-testid="packaging-dialog-cancel"]').trigger('click');
+    await wrapper.get('[data-testid="packaging-mode-unified"]').trigger('click');
+    await wrapper.get('[data-testid="packaging-capacity"]').setValue('');
+
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    await flushPromises();
+
+    expect(productService.createProduct).toHaveBeenCalledWith(expect.objectContaining({
+      skus: [expect.objectContaining({ capacityMl: null })]
+    }));
+  });
+
+  it('keeps invalid product physical values in the dialog with visible field errors', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    const { wrapper } = await mountEditor('/products/42/edit');
+    await wrapper.get('[data-testid="step-packaging"]').trigger('click');
+    await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
+    await wrapper.get('[data-testid="edit-packaging-0"]').trigger('click');
+
+    await wrapper.get('[data-testid="packaging-dialog-product-length"]').setValue('-1');
+    await wrapper.get('[data-testid="packaging-dialog-product-width"]').setValue('-1');
+    await wrapper.get('[data-testid="packaging-dialog-product-height"]').setValue('-1');
+    await wrapper.get('[data-testid="packaging-dialog-capacity"]').setValue('-1');
+    await wrapper.get('[data-testid="packaging-dialog-save"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="packaging-dialog-product-length-error"]').text()).toContain('产品长不能小于 0');
+    expect(wrapper.get('[data-testid="packaging-dialog-product-width-error"]').text()).toContain('产品宽不能小于 0');
+    expect(wrapper.get('[data-testid="packaging-dialog-product-height-error"]').text()).toContain('产品高不能小于 0');
+    expect(wrapper.get('[data-testid="packaging-dialog-capacity-error"]').text()).toContain('容量不能小于 0');
+    expect(wrapper.find('[data-testid="packaging-editor-dialog"]').exists()).toBe(true);
   });
 
   it('sets Java integer constraints on the unified carton quantity input', async () => {
