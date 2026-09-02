@@ -27,6 +27,9 @@ All prototype images are organized by module. Use the module folder first, then 
 | `products/product-detail-figma-reference.png` | Product detail Figma reference |
 | `products/product-detail-figma-implementation.png` | Product detail desktop implementation |
 | `products/product-detail-mobile.png` | Product detail mobile implementation |
+| `products/product-detail-physical-attributes.png` | Product detail: product dimensions, capacity, packaging, and weights |
+| `products/product-edit-physical-attributes.png` | Product editor: unified product dimensions and capacity inputs |
+| `products/product-catalog-columns-expanded.png` | Product catalog: expanded field selector with physical columns |
 | `products/product-editor-figma/01-basic.png` | Product editor Figma reference: basic information |
 | `products/product-editor-figma/02-sku.png` | Product editor Figma reference: SKU information |
 | `products/product-editor-figma/03-procurement.png` | Product editor Figma reference: procurement and channels |
