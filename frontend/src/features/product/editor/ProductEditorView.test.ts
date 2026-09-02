@@ -650,6 +650,56 @@ describe('Task 10 product editor', () => {
     expect(wrapper.get('[data-testid="packaging-row-1"]').text()).toContain('42');
   });
 
+  it('edits product dimensions and capacity in unified and per-SKU packaging modes', async () => {
+    const { wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await wrapper.get('[data-testid="product-type"]').setValue('variant');
+    await next(wrapper);
+    await addSku(wrapper, '透明款', 'A-1');
+    await addSku(wrapper, '烟灰款', 'A-2');
+    await next(wrapper);
+    await next(wrapper);
+
+    expect(wrapper.text()).toContain('产品尺寸与容量');
+    expect(wrapper.get('[data-testid="packaging-product-length-unit"]').text()).toBe('cm');
+    expect(wrapper.get('[data-testid="packaging-capacity-unit"]').text()).toBe('ml');
+    expect(wrapper.findAll('[data-testid="packaging-product-dimension-separator"]')).toHaveLength(2);
+
+    await wrapper.get('[data-testid="packaging-product-length"]').setValue('12.5');
+    await wrapper.get('[data-testid="packaging-product-width"]').setValue('8.25');
+    await wrapper.get('[data-testid="packaging-product-height"]').setValue('20');
+    await wrapper.get('[data-testid="packaging-capacity"]').setValue('450');
+    await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
+
+    await wrapper.get('[data-testid="edit-packaging-1"]').trigger('click');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-length"]').element.value).toBe('12.5');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-width"]').element.value).toBe('8.25');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-height"]').element.value).toBe('20');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-capacity"]').element.value).toBe('450');
+    expect(wrapper.get('[data-testid="packaging-dialog-product-length-unit"]').text()).toBe('cm');
+    expect(wrapper.get('[data-testid="packaging-dialog-capacity-unit"]').text()).toBe('ml');
+    expect(wrapper.findAll('[data-testid="packaging-dialog-product-dimension-separator"]')).toHaveLength(2);
+
+    await wrapper.get('[data-testid="packaging-dialog-product-length"]').setValue('13.5');
+    await wrapper.get('[data-testid="packaging-dialog-product-width"]').setValue('9.25');
+    await wrapper.get('[data-testid="packaging-dialog-product-height"]').setValue('21');
+    await wrapper.get('[data-testid="packaging-dialog-capacity"]').setValue('500');
+    await wrapper.get('[data-testid="packaging-dialog-save"]').trigger('click');
+
+    await wrapper.get('[data-testid="edit-packaging-0"]').trigger('click');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-length"]').element.value).toBe('12.5');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-width"]').element.value).toBe('8.25');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-height"]').element.value).toBe('20');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-capacity"]').element.value).toBe('450');
+    await wrapper.get('[data-testid="packaging-dialog-cancel"]').trigger('click');
+
+    await wrapper.get('[data-testid="edit-packaging-1"]').trigger('click');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-length"]').element.value).toBe('13.5');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-width"]').element.value).toBe('9.25');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-height"]').element.value).toBe('21');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-capacity"]').element.value).toBe('500');
+  });
+
   it('sets Java integer constraints on the unified carton quantity input', async () => {
     vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
     const { wrapper } = await mountEditor('/products/42/edit');
