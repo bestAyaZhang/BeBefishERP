@@ -19,13 +19,27 @@ public class ProductCompletenessCalculator {
                 .toList();
         var missingGroups = new ArrayList<String>();
 
-        addMissing(missingGroups, "基本信息", basicInfoComplete(product));
-        addMissing(missingGroups, "SKU 信息", skuInfoComplete(enabledSkus));
-        addMissing(missingGroups, "采购信息", purchasingComplete(enabledSkus, quotesBySkuId));
-        addMissing(missingGroups, "包装重量", packagingComplete(enabledSkus));
-        addMissing(missingGroups, "图片资料", imagesComplete(product, enabledSkus));
+        var basicComplete = basicInfoComplete(product);
+        var skuComplete = skuInfoComplete(enabledSkus);
+        var purchasingComplete = purchasingComplete(enabledSkus, quotesBySkuId);
+        var packagingWeightComplete = packagingComplete(enabledSkus);
+        var dimensionsComplete = productDimensionsComplete(enabledSkus);
+        var imageComplete = imagesComplete(product, enabledSkus);
 
-        var percent = (5 - missingGroups.size()) * GROUP_SCORE;
+        addMissing(missingGroups, "基本信息", basicComplete);
+        addMissing(missingGroups, "SKU 信息", skuComplete);
+        addMissing(missingGroups, "采购信息", purchasingComplete);
+        addMissing(missingGroups, "包装重量", packagingWeightComplete);
+        addMissing(missingGroups, "产品尺寸", dimensionsComplete);
+        addMissing(missingGroups, "图片资料", imageComplete);
+
+        var completedGroups = 0;
+        if (basicComplete) completedGroups++;
+        if (skuComplete) completedGroups++;
+        if (purchasingComplete) completedGroups++;
+        if (packagingWeightComplete && dimensionsComplete) completedGroups++;
+        if (imageComplete) completedGroups++;
+        var percent = completedGroups * GROUP_SCORE;
         return new ProductCompleteness(
                 percent,
                 percent == 100 ? "complete" : "incomplete",
@@ -75,6 +89,16 @@ public class ProductCompletenessCalculator {
                     && packaging.cartonQuantity() != null
                     && packaging.netWeightKg() != null
                     && packaging.grossWeightKg() != null;
+        });
+    }
+
+    private boolean productDimensionsComplete(List<Sku> enabledSkus) {
+        return !enabledSkus.isEmpty() && enabledSkus.stream().allMatch(sku -> {
+            Packaging packaging = sku.packaging();
+            return packaging != null
+                    && packaging.productLengthCm() != null
+                    && packaging.productWidthCm() != null
+                    && packaging.productHeightCm() != null;
         });
     }
 

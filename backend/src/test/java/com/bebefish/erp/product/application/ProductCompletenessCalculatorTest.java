@@ -22,7 +22,9 @@ class ProductCompletenessCalculatorTest {
 
         assertThat(incomplete.percent()).isEqualTo(40);
         assertThat(incomplete.status()).isEqualTo("incomplete");
-        assertThat(incomplete.missingGroups()).containsExactly("采购信息", "包装重量", "图片资料");
+        assertThat(incomplete.missingGroups()).containsExactly(
+                "采购信息", "包装重量", "产品尺寸", "图片资料"
+        );
 
         var complete = calculator.calculate(completeProduct(), completeQuotes());
 
@@ -43,8 +45,97 @@ class ProductCompletenessCalculatorTest {
         assertThat(result.percent()).isZero();
         assertThat(result.status()).isEqualTo("incomplete");
         assertThat(result.missingGroups()).containsExactly(
-                "基本信息", "SKU 信息", "采购信息", "包装重量", "图片资料"
+                "基本信息", "SKU 信息", "采购信息", "包装重量", "产品尺寸", "图片资料"
         );
+    }
+
+    @Test
+    void productDimensionsAreRequiredButCapacityIsOptional() {
+        var packaging = completePackaging();
+        var withoutCapacity = new Packaging(
+                packaging.lengthCm(), packaging.widthCm(), packaging.heightCm(), packaging.volumeCm3(),
+                packaging.innerLengthCm(), packaging.innerWidthCm(), packaging.innerHeightCm(),
+                new BigDecimal("12"), new BigDecimal("8"), new BigDecimal("20"), null,
+                packaging.netWeightKg(), packaging.grossWeightKg(), packaging.gramWeightG(),
+                packaging.innerWeightKg(), packaging.method(), packaging.cartonQuantity(),
+                packaging.packageImageFileId(), packaging.cartonImageFileId()
+        );
+
+        var result = calculator.calculate(withPackaging(withoutCapacity, "enabled"), completeQuotes());
+
+        assertThat(result.missingGroups()).doesNotContain("产品尺寸");
+    }
+
+    @Test
+    void productLengthIsRequiredForCompleteness() {
+        var packaging = completePackaging();
+        var withoutLength = withProductDimensions(
+                packaging, null, packaging.productWidthCm(), packaging.productHeightCm()
+        );
+
+        var result = calculator.calculate(withPackaging(withoutLength, "enabled"), completeQuotes());
+
+        assertThat(result.percent()).isEqualTo(80);
+        assertThat(result.missingGroups()).containsExactly("产品尺寸");
+    }
+
+    @Test
+    void productWidthIsRequiredForCompleteness() {
+        var packaging = completePackaging();
+        var withoutWidth = withProductDimensions(
+                packaging, packaging.productLengthCm(), null, packaging.productHeightCm()
+        );
+
+        var result = calculator.calculate(withPackaging(withoutWidth, "enabled"), completeQuotes());
+
+        assertThat(result.percent()).isEqualTo(80);
+        assertThat(result.missingGroups()).containsExactly("产品尺寸");
+    }
+
+    @Test
+    void productHeightIsRequiredForCompleteness() {
+        var packaging = completePackaging();
+        var withoutHeight = withProductDimensions(
+                packaging, packaging.productLengthCm(), packaging.productWidthCm(), null
+        );
+
+        var result = calculator.calculate(withPackaging(withoutHeight, "enabled"), completeQuotes());
+
+        assertThat(result.percent()).isEqualTo(80);
+        assertThat(result.missingGroups()).containsExactly("产品尺寸");
+    }
+
+    @Test
+    void packagingAndDimensionsShareOneScoreGroupButReportBothMissingLabels() {
+        var packaging = completePackaging();
+        var incompletePackaging = new Packaging(
+                null, packaging.widthCm(), packaging.heightCm(), packaging.volumeCm3(),
+                packaging.innerLengthCm(), packaging.innerWidthCm(), packaging.innerHeightCm(),
+                null, packaging.productWidthCm(), packaging.productHeightCm(), packaging.capacityMl(),
+                null, packaging.grossWeightKg(), packaging.gramWeightG(), packaging.innerWeightKg(),
+                packaging.method(), packaging.cartonQuantity(), packaging.packageImageFileId(),
+                packaging.cartonImageFileId()
+        );
+
+        var result = calculator.calculate(withPackaging(incompletePackaging, "enabled"), completeQuotes());
+
+        assertThat(result.percent()).isEqualTo(80);
+        assertThat(result.missingGroups()).containsExactly("包装重量", "产品尺寸");
+    }
+
+    @Test
+    void ignoresMissingProductDimensionsOnDisabledSkus() {
+        var complete = completeProduct();
+        var packaging = completePackaging();
+        var packagingWithNullDimensions = withProductDimensions(packaging, null, null, null);
+        var disabledSku = withPackaging(packagingWithNullDimensions, "disabled").skus().getFirst();
+        var product = productWithSkus(complete, List.of(complete.skus().getFirst(), disabledSku));
+
+        var result = calculator.calculate(product, completeQuotes());
+
+        assertThat(result.percent()).isEqualTo(100);
+        assertThat(result.status()).isEqualTo("complete");
+        assertThat(result.missingGroups()).isEmpty();
     }
 
     @Test
@@ -99,7 +190,7 @@ class ProductCompletenessCalculatorTest {
         assertThat(result.percent()).isEqualTo(20);
         assertThat(result.status()).isEqualTo("incomplete");
         assertThat(result.missingGroups()).containsExactly(
-                "SKU 信息", "采购信息", "包装重量", "图片资料"
+                "SKU 信息", "采购信息", "包装重量", "产品尺寸", "图片资料"
         );
     }
 
@@ -134,10 +225,38 @@ class ProductCompletenessCalculatorTest {
         return new Packaging(
                 new BigDecimal("42"), new BigDecimal("31"), new BigDecimal("28"),
                 new BigDecimal("36456"), null, null, null,
-                null, null, null, null,
+                new BigDecimal("12"), new BigDecimal("8"), new BigDecimal("20"), null,
                 new BigDecimal("8.5"), new BigDecimal("9.2"), null, null,
                 null, 12, null, null
         );
+    }
+
+    private Packaging withProductDimensions(
+            Packaging packaging,
+            BigDecimal productLengthCm,
+            BigDecimal productWidthCm,
+            BigDecimal productHeightCm
+    ) {
+        return new Packaging(
+                packaging.lengthCm(), packaging.widthCm(), packaging.heightCm(), packaging.volumeCm3(),
+                packaging.innerLengthCm(), packaging.innerWidthCm(), packaging.innerHeightCm(),
+                productLengthCm, productWidthCm, productHeightCm, packaging.capacityMl(),
+                packaging.netWeightKg(), packaging.grossWeightKg(), packaging.gramWeightG(),
+                packaging.innerWeightKg(), packaging.method(), packaging.cartonQuantity(),
+                packaging.packageImageFileId(), packaging.cartonImageFileId()
+        );
+    }
+
+    private Product withPackaging(Packaging packaging, String status) {
+        var product = completeProduct();
+        var original = product.skus().getFirst();
+        var sku = new Sku(
+                original.id(), original.code(), original.barcode(), original.name(), original.specText(),
+                original.specificationValues(), original.salesUnit(), original.defaultSalePrice(),
+                original.standardCost(), original.safetyStockQuantity(), packaging,
+                original.skuImageFileId(), original.isDefault(), status
+        );
+        return productWithSkus(product, List.of(sku));
     }
 
     private Map<Long, List<SupplierQuote>> completeQuotes() {
