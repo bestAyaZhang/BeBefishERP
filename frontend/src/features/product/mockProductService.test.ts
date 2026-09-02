@@ -44,6 +44,10 @@ function seedProduct(): Product {
       innerPackageLengthCm: null,
       innerPackageWidthCm: null,
       innerPackageHeightCm: null,
+      productLengthCm: null,
+      productWidthCm: null,
+      productHeightCm: null,
+      capacityMl: null,
       netWeightKg: null,
       grossWeightKg: null,
       gramWeightG: null,
@@ -103,6 +107,10 @@ function updatePayload(supplierQuotes?: ProductSupplierQuoteInput[]): ProductFor
       innerPackageLengthCm: null,
       innerPackageWidthCm: null,
       innerPackageHeightCm: null,
+      productLengthCm: 12.5,
+      productWidthCm: 8.25,
+      productHeightCm: 20,
+      capacityMl: 450,
       netWeightKg: null,
       grossWeightKg: null,
       gramWeightG: null,
@@ -147,6 +155,19 @@ describe('mock product service', () => {
 
     expect((await service.getProduct(1)).skus[0].supplierQuotes).toHaveLength(1);
     expect(await service.listSupplierQuotes(11)).toHaveLength(1);
+  });
+
+  it('preserves physical fields when materializing an updated product', async () => {
+    const service = createMockProductService([seedProduct()]);
+
+    await service.updateProduct(1, updatePayload());
+
+    expect((await service.getProduct(1)).skus[0]).toMatchObject({
+      productLengthCm: 12.5,
+      productWidthCm: 8.25,
+      productHeightCm: 20,
+      capacityMl: 450
+    });
   });
 
   it('clears existing quotes only when an update sends an empty array', async () => {

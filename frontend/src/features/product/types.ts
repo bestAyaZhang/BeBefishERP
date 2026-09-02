@@ -34,6 +34,10 @@ export interface SkuForm {
   innerPackageLengthCm: number | null;
   innerPackageWidthCm: number | null;
   innerPackageHeightCm: number | null;
+  productLengthCm: number | null;
+  productWidthCm: number | null;
+  productHeightCm: number | null;
+  capacityMl: number | null;
   netWeightKg: number | null;
   grossWeightKg: number | null;
   gramWeightG: number | null;
@@ -95,6 +99,10 @@ export interface ProductSku {
   innerPackageLengthCm: number | null;
   innerPackageWidthCm: number | null;
   innerPackageHeightCm: number | null;
+  productLengthCm: number | null;
+  productWidthCm: number | null;
+  productHeightCm: number | null;
+  capacityMl: number | null;
   netWeightKg: number | null;
   grossWeightKg: number | null;
   gramWeightG: number | null;

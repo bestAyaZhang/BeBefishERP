@@ -22,6 +22,10 @@ type ProductSkuResponseDefaults = Pick<ProductSku,
   | 'innerPackageLengthCm'
   | 'innerPackageWidthCm'
   | 'innerPackageHeightCm'
+  | 'productLengthCm'
+  | 'productWidthCm'
+  | 'productHeightCm'
+  | 'capacityMl'
   | 'innerPackageWeightKg'
   | 'skuImageUrl'
   | 'packageImageUrl'
@@ -45,6 +49,10 @@ export function productFixture(input: ProductFixture): Product {
     innerPackageLengthCm: null,
     innerPackageWidthCm: null,
     innerPackageHeightCm: null,
+    productLengthCm: null,
+    productWidthCm: null,
+    productHeightCm: null,
+    capacityMl: null,
     innerPackageWeightKg: null,
     skuImageUrl: null,
     packageImageUrl: null,

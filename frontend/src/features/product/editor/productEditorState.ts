@@ -28,6 +28,10 @@ export type PackagingForm = Pick<SkuForm,
   | 'innerPackageLengthCm'
   | 'innerPackageWidthCm'
   | 'innerPackageHeightCm'
+  | 'productLengthCm'
+  | 'productWidthCm'
+  | 'productHeightCm'
+  | 'capacityMl'
   | 'netWeightKg'
   | 'grossWeightKg'
   | 'gramWeightG'
@@ -93,6 +97,10 @@ const packagingFields: ReadonlyArray<keyof PackagingForm> = [
   'innerPackageLengthCm',
   'innerPackageWidthCm',
   'innerPackageHeightCm',
+  'productLengthCm',
+  'productWidthCm',
+  'productHeightCm',
+  'capacityMl',
   'netWeightKg',
   'grossWeightKg',
   'gramWeightG',
@@ -120,6 +128,10 @@ export function createBlankSku(): SkuForm {
     innerPackageLengthCm: null,
     innerPackageWidthCm: null,
     innerPackageHeightCm: null,
+    productLengthCm: null,
+    productWidthCm: null,
+    productHeightCm: null,
+    capacityMl: null,
     netWeightKg: null,
     grossWeightKg: null,
     gramWeightG: null,
@@ -144,6 +156,10 @@ export function packagingFromSku(sku?: SkuForm): PackagingForm {
     innerPackageLengthCm: sku?.innerPackageLengthCm ?? null,
     innerPackageWidthCm: sku?.innerPackageWidthCm ?? null,
     innerPackageHeightCm: sku?.innerPackageHeightCm ?? null,
+    productLengthCm: sku?.productLengthCm ?? null,
+    productWidthCm: sku?.productWidthCm ?? null,
+    productHeightCm: sku?.productHeightCm ?? null,
+    capacityMl: sku?.capacityMl ?? null,
     netWeightKg: sku?.netWeightKg ?? null,
     grossWeightKg: sku?.grossWeightKg ?? null,
     gramWeightG: sku?.gramWeightG ?? null,
@@ -509,6 +525,10 @@ export function validateStep(
       innerPackageLengthCm: '内盒长不能小于 0',
       innerPackageWidthCm: '内盒宽不能小于 0',
       innerPackageHeightCm: '内盒高不能小于 0',
+      productLengthCm: '产品长不能小于 0',
+      productWidthCm: '产品宽不能小于 0',
+      productHeightCm: '产品高不能小于 0',
+      capacityMl: '容量不能小于 0',
       netWeightKg: '净重不能小于 0',
       grossWeightKg: '毛重不能小于 0',
       gramWeightG: '克重不能小于 0',
@@ -522,6 +542,10 @@ export function validateStep(
       innerPackageLengthCm: [9, 3, '内盒长最多允许 9 位整数和 3 位小数'],
       innerPackageWidthCm: [9, 3, '内盒宽最多允许 9 位整数和 3 位小数'],
       innerPackageHeightCm: [9, 3, '内盒高最多允许 9 位整数和 3 位小数'],
+      productLengthCm: [9, 3, '产品长最多允许 9 位整数和 3 位小数'],
+      productWidthCm: [9, 3, '产品宽最多允许 9 位整数和 3 位小数'],
+      productHeightCm: [9, 3, '产品高最多允许 9 位整数和 3 位小数'],
+      capacityMl: [9, 3, '容量最多允许 9 位整数和 3 位小数'],
       netWeightKg: [9, 3, '净重最多允许 9 位整数和 3 位小数'],
       grossWeightKg: [9, 3, '毛重最多允许 9 位整数和 3 位小数'],
       gramWeightG: [9, 3, '克重最多允许 9 位整数和 3 位小数'],

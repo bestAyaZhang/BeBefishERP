@@ -42,6 +42,10 @@ const backendProduct = {
     innerPackageLengthCm: null,
     innerPackageWidthCm: null,
     innerPackageHeightCm: null,
+    productLengthCm: 12.5,
+    productWidthCm: 8.25,
+    productHeightCm: 20,
+    capacityMl: 450,
     netWeightKg: null,
     grossWeightKg: null,
     gramWeightG: null,
@@ -85,6 +89,10 @@ describe('product form mapper', () => {
       defaultSalePrice: 0,
       standardCost: 0,
       safetyStockQuantity: 0,
+      productLengthCm: 12.5,
+      productWidthCm: 8.25,
+      productHeightCm: 20,
+      capacityMl: 450,
       defaultSku: true,
       status: 'enabled'
     }));
@@ -95,6 +103,26 @@ describe('product form mapper', () => {
       purchasePrice: 0,
       minPurchaseQuantity: 1
     })]);
+  });
+
+  it('preserves null physical fields instead of coercing them to zero', () => {
+    const payload = toProductFormPayload({
+      ...backendProduct,
+      skus: [{
+        ...backendProduct.skus[0],
+        productLengthCm: null,
+        productWidthCm: null,
+        productHeightCm: null,
+        capacityMl: null
+      }]
+    });
+
+    expect(payload.skus[0]).toMatchObject({
+      productLengthCm: null,
+      productWidthCm: null,
+      productHeightCm: null,
+      capacityMl: null
+    });
   });
 
   it('does not copy read-only response fields into the form payload', () => {

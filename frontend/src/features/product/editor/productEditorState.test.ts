@@ -39,6 +39,10 @@ function sku(overrides: Partial<ContractSkuForm> = {}): ContractSkuForm {
     innerPackageLengthCm: null,
     innerPackageWidthCm: null,
     innerPackageHeightCm: null,
+    productLengthCm: null,
+    productWidthCm: null,
+    productHeightCm: null,
+    capacityMl: null,
     netWeightKg: null,
     grossWeightKg: null,
     gramWeightG: null,
@@ -60,6 +64,10 @@ const unifiedPackaging = {
   ...packagingFromSku(sku()),
   packageLengthCm: 42,
   innerPackageLengthCm: 36,
+  productLengthCm: 12.5,
+  productWidthCm: 8.25,
+  productHeightCm: 20,
+  capacityMl: 450,
   grossWeightKg: 3.1,
   packageImageFileId: 90,
   cartonImageFileId: 91
@@ -76,6 +84,13 @@ function quote(overrides: Partial<ProductSupplierQuoteInput> = {}): ProductSuppl
     ...overrides
   };
 }
+
+const physicalFieldCases = [
+  ['productLengthCm', '产品长'],
+  ['productWidthCm', '产品宽'],
+  ['productHeightCm', '产品高'],
+  ['capacityMl', '容量']
+] as const;
 
 function loadedProductFixture(productType: Product['productType']): Product {
   return productFixture({
@@ -122,8 +137,62 @@ describe('product editor state', () => {
     const result = applyUnifiedPackaging(twoSkus, unifiedPackaging);
 
     expect(result.map((item) => item.innerPackageLengthCm)).toEqual([36, 36]);
+    expect(result.map((item) => ({
+      productLengthCm: item.productLengthCm,
+      productWidthCm: item.productWidthCm,
+      productHeightCm: item.productHeightCm,
+      capacityMl: item.capacityMl
+    }))).toEqual([{
+      productLengthCm: 12.5,
+      productWidthCm: 8.25,
+      productHeightCm: 20,
+      capacityMl: 450
+    }, {
+      productLengthCm: 12.5,
+      productWidthCm: 8.25,
+      productHeightCm: 20,
+      capacityMl: 450
+    }]);
     expect(result.map((item) => item.cartonImageFileId)).toEqual([91, 91]);
     expect(result[0]).not.toBe(result[1]);
+  });
+
+  it('copies all physical fields from the first sku when switching to unified mode', () => {
+    const state = createEditorState();
+    state.skus = [
+      sku({
+        productLengthCm: 12.5,
+        productWidthCm: 8.25,
+        productHeightCm: 20,
+        capacityMl: 450
+      }),
+      sku({
+        productLengthCm: null,
+        productWidthCm: null,
+        productHeightCm: null,
+        capacityMl: null
+      })
+    ];
+    state.packagingMode = 'perSku';
+
+    setPackagingMode(state, 'unified');
+
+    expect(state.skus.map((item) => ({
+      productLengthCm: item.productLengthCm,
+      productWidthCm: item.productWidthCm,
+      productHeightCm: item.productHeightCm,
+      capacityMl: item.capacityMl
+    }))).toEqual([{
+      productLengthCm: 12.5,
+      productWidthCm: 8.25,
+      productHeightCm: 20,
+      capacityMl: 450
+    }, {
+      productLengthCm: 12.5,
+      productWidthCm: 8.25,
+      productHeightCm: 20,
+      capacityMl: 450
+    }]);
   });
 
   it('gives a SKU added in unified mode every packaging field and synchronized image preview', () => {
@@ -137,6 +206,10 @@ describe('product editor state', () => {
       innerPackageLengthCm: 36,
       innerPackageWidthCm: 25,
       innerPackageHeightCm: 22,
+      productLengthCm: 12.5,
+      productWidthCm: 8.25,
+      productHeightCm: 20,
+      capacityMl: 450,
       netWeightKg: 8.5,
       grossWeightKg: 9.2,
       gramWeightG: 350,
@@ -209,6 +282,13 @@ describe('product editor state', () => {
       sku({ grossWeightKg: 3.1 }),
       sku({ grossWeightKg: 3.35 })
     ])).toBe('perSku');
+  });
+
+  it.each(physicalFieldCases)('detects per sku mode when only %s differs', (field) => {
+    const changed = sku();
+    changed[field] = 1.125;
+
+    expect(detectPackagingMode([sku(), changed])).toBe('perSku');
   });
 
   it('maps supplier quotes and uploaded image ids into the final payload', () => {
@@ -416,6 +496,38 @@ describe('product editor state', () => {
       'skus.0.packageLengthCm': '包装长最多允许 9 位整数和 3 位小数',
       'skus.0.packageVolumeCm3': '包装体积最多允许 15 位整数和 3 位小数'
     }));
+  });
+
+  it.each(physicalFieldCases)('rejects negative %s values', (field, label) => {
+    const state = createEditorState();
+    const invalidSku = sku();
+    invalidSku[field] = -0.001;
+    state.skus = [invalidSku];
+
+    const errors = validateStep(state, 'packaging');
+    expect(errors[`skus.0.${field}`]).toBe(`${label}不能小于 0`);
+  });
+
+  it.each(physicalFieldCases)('rejects %s values above the shared dimension bound', (field, label) => {
+    const state = createEditorState();
+    const invalidSku = sku();
+    invalidSku[field] = 1000000000;
+    state.skus = [invalidSku];
+
+    const errors = validateStep(state, 'packaging');
+    expect(errors[`skus.0.${field}`]).toBe(`${label}最多允许 9 位整数和 3 位小数`);
+  });
+
+  it.each(physicalFieldCases)('accepts optional and in-range %s values', (field) => {
+    const state = createEditorState();
+
+    for (const value of [null, 0, 1.125]) {
+      const validSku = sku();
+      validSku[field] = value;
+      state.skus = [validSku];
+
+      expect(validateStep(state, 'packaging')[`skus.0.${field}`]).toBeUndefined();
+    }
   });
 
   it('returns false instead of throwing for finite numbers rendered in exponent form', () => {

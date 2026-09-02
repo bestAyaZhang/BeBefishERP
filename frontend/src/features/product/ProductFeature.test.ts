@@ -43,6 +43,10 @@ function productPayload(supplierQuotes?: ProductFormPayload['skus'][number]['sup
       innerPackageLengthCm: 36,
       innerPackageWidthCm: 25,
       innerPackageHeightCm: 22,
+      productLengthCm: 12.5,
+      productWidthCm: 8.25,
+      productHeightCm: 20,
+      capacityMl: 450,
       netWeightKg: 8.5,
       grossWeightKg: 9.2,
       gramWeightG: 350,
@@ -83,6 +87,10 @@ describe('http product service contracts', () => {
       innerPackageLengthCm: 36,
       innerPackageWidthCm: 25,
       innerPackageHeightCm: 22,
+      productLengthCm: 12.5,
+      productWidthCm: 8.25,
+      productHeightCm: 20,
+      capacityMl: 450,
       innerPackageWeightKg: 1.1
     }));
     expect(body.skus[0].supplierQuotes[0]).toEqual(expect.objectContaining({
