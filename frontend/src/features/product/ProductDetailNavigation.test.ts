@@ -102,6 +102,10 @@ const detailProduct = Object.assign(productFixture({
       innerPackageLengthCm: 10,
       innerPackageWidthCm: 10,
       innerPackageHeightCm: 12,
+      productLengthCm: 12.5,
+      productWidthCm: 8.25,
+      productHeightCm: 20,
+      capacityMl: 450,
       netWeightKg: 8.4,
       grossWeightKg: 9.1,
       gramWeightG: 210,
@@ -137,6 +141,10 @@ const detailProduct = Object.assign(productFixture({
       innerPackageLengthCm: 10,
       innerPackageWidthCm: 10,
       innerPackageHeightCm: 12,
+      productLengthCm: 14,
+      productWidthCm: 9.5,
+      productHeightCm: 21,
+      capacityMl: null,
       netWeightKg: 8.4,
       grossWeightKg: 9.1,
       gramWeightG: 210,
@@ -392,6 +400,10 @@ describe('product detail navigation', () => {
     expect(wrapper.get('[data-testid="product-packaging-section"]').text()).toContain('28224 cm³');
     expect(wrapper.get('[data-testid="product-packaging-section"]').text()).toContain('42 × 28 × 24 cm');
     expect(wrapper.get('[data-testid="product-packaging-section"]').text()).toContain('10 × 10 × 12 cm');
+    expect(wrapper.get('[data-testid="product-packaging-section"]').text()).toContain('产品尺寸');
+    expect(wrapper.get('[data-testid="product-packaging-section"]').text()).toContain('12.5 × 8.25 × 20 cm');
+    expect(wrapper.get('[data-testid="product-packaging-section"]').text()).toContain('容量');
+    expect(wrapper.get('[data-testid="product-packaging-section"]').text()).toContain('450 ml');
     expect(wrapper.get('[data-testid="packaging-package-image-21"]').attributes('src')).toContain('package-21.png');
     expect(wrapper.get('[data-testid="packaging-carton-image-21"]').attributes('src')).toContain('carton-21.png');
     expect(wrapper.find('[data-testid="product-images-section"]').exists()).toBe(true);
@@ -585,7 +597,15 @@ describe('product detail navigation', () => {
     expect(packaging.text()).toContain('按 SKU 展示');
     expect(packaging.get('[data-testid="packaging-sku-21"]').text()).toContain('42 × 28 × 24 cm');
     expect(packaging.get('[data-testid="packaging-sku-21"]').text()).toContain('10 × 10 × 12 cm');
+    expect(packaging.get('[data-testid="packaging-sku-21"]').text()).toContain('产品尺寸');
+    expect(packaging.get('[data-testid="packaging-sku-21"]').text()).toContain('12.5 × 8.25 × 20 cm');
+    expect(packaging.get('[data-testid="packaging-sku-21"]').text()).toContain('容量');
+    expect(packaging.get('[data-testid="packaging-sku-21"]').text()).toContain('450 ml');
     expect(packaging.get('[data-testid="packaging-sku-22"]').text()).toContain('BBF-PUMP-022-GY');
+    expect(packaging.get('[data-testid="packaging-sku-22"]').text()).toContain('产品尺寸');
+    expect(packaging.get('[data-testid="packaging-sku-22"]').text()).toContain('14 × 9.5 × 21 cm');
+    expect(packaging.get('[data-testid="packaging-sku-22"]').text()).toContain('容量');
+    expect(packaging.get('[data-testid="packaging-sku-22"]').text()).toContain('--');
     expect(wrapper.get('[data-testid="product-images-section"] [data-testid="packaging-package-image-21"]').attributes('src')).toContain('package-21.png');
     expect(wrapper.get('[data-testid="product-images-section"] [data-testid="packaging-carton-image-21"]').attributes('src')).toContain('carton-21.png');
   });

@@ -40,6 +40,14 @@ const primaryUnit = computed(() => props.skus.find((sku) => sku.defaultSku)?.sal
               <dd class="truncate text-sm font-medium leading-5 text-[#25314d]">{{ formatDimensions(uniformSku.innerPackageLengthCm, uniformSku.innerPackageWidthCm, uniformSku.innerPackageHeightCm) }}</dd>
             </div>
             <div class="min-h-10 min-w-0">
+              <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">产品尺寸</dt>
+              <dd class="truncate text-sm font-medium leading-5 text-[#25314d]">{{ formatDimensions(uniformSku.productLengthCm, uniformSku.productWidthCm, uniformSku.productHeightCm) }}</dd>
+            </div>
+            <div class="min-h-10 min-w-0">
+              <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">容量</dt>
+              <dd class="truncate text-sm font-medium leading-5 text-[#25314d]">{{ formatWithUnit(uniformSku.capacityMl, 'ml') }}</dd>
+            </div>
+            <div class="min-h-10 min-w-0">
               <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">包装方式</dt>
               <dd class="truncate text-sm font-medium leading-5 text-[#25314d]">{{ formatText(uniformSku.packagingMethod) }}</dd>
             </div>
@@ -85,6 +93,8 @@ const primaryUnit = computed(() => props.skus.find((sku) => sku.defaultSku)?.sal
           <dl class="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
             <div class="min-w-0"><dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">外箱尺寸</dt><dd class="truncate text-sm font-medium leading-5 text-[#25314d]">{{ formatDimensions(sku.packageLengthCm, sku.packageWidthCm, sku.packageHeightCm) }}</dd></div>
             <div class="min-w-0"><dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">内盒尺寸</dt><dd class="truncate text-sm font-medium leading-5 text-[#25314d]">{{ formatDimensions(sku.innerPackageLengthCm, sku.innerPackageWidthCm, sku.innerPackageHeightCm) }}</dd></div>
+            <div class="min-w-0"><dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">产品尺寸</dt><dd class="truncate text-sm font-medium leading-5 text-[#25314d]">{{ formatDimensions(sku.productLengthCm, sku.productWidthCm, sku.productHeightCm) }}</dd></div>
+            <div class="min-w-0"><dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">容量</dt><dd class="truncate text-sm font-medium leading-5 text-[#25314d]">{{ formatWithUnit(sku.capacityMl, 'ml') }}</dd></div>
             <div class="min-w-0"><dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">包装方式</dt><dd class="truncate text-sm font-medium leading-5 text-[#25314d]">{{ formatText(sku.packagingMethod) }}</dd></div>
             <div class="min-w-0"><dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">装箱数量</dt><dd class="truncate text-sm font-medium leading-5 text-[#25314d]">{{ formatWithUnit(sku.cartonQuantity, '件/箱') }}</dd></div>
           </dl>
