@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CircleUserRound, Menu, PanelLeftClose, Settings2, X } from 'lucide-vue-next';
+import { CircleUserRound, LogOut, Menu, Search, Settings2, X } from 'lucide-vue-next';
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import SidebarNav from '../components/navigation/SidebarNav.vue';
@@ -29,10 +29,10 @@ type PageHeader = {
 const pageHeaders: Record<string, PageHeader> = {
   workbench: { group: 'Dashboards', groupRoute: 'workbench', title: 'Analytics', titleRoute: 'workbench' },
   categories: { group: 'Master Data', groupRoute: 'categories', title: 'Categories', titleRoute: 'categories' },
-  products: { group: 'Master Data', groupRoute: 'products', title: 'Products', titleRoute: 'products' },
-  'product-detail': { group: 'Master Data', groupRoute: 'products', title: 'Product Detail', titleRoute: 'products' },
-  'product-new': { group: 'Master Data', groupRoute: 'products', title: 'New Product', titleRoute: 'product-new' },
-  'product-edit': { group: 'Master Data', groupRoute: 'products', title: 'Edit Product', titleRoute: 'products' },
+  products: { group: '主数据', groupRoute: 'products', title: '商品资料', titleRoute: 'products' },
+  'product-detail': { group: '主数据', groupRoute: 'products', title: '商品资料', titleRoute: 'products' },
+  'product-new': { group: '主数据', groupRoute: 'products', title: '商品资料', titleRoute: 'product-new' },
+  'product-edit': { group: '主数据', groupRoute: 'products', title: '商品资料', titleRoute: 'products' },
   customers: { group: 'Master Data', groupRoute: 'categories', title: 'Customers', titleRoute: 'customers' },
   'customer-new': { group: 'Master Data', groupRoute: 'customers', title: 'New Customer', titleRoute: 'customer-new' },
   'customer-edit': { group: 'Master Data', groupRoute: 'customers', title: 'Edit Customer', titleRoute: 'customer-edit' },
@@ -53,6 +53,9 @@ const pageHeader = computed<PageHeader>(() => pageHeaders[String(route.name)] ??
   title: 'Overview',
   titleRoute: 'workbench'
 });
+const globalSearchPlaceholder = computed(() => String(route.name).startsWith('product')
+  ? '搜索商品、货号或供应商'
+  : 'Search here');
 const routeOwnsHeader = computed(() => route.meta.ownsPrototypeHeader === true);
 const mobileNavigationModalActive = computed(() => mobileNavigationOpen.value && !desktopViewport.value);
 
@@ -162,22 +165,23 @@ async function handleLogout() {
           </div>
 
           <div data-testid="erp-topbar-actions" class="ml-auto flex shrink-0 items-center gap-1 sm:gap-2 lg:gap-3">
-            <label class="hidden h-9 w-[220px] shrink-0 items-center rounded-md border border-slate-200 bg-white px-3 shadow-none sm:flex">
-              <input v-model="searchQuery" class="w-full border-0 bg-transparent text-sm font-medium outline-none placeholder:text-slate-400" placeholder="Search here" />
+            <label data-testid="erp-global-search-shell" class="hidden h-9 w-[220px] shrink-0 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 shadow-none sm:flex lg:w-[280px]">
+              <Search class="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+              <input data-testid="erp-global-search" v-model="searchQuery" class="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium outline-none placeholder:text-slate-400" :placeholder="globalSearchPlaceholder" />
             </label>
-            <button data-testid="erp-account-action" class="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-white hover:text-[#25314d] sm:flex" type="button" aria-label="账户">
+            <button data-testid="erp-account-action" class="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-[#25314d] sm:flex" type="button" aria-label="账户">
               <CircleUserRound class="h-[18px] w-[18px]" aria-hidden="true" />
             </button>
-            <button data-testid="erp-settings-action" class="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-white hover:text-[#25314d] sm:flex" type="button" aria-label="设置">
+            <button data-testid="erp-settings-action" class="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-[#25314d] sm:flex" type="button" aria-label="设置">
               <Settings2 class="h-[18px] w-[18px]" aria-hidden="true" />
             </button>
-            <button data-testid="erp-logout-action" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-white hover:text-rose-500" type="button" aria-label="退出登录" title="退出登录" @click="handleLogout">
-              <PanelLeftClose class="h-[18px] w-[18px]" aria-hidden="true" />
+            <button data-testid="erp-logout-action" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-rose-200 hover:text-rose-500" type="button" aria-label="退出登录" title="退出登录" @click="handleLogout">
+              <LogOut class="h-[18px] w-[18px]" aria-hidden="true" />
             </button>
           </div>
         </header>
 
-        <div data-testid="erp-page-content" class="min-w-0 p-4 lg:p-6">
+        <div data-testid="erp-page-content" class="min-w-0 p-4 lg:px-8 lg:pb-3 lg:pt-8">
           <RouterView />
         </div>
       </section>

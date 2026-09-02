@@ -38,6 +38,8 @@ let knownRootIds = new Set<number>();
 
 const treeModel = computed(() => buildProductCategoryTree(props.categories));
 const tree = computed(() => treeModel.value.roots);
+const rootCategoryCount = computed(() => tree.value.length);
+const childCategoryCount = computed(() => Math.max(0, treeModel.value.categories.length - rootCategoryCount.value));
 
 watch(treeModel, (model) => {
   const existingIds = new Set(model.categories.map((category) => category.id));
@@ -105,21 +107,28 @@ function toggleCategory(categoryId: number) {
 </script>
 
 <template>
-  <aside class="min-w-0 bg-slate-50/60" aria-label="商品分类筛选">
-    <div class="border-b border-slate-200 px-4 py-4">
-      <div class="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
-        <FolderTree class="h-4 w-4 text-blue-600" aria-hidden="true" />
+  <aside
+    data-testid="product-category-panel"
+    class="flex min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white p-4"
+    aria-label="商品分类筛选"
+  >
+    <div class="flex h-9 shrink-0 items-center border-b border-slate-200 pb-3 text-card-title text-[#25314d]">
+      <div class="flex items-center gap-2">
+        <FolderTree class="h-[18px] w-[18px] text-slate-500" aria-hidden="true" />
         商品分类
       </div>
+    </div>
+
+    <div class="pt-3">
       <label class="relative block">
         <span class="sr-only">分类名称</span>
-        <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+        <Search class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" aria-hidden="true" />
         <input
           v-model="searchKeyword"
           data-testid="category-search"
           type="search"
-          class="h-9 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          placeholder="分类名称"
+          class="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/10"
+          placeholder="搜索分类名称"
         />
       </label>
     </div>
@@ -127,7 +136,7 @@ function toggleCategory(categoryId: number) {
     <div
       v-if="error"
       data-testid="category-tree-error"
-      class="m-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800"
+      class="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800"
       role="alert"
     >
       <p>{{ error }}</p>
@@ -141,7 +150,7 @@ function toggleCategory(categoryId: number) {
       </button>
     </div>
 
-    <div class="max-h-[320px] overflow-y-auto px-2 py-3 md:max-h-[calc(100vh-220px)] md:min-h-[520px]">
+    <div class="min-h-[240px] flex-1 overflow-y-auto py-3 lg:min-h-0">
       <div v-if="loading && categories.length === 0" class="space-y-2 px-2" aria-label="正在加载分类">
         <div v-for="index in 6" :key="index" class="h-8 animate-pulse rounded bg-slate-200/70"></div>
       </div>
@@ -149,11 +158,12 @@ function toggleCategory(categoryId: number) {
         <button
           data-testid="category-node-all"
           type="button"
-          class="mb-1 flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition"
-          :class="selectedCategoryId === undefined ? 'bg-blue-50 font-semibold text-blue-700' : 'text-slate-700 hover:bg-white'"
+          class="mb-0.5 flex h-9 w-full items-center gap-2 rounded-md pl-2 pr-1.5 text-left text-sm transition"
+          :class="selectedCategoryId === undefined ? 'bg-slate-50 font-medium text-[#536dff]' : 'text-[#25314d] hover:bg-slate-50'"
           :aria-pressed="selectedCategoryId === undefined"
           @click="emit('select-category', undefined)"
         >
+          <span class="h-5 w-[3px] shrink-0 rounded-sm" :class="selectedCategoryId === undefined ? 'bg-[#536dff]' : 'bg-transparent'"></span>
           <span class="w-4 shrink-0"></span>
           <span class="min-w-0 flex-1 truncate" title="全部商品">全部商品</span>
           <span class="shrink-0 text-xs tabular-nums text-slate-400">{{ allProductTotal ?? '--' }}</span>
@@ -168,8 +178,8 @@ function toggleCategory(categoryId: number) {
             v-if="row.hasVisibleChildren"
             :data-testid="`category-toggle-${row.node.id}`"
             type="button"
-            class="absolute z-10 flex h-7 w-7 items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
-            :style="{ left: `${row.depth * 16 + 4}px` }"
+            class="absolute z-10 flex h-7 w-7 items-center justify-center rounded text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+            :style="{ left: `${row.depth * 16 + 9}px` }"
             :aria-label="row.expanded ? `收起${row.node.categoryName}` : `展开${row.node.categoryName}`"
             @click.stop="toggleCategory(row.node.id)"
           >
@@ -179,17 +189,25 @@ function toggleCategory(categoryId: number) {
           <button
             :data-testid="`category-node-${row.node.id}`"
             type="button"
-            class="mb-1 flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md pr-2 text-left text-sm transition"
-            :class="selectedCategoryId === row.node.id ? 'bg-blue-50 font-semibold text-blue-700' : 'text-slate-700 hover:bg-white'"
-            :style="{ paddingLeft: `${row.depth * 16 + 36}px` }"
+            class="mb-0.5 flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md pr-1.5 text-left text-sm transition"
+            :class="selectedCategoryId === row.node.id ? 'bg-slate-50 font-medium text-[#536dff]' : 'text-[#25314d] hover:bg-slate-50'"
+            :style="{ paddingLeft: `${row.depth * 16 + 8}px` }"
             :aria-pressed="selectedCategoryId === row.node.id"
             @click="emit('select-category', row.node.id)"
           >
+            <span class="h-5 w-[3px] shrink-0 rounded-sm" :class="selectedCategoryId === row.node.id ? 'bg-[#536dff]' : 'bg-transparent'"></span>
+            <span v-if="row.hasVisibleChildren" class="w-4 shrink-0"></span>
+            <span v-else class="w-4 shrink-0"></span>
             <span class="min-w-0 flex-1 truncate" :title="row.node.categoryName">{{ row.node.categoryName }}</span>
             <span class="shrink-0 text-xs tabular-nums text-slate-400">{{ categoryCounts[row.node.id] ?? 0 }}</span>
           </button>
         </div>
       </template>
+    </div>
+
+    <div class="shrink-0 border-t border-slate-100 pt-3 text-xs leading-5 text-slate-500">
+      <p>{{ rootCategoryCount }} 个一级分类 · {{ childCategoryCount }} 个子分类</p>
+      <p>选择分类即可筛选右侧商品</p>
     </div>
   </aside>
 </template>

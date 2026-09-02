@@ -117,7 +117,12 @@ describe('ErpLayout', () => {
     expect(wrapper.get('[data-testid="erp-sidebar"]').classes().some((name) => name.startsWith('shadow-'))).toBe(false);
     expect(wrapper.get('[data-testid="erp-main"]').classes()).toContain('min-w-0');
     expect(wrapper.get('[data-testid="erp-topbar"]').classes()).toEqual(expect.arrayContaining(['h-16', 'border-b']));
-    expect(wrapper.get('[data-testid="erp-page-content"]').classes()).toEqual(expect.arrayContaining(['p-4', 'lg:p-6']));
+    expect(wrapper.get('[data-testid="erp-page-content"]').classes()).toEqual(expect.arrayContaining([
+      'p-4',
+      'lg:px-8',
+      'lg:pt-8',
+      'lg:pb-3'
+    ]));
   });
 
   it('keeps the 320px topbar shrink-safe while preserving full desktop actions', async () => {
@@ -139,11 +144,30 @@ describe('ErpLayout', () => {
     }
   });
 
+  it('matches the Figma product breadcrumb, search copy, and desktop action sizing', async () => {
+    ({ router, wrapper } = await mountLayout('/products'));
+
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('主数据');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('商品资料');
+    expect(wrapper.get('[data-testid="erp-global-search"]').attributes('placeholder')).toBe('搜索商品、货号或供应商');
+    expect(wrapper.get('[data-testid="erp-global-search-shell"]').classes()).toContain('lg:w-[280px]');
+
+    for (const testId of ['erp-account-action', 'erp-settings-action', 'erp-logout-action']) {
+      expect(wrapper.get(`[data-testid="${testId}"]`).classes()).toEqual(expect.arrayContaining([
+        'h-9',
+        'w-9',
+        'rounded-lg',
+        'border',
+        'border-slate-200'
+      ]));
+    }
+  });
+
   it.each([
     ['/workbench', 'Dashboards', 'Analytics', '/workbench'],
-    ['/products/new', 'Master Data', 'New Product', '/products/new'],
-    ['/products/42', 'Master Data', 'Product Detail', '/products'],
-    ['/products/42/edit', 'Master Data', 'Edit Product', '/products']
+    ['/products/new', '主数据', '商品资料', '/products/new'],
+    ['/products/42', '主数据', '商品资料', '/products'],
+    ['/products/42/edit', '主数据', '商品资料', '/products']
   ])('maps %s to its breadcrumb and return target', async (path, group, title, currentHref) => {
     ({ router, wrapper } = await mountLayout(path));
 

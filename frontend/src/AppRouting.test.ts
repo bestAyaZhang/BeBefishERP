@@ -83,8 +83,8 @@ describe('application routes', () => {
     expect(wrapper.find('[data-testid="erp-shell"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="product-list-page"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="product-keyword"]').exists()).toBe(true);
-    expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('Master Data');
-    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('Products');
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('主数据');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('商品资料');
   });
 
   it('renders the final product create, detail, and edit route surfaces', async () => {
@@ -95,21 +95,21 @@ describe('application routes', () => {
 
     expect(router.currentRoute.value.name).toBe('product-new');
     expect(wrapper.find('[data-testid="product-editor-view"]').exists()).toBe(true);
-    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('New Product');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('商品资料');
 
     await router.push('/products/1');
     await flushPromises();
 
     expect(router.currentRoute.value.name).toBe('product-detail');
     expect(wrapper.find('[data-testid="product-detail-view"]').exists()).toBe(true);
-    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('Product Detail');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('商品资料');
 
     await router.push('/products/1/edit');
     await flushPromises();
 
     expect(router.currentRoute.value.name).toBe('product-edit');
     expect(wrapper.find('[data-testid="product-editor-view"]').exists()).toBe(true);
-    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('Edit Product');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('商品资料');
   });
 
   it('renders the sales order create route with the live order form', async () => {
@@ -183,7 +183,7 @@ describe('application routes', () => {
     await flushPromises();
 
     expect(getCurrentUser).toHaveBeenCalledWith('test-token');
-    expect(wrapper.text()).toContain('产品资料');
+    expect(wrapper.text()).toContain('商品管理');
     expect(wrapper.text()).toContain('财务管理');
   });
 

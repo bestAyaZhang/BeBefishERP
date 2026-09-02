@@ -66,29 +66,29 @@ function toggleGroup(item: SidebarNavigationItem) {
 
 <template>
   <nav data-testid="erp-sidebar" class="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white" aria-label="主导航">
-    <div class="flex items-center gap-3 border-b border-slate-100 px-6 py-6">
-      <div class="flex h-11 w-11 items-center justify-center rounded-full bg-[#536dff] text-sm font-black text-white shadow-lg shadow-blue-200">B</div>
-      <div class="min-w-0"><p class="truncate text-sm font-bold">BeBefish ERP</p><p class="text-xs font-medium text-slate-400">电商经营管理</p></div>
+    <div data-testid="erp-sidebar-brand" class="flex h-[88px] shrink-0 items-center gap-3 border-b border-slate-100 px-5">
+      <div data-testid="erp-sidebar-logo" class="flex h-10 w-10 items-center justify-center rounded-lg bg-[#536dff] text-sm font-black text-white">B</div>
+      <div class="min-w-0"><p class="truncate text-sm font-bold">BeBefish ERP</p><p class="text-xs font-medium text-slate-400">主数据运营中心</p></div>
     </div>
-    <div class="flex-1 overflow-y-auto px-5 py-6">
+    <div data-testid="erp-sidebar-menu" class="flex-1 overflow-y-auto px-4 py-6">
       <p class="mb-4 px-2 text-xs font-semibold text-slate-400">Menu</p>
       <div class="space-y-1">
       <template v-for="item in visibleMenuItems" :key="item.label">
         <RouterLink
           v-if="item.routeName"
           :to="{ name: item.routeName }"
-          class="group relative flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold transition"
+          class="group relative flex h-11 w-full items-center gap-3 rounded-lg px-3 text-sm font-semibold transition"
           :class="isActive(item) ? 'bg-[#f4f6ff] text-[#25314d]' : 'text-slate-400 hover:bg-slate-50 hover:text-[#25314d]'"
           @click="$emit('navigate')"
         >
-          <span v-if="isActive(item)" class="absolute -left-5 h-7 w-1 rounded-r-full bg-[#536dff]"></span>
+          <span v-if="isActive(item)" class="absolute -left-4 h-7 w-1 rounded-r-full bg-[#536dff]"></span>
           <component :is="sidebarIcons[item.icon]" class="h-4 w-4 shrink-0" aria-hidden="true" />
           <span>{{ item.label }}</span>
           <ChevronRight v-if="isActive(item)" class="ml-auto h-4 w-4 text-slate-400" aria-hidden="true" />
         </RouterLink>
         <div v-else class="mb-1">
-          <button type="button" class="group relative flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold text-slate-400 transition hover:bg-slate-50 hover:text-[#25314d]" :class="{ 'bg-[#f4f6ff] text-[#25314d]': isActive(item) }" @click="toggleGroup(item)">
-            <span v-if="isActive(item)" class="absolute -left-5 h-7 w-1 rounded-r-full bg-[#536dff]"></span>
+          <button type="button" class="group relative flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-slate-400 transition hover:bg-slate-50 hover:text-[#25314d]" :class="{ 'bg-[#f4f6ff] text-[#25314d]': isActive(item) }" @click="toggleGroup(item)">
+            <span v-if="isActive(item)" class="absolute -left-4 h-7 w-1 rounded-r-full bg-[#536dff]"></span>
             <component :is="sidebarIcons[item.icon]" class="h-4 w-4 shrink-0" aria-hidden="true" />
             <span>{{ item.label }}</span>
             <ChevronDown class="ml-auto h-4 w-4 text-slate-400 transition" :class="{ 'rotate-180': isExpanded(item) }" aria-hidden="true" />

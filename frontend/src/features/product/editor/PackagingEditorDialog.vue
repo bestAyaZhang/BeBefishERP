@@ -1,65 +1,44 @@
 <script setup lang="ts">
-import { Save } from 'lucide-vue-next';
 import { ref, watch } from 'vue';
 import AccessibleDialog from '../../../components/AccessibleDialog.vue';
-import type { SkuForm } from '../types';
-import {
-  CARTON_QUANTITY_ERROR,
-  cloneSku,
-  isValidDecimal,
-  isValidCartonQuantity,
-  MAX_SAFE_DIMENSION,
-  MAX_SAFE_VOLUME,
-  MAX_CARTON_QUANTITY
-} from './productEditorState';
+import type { ProductService, SkuForm } from '../types';
+import ProductImageUpload from './ProductImageUpload.vue';
+import { CARTON_QUANTITY_ERROR, cloneSku, isValidCartonQuantity, isValidDecimal, MAX_CARTON_QUANTITY, MAX_SAFE_DIMENSION, MAX_SAFE_VOLUME } from './productEditorState';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   open: boolean;
   sku?: SkuForm;
-}>();
+  service: ProductService;
+  packagePreview?: string;
+  cartonPreview?: string;
+}>(), { packagePreview: '', cartonPreview: '' });
 
 const emit = defineEmits<{
   cancel: [];
-  save: [sku: SkuForm];
+  save: [sku: SkuForm, packagePreview: string, cartonPreview: string];
+  'update:uploading': [value: boolean];
 }>();
 
-type NumericPackagingField =
-  | 'packageLengthCm'
-  | 'packageWidthCm'
-  | 'packageHeightCm'
-  | 'packageVolumeCm3'
-  | 'innerPackageLengthCm'
-  | 'innerPackageWidthCm'
-  | 'innerPackageHeightCm'
-  | 'netWeightKg'
-  | 'grossWeightKg'
-  | 'gramWeightG'
-  | 'innerPackageWeightKg'
-  | 'cartonQuantity';
-
-const fields: Array<{ field: NumericPackagingField; label: string; testId: string; step: string }> = [
-  { field: 'packageLengthCm', label: '包装长 (cm)', testId: 'package-length', step: '0.001' },
-  { field: 'packageWidthCm', label: '包装宽 (cm)', testId: 'package-width', step: '0.001' },
-  { field: 'packageHeightCm', label: '包装高 (cm)', testId: 'package-height', step: '0.001' },
-  { field: 'packageVolumeCm3', label: '包装体积 (cm³)', testId: 'package-volume', step: '0.001' },
-  { field: 'innerPackageLengthCm', label: '内包装长 (cm)', testId: 'inner-package-length', step: '0.001' },
-  { field: 'innerPackageWidthCm', label: '内包装宽 (cm)', testId: 'inner-package-width', step: '0.001' },
-  { field: 'innerPackageHeightCm', label: '内包装高 (cm)', testId: 'inner-package-height', step: '0.001' },
-  { field: 'netWeightKg', label: '净重 (kg)', testId: 'net-weight', step: '0.001' },
-  { field: 'grossWeightKg', label: '毛重 (kg)', testId: 'gross-weight', step: '0.001' },
-  { field: 'gramWeightG', label: '克重 (g)', testId: 'gram-weight', step: '0.001' },
-  { field: 'innerPackageWeightKg', label: '内包装重量 (kg)', testId: 'inner-package-weight', step: '0.001' },
-  { field: 'cartonQuantity', label: '装箱数', testId: 'carton-quantity', step: '1' }
+type NumericPackagingField = 'packageLengthCm' | 'packageWidthCm' | 'packageHeightCm' | 'packageVolumeCm3' | 'innerPackageLengthCm' | 'innerPackageWidthCm' | 'innerPackageHeightCm' | 'netWeightKg' | 'grossWeightKg' | 'gramWeightG' | 'innerPackageWeightKg' | 'cartonQuantity';
+const fields: Array<{ field: NumericPackagingField; label: string }> = [
+  { field: 'packageLengthCm', label: '外箱长' }, { field: 'packageWidthCm', label: '外箱宽' }, { field: 'packageHeightCm', label: '外箱高' },
+  { field: 'packageVolumeCm3', label: '包装体积' }, { field: 'innerPackageLengthCm', label: '内盒长' }, { field: 'innerPackageWidthCm', label: '内盒宽' },
+  { field: 'innerPackageHeightCm', label: '内盒高' }, { field: 'netWeightKg', label: '净重' }, { field: 'grossWeightKg', label: '毛重' },
+  { field: 'gramWeightG', label: '克重' }, { field: 'innerPackageWeightKg', label: '内包装重量' }, { field: 'cartonQuantity', label: '装箱数' }
 ];
-
+const packagingOptions = ['纸盒彩盒', 'PE 袋', '吸塑包装', '泡沫内衬'];
 const draft = ref<SkuForm>();
+const localPackagePreview = ref('');
+const localCartonPreview = ref('');
 const errors = ref<Partial<Record<NumericPackagingField, string>>>({});
 
 watch(
-  () => [props.open, props.sku] as const,
+  () => [props.open, props.sku, props.packagePreview, props.cartonPreview] as const,
   ([open]) => {
     if (!open || !props.sku) return;
     draft.value = cloneSku(props.sku);
+    localPackagePreview.value = props.packagePreview;
+    localCartonPreview.value = props.cartonPreview;
     errors.value = {};
   },
   { immediate: true, deep: true }
@@ -76,28 +55,17 @@ function save() {
   const nextErrors: Partial<Record<NumericPackagingField, string>> = {};
   for (const { field, label } of fields) {
     const value = draft.value[field];
-    if (typeof value === 'number' && value < 0) nextErrors[field] = `${label.replace(/\s*\(.+\)$/, '')}不能小于 0`;
+    if (typeof value === 'number' && value < 0) nextErrors[field] = `${label}不能小于 0`;
     else if (typeof value === 'number' && field !== 'cartonQuantity') {
       const integerDigits = field === 'packageVolumeCm3' ? 15 : 9;
-      if (!isValidDecimal(value, integerDigits, 3)) {
-        nextErrors[field] = `${label.replace(/\s*\(.+\)$/, '')}最多允许 ${integerDigits} 位整数和 3 位小数`;
-      }
+      if (!isValidDecimal(value, integerDigits, 3)) nextErrors[field] = `${label}最多允许 ${integerDigits} 位整数和 3 位小数`;
     }
   }
-  if (!isValidCartonQuantity(draft.value.cartonQuantity)) {
-    nextErrors.cartonQuantity = CARTON_QUANTITY_ERROR;
-  }
-  if (
-    !nextErrors.grossWeightKg
-    && draft.value.netWeightKg !== null
-    && draft.value.grossWeightKg !== null
-    && draft.value.grossWeightKg < draft.value.netWeightKg
-  ) {
-    nextErrors.grossWeightKg = '毛重不能小于净重';
-  }
+  if (!isValidCartonQuantity(draft.value.cartonQuantity)) nextErrors.cartonQuantity = CARTON_QUANTITY_ERROR;
+  if (!nextErrors.grossWeightKg && draft.value.netWeightKg !== null && draft.value.grossWeightKg !== null && draft.value.grossWeightKg < draft.value.netWeightKg) nextErrors.grossWeightKg = '毛重不能小于净重';
   errors.value = nextErrors;
   if (Object.keys(nextErrors).length > 0) return;
-  emit('save', cloneSku(draft.value));
+  emit('save', cloneSku(draft.value), localPackagePreview.value, localCartonPreview.value);
 }
 
 function fieldMax(field: NumericPackagingField) {
@@ -110,42 +78,62 @@ function fieldMax(field: NumericPackagingField) {
   <AccessibleDialog
     v-if="draft"
     :open="open"
-    :title="`维护 ${draft.skuName || draft.skuCode} 包装资料`"
-    description="仅保存当前 SKU，其他 SKU 的包装差异保持不变。"
+    title="维护 SKU 包装与重量"
+    description="包装信息仅作用于当前 SKU"
     test-id="packaging-editor-dialog"
     body-test-id="packaging-dialog-body"
     footer-test-id="packaging-dialog-footer"
     close-test-id="packaging-dialog-close"
+    overlay-class="items-start justify-center pt-32"
+    panel-class="h-[748px] w-[1000px]"
+    header-class="h-[82px] px-6"
+    body-class="h-[594px] overflow-hidden px-6 pb-4 pt-5"
+    footer-class="h-[72px] items-center px-6"
     @cancel="$emit('cancel')"
   >
-        <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          <label v-for="field in fields" :key="field.field" class="space-y-2 text-sm font-bold text-slate-600">
-            <span>{{ field.label }}</span>
-            <input
-              :data-testid="`packaging-dialog-${field.testId}`"
-              :value="draft[field.field] ?? ''"
-              type="number"
-              :min="field.field === 'cartonQuantity' ? '1' : '0'"
-              :max="fieldMax(field.field)"
-              :step="field.step"
-              class="h-11 w-full rounded-lg border bg-white px-3 text-sm font-semibold tabular-nums text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15"
-              :class="errors[field.field] ? 'border-rose-400' : 'border-slate-300'"
-              @input="updateNumber(field.field, $event)"
-            />
-            <span v-if="errors[field.field]" :data-testid="`packaging-dialog-${field.testId}-error`" class="block text-xs text-rose-600">{{ errors[field.field] }}</span>
-          </label>
-          <label class="space-y-2 text-sm font-bold text-slate-600 sm:col-span-2 lg:col-span-3">
-            <span>包装方式</span>
-            <input v-model="draft.packagingMethod" data-testid="packaging-dialog-method" maxlength="100" class="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/15" placeholder="例如：彩盒 + 防潮袋" />
-          </label>
-          <div class="flex min-h-11 items-end text-sm font-semibold text-slate-500">包装图片在“图片资料”步骤维护。</div>
+    <section class="flex h-[70px] items-center justify-between rounded-lg bg-[#f6f8fc] px-4">
+      <div class="flex items-center gap-3">
+        <span class="grid h-12 w-12 place-items-center rounded-lg bg-[#eef2ff] text-xs font-medium text-[#536dff]">SKU</span>
+        <div><p class="text-sm font-medium text-[#25314d]">{{ draft.skuCode || '保存后生成' }}</p><p class="mt-1 text-xs text-[#8292ae]">{{ draft.specificationValues.join(' / ') || draft.skuName }}</p></div>
+      </div>
+      <span class="inline-flex h-8 w-40 items-center justify-center rounded-lg bg-[#f1f4ff] text-xs font-medium text-[#536dff]">按 SKU 单独维护</span>
+    </section>
+
+    <div class="mt-4 grid h-[398px] grid-cols-[604px_328px] gap-4">
+      <section class="min-w-0">
+        <h3 class="text-sm font-medium text-[#25314d]">包装尺寸</h3>
+        <fieldset class="mt-3"><legend class="mb-1.5 text-xs text-[#8292ae]">外箱尺寸</legend><div data-testid="packaging-dialog-package-dimensions" class="dimension-formula"><label class="pack-field"><span data-dimension-label>长</span><span class="pack-unit-input"><input data-testid="packaging-dialog-package-length" :value="draft.packageLengthCm ?? ''" type="number" min="0" :max="fieldMax('packageLengthCm')" step="0.001" @input="updateNumber('packageLengthCm', $event)" /><span data-testid="packaging-dialog-package-length-unit" class="pack-unit-suffix">cm</span></span></label><span data-dimension-separator class="dialog-dimension-separator">×</span><label class="pack-field"><span data-dimension-label>宽</span><span class="pack-unit-input"><input data-testid="packaging-dialog-package-width" :value="draft.packageWidthCm ?? ''" type="number" min="0" :max="fieldMax('packageWidthCm')" step="0.001" @input="updateNumber('packageWidthCm', $event)" /><span class="pack-unit-suffix">cm</span></span></label><span data-dimension-separator class="dialog-dimension-separator">×</span><label class="pack-field"><span data-dimension-label>高</span><span class="pack-unit-input"><input data-testid="packaging-dialog-package-height" :value="draft.packageHeightCm ?? ''" type="number" min="0" :max="fieldMax('packageHeightCm')" step="0.001" @input="updateNumber('packageHeightCm', $event)" /><span class="pack-unit-suffix">cm</span></span></label></div></fieldset>
+        <fieldset class="mt-3"><legend class="mb-1.5 text-xs text-[#8292ae]">内盒尺寸</legend><div class="dimension-formula"><label class="pack-field"><span data-dimension-label>长</span><span class="pack-unit-input"><input data-testid="packaging-dialog-inner-package-length" :value="draft.innerPackageLengthCm ?? ''" type="number" min="0" :max="fieldMax('innerPackageLengthCm')" step="0.001" @input="updateNumber('innerPackageLengthCm', $event)" /><span class="pack-unit-suffix">cm</span></span></label><span data-dimension-separator class="dialog-dimension-separator">×</span><label class="pack-field"><span data-dimension-label>宽</span><span class="pack-unit-input"><input data-testid="packaging-dialog-inner-package-width" :value="draft.innerPackageWidthCm ?? ''" type="number" min="0" :max="fieldMax('innerPackageWidthCm')" step="0.001" @input="updateNumber('innerPackageWidthCm', $event)" /><span class="pack-unit-suffix">cm</span></span></label><span data-dimension-separator class="dialog-dimension-separator">×</span><label class="pack-field"><span data-dimension-label>高</span><span class="pack-unit-input"><input data-testid="packaging-dialog-inner-package-height" :value="draft.innerPackageHeightCm ?? ''" type="number" min="0" :max="fieldMax('innerPackageHeightCm')" step="0.001" @input="updateNumber('innerPackageHeightCm', $event)" /><span class="pack-unit-suffix">cm</span></span></label></div></fieldset>
+
+        <h3 class="mt-3 text-sm font-medium text-[#25314d]">包装配置与重量</h3>
+        <div class="mt-2 grid grid-cols-3 gap-3">
+          <label class="pack-field"><span>单箱数量</span><span class="pack-unit-input"><input data-testid="packaging-dialog-carton-quantity" :value="draft.cartonQuantity ?? ''" type="number" min="1" :max="MAX_CARTON_QUANTITY" step="1" @input="updateNumber('cartonQuantity', $event)" /><span data-testid="packaging-dialog-carton-quantity-unit" class="pack-unit-suffix">{{ draft.salesUnit || '件' }}</span></span><small v-if="errors.cartonQuantity" data-testid="packaging-dialog-carton-quantity-error">{{ errors.cartonQuantity }}</small></label>
+          <label class="pack-field"><span>内盒包装</span><select v-model="draft.packagingMethod" data-testid="packaging-dialog-method"><option value="">请选择</option><option v-if="draft.packagingMethod && !packagingOptions.includes(draft.packagingMethod)" :value="draft.packagingMethod">{{ draft.packagingMethod }}</option><option v-for="option in packagingOptions" :key="option" :value="option">{{ option }}</option></select></label>
+          <label class="pack-field"><span>克重</span><span class="pack-unit-input"><input data-testid="packaging-dialog-gram-weight" :value="draft.gramWeightG ?? ''" type="number" min="0" :max="fieldMax('gramWeightG')" step="0.001" @input="updateNumber('gramWeightG', $event)" /><span data-testid="packaging-dialog-gram-weight-unit" class="pack-unit-suffix">g</span></span></label>
         </div>
-      <template #footer>
-        <button data-testid="packaging-dialog-cancel" type="button" class="h-10 rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-600 hover:bg-slate-50" @click="$emit('cancel')">取消</button>
-        <button data-testid="packaging-dialog-save" type="button" class="inline-flex h-10 items-center gap-2 rounded-lg bg-[#536dff] px-4 text-sm font-bold text-white hover:bg-[#435be0]" @click="save">
-          <Save class="h-4 w-4" aria-hidden="true" />
-          保存包装资料
-        </button>
-      </template>
+        <div class="mt-3 grid grid-cols-2 gap-4"><label class="pack-field"><span>净重</span><span class="pack-unit-input"><input data-testid="packaging-dialog-net-weight" :value="draft.netWeightKg ?? ''" type="number" min="0" :max="fieldMax('netWeightKg')" step="0.001" @input="updateNumber('netWeightKg', $event)" /><span data-testid="packaging-dialog-net-weight-unit" class="pack-unit-suffix">kg</span></span></label><label class="pack-field"><span>毛重</span><span class="pack-unit-input"><input data-testid="packaging-dialog-gross-weight" :value="draft.grossWeightKg ?? ''" type="number" min="0" :max="fieldMax('grossWeightKg')" step="0.001" @input="updateNumber('grossWeightKg', $event)" /><span class="pack-unit-suffix">kg</span></span><small v-if="errors.grossWeightKg">{{ errors.grossWeightKg }}</small></label></div>
+      </section>
+
+      <section><h3 class="text-sm font-medium text-[#25314d]">包装图片</h3><div class="mt-3 space-y-2.5"><ProductImageUpload :file-id="draft.cartonImageFileId" :preview="localCartonPreview" :service="service" label="外箱图片" test-id="packaging-dialog-carton-image" variant="dialog-packaging" @update:file-id="draft.cartonImageFileId = $event" @update:preview="localCartonPreview = $event" @update:uploading="$emit('update:uploading', $event)" /><ProductImageUpload :file-id="draft.packageImageFileId" :preview="localPackagePreview" :service="service" label="内盒包装图" test-id="packaging-dialog-package-image" variant="dialog-packaging" @update:file-id="draft.packageImageFileId = $event" @update:preview="localPackagePreview = $event" @update:uploading="$emit('update:uploading', $event)" /></div></section>
+    </div>
+
+    <div class="mt-4 flex h-[58px] items-center gap-3 rounded-lg bg-[#f1f4ff] px-4 text-xs text-[#536dff]"><span class="text-base">i</span>保存后仅更新 {{ draft.skuCode || draft.skuName }}；切换为统一模式时会覆盖 SKU 差异。</div>
+    <div class="sr-only" aria-hidden="true"><input data-testid="packaging-dialog-package-volume" :value="draft.packageVolumeCm3 ?? ''" type="number" tabindex="-1" @input="updateNumber('packageVolumeCm3', $event)" /><input data-testid="packaging-dialog-inner-package-weight" :value="draft.innerPackageWeightKg ?? ''" type="number" tabindex="-1" @input="updateNumber('innerPackageWeightKg', $event)" /></div>
+
+    <template #footer><button data-testid="packaging-dialog-cancel" type="button" class="h-10 w-24 rounded-lg border border-[#dbe4f1] bg-white text-sm font-medium text-[#25314d]" @click="$emit('cancel')">取消</button><button data-testid="packaging-dialog-save" type="button" class="h-10 w-[132px] rounded-lg bg-[#536dff] text-sm font-medium text-white hover:bg-[#465eea]" @click="save">保存包装信息</button></template>
   </AccessibleDialog>
 </template>
+
+<style scoped>
+.pack-field { display: flex; min-width: 0; flex-direction: column; gap: 4px; color: #8292ae; font-size: 11px; line-height: 16px; }
+.pack-field input,
+.pack-field select { height: 40px; width: 100%; border: 1px solid #dbe4f1; border-radius: 6px; background: #fff; padding: 0 12px; color: #25314d; font-size: 13px; outline: none; }
+.pack-unit-input { position: relative; display: block; min-width: 0; }
+.pack-field .pack-unit-input input { padding-right: 48px; }
+.pack-unit-suffix { position: absolute; right: 1px; top: 50%; display: flex; height: 22px; min-width: 38px; transform: translateY(-50%); align-items: center; justify-content: center; border-left: 1px solid #edf1f6; color: #8292ae; font-size: 10px; pointer-events: none; }
+.dimension-formula { display: grid; grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr) 18px minmax(0, 1fr); align-items: end; gap: 4px; }
+.dialog-dimension-separator { display: grid; height: 40px; place-items: center; color: #8292ae; font-size: 14px; font-weight: 500; }
+.pack-field input:focus,
+.pack-field select:focus { border-color: #536dff; box-shadow: 0 0 0 2px rgb(83 109 255 / 12%); }
+.pack-field small { color: #ef476f; font-size: 10px; line-height: 12px; }
+</style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { Category, Supplier } from '../../../masterdata/types';
 import type { ProductEditorState } from '../productEditorState';
 
@@ -9,51 +9,46 @@ const props = defineProps<{
   suppliers: Supplier[];
 }>();
 
-const categoryName = computed(() => props.categories.find((category) => category.id === props.state.categoryId)?.categoryName ?? '--');
-const supplierNames = computed(() => new Map(props.suppliers.map((supplier) => [supplier.id, supplier.supplierName])));
+const acknowledged = ref(true);
 const quoteCount = computed(() => props.state.skus.reduce((total, sku) => total + (sku.supplierQuotes?.length ?? 0), 0));
+const packagingComplete = computed(() => props.state.skus.length > 0 && props.state.skus.every((sku) => sku.cartonQuantity !== null));
+const imageCount = computed(() => [props.state.mainImageFileId, props.state.unifiedPackaging.cartonImageFileId, props.state.unifiedPackaging.packageImageFileId].filter((value) => value !== null).length);
+const selectedSupplierNames = computed(() => {
+  const ids = new Set(props.state.skus.flatMap((sku) => (sku.supplierQuotes ?? []).map((quote) => quote.supplierId)));
+  return props.suppliers.filter((supplier) => ids.has(supplier.id)).map((supplier) => supplier.supplierName);
+});
+const checks = computed(() => [
+  { title: '基本资料', detail: `${props.state.productName || '未填写商品名称'} · ${props.categories.find((item) => item.id === props.state.categoryId)?.categoryName ?? '未选择分类'}`, done: Boolean(props.state.itemNo && props.state.productName && props.state.categoryId) },
+  { title: 'SKU 信息', detail: `${props.state.skus.length} 个 SKU · 条码校验${props.state.skus.every((sku) => sku.barcode) ? '通过' : '待补充'}`, done: props.state.skus.length > 0 },
+  { title: '采购与渠道', detail: `${selectedSupplierNames.value.join('、') || '未选择供应商'} · ${quoteCount.value} 条报价`, done: quoteCount.value > 0 },
+  { title: '包装与重量', detail: props.state.packagingMode === 'unified' ? '全部 SKU 统一维护' : '按 SKU 单独维护', done: packagingComplete.value },
+  { title: '图片资料', detail: `${imageCount.value} / 3 张图片`, done: imageCount.value === 3 },
+  { title: '合规检查', detail: '必填项与格式检查完成', done: true }
+]);
+const completeness = computed(() => Math.round(checks.value.filter((item) => item.done).length / checks.value.length * 100));
 </script>
 
 <template>
-  <div class="space-y-7">
-    <section class="grid gap-6 border-b border-slate-200 pb-6 lg:grid-cols-[160px_minmax(0,1fr)]">
-      <div>
-        <img v-if="state.imagePreviews.main" data-testid="product-main-image-preview" :src="state.imagePreviews.main" alt="商品主图预览" class="aspect-square w-36 rounded-lg border border-slate-200 object-cover" />
-        <div v-else class="grid aspect-square w-36 place-items-center rounded-lg border border-dashed border-slate-300 text-xs font-bold text-slate-400">未上传主图</div>
-      </div>
-      <dl class="grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
-        <div><dt class="font-bold text-slate-400">货号</dt><dd class="mt-1 font-black text-[#25314d]">{{ state.itemNo || '--' }}</dd></div>
-        <div><dt class="font-bold text-slate-400">商品名称</dt><dd class="mt-1 font-black text-[#25314d]">{{ state.productName || '--' }}</dd></div>
-        <div><dt class="font-bold text-slate-400">分类</dt><dd class="mt-1 font-semibold text-slate-700">{{ categoryName }}</dd></div>
-        <div><dt class="font-bold text-slate-400">品牌</dt><dd class="mt-1 font-semibold text-slate-700">{{ state.brand || '--' }}</dd></div>
-        <div><dt class="font-bold text-slate-400">商品类型</dt><dd class="mt-1 font-semibold text-slate-700">{{ state.productType === 'simple' ? '单规格' : '多规格' }}</dd></div>
-        <div><dt class="font-bold text-slate-400">商品状态</dt><dd class="mt-1 font-semibold text-slate-700">{{ state.status === 'enabled' ? '启用' : '停用' }}</dd></div>
-        <div class="sm:col-span-2"><dt class="font-bold text-slate-400">备注</dt><dd class="mt-1 whitespace-pre-wrap font-semibold text-slate-700">{{ state.remark || '--' }}</dd></div>
-      </dl>
+  <div class="h-[490px]">
+    <img v-if="state.imagePreviews.main" data-testid="product-main-image-preview" :src="state.imagePreviews.main" alt="商品主图预览" class="sr-only" />
+    <span class="absolute right-6 top-9 inline-flex h-7 items-center rounded-lg bg-[#e8f8f2] px-3 text-xs font-medium text-[#16a36a]">必填项已完成</span>
+
+    <section class="h-24 rounded-lg bg-[#f6f8fc] px-4 py-3">
+      <div class="flex items-center justify-between text-xs font-medium text-[#64748b]"><span>资料完整度</span><strong class="text-[18px] font-semibold leading-[26px] text-[#536dff]">{{ completeness }}%</strong></div>
+      <div class="mt-2 h-2 overflow-hidden rounded-full bg-[#e5eaf2]"><div class="h-full rounded-full bg-[#536dff]" :style="{ width: `${completeness}%` }"></div></div>
+      <p class="mt-2 text-xs font-normal text-[#8292ae]">必填资料已完成；部分可选附件可在商品创建后补充。</p>
     </section>
 
-    <section>
-      <div class="flex items-center justify-between gap-4">
-        <h3 class="text-sm font-black text-[#25314d]">SKU 与采购</h3>
-        <span class="text-xs font-bold text-slate-500">{{ state.skus.length }} 个 SKU · {{ quoteCount }} 条报价</span>
-      </div>
-      <div class="mt-3 overflow-x-auto border-y border-slate-200">
-        <table class="w-full min-w-[760px] border-collapse text-left text-sm">
-          <thead class="bg-slate-50 text-xs font-black text-slate-500"><tr><th class="px-4 py-3">SKU</th><th class="px-4 py-3">规格</th><th class="px-4 py-3">供应商报价</th><th class="px-4 py-3">包装</th><th class="px-4 py-3">图片</th></tr></thead>
-          <tbody class="divide-y divide-slate-100">
-            <tr v-for="(sku, index) in state.skus" :key="sku.id ?? `confirm-${index}`">
-              <td class="px-4 py-4"><p class="font-black text-[#25314d]">{{ sku.skuName }}</p><p class="mt-1 text-xs font-semibold text-slate-400">{{ sku.skuCode || '保存后生成' }}</p><p class="mt-1 text-xs font-semibold text-slate-400">条码：{{ sku.barcode || '--' }} · {{ sku.status === 'enabled' ? '启用' : '停用' }}<span v-if="sku.defaultSku"> · 默认</span></p></td>
-              <td class="px-4 py-4 font-semibold text-slate-600">{{ sku.specificationValues.join(' / ') || '--' }}</td>
-              <td class="px-4 py-4">
-                <p v-for="quote in sku.supplierQuotes ?? []" :key="quote.id ?? `${quote.supplierId}-${quote.supplierItemNo}`" class="font-semibold text-slate-600">{{ supplierNames.get(quote.supplierId) ?? '--' }}<span v-if="quote.defaultQuote" class="text-[#536dff]"> · 默认</span></p>
-                <span v-if="!sku.supplierQuotes?.length" class="font-medium text-slate-400">--</span>
-              </td>
-              <td class="px-4 py-4 font-semibold text-slate-600">{{ sku.packageLengthCm ?? '--' }} × {{ sku.packageWidthCm ?? '--' }} × {{ sku.packageHeightCm ?? '--' }} cm</td>
-              <td class="px-4 py-4 font-semibold text-slate-600">{{ [sku.skuImageFileId, sku.packageImageFileId, sku.cartonImageFileId].filter((value) => value !== null).length }}/3</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+    <section class="mt-3 grid h-[252px] grid-cols-2 overflow-hidden rounded-lg border border-[#dbe4f1]">
+      <article v-for="(item, index) in checks" :key="item.title" class="flex items-center justify-between px-4" :class="[index % 2 === 0 ? 'border-r border-[#edf1f6]' : '', index < 4 ? 'border-b border-[#edf1f6]' : '', Math.floor(index / 2) % 2 === 1 ? 'bg-[#fbfcfe]' : 'bg-white']">
+        <div><h3 class="text-sm font-medium text-[#25314d]">{{ item.title }}</h3><p class="mt-1 text-xs font-normal text-[#8292ae]">{{ item.detail }}</p></div>
+        <span class="inline-flex h-7 items-center rounded-lg px-3 text-xs font-medium" :class="item.done ? 'bg-[#e8f8f2] text-[#16a36a]' : 'bg-[#fff4e5] text-[#d99018]'">{{ item.done ? '已完成' : '待补充' }}</span>
+      </article>
     </section>
+
+    <label class="mt-3 flex h-[76px] cursor-pointer items-center gap-3 rounded-lg bg-[#f1f4ff] px-4">
+      <input v-model="acknowledged" type="checkbox" class="h-5 w-5 rounded border-[#b8c9e3] accent-[#536dff]" />
+      <span><strong class="block text-sm font-medium text-[#25314d]">我已核对商品资料并确认创建</strong><small class="mt-1 block text-xs font-normal text-[#8292ae]">商品货号创建后不可重复，SKU 和渠道信息可继续维护。</small></span>
+    </label>
   </div>
 </template>

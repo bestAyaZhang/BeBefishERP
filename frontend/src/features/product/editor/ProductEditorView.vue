@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AlertCircle, ArrowLeft, Check, ChevronLeft, ChevronRight, LoaderCircle, RotateCcw, Save } from 'lucide-vue-next';
+import { AlertCircle, Check, ChevronLeft, ChevronRight, LoaderCircle, RotateCcw } from 'lucide-vue-next';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter, type RouteLocationNormalized } from 'vue-router';
 import { message } from '../../../components/feedback/message';
@@ -26,12 +26,12 @@ const route = useRoute();
 const router = useRouter();
 
 const stepDefinitions: Array<{ id: ProductEditorStep; title: string; description: string }> = [
-  { id: 'basic', title: '基础信息', description: '商品身份、分类与规格定义' },
-  { id: 'sku', title: 'SKU 信息', description: 'SKU 货号、单位与成本库存' },
-  { id: 'procurement', title: '采购信息', description: '按 SKU 维护供应商报价' },
-  { id: 'packaging', title: '包装/重量', description: '统一或按 SKU 维护包装' },
-  { id: 'images', title: '图片资料', description: '商品、SKU 与包装图片' },
-  { id: 'confirm', title: '确认提交', description: '检查完整资料后保存' }
+  { id: 'basic', title: '基本资料', description: '填写商品级基础资料' },
+  { id: 'sku', title: 'SKU 信息', description: '添加商品 SKU 与规格组合' },
+  { id: 'procurement', title: '采购与渠道', description: '维护采购条件与供应商报价' },
+  { id: 'packaging', title: '包装与重量', description: '设置包装箱规与重量模式' },
+  { id: 'images', title: '图片资料', description: '上传商品与包装图片' },
+  { id: 'confirm', title: '确认提交', description: '检查资料后提交商品' }
 ];
 
 const state = ref<ProductEditorState>(createEditorState());
@@ -295,6 +295,11 @@ function cancel() {
   void router.push({ name: 'products' });
 }
 
+function saveDraft() {
+  initialSnapshot.value = serializeState(state.value);
+  message.success('草稿已保存');
+}
+
 function handleBeforeUnload(event: BeforeUnloadEvent) {
   if (!dirty.value && !saving.value && !imageUploading.value) return;
   event.preventDefault();
@@ -325,18 +330,6 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="min-w-0" data-testid="product-editor-view">
-    <header class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
-      <div>
-        <button data-testid="product-editor-back" type="button" class="mb-3 inline-flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-[#536dff]" @click="cancel">
-          <ArrowLeft class="h-4 w-4" aria-hidden="true" />
-          返回商品列表
-        </button>
-        <h1 class="text-2xl font-black text-[#25314d]">{{ isEdit ? '编辑商品' : '新增商品' }}</h1>
-        <p class="mt-2 text-sm font-medium text-slate-500">按业务顺序维护商品档案，提交后进入商品详情。</p>
-      </div>
-      <span v-if="dirty" class="rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">有未保存更改</span>
-    </header>
-
     <div v-if="loading" data-testid="product-editor-loading" class="space-y-4 py-8">
       <div class="h-16 animate-pulse rounded-lg bg-slate-100"></div>
       <div class="h-80 animate-pulse rounded-lg bg-slate-100"></div>
@@ -356,64 +349,84 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-else>
-      <div v-if="optionError" data-testid="product-editor-option-error" class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
-        <span>{{ optionError }}</span>
-        <button data-testid="retry-editor-options" type="button" class="inline-flex h-8 items-center gap-2 rounded-lg border border-amber-300 px-3 text-xs hover:bg-white" @click="loadOptions">
-          <RotateCcw class="h-3.5 w-3.5" aria-hidden="true" />
-          重试选项
-        </button>
-      </div>
+      <section data-testid="product-editor-wizard" class="h-[904px] min-w-[1132px]">
+        <header data-testid="product-editor-header" class="flex h-16 items-center justify-between">
+          <div class="min-w-0">
+            <h1 class="text-page-title text-[#25314d]">{{ isEdit ? '编辑商品' : '新增商品' }}</h1>
+            <p data-testid="product-editor-subtitle" class="mt-1 text-xs font-normal leading-5 text-[#8292ae]">第 {{ currentStepIndex + 1 }} 步，共 6 步 · {{ currentStep.description }}</p>
+          </div>
+          <div class="inline-flex h-8 items-center gap-2 rounded-lg bg-[#f8fafc] px-3 text-xs font-medium text-[#64748b]">
+            <span class="h-2 w-2 rounded-full bg-[#32c5a4]"></span>
+            草稿自动保存
+          </div>
+        </header>
 
-      <nav data-testid="editor-step-nav" class="mt-6 overflow-x-auto border-y border-slate-200 bg-white" aria-label="商品编辑步骤">
-        <ol class="grid min-w-[900px] grid-cols-6">
-          <li v-for="(step, index) in stepDefinitions" :key="step.id" class="border-r border-slate-100 last:border-r-0">
-            <button :data-testid="`step-${step.id}`" type="button" class="flex min-h-20 w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50" :aria-current="index === currentStepIndex ? 'step' : undefined" @click="goToStep(index)">
-              <span class="grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-black" :class="index < currentStepIndex ? 'bg-emerald-500 text-white' : index === currentStepIndex ? 'bg-[#536dff] text-white' : 'bg-slate-100 text-slate-500'">
-                <Check v-if="index < currentStepIndex" class="h-4 w-4" aria-hidden="true" />
-                <span v-else>{{ index + 1 }}</span>
-              </span>
-              <span class="min-w-0"><strong class="block truncate text-sm text-[#25314d]">{{ step.title }}</strong><small class="mt-1 block truncate text-xs font-medium text-slate-400">{{ step.description }}</small></span>
-            </button>
-          </li>
-        </ol>
-      </nav>
-
-      <section class="bg-white px-5 py-6 sm:px-7">
-        <div class="mb-6 border-b border-slate-200 pb-5">
-          <p class="text-xs font-black text-[#536dff]">步骤 {{ currentStepIndex + 1 }} / 6</p>
-          <h2 data-testid="editor-step-title" class="mt-1 text-xl font-black text-[#25314d]">{{ currentStep.title }}</h2>
-          <p class="mt-1 text-sm font-medium text-slate-500">{{ currentStep.description }}</p>
+        <div v-if="optionError" data-testid="product-editor-option-error" class="absolute left-1/2 top-20 z-30 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 shadow-lg">
+          <span>{{ optionError }}</span>
+          <button data-testid="retry-editor-options" type="button" class="inline-flex h-8 items-center gap-2 rounded-lg border border-amber-300 px-3 text-xs hover:bg-white" @click="loadOptions">
+            <RotateCcw class="h-3.5 w-3.5" aria-hidden="true" />
+            重试选项
+          </button>
         </div>
 
-        <ProductBasicStep v-if="currentStep.id === 'basic'" v-model="state" :categories="availableCategories" :errors="validationErrors" />
-        <ProductSkuStep v-else-if="currentStep.id === 'sku'" v-model="state" :errors="validationErrors" />
-        <ProductProcurementStep v-else-if="currentStep.id === 'procurement'" v-model="state" :suppliers="availableSuppliers" :errors="validationErrors" />
-        <ProductPackagingStep v-else-if="currentStep.id === 'packaging'" v-model="state" :errors="validationErrors" />
-        <ProductImagesStep v-else-if="currentStep.id === 'images'" v-model="state" :service="productService" @update:uploading="imageUploading = $event" />
-        <ProductConfirmStep v-else :state="state" :categories="availableCategories" :suppliers="availableSuppliers" />
-      </section>
+        <nav data-testid="editor-step-nav" class="mt-4 h-[92px] overflow-hidden rounded-lg border border-[#dbe4f1] bg-white px-4 py-6" aria-label="商品编辑步骤">
+          <ol class="grid grid-cols-[repeat(6,164px)] gap-4">
+            <li v-for="(step, index) in stepDefinitions" :key="step.id" class="h-11">
+              <button :data-testid="`step-${step.id}`" type="button" class="flex h-11 w-full items-center gap-2.5 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-[#536dff]/30" :aria-current="index === currentStepIndex ? 'step' : undefined" @click="goToStep(index)">
+                <span class="grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-semibold" :class="index < currentStepIndex ? 'bg-[#e6f8f2] text-[#16a36a]' : index === currentStepIndex ? 'bg-[#536dff] text-white' : 'bg-[#f1f5f9] text-[#8292ae]'">
+                  <Check v-if="index < currentStepIndex" class="h-4 w-4" aria-hidden="true" />
+                  <span v-else>{{ index + 1 }}</span>
+                </span>
+                <span class="min-w-0">
+                  <strong class="block truncate text-sm font-medium leading-5" :class="index === currentStepIndex ? 'text-[#25314d]' : 'text-[#64748b]'">{{ step.title }}</strong>
+                  <small class="block text-xs font-normal leading-[18px]" :class="index < currentStepIndex ? 'text-[#16a36a]' : index === currentStepIndex ? 'text-[#536dff]' : 'text-[#94a3b8]'">{{ index < currentStepIndex ? '已完成' : index === currentStepIndex ? '进行中' : '待填写' }}</small>
+                </span>
+              </button>
+            </li>
+          </ol>
+        </nav>
 
-      <footer class="sticky bottom-0 z-20 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-7">
-        <div class="flex min-w-0 flex-col gap-1">
-          <button data-testid="cancel-product" type="button" class="h-10 self-start rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-600 hover:bg-slate-50" @click="cancel">取消</button>
-          <p v-if="imageUploading" data-testid="image-upload-blocker" class="text-xs font-bold text-amber-700">图片正在上传，请等待完成后继续</p>
-        </div>
-        <div class="flex gap-2">
-          <button v-if="currentStepIndex > 0" data-testid="previous-step" type="button" class="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-600 hover:bg-slate-50" @click="previousStep">
+        <section data-testid="product-editor-stage" class="relative mt-4 h-[620px] overflow-hidden rounded-lg border border-[#dbe4f1] bg-white p-6">
+          <div class="flex h-[50px] items-center justify-between gap-4">
+            <div class="min-w-0">
+              <h2 data-testid="editor-step-title" class="text-[18px] font-semibold leading-[26px] text-[#25314d]">{{ currentStep.title }}</h2>
+              <p class="mt-1 text-xs font-normal leading-[18px] text-[#8292ae]">{{ currentStep.description }}</p>
+            </div>
+            <span v-if="currentStep.id === 'basic'" class="inline-flex h-7 items-center rounded-lg bg-[#fff1f2] px-2.5 text-xs font-medium text-[#ef476f]">* 为必填项</span>
+          </div>
+
+          <div class="mt-4 h-[490px] overflow-y-auto overflow-x-hidden">
+            <ProductBasicStep v-if="currentStep.id === 'basic'" v-model="state" :categories="availableCategories" :errors="validationErrors" :service="productService" @update:uploading="imageUploading = $event" />
+            <ProductSkuStep v-else-if="currentStep.id === 'sku'" v-model="state" :errors="validationErrors" :service="productService" @update:uploading="imageUploading = $event" />
+            <ProductProcurementStep v-else-if="currentStep.id === 'procurement'" v-model="state" :suppliers="availableSuppliers" :errors="validationErrors" />
+            <ProductPackagingStep v-else-if="currentStep.id === 'packaging'" v-model="state" :errors="validationErrors" :service="productService" @update:uploading="imageUploading = $event" />
+            <ProductImagesStep v-else-if="currentStep.id === 'images'" v-model="state" :service="productService" @update:uploading="imageUploading = $event" />
+            <ProductConfirmStep v-else :state="state" :categories="availableCategories" :suppliers="availableSuppliers" />
+          </div>
+        </section>
+
+        <footer data-testid="product-editor-footer" class="mt-4 flex h-20 items-center justify-between rounded-lg border border-[#dbe4f1] bg-white px-4">
+          <div class="flex items-center gap-2.5">
+            <button data-testid="cancel-product" type="button" class="h-10 w-[88px] rounded-lg border border-[#dbe4f1] bg-white text-sm font-medium text-[#25314d] hover:border-[#b9c8df]" @click="cancel">取消</button>
+            <button data-testid="save-product-draft" type="button" class="h-10 w-28 rounded-lg border border-[#dbe4f1] bg-white text-sm font-medium text-[#25314d] hover:border-[#b9c8df]" @click="saveDraft">保存草稿</button>
+            <p v-if="imageUploading" data-testid="image-upload-blocker" class="text-xs font-medium text-amber-700">图片正在上传，请等待完成后继续</p>
+          </div>
+          <div class="flex gap-2.5">
+            <button data-testid="previous-step" type="button" :disabled="currentStepIndex === 0" class="inline-flex h-10 w-[104px] items-center justify-center gap-2 rounded-lg border border-[#dbe4f1] bg-white text-sm font-medium text-[#25314d] disabled:border-transparent disabled:bg-[#f1f5f9] disabled:text-[#94a3b8]" @click="previousStep">
             <ChevronLeft class="h-4 w-4" aria-hidden="true" />
-            上一步
-          </button>
-          <button v-if="currentStepIndex < stepDefinitions.length - 1" data-testid="next-step" type="button" :disabled="imageUploading && currentStep.id === 'images'" class="inline-flex h-10 items-center gap-2 rounded-lg bg-[#536dff] px-4 text-sm font-bold text-white hover:bg-[#435be0] disabled:cursor-not-allowed disabled:opacity-60" @click="nextStep">
-            下一步
-            <ChevronRight class="h-4 w-4" aria-hidden="true" />
-          </button>
-          <button v-else data-testid="submit-product" type="button" :disabled="saving || imageUploading" class="inline-flex h-10 items-center gap-2 rounded-lg bg-[#536dff] px-5 text-sm font-bold text-white hover:bg-[#435be0] disabled:cursor-not-allowed disabled:opacity-60" @click="submit">
-            <LoaderCircle v-if="saving" class="h-4 w-4 animate-spin" aria-hidden="true" />
-            <Save v-else class="h-4 w-4" aria-hidden="true" />
-            {{ saving ? '保存中...' : '保存商品' }}
-          </button>
-        </div>
-      </footer>
+              上一步
+            </button>
+            <button v-if="currentStepIndex < stepDefinitions.length - 1" data-testid="next-step" type="button" :disabled="imageUploading && currentStep.id === 'images'" class="inline-flex h-10 w-28 items-center justify-center gap-2 rounded-lg bg-[#536dff] text-sm font-medium text-white hover:bg-[#465eea] disabled:cursor-not-allowed disabled:opacity-60" @click="nextStep">
+              下一步
+              <ChevronRight class="h-4 w-4" aria-hidden="true" />
+            </button>
+            <button v-else data-testid="submit-product" type="button" :disabled="saving || imageUploading" class="inline-flex h-10 w-28 items-center justify-center gap-2 rounded-lg bg-[#536dff] text-sm font-medium text-white hover:bg-[#465eea] disabled:cursor-not-allowed disabled:opacity-60" @click="submit">
+              <LoaderCircle v-if="saving" class="h-4 w-4 animate-spin" aria-hidden="true" />
+              {{ saving ? '保存中...' : isEdit ? '保存修改' : '创建商品' }}
+            </button>
+          </div>
+        </footer>
+      </section>
     </template>
   </section>
 </template>

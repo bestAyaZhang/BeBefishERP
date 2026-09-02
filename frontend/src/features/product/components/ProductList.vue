@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CircleAlert, Plus, RotateCcw, Search } from 'lucide-vue-next';
+import { CircleAlert, Plus, Search } from 'lucide-vue-next';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { Category, PageResult } from '../../masterdata/types';
@@ -174,8 +174,40 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
-    <div class="min-w-0 md:grid md:grid-cols-[248px_minmax(0,1fr)]">
+  <section class="min-w-0 space-y-4">
+    <header
+      data-testid="product-page-header"
+      class="flex h-24 min-w-0 items-center justify-between gap-6"
+    >
+      <div class="min-w-0">
+        <div class="flex min-w-0 items-center gap-3">
+          <h1 data-testid="product-page-title" class="truncate text-page-title text-[#25314d]">商品资料</h1>
+          <span
+            data-testid="product-page-count"
+            class="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white px-1.5 text-xs font-medium tabular-nums text-slate-500"
+          >
+            {{ allProductTotal ?? result.total }}
+          </span>
+        </div>
+        <p data-testid="product-page-subtitle" class="mt-2 truncate text-sm text-slate-500">
+          维护商品主数据、包装规格、渠道和资料完整度。
+        </p>
+      </div>
+      <button
+        data-testid="add-product"
+        type="button"
+        class="inline-flex h-10 w-32 shrink-0 items-center justify-center gap-2 rounded-md bg-[#536dff] px-5 text-sm font-medium text-white shadow-sm transition hover:bg-[#465eea] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536dff]"
+        @click="emit('create-product')"
+      >
+        <Plus class="h-4 w-4" aria-hidden="true" />
+        新增商品
+      </button>
+    </header>
+
+    <div
+      data-testid="product-workspace"
+      class="grid min-w-0 gap-4 lg:min-h-[calc(100vh-220px)] lg:grid-cols-[260px_minmax(0,1fr)] lg:items-stretch"
+    >
       <ProductCategoryTree
         :categories="categories"
         :category-counts="categoryCounts"
@@ -183,27 +215,35 @@ onBeforeUnmount(() => {
         :selected-category-id="routeState.categoryId"
         :loading="categoryLoading"
         :error="categoryError"
-        class="border-b border-slate-200 md:border-b-0 md:border-r"
         @select-category="selectCategory"
         @retry="emit('retry-categories')"
       />
 
-      <div class="min-w-0">
-        <header data-testid="product-toolbar" class="flex min-w-0 flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
-          <div class="mr-auto min-w-[150px]">
-            <h1 class="text-lg font-semibold text-slate-950">商品列表</h1>
-            <p class="mt-0.5 text-xs text-slate-500">共 {{ result.total }} 条商品</p>
-          </div>
+      <div
+        data-testid="product-list-panel"
+        class="flex min-h-[560px] min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white lg:min-h-0"
+      >
+        <header
+          data-testid="product-list-heading"
+          class="flex h-14 min-w-0 shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-4"
+        >
+          <h2 class="text-card-title text-[#25314d]">商品列表</h2>
+          <p data-testid="product-list-total" class="shrink-0 text-sm text-slate-500">共 {{ result.total }} 件商品</p>
+        </header>
 
-          <label class="relative min-w-[210px] flex-1 sm:max-w-[360px]">
+        <div
+          data-testid="product-filter-bar"
+          class="flex min-h-[72px] min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-3"
+        >
+          <label class="relative min-w-[220px] flex-1 sm:max-w-[268px]">
             <span class="sr-only">货号 / SKU</span>
-            <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+            <Search class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" aria-hidden="true" />
             <input
               v-model="keywordDraft"
               data-testid="product-keyword"
               type="search"
-              class="h-9 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              placeholder="货号 / SKU"
+              class="h-10 w-full rounded-md border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/10"
+              placeholder="输入货号 / SKU"
               @keyup.enter="searchProducts"
             />
           </label>
@@ -211,31 +251,20 @@ onBeforeUnmount(() => {
           <button
             data-testid="product-search"
             type="button"
-            class="inline-flex h-9 items-center gap-1.5 rounded-md bg-slate-900 px-3 text-sm font-medium text-white transition hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+            class="inline-flex h-10 w-20 items-center justify-center rounded-md bg-[#536dff] px-3 text-sm font-medium text-white transition hover:bg-[#465eea] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536dff]"
             @click="searchProducts"
           >
-            <Search class="h-4 w-4" aria-hidden="true" />
             查询
           </button>
           <button
             data-testid="product-reset"
             type="button"
-            class="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-600"
+            class="inline-flex h-10 w-16 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-[#25314d] transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536dff]"
             @click="resetKeyword"
           >
-            <RotateCcw class="h-4 w-4" aria-hidden="true" />
             重置
           </button>
-          <button
-            data-testid="add-product"
-            type="button"
-            class="inline-flex h-9 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-sm font-medium text-white transition hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-            @click="emit('create-product')"
-          >
-            <Plus class="h-4 w-4" aria-hidden="true" />
-            新增商品
-          </button>
-        </header>
+        </div>
 
         <div
           v-if="errorMessage"
@@ -261,14 +290,16 @@ onBeforeUnmount(() => {
           <div class="h-full w-1/2 animate-pulse bg-blue-600"></div>
         </div>
 
-        <ProductTable
-          :products="result.records"
-          :categories="categories"
-          :category-lookup-failed="categoryLookupFailed"
-          :loading="loading"
-          :show-empty="hasSuccessfulLoad && !errorMessage"
-          @open-product="emit('open-product', $event)"
-        />
+        <div class="min-h-0 min-w-0 flex-1">
+          <ProductTable
+            :products="result.records"
+            :categories="categories"
+            :category-lookup-failed="categoryLookupFailed"
+            :loading="loading"
+            :show-empty="hasSuccessfulLoad && !errorMessage"
+            @open-product="emit('open-product', $event)"
+          />
+        </div>
         <ProductPagination
           :page="routeState.page"
           :size="routeState.size"

@@ -12,6 +12,7 @@ const props = defineProps<{
   preview: string;
   label: string;
   testId: string;
+  variant?: 'default' | 'wizard-main' | 'wizard-tile' | 'dialog-sku' | 'dialog-packaging';
 }>();
 
 const emit = defineEmits<{
@@ -125,7 +126,52 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="min-w-0 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3">
+  <div
+    v-if="variant === 'wizard-main' || variant === 'wizard-tile' || variant === 'dialog-sku'"
+    class="group relative grid min-w-0 place-items-center overflow-hidden rounded-lg border border-dashed border-[#b8c9e3] bg-[#fbfdff]"
+    :class="variant === 'wizard-main' ? 'h-[244px] w-[260px]' : variant === 'dialog-sku' ? 'h-[248px] w-[200px]' : 'h-[168px] w-full'"
+  >
+    <img
+      v-if="previewUrl"
+      :data-testid="`${testId}-preview`"
+      :src="previewUrl"
+      :alt="`${label}预览`"
+      class="absolute inset-3 h-[calc(100%-24px)] w-[calc(100%-24px)] rounded-md object-contain"
+      @error="markPreviewError"
+    />
+    <label :for="inputId" class="relative z-10 flex cursor-pointer flex-col items-center text-center" :class="previewUrl ? 'absolute inset-0 justify-center bg-white/85 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100' : ''">
+      <span class="grid h-12 w-12 place-items-center rounded-lg bg-[#eef2ff] text-[#536dff]">
+        <Upload class="h-6 w-6" aria-hidden="true" />
+      </span>
+      <strong class="mt-2 text-sm font-medium leading-5 text-[#25314d]">{{ previewUrl ? `替换${label}` : variant === 'wizard-main' ? '点击上传商品主图' : variant === 'dialog-sku' ? '上传 SKU 图片' : '点击或拖拽上传' }}</strong>
+      <small class="mt-2 text-xs font-normal leading-[18px] text-[#8292ae]">{{ variant === 'dialog-sku' ? 'PNG / JPG，建议 1:1' : `JPG / PNG，${variant === 'wizard-main' ? '单张' : ''}不超过 5 MB` }}</small>
+    </label>
+    <input :id="inputId" :data-testid="testId" class="sr-only" type="file" accept="image/*" @change="upload" />
+    <button v-if="previewUrl" :data-testid="`${testId}-remove`" type="button" class="absolute right-3 top-3 z-20 inline-flex h-8 items-center gap-1 rounded-lg border border-[#dbe4f1] bg-white px-2 text-xs font-medium text-[#ef476f] shadow-sm" :aria-label="`删除${label}`" @click="remove">
+      <Trash2 class="h-4 w-4" aria-hidden="true" />
+      删除
+    </button>
+    <span :data-testid="`${testId}-status`" class="sr-only">{{ statusLabel() }}</span>
+    <p v-if="error" class="absolute bottom-2 left-3 right-3 z-20 truncate text-center text-xs font-medium text-[#ef476f]">{{ error }}</p>
+  </div>
+
+  <div v-else-if="variant === 'dialog-packaging'" class="flex h-[168px] w-full items-center gap-4 rounded-lg border border-[#dbe4f1] bg-[#f8faff] p-4">
+    <img v-if="previewUrl" :data-testid="`${testId}-preview`" :src="previewUrl" :alt="`${label}预览`" class="h-[104px] w-[104px] rounded-lg bg-[#eef2ff] object-contain" @error="markPreviewError" />
+    <span v-else class="grid h-[104px] w-[104px] shrink-0 place-items-center rounded-lg bg-[#eef2ff] text-xl font-medium text-[#536dff]">{{ label.includes('外箱') ? 'BOX' : 'IN' }}</span>
+    <div class="min-w-0 flex-1">
+      <p class="text-sm font-medium text-[#25314d]">{{ label }}</p>
+      <p :data-testid="`${testId}-status`" class="mt-2 text-xs font-medium" :class="status === 'error' ? 'text-[#ef476f]' : status === 'uploaded' ? 'text-[#16a36a]' : 'text-[#8292ae]'">{{ statusLabel() }}</p>
+      <p class="mt-2 text-xs text-[#8292ae]">PNG / JPG，建议 1:1</p>
+      <div class="mt-2 flex items-center gap-2">
+        <input :id="inputId" :data-testid="testId" class="sr-only" type="file" accept="image/*" @change="upload" />
+        <label :for="inputId" class="inline-flex h-8 cursor-pointer items-center rounded-lg border border-[#dbe4f1] bg-white px-3 text-xs font-medium text-[#536dff]">{{ previewUrl ? '更换图片' : '上传图片' }}</label>
+        <button v-if="previewUrl" :data-testid="`${testId}-remove`" type="button" class="text-xs font-medium text-[#ef476f]" :aria-label="`删除${label}`" @click="remove">删除</button>
+      </div>
+      <p v-if="error" class="mt-1 truncate text-xs text-[#ef476f]">{{ error }}</p>
+    </div>
+  </div>
+
+  <div v-else class="min-w-0 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3">
     <div class="flex min-h-20 items-center gap-3">
       <img
         v-if="previewUrl"

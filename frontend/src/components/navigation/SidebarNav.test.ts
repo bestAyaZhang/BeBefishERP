@@ -40,7 +40,7 @@ describe('SidebarNav', () => {
 
     for (const label of [
       '工作台',
-      '产品资料',
+      '商品管理',
       '分类管理',
       '客户管理',
       '供应商管理',
@@ -63,6 +63,13 @@ describe('SidebarNav', () => {
     expect(wrapper.text()).toContain('Menu');
     expect(wrapper.text()).toContain('Topics');
     expect(wrapper.find('[data-testid="erp-sidebar-user"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="erp-sidebar-brand"]').classes()).toContain('h-[88px]');
+    expect(wrapper.get('[data-testid="erp-sidebar-logo"]').classes()).toEqual(expect.arrayContaining([
+      'h-10',
+      'w-10',
+      'rounded-lg'
+    ]));
+    expect(wrapper.get('[data-testid="erp-sidebar-menu"]').classes()).toContain('px-4');
   });
 
   it('renders menu items from the authenticated API permission data', () => {
@@ -83,7 +90,7 @@ describe('SidebarNav', () => {
     });
 
     expect(wrapper.text()).toContain('自定义产品菜单');
-    expect(wrapper.text()).not.toContain('产品资料');
+    expect(wrapper.findAll('a').some((link) => link.text().includes('商品管理'))).toBe(false);
     expect(wrapper.text()).not.toContain('分类管理');
     expect(wrapper.text()).not.toContain('销售开单');
     expect(wrapper.text()).not.toContain('财务管理');

@@ -6,7 +6,7 @@ const props = withDefaults(defineProps<{
   src?: string | null;
   alt: string;
   testId: string;
-  size?: 'small' | 'medium' | 'large';
+  size?: 'small' | 'medium' | 'large' | 'preview';
 }>(), {
   src: null,
   size: 'medium'
@@ -14,9 +14,10 @@ const props = withDefaults(defineProps<{
 
 const failed = ref(false);
 const sizeClass = computed(() => ({
-  small: 'h-14 w-14',
+  small: 'h-10 w-10',
   medium: 'h-24 w-24',
-  large: 'h-36 w-36 sm:h-40 sm:w-40'
+  large: 'h-[196px] w-[220px] max-w-full',
+  preview: 'h-[114px] w-full'
 }[props.size]));
 
 watch(() => props.src, () => {

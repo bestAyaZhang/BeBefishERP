@@ -493,22 +493,57 @@ describe('Task 8 product catalog list', () => {
     });
 
     expect(wrapper.get('thead tr').findAll('th').map((header) => header.text())).toEqual([
-      '商品', '分类', '品牌 / 默认供应商', '库存', '价格', '资料状态', '业务状态', '操作'
+      '商品信息', '分类', '品牌 / 供应商', '库存', '价格', '资料状态', '操作'
     ]);
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('批量');
     expect(wrapper.text()).not.toContain('编辑');
     expect(wrapper.text()).not.toContain('删除');
     expect(wrapper.get('[data-testid="product-detail-42"]').text()).toBe('查看详情');
-    expect(wrapper.get('[data-testid="product-thumb-42"]').classes()).toContain('h-11');
-    expect(wrapper.get('[data-testid="product-thumb-42"]').classes()).toContain('w-11');
+    expect(wrapper.get('[data-testid="product-thumb-42"]').classes()).toContain('h-10');
+    expect(wrapper.get('[data-testid="product-thumb-42"]').classes()).toContain('w-10');
     expect(wrapper.get('[data-testid="product-table-scroll"]').classes()).toContain('overflow-x-auto');
+    expect(wrapper.get('[data-testid="product-table"]').classes()).toContain('min-w-[854px]');
     expect(wrapper.get('[data-testid="product-pagination"]').element.parentElement?.getAttribute('data-testid')).not.toBe('product-table-scroll');
 
     await wrapper.get('[data-testid="product-detail-42"]').trigger('click');
     expect(wrapper.emitted('open-product')?.[0]).toEqual([product]);
     await wrapper.get('[data-testid="add-product"]').trigger('click');
     expect(wrapper.emitted('create-product')).toHaveLength(1);
+  });
+
+  it('matches the approved Figma page header and split catalog workspace', async () => {
+    const product = catalogProduct(42, '高硼硅玻璃杯');
+    const { wrapper } = await mountCatalog({
+      allProductTotal: 5,
+      service: catalogService(mockListProducts(productPage([product], 5)))
+    });
+
+    expect(wrapper.get('[data-testid="product-page-header"]').classes()).toEqual(expect.arrayContaining(['h-24']));
+    expect(wrapper.get('[data-testid="product-page-title"]').text()).toBe('商品资料');
+    expect(wrapper.get('[data-testid="product-page-title"]').classes()).toContain('text-page-title');
+    expect(wrapper.get('[data-testid="product-page-count"]').text()).toBe('5');
+    expect(wrapper.get('[data-testid="product-page-subtitle"]').text()).toContain('维护商品主数据');
+    expect(wrapper.get('[data-testid="add-product"]').element.closest('[data-testid="product-page-header"]')).not.toBeNull();
+
+    expect(wrapper.get('[data-testid="product-workspace"]').classes()).toEqual(expect.arrayContaining([
+      'gap-4',
+      'lg:grid-cols-[260px_minmax(0,1fr)]'
+    ]));
+    expect(wrapper.get('[data-testid="product-category-panel"]').classes()).toEqual(expect.arrayContaining([
+      'rounded-lg',
+      'border-slate-200',
+      'bg-white'
+    ]));
+    expect(wrapper.get('[data-testid="product-list-panel"]').classes()).toEqual(expect.arrayContaining([
+      'rounded-lg',
+      'border-slate-200',
+      'bg-white'
+    ]));
+    expect(wrapper.get('[data-testid="product-list-heading"]').text()).toContain('商品列表');
+    expect(wrapper.get('[data-testid="product-list-heading"]').get('h2').classes()).toContain('text-card-title');
+    expect(wrapper.get('[data-testid="product-list-total"]').text()).toBe('共 5 件商品');
+    expect(wrapper.get('[data-testid="product-filter-bar"]').find('[data-testid="add-product"]').exists()).toBe(false);
   });
 
   it('falls back after an image error and retries when the same product receives a new url', async () => {
@@ -531,6 +566,10 @@ describe('Task 8 product catalog list', () => {
     await wrapper.get('[data-testid="product-image-42"]').trigger('error');
     expect(wrapper.find('[data-testid="product-image-42"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="product-image-placeholder-42"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="product-thumb-42"]').classes()).toEqual(expect.arrayContaining([
+      'bg-cyan-50',
+      'text-cyan-500'
+    ]));
 
     await router.push({ query: { keyword: 'RECOVERED', page: '1', size: '20' } });
     await flushPromises();
@@ -553,6 +592,8 @@ describe('Task 8 product catalog list', () => {
       expect(cell.classes()).toContain('overflow-hidden');
       expect(cell.get('span').classes()).toContain('truncate');
       expect(cell.get('span').classes()).toContain('tabular-nums');
+      expect(cell.get('span').classes()).toContain('font-numeric');
+      expect(cell.get('span').classes()).toContain('text-table-number');
       expect(cell.get('span').attributes('title')).toBeTruthy();
     }
   });

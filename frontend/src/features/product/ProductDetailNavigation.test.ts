@@ -384,7 +384,7 @@ describe('product detail navigation', () => {
     expect(wrapper.find('[data-testid="product-detail-drawer"]').exists()).toBe(false);
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="product-overview-section"]').text()).toContain('PRD-000042');
-    expect(wrapper.get('[data-testid="product-sku-section"]').text()).toContain('SKU 货号');
+    expect(wrapper.get('[data-testid="product-sku-section"]').text()).toContain('SKU货号');
     expect(wrapper.get('[data-testid="product-procurement-section"]').text()).toContain('义乌玻璃制品厂');
     expect(wrapper.get('[data-testid="product-procurement-section"]').text()).toContain('宁波包装制品厂');
     expect(wrapper.get('[data-testid="product-procurement-section"]').text()).toContain('停用');
@@ -403,6 +403,65 @@ describe('product detail navigation', () => {
     for (const excludedLabel of ['附件', '合规资料', '商品描述', '销售属性', '渠道售价']) {
       expect(wrapper.text()).not.toContain(excludedLabel);
     }
+  });
+
+  it('matches the approved Figma detail frame hierarchy and typography', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValueOnce(detailProduct);
+    await router.push('/products/42');
+    const wrapper = mount(ProductDetailView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const page = wrapper.get('[data-testid="product-detail-view"]');
+    const body = wrapper.get('[data-testid="product-detail-body"]');
+    const header = wrapper.get('[data-testid="product-detail-header"]');
+    const sections = body.findAll('section').map((section) => section.attributes('data-testid'));
+
+    expect(page.classes()).toEqual(expect.arrayContaining(['w-full', '-mt-2']));
+    expect(page.classes()).not.toContain('max-w-[1600px]');
+    expect(body.classes()).toEqual(expect.arrayContaining(['space-y-4']));
+    expect(header.classes()).toEqual(expect.arrayContaining(['h-20']));
+    expect(wrapper.get('[data-testid="product-detail-title"]').classes()).toEqual(expect.arrayContaining([
+      'text-[24px]',
+      'leading-8',
+      'font-bold'
+    ]));
+    expect(wrapper.get('[data-testid="product-overview-section"]').classes()).toEqual(expect.arrayContaining([
+      'min-h-[280px]',
+      'p-[23px]'
+    ]));
+    expect(wrapper.get('[data-testid="product-sku-section"]').classes()).toEqual(expect.arrayContaining([
+      'min-h-[318px]',
+      'px-[23px]',
+      'py-[23px]'
+    ]));
+    expect(wrapper.get('[data-testid="product-procurement-section"]').classes()).toEqual(expect.arrayContaining([
+      'min-h-[232px]',
+      'px-[23px]',
+      'py-[19px]'
+    ]));
+    expect(wrapper.get('[data-testid="product-packaging-section"]').classes()).toEqual(expect.arrayContaining([
+      'min-h-[246px]',
+      'px-[23px]',
+      'py-[19px]'
+    ]));
+    expect(wrapper.get('[data-testid="product-images-section"]').classes()).toEqual(expect.arrayContaining([
+      'min-h-[220px]',
+      'px-[23px]',
+      'py-[19px]'
+    ]));
+    expect(wrapper.get('[data-testid="product-audit-section"]').classes()).toEqual(expect.arrayContaining([
+      'min-h-[162px]',
+      'px-[23px]',
+      'py-[19px]'
+    ]));
+    expect(sections).toEqual([
+      'product-overview-section',
+      'product-sku-section',
+      'product-procurement-section',
+      'product-packaging-section',
+      'product-images-section',
+      'product-audit-section'
+    ]);
   });
 
   it('uses -- for absent values and invalid audit dates without inventing data', async () => {
@@ -510,7 +569,7 @@ describe('product detail navigation', () => {
     expect(wrapper.text()).not.toContain('高硼硅玻璃杯');
   });
 
-  it('shows per-SKU package images when an image file id differs', async () => {
+  it('shows the approved per-SKU packaging cards when package data differs', async () => {
     const perSkuProduct: Product = {
       ...detailProduct,
       skus: detailProduct.skus.map((sku) => sku.id === 22
@@ -524,13 +583,11 @@ describe('product detail navigation', () => {
 
     const packaging = wrapper.get('[data-testid="product-packaging-section"]');
     expect(packaging.text()).toContain('按 SKU 展示');
-    expect(packaging.get('[data-testid="packaging-package-image-21"]').attributes('src')).toContain('package-21.png');
-    expect(packaging.get('[data-testid="packaging-package-image-22"]').attributes('src')).toContain('package-22.png');
-    expect(packaging.get('[data-testid="packaging-carton-image-21"]').attributes('src')).toContain('carton-21.png');
-    expect(packaging.get('[data-testid="packaging-carton-image-22"]').attributes('src')).toContain('carton-22.png');
-
-    await packaging.get('[data-testid="packaging-package-image-22"]').trigger('error');
-    expect(packaging.find('[data-testid="packaging-package-image-22-fallback"]').exists()).toBe(true);
+    expect(packaging.get('[data-testid="packaging-sku-21"]').text()).toContain('42 × 28 × 24 cm');
+    expect(packaging.get('[data-testid="packaging-sku-21"]').text()).toContain('10 × 10 × 12 cm');
+    expect(packaging.get('[data-testid="packaging-sku-22"]').text()).toContain('BBF-PUMP-022-GY');
+    expect(wrapper.get('[data-testid="product-images-section"] [data-testid="packaging-package-image-21"]').attributes('src')).toContain('package-21.png');
+    expect(wrapper.get('[data-testid="product-images-section"] [data-testid="packaging-carton-image-21"]').attributes('src')).toContain('carton-21.png');
   });
 
   it('renders abnormal stock, quantity, dimensions and volume as -- while preserving zero', async () => {

@@ -226,10 +226,10 @@ describe('Task 10 product editor', () => {
     const { router, wrapper } = await mountEditor();
 
     expect(wrapper.get('[data-testid="editor-step-nav"]').findAll('button')).toHaveLength(6);
-    expect(wrapper.get('[data-testid="editor-step-nav"]').text()).toContain('基础信息');
+    expect(wrapper.get('[data-testid="editor-step-nav"]').text()).toContain('基本资料');
     expect(wrapper.get('[data-testid="editor-step-nav"]').text()).toContain('SKU 信息');
-    expect(wrapper.get('[data-testid="editor-step-nav"]').text()).toContain('采购信息');
-    expect(wrapper.get('[data-testid="editor-step-nav"]').text()).toContain('包装/重量');
+    expect(wrapper.get('[data-testid="editor-step-nav"]').text()).toContain('采购与渠道');
+    expect(wrapper.get('[data-testid="editor-step-nav"]').text()).toContain('包装与重量');
     expect(wrapper.get('[data-testid="editor-step-nav"]').text()).toContain('图片资料');
     expect(wrapper.get('[data-testid="editor-step-nav"]').text()).toContain('确认提交');
 
@@ -239,7 +239,7 @@ describe('Task 10 product editor', () => {
     await addSku(wrapper, '白色款', '6970000000210');
     await next(wrapper);
 
-    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('采购信息');
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('采购与渠道');
     expect(wrapper.text()).not.toContain('渠道售价');
     await wrapper.get('[data-testid="add-quote-0"]').trigger('click');
     await wrapper.get('[data-testid="quote-supplier-0-0"]').setValue('4');
@@ -282,6 +282,39 @@ describe('Task 10 product editor', () => {
     }));
     expect(vi.mocked(productService.createProduct).mock.calls[0][0]).not.toHaveProperty('packagingMode');
     expect(router.currentRoute.value).toMatchObject({ name: 'product-detail', params: { id: '77' } });
+  });
+
+  it('renders the edit route with the six-step Figma desktop wizard layout', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    const { wrapper } = await mountEditor('/products/42/edit');
+
+    const wizard = wrapper.get('[data-testid="product-editor-wizard"]');
+    expect(wizard.classes()).toContain('h-[904px]');
+    expect(wizard.get('[data-testid="product-editor-header"]').classes()).toContain('h-16');
+    expect(wizard.get('h1').text()).toBe('编辑商品');
+    expect(wizard.get('[data-testid="product-editor-subtitle"]').text()).toContain('第 1 步，共 6 步');
+
+    const stepper = wizard.get('[data-testid="editor-step-nav"]');
+    expect(stepper.classes()).toContain('h-[92px]');
+    expect(stepper.findAll('button')).toHaveLength(6);
+    expect(stepper.findAll('button').map((button) => button.text())).toEqual(expect.arrayContaining([
+      expect.stringContaining('基本资料'),
+      expect.stringContaining('SKU 信息'),
+      expect.stringContaining('采购与渠道'),
+      expect.stringContaining('包装与重量'),
+      expect.stringContaining('图片资料'),
+      expect.stringContaining('确认提交')
+    ]));
+
+    const stage = wizard.get('[data-testid="product-editor-stage"]');
+    expect(stage.classes()).toContain('h-[620px]');
+    expect(stage.get('[data-testid="editor-step-title"]').text()).toBe('基本资料');
+
+    const footer = wizard.get('[data-testid="product-editor-footer"]');
+    expect(footer.classes()).toContain('h-20');
+    expect(footer.get('[data-testid="cancel-product"]').text()).toBe('取消');
+    expect(footer.get('[data-testid="save-product-draft"]').text()).toBe('保存草稿');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="product-name"]').element.value).toBe('玻璃按压瓶');
   });
 
   it('saves explicit product type and product status controls', async () => {
@@ -563,7 +596,7 @@ describe('Task 10 product editor', () => {
 
     await next(wrapper);
 
-    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('采购信息');
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('采购与渠道');
     expect(wrapper.get('[data-testid="quote-supplier-error-0-0"]').text()).toContain('请选择供应商');
   });
 
@@ -624,6 +657,56 @@ describe('Task 10 product editor', () => {
 
     const input = wrapper.get('[data-testid="unified-carton-quantity"]');
     expect(input.attributes()).toMatchObject({ min: '1', step: '1', max: '2147483647' });
+  });
+
+  it('shows a unit suffix after every unit-bearing editor input', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    const { wrapper } = await mountEditor('/products/42/edit');
+
+    await wrapper.get('[data-testid="step-sku"]').trigger('click');
+    await wrapper.get('[data-testid="edit-sku-0"]').trigger('click');
+    expect(wrapper.get('[data-testid="sku-dialog-sale-price-unit"]').text()).toBe('元');
+    await wrapper.get('[data-testid="sku-dialog-cancel"]').trigger('click');
+
+    await wrapper.get('[data-testid="step-procurement"]').trigger('click');
+    expect(wrapper.get('[data-testid="primary-quote-price-unit"]').text()).toBe('元');
+    expect(wrapper.get('[data-testid="primary-quote-min-quantity-unit"]').text()).toBe('只');
+    expect(wrapper.get('[data-testid="quote-price-unit-0-0"]').text()).toBe('元');
+    expect(wrapper.get('[data-testid="quote-min-quantity-unit-0-0"]').text()).toBe('只');
+
+    await wrapper.get('[data-testid="step-packaging"]').trigger('click');
+    expect(wrapper.get('[data-testid="unified-package-length-unit"]').text()).toBe('cm');
+    expect(wrapper.get('[data-testid="unified-package-volume-unit"]').text()).toBe('cm³');
+    expect(wrapper.get('[data-testid="unified-carton-quantity-unit"]').text()).toBe('只');
+    expect(wrapper.get('[data-testid="unified-gram-weight-unit"]').text()).toBe('g');
+    expect(wrapper.get('[data-testid="unified-net-weight-unit"]').text()).toBe('kg');
+
+    await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
+    await wrapper.get('[data-testid="edit-packaging-0"]').trigger('click');
+    expect(wrapper.get('[data-testid="packaging-dialog-package-length-unit"]').text()).toBe('cm');
+    expect(wrapper.get('[data-testid="packaging-dialog-carton-quantity-unit"]').text()).toBe('只');
+    expect(wrapper.get('[data-testid="packaging-dialog-gram-weight-unit"]').text()).toBe('g');
+    expect(wrapper.get('[data-testid="packaging-dialog-net-weight-unit"]').text()).toBe('kg');
+  });
+
+  it('keeps length width and height identifiable with multiplication separators', async () => {
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
+    const { wrapper } = await mountEditor('/products/42/edit');
+
+    await wrapper.get('[data-testid="step-packaging"]').trigger('click');
+    const outerDimensions = wrapper.get('[data-testid="unified-package-dimensions"]');
+    expect(outerDimensions.findAll('[data-dimension-label]').map((label) => label.text())).toEqual(['长', '宽', '高']);
+    expect(outerDimensions.findAll('[data-dimension-separator]').map((separator) => separator.text())).toEqual(['×', '×']);
+
+    const innerDimensions = wrapper.get('[data-testid="unified-inner-package-dimensions"]');
+    expect(innerDimensions.findAll('[data-dimension-label]').map((label) => label.text())).toEqual(['长', '宽', '高']);
+    expect(innerDimensions.findAll('[data-dimension-separator]').map((separator) => separator.text())).toEqual(['×', '×']);
+
+    await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
+    await wrapper.get('[data-testid="edit-packaging-0"]').trigger('click');
+    const dialogDimensions = wrapper.get('[data-testid="packaging-dialog-package-dimensions"]');
+    expect(dialogDimensions.findAll('[data-dimension-label]').map((label) => label.text())).toEqual(['长', '宽', '高']);
+    expect(dialogDimensions.findAll('[data-dimension-separator]').map((separator) => separator.text())).toEqual(['×', '×']);
   });
 
   it('sets schema and safe-precision constraints on editor decimal inputs', async () => {
@@ -720,7 +803,7 @@ describe('Task 10 product editor', () => {
 
     expect(productService.createProduct).not.toHaveBeenCalled();
     expect(productService.updateProduct).not.toHaveBeenCalled();
-    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('包装/重量');
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('包装与重量');
     expect(wrapper.text()).toContain('装箱数必须为 1 到 2147483647 之间的整数');
   });
 
@@ -1185,7 +1268,7 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="previous-step"]').trigger('click');
     await wrapper.get('[data-testid="product-name"]').setValue('');
     await wrapper.get('[data-testid="step-confirm"]').trigger('click');
-    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('基础信息');
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('基本资料');
     expect(wrapper.text()).toContain('请输入商品名称');
   });
 
