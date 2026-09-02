@@ -4,7 +4,14 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { Category, PageResult } from '../../masterdata/types';
 import type { Product, ProductQuery, ProductService } from '../types';
+import {
+  loadProductColumnIds,
+  resetProductColumnIds,
+  saveProductColumnIds
+} from '../productCatalogColumns';
+import type { ProductCatalogColumnId } from '../productCatalogColumns';
 import ProductCategoryTree from './ProductCategoryTree.vue';
+import ProductColumnSelector from './ProductColumnSelector.vue';
 import ProductPagination from './ProductPagination.vue';
 import ProductTable from './ProductTable.vue';
 
@@ -48,6 +55,7 @@ const keywordDraft = ref('');
 const loading = ref(false);
 const errorMessage = ref('');
 const hasSuccessfulLoad = ref(false);
+const productColumnIds = ref<ProductCatalogColumnId[]>(loadProductColumnIds());
 let latestRequestId = 0;
 
 function singleQueryValue(value: unknown) {
@@ -153,6 +161,15 @@ function changePage(page: number) {
 function changeSize(size: number) {
   if (!allowedPageSizes.includes(size as (typeof allowedPageSizes)[number])) return;
   void updateRoute({ ...routeState.value, size, page: 1 });
+}
+
+function updateProductColumns(ids: ProductCatalogColumnId[]) {
+  productColumnIds.value = [...ids];
+  saveProductColumnIds(productColumnIds.value);
+}
+
+function resetProductColumns() {
+  productColumnIds.value = resetProductColumnIds();
 }
 
 watch(() => route.query, (query) => {
@@ -264,6 +281,12 @@ onBeforeUnmount(() => {
           >
             重置
           </button>
+
+          <ProductColumnSelector
+            :model-value="productColumnIds"
+            @update:model-value="updateProductColumns"
+            @reset="resetProductColumns"
+          />
         </div>
 
         <div
@@ -297,6 +320,7 @@ onBeforeUnmount(() => {
             :category-lookup-failed="categoryLookupFailed"
             :loading="loading"
             :show-empty="hasSuccessfulLoad && !errorMessage"
+            :column-ids="productColumnIds"
             @open-product="emit('open-product', $event)"
           />
         </div>

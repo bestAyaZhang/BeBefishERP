@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter, type LocationQueryRaw } from 'vue-router';
 import type { Category } from '../masterdata/types';
 import { httpProductService } from './httpProductService';
@@ -8,6 +8,8 @@ import type { Product, ProductFormPayload, ProductService } from './types';
 import ProductList from './components/ProductList.vue';
 import ProductTable from './components/ProductTable.vue';
 import { deduplicateCategories } from './productCategoryTree';
+import { PRODUCT_CATALOG_STORAGE_KEY } from './productCatalogColumns';
+import type { ProductCatalogColumnId } from './productCatalogColumns';
 
 function mockFetchApi(data: unknown) {
   vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(
@@ -168,6 +170,52 @@ function catalogProduct(id: number, productName: string, overrides: Partial<Prod
   });
 }
 
+function catalogSku(
+  id: number,
+  overrides: Partial<Product['skus'][number]> = {}
+): Product['skus'][number] {
+  return {
+    id,
+    skuCode: `SKU-${id}`,
+    barcode: null,
+    skuName: `SKU ${id}`,
+    specText: null,
+    specificationValues: [],
+    salesUnit: '只',
+    defaultSalePrice: 19.9,
+    standardCost: 8,
+    safetyStockQuantity: 12,
+    stockQuantity: 36,
+    packageLengthCm: 42,
+    packageWidthCm: 31,
+    packageHeightCm: 28,
+    packageVolumeCm3: 36456,
+    innerPackageLengthCm: 36,
+    innerPackageWidthCm: 25,
+    innerPackageHeightCm: 22,
+    productLengthCm: 12.5,
+    productWidthCm: 8.25,
+    productHeightCm: 20,
+    capacityMl: 450,
+    netWeightKg: 8.5,
+    grossWeightKg: 9.2,
+    gramWeightG: 350,
+    innerPackageWeightKg: 1.1,
+    packagingMethod: '彩盒',
+    cartonQuantity: 12,
+    skuImageFileId: null,
+    skuImageUrl: null,
+    packageImageFileId: null,
+    packageImageUrl: null,
+    cartonImageFileId: null,
+    cartonImageUrl: null,
+    supplierQuotes: [],
+    defaultSku: true,
+    status: 'enabled',
+    ...overrides
+  };
+}
+
 function catalogService(listProducts: ProductService['listProducts']): ProductService {
   return {
     ...fakeProductService,
@@ -193,6 +241,7 @@ async function mountCatalog(options: {
   categoryCounts?: Record<number, number>;
   allProductTotal?: number;
   categoryLookupFailed?: boolean;
+  attachTo?: Element;
 } = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -210,13 +259,225 @@ async function mountCatalog(options: {
       allProductTotal: options.allProductTotal ?? 9,
       categoryLookupFailed: options.categoryLookupFailed ?? false
     } as never,
-    global: { plugins: [router] }
+    global: { plugins: [router] },
+    attachTo: options.attachTo
   });
   await flushPromises();
   return { replace, router, service, wrapper };
 }
 
 describe('Task 8 product catalog list', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('customizes catalog fields in canonical order, persists them, enforces the minimum, and resets defaults', async () => {
+    const product = catalogProduct(42, '容量测试杯', {
+      skus: [catalogSku(421)]
+    });
+    const { wrapper } = await mountCatalog({
+      service: catalogService(mockListProducts(productPage([product])))
+    });
+
+    expect(wrapper.findAll('thead th')).toHaveLength(7);
+    const trigger = wrapper.get('[data-testid="product-column-trigger"]');
+    expect(trigger.attributes('aria-expanded')).toBe('false');
+
+    await trigger.trigger('click');
+    expect(wrapper.get('[data-testid="product-column-panel"]').isVisible()).toBe(true);
+    expect(wrapper.get('[data-testid="product-column-count"]').text()).toContain('已选 6');
+    expect(wrapper.get('[data-testid="product-column-help"]').text()).toContain('至少保留 6 个业务字段，操作列固定显示。');
+
+    await wrapper.get<HTMLInputElement>('[data-testid="product-column-checkbox-productDimensions"]').setValue(true);
+    await wrapper.get<HTMLInputElement>('[data-testid="product-column-checkbox-capacity"]').setValue(true);
+
+    expect(wrapper.get('thead tr').findAll('th').map((header) => header.text())).toEqual([
+      '商品信息', '分类', '品牌 / 供应商', '库存', '价格', '资料状态', '产品尺寸', '容量', '操作'
+    ]);
+    expect(wrapper.get('[data-testid="product-cell-productDimensions-42"]').text()).toBe('12.5 × 8.25 × 20 cm');
+    expect(wrapper.get('[data-testid="product-cell-capacity-42"]').text()).toBe('450 ml');
+    expect(window.localStorage.getItem(PRODUCT_CATALOG_STORAGE_KEY)).toBe(JSON.stringify([
+      'productInfo',
+      'category',
+      'brandSupplier',
+      'stock',
+      'price',
+      'completenessStatus',
+      'productDimensions',
+      'capacity'
+    ]));
+
+    const { wrapper: restoredWrapper } = await mountCatalog({
+      service: catalogService(mockListProducts(productPage([product])))
+    });
+    expect(restoredWrapper.get('thead tr').findAll('th').map((header) => header.text())).toEqual([
+      '商品信息', '分类', '品牌 / 供应商', '库存', '价格', '资料状态', '产品尺寸', '容量', '操作'
+    ]);
+    restoredWrapper.unmount();
+
+    await wrapper.get<HTMLInputElement>('[data-testid="product-column-checkbox-category"]').setValue(false);
+    await wrapper.get<HTMLInputElement>('[data-testid="product-column-checkbox-brandSupplier"]').setValue(false);
+    const selectedCheckboxes = wrapper.findAll<HTMLInputElement>('[data-testid^="product-column-checkbox-"]')
+      .filter((checkbox) => checkbox.element.checked);
+    expect(selectedCheckboxes).toHaveLength(6);
+    expect(selectedCheckboxes.every((checkbox) => checkbox.element.disabled)).toBe(true);
+
+    await wrapper.get('[data-testid="product-column-reset"]').trigger('click');
+    expect(wrapper.get('[data-testid="product-column-count"]').text()).toContain('已选 6');
+    expect(window.localStorage.getItem(PRODUCT_CATALOG_STORAGE_KEY)).toBeNull();
+    expect(wrapper.get('thead tr').findAll('th').map((header) => header.text())).toEqual([
+      '商品信息', '分类', '品牌 / 供应商', '库存', '价格', '资料状态', '操作'
+    ]);
+    wrapper.unmount();
+  });
+
+  it('dismisses the column panel with Escape or outside pointerdown and cleans document listeners', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const removeEventListener = vi.spyOn(document, 'removeEventListener');
+    const { wrapper } = await mountCatalog({ attachTo: host });
+    const trigger = wrapper.get<HTMLButtonElement>('[data-testid="product-column-trigger"]');
+
+    await trigger.trigger('click');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await wrapper.vm.$nextTick();
+    expect(trigger.attributes('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(trigger.element);
+
+    await trigger.trigger('click');
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    await wrapper.vm.$nextTick();
+    expect(trigger.attributes('aria-expanded')).toBe('false');
+
+    await trigger.trigger('click');
+    removeEventListener.mockClear();
+    wrapper.unmount();
+    expect(removeEventListener).toHaveBeenCalledWith('keydown', expect.any(Function));
+    expect(removeEventListener).toHaveBeenCalledWith('pointerdown', expect.any(Function));
+    removeEventListener.mockRestore();
+    host.remove();
+  });
+
+  it('aligns dynamic table states and resolves physical fields through the documented SKU fallback', () => {
+    const physicalColumnIds: ProductCatalogColumnId[] = [
+      'productInfo',
+      'productDimensions',
+      'capacity',
+      'packageVolume',
+      'cartonQuantity',
+      'packagingMethod',
+      'grossWeight',
+      'netWeight',
+      'gramWeight'
+    ];
+    const products = [
+      catalogProduct(1, '默认启用 SKU', {
+        skus: [
+          catalogSku(10, { defaultSku: false, productLengthCm: 1 }),
+          catalogSku(11, { defaultSku: true, productLengthCm: 11, productWidthCm: 12, productHeightCm: 13, capacityMl: 410 })
+        ]
+      }),
+      catalogProduct(2, '首个启用 SKU', {
+        skus: [
+          catalogSku(20, { status: 'disabled', defaultSku: true, productLengthCm: 2 }),
+          catalogSku(21, {
+            defaultSku: false,
+            productLengthCm: 21,
+            productWidthCm: 22,
+            productHeightCm: 23,
+            capacityMl: 420,
+            packageVolumeCm3: 42000,
+            cartonQuantity: 24,
+            packagingMethod: '纸盒彩盒',
+            grossWeightKg: 10.2,
+            netWeightKg: 9.4,
+            gramWeightG: 380
+          })
+        ]
+      }),
+      catalogProduct(3, '首个 SKU 兜底', {
+        skus: [
+          catalogSku(30, {
+            status: 'disabled',
+            defaultSku: false,
+            productLengthCm: 31,
+            productWidthCm: 32,
+            productHeightCm: 33,
+            capacityMl: 430
+          }),
+          catalogSku(31, { status: 'disabled', defaultSku: false, productLengthCm: 3 })
+        ]
+      })
+    ];
+    const wrapper = mount(ProductTable, {
+      props: { products, columnIds: physicalColumnIds }
+    });
+
+    expect(wrapper.findAll('thead th')).toHaveLength(10);
+    expect(wrapper.get('[data-testid="product-row-1"]').text()).toContain('11 × 12 × 13 cm');
+    expect(wrapper.get('[data-testid="product-row-1"]').text()).toContain('410 ml');
+    expect(wrapper.get('[data-testid="product-row-2"]').text()).toContain('21 × 22 × 23 cm');
+    expect(wrapper.get('[data-testid="product-row-2"]').text()).toContain('42000 cm³');
+    expect(wrapper.get('[data-testid="product-row-2"]').text()).toContain('24 只/箱');
+    expect(wrapper.get('[data-testid="product-row-2"]').text()).toContain('纸盒彩盒');
+    expect(wrapper.get('[data-testid="product-row-2"]').text()).toContain('10.2 kg');
+    expect(wrapper.get('[data-testid="product-row-2"]').text()).toContain('9.4 kg');
+    expect(wrapper.get('[data-testid="product-row-2"]').text()).toContain('380 g');
+    expect(wrapper.get('[data-testid="product-row-3"]').text()).toContain('31 × 32 × 33 cm');
+    expect(wrapper.get('[data-testid="product-row-3"]').text()).toContain('430 ml');
+
+    const loading = mount(ProductTable, {
+      props: { products: [], loading: true, columnIds: physicalColumnIds }
+    });
+    expect(loading.get('[data-testid="product-table-loading"]').attributes('colspan')).toBe('10');
+
+    const empty = mount(ProductTable, {
+      props: { products: [], showEmpty: true, columnIds: physicalColumnIds }
+    });
+    expect(empty.get('[data-testid="product-table-empty"]').attributes('colspan')).toBe('10');
+  });
+
+  it('renders every optional nonphysical registry field through the dynamic table', () => {
+    const columnIds: ProductCatalogColumnId[] = [
+      'productInfo',
+      'productCode',
+      'category',
+      'productType',
+      'brandSupplier',
+      'stock',
+      'safetyStock',
+      'price',
+      'skuCount',
+      'completenessStatus',
+      'completenessPercent',
+      'recordStatus',
+      'updatedAt',
+      'remark'
+    ];
+    const product = catalogProduct(55, '扩展字段商品', {
+      totalStock: 72,
+      totalSafetyStock: 18,
+      completenessPercent: 88,
+      updatedAt: '2026-09-02T13:45:00',
+      remark: '重点维护',
+      skus: [catalogSku(551), catalogSku(552, { defaultSku: false })]
+    });
+    const wrapper = mount(ProductTable, {
+      props: { products: [product], categories: catalogCategories, columnIds }
+    });
+
+    expect(wrapper.findAll('thead th')).toHaveLength(15);
+    expect(wrapper.get('[data-testid="product-cell-productCode-55"]').text()).toBe('PRD-000055');
+    expect(wrapper.get('[data-testid="product-cell-productType-55"]').text()).toBe('单品');
+    expect(wrapper.get('[data-testid="product-cell-safetyStock-55"]').text()).toBe('18');
+    expect(wrapper.get('[data-testid="product-cell-skuCount-55"]').text()).toBe('2');
+    expect(wrapper.get('[data-testid="product-cell-completenessPercent-55"]').text()).toBe('88%');
+    expect(wrapper.get('[data-testid="product-cell-recordStatus-55"]').text()).toBe('启用');
+    expect(wrapper.get('[data-testid="product-cell-updatedAt-55"]').text()).toBe('2026-09-02 13:45');
+    expect(wrapper.get('[data-testid="product-cell-remark-55"]').text()).toBe('重点维护');
+    expect(wrapper.get('[data-testid="product-detail-55"]').text()).toBe('查看详情');
+  });
+
   it('prefers the response category name when the local category lookup is stale', () => {
     const product = catalogProduct(31, '分类响应优先', { categoryName: '服务端分类名' });
     const wrapper = mount(ProductTable, {
@@ -503,7 +764,7 @@ describe('Task 8 product catalog list', () => {
     expect(wrapper.get('[data-testid="product-thumb-42"]').classes()).toContain('h-10');
     expect(wrapper.get('[data-testid="product-thumb-42"]').classes()).toContain('w-10');
     expect(wrapper.get('[data-testid="product-table-scroll"]').classes()).toContain('overflow-x-auto');
-    expect(wrapper.get('[data-testid="product-table"]').classes()).toContain('min-w-[854px]');
+    expect(wrapper.get('[data-testid="product-table"]').attributes('style')).toContain('min-width: 862px');
     expect(wrapper.get('[data-testid="product-pagination"]').element.parentElement?.getAttribute('data-testid')).not.toBe('product-table-scroll');
 
     await wrapper.get('[data-testid="product-detail-42"]').trigger('click');
