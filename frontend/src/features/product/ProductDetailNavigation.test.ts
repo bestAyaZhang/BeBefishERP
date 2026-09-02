@@ -617,6 +617,33 @@ describe('product detail navigation', () => {
     expect(wrapper.get('[data-testid="product-images-section"] [data-testid="packaging-carton-image-21"]').attributes('src')).toContain('carton-21.png');
   });
 
+  it('shows packaging and carton images for every SKU when the image files differ', async () => {
+    const productWithPerSkuImages: Product = {
+      ...detailProduct,
+      skus: detailProduct.skus.map((sku) => sku.id === 22
+        ? {
+            ...sku,
+            packageImageFileId: 204,
+            packageImageUrl: '/uploads/package-22.png',
+            cartonImageFileId: 205,
+            cartonImageUrl: '/uploads/carton-22.png'
+          }
+        : sku)
+    };
+    vi.mocked(productService.getProduct).mockResolvedValueOnce(productWithPerSkuImages);
+    await router.push('/products/42');
+    const wrapper = mount(ProductDetailView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const images = wrapper.get('[data-testid="product-images-section"]');
+    expect(images.get('[data-testid="packaging-package-image-21"]').attributes('src')).toContain('package-21.png');
+    expect(images.get('[data-testid="packaging-carton-image-21"]').attributes('src')).toContain('carton-21.png');
+    expect(images.get('[data-testid="packaging-package-image-22"]').attributes('src')).toContain('package-22.png');
+    expect(images.get('[data-testid="packaging-carton-image-22"]').attributes('src')).toContain('carton-22.png');
+    expect(images.text()).toContain('BBF-PUMP-021-WH');
+    expect(images.text()).toContain('BBF-PUMP-022-GY');
+  });
+
   it('renders abnormal stock, quantity, dimensions and volume as -- while preserving zero', async () => {
     const abnormalProduct: Product = {
       ...detailProduct,
