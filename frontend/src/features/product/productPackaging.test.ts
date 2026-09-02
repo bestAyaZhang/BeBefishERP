@@ -12,6 +12,10 @@ const basePackaging: PackagingComparableSku = {
   innerPackageLengthCm: 10,
   innerPackageWidthCm: 10,
   innerPackageHeightCm: null,
+  productLengthCm: 12.5,
+  productWidthCm: 8.25,
+  productHeightCm: 20,
+  capacityMl: 450,
   netWeightKg: 8.4,
   grossWeightKg: 9.1,
   gramWeightG: 210,
@@ -44,6 +48,24 @@ describe('getProductPackagingMode', () => {
     ])).toBe('per-sku');
   });
 
+  it.each([
+    ['productLengthCm', 12.501],
+    ['productWidthCm', 8.251],
+    ['productHeightCm', 20.001]
+  ] as const)('switches to per-sku when only %s differs', (field, value) => {
+    expect(getProductPackagingMode([
+      basePackaging,
+      { ...basePackaging, [field]: value }
+    ])).toBe('per-sku');
+  });
+
+  it('switches to per-sku when only capacity differs', () => {
+    expect(getProductPackagingMode([
+      basePackaging,
+      { ...basePackaging, capacityMl: 451 }
+    ])).toBe('per-sku');
+  });
+
   it('switches to per-sku when an image file id differs', () => {
     expect(getProductPackagingMode([
       basePackaging,
@@ -64,6 +86,10 @@ describe('getProductPackagingMode', () => {
       innerPackageHeightCm: null,
       innerPackageWidthCm: 10,
       innerPackageLengthCm: 10,
+      capacityMl: 450,
+      productHeightCm: 20,
+      productWidthCm: 8.25,
+      productLengthCm: 12.5,
       packageHeightCm: 24,
       packageWidthCm: 28,
       packageLengthCm: 42,
