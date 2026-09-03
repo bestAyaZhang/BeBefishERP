@@ -104,13 +104,19 @@ describe('EmployeeManagementView', () => {
     const listEmployees = vi.spyOn(service, 'listEmployees');
     const wrapper = await mountPage(service);
 
+    await wrapper.get('[data-testid="page-2"]').trigger('click');
+    await flushPromises();
     await wrapper.get('[data-testid="employee-employment-filter"]').setValue('temporary');
     await flushPromises();
     expect(listEmployees).toHaveBeenLastCalledWith(expect.objectContaining({ employmentType: 'temporary', page: 1 }));
 
+    await wrapper.get('[data-testid="employee-employment-filter"]').setValue('');
+    await flushPromises();
+    await wrapper.get('[data-testid="page-2"]').trigger('click');
+    await flushPromises();
     await wrapper.get('[data-testid="employee-status-filter"]').setValue('disabled');
     await flushPromises();
-    expect(listEmployees).toHaveBeenLastCalledWith(expect.objectContaining({ employmentType: 'temporary', status: 'disabled', page: 1 }));
+    expect(listEmployees).toHaveBeenLastCalledWith(expect.objectContaining({ employmentType: undefined, status: 'disabled', page: 1 }));
   });
 
   it('shows loading and a readable service error', async () => {
@@ -164,7 +170,9 @@ describe('EmployeeManagementView', () => {
     expect(wrapper.find('[data-testid="employee-password"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="employee-name"]').attributes('disabled')).toBeDefined();
     await wrapper.get('[data-testid="edit-from-view"]').trigger('click');
+    await nextTick();
     expect(wrapper.get('[data-testid="employee-drawer"]').attributes('data-mode')).toBe('edit');
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="employee-name"]').element);
     await wrapper.get('[data-testid="cancel-employee"]').trigger('click');
     expect(wrapper.find('[data-testid="employee-drawer"]').exists()).toBe(false);
   });
@@ -238,13 +246,22 @@ describe('EmployeeManagementView', () => {
   it('uses the Figma desktop height and typography hierarchy', async () => {
     const wrapper = await mountPage();
 
-    expect(wrapper.get('[data-testid="employee-workspace"]').classes()).toContain('h-[572px]');
+    expect(wrapper.get('[data-testid="employee-workspace"]').classes()).toContain('h-[804px]');
+    expect(wrapper.get('[data-testid="employee-table-content"]').classes()).toContain('h-[572px]');
     expect(wrapper.get('h1').classes()).toContain('font-bold');
     expect(wrapper.get('[data-testid="employee-list-title"]').classes()).toContain('font-medium');
   });
 });
 
 describe('EmployeeFormDrawer', () => {
+  it('uses the Figma medium weight for the drawer title', () => {
+    const wrapper = mountDrawer();
+    const title = wrapper.get('[data-testid="employee-drawer-title"]');
+
+    expect(title.classes()).toContain('font-medium');
+    expect(title.classes()).not.toContain('font-semibold');
+  });
+
   it('places an accessible employment mode fieldset inside the login section', () => {
     const wrapper = mountDrawer();
     const loginSection = wrapper.get('[data-testid="employee-login-section"]');

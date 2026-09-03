@@ -94,6 +94,12 @@ watch(() => [props.mode, props.employee?.id] as const, () => {
   validationError.value = '';
 });
 
+watch(() => props.mode, async (mode, previousMode) => {
+  if (previousMode !== 'view' || mode !== 'edit') return;
+  await nextTick();
+  initialFocusElement.value?.focus();
+});
+
 watch(() => form.value.departmentId, () => {
   if (!visiblePositions.value.some((item) => item.id === form.value.positionId)) {
     form.value.positionId = '';
@@ -196,7 +202,7 @@ onBeforeUnmount(() => {
     >
       <header class="flex h-[76px] shrink-0 items-center border-b border-slate-200 px-6">
         <div class="min-w-0 flex-1">
-          <h2 class="text-lg font-semibold leading-7 text-[#25314d]">{{ drawerTitle }}</h2>
+          <h2 data-testid="employee-drawer-title" class="text-lg font-medium leading-7 text-[#25314d]">{{ drawerTitle }}</h2>
           <p class="mt-0.5 text-xs leading-[18px] text-slate-400">
             {{ mode === 'view' ? '查看员工资料与登录状态' : mode === 'create' ? '创建员工档案并配置登录方式' : '维护员工资料与登录方式' }}
           </p>

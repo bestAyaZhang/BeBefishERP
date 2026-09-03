@@ -243,7 +243,7 @@ onMounted(loadReferenceData);
 
     <p v-if="pageNotice" data-testid="employee-page-notice" class="mb-4 rounded-[6px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700" role="status">{{ pageNotice }}</p>
 
-    <div data-testid="employee-workspace" class="grid h-[572px] grid-cols-[280px_minmax(0,1fr)] gap-4">
+    <div data-testid="employee-workspace" class="grid h-[804px] grid-cols-[280px_minmax(0,1fr)] gap-4">
       <DepartmentTree
         :nodes="departmentTree"
         :selected-id="selectedDepartmentId"
@@ -287,7 +287,7 @@ onMounted(loadReferenceData);
           <span class="rounded-[6px] bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-500">账号停用 {{ summary.disabledAccounts }}</span>
         </div>
 
-        <div class="min-h-0 flex-1 overflow-auto">
+        <div data-testid="employee-table-content" class="h-[572px] shrink-0 overflow-auto">
           <div v-if="loading" data-testid="employee-loading" class="space-y-px bg-slate-100" aria-label="正在加载员工">
             <div v-for="index in 6" :key="index" class="flex h-[72px] items-center gap-4 bg-white px-4">
               <span class="h-9 w-9 animate-pulse rounded-full bg-slate-100"></span>
