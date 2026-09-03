@@ -253,31 +253,31 @@ Screenshot at original scale. Verify radio rows align, option descriptions wrap 
 - Consumes: Task 3 frame structure and member-row component
 - Produces: complete member authorization state
 
-- [ ] **Step 1: Create the member frame**
+- [x] **Step 1: Create the member frame**
 
 Duplicate the shared frame, rename it `Permission Management / Member Management`, select `商品运营`, and activate the `成员管理` tab.
 
-- [ ] **Step 2: Build the member toolbar**
+- [x] **Step 2: Build the member toolbar**
 
 Add one search input with placeholder `姓名 / 手机号 / 工号`, a department select defaulting to `全部部门`, a secondary `批量移除` action disabled until selection, and a primary `添加成员` action.
 
-- [ ] **Step 3: Build the member table**
+- [x] **Step 3: Build the member table**
 
 Use columns `员工信息`, `部门 / 岗位`, `用工类型`, `其他角色`, `最终数据范围`, and `操作`. Populate six rows using the organization prototype's existing employee identities where possible. Use text actions, not unlabeled icon-only actions.
 
-- [ ] **Step 4: Represent multi-role results clearly**
+- [x] **Step 4: Represent multi-role results clearly**
 
 At least two rows must contain other-role tags and final ranges wider than the current role. Add a tooltip note on `最终数据范围` explaining that the widest active role scope wins.
 
-- [ ] **Step 5: Add locked-member behavior**
+- [x] **Step 5: Add locked-member behavior**
 
 Include one super-administrator member row in a locked state. Replace the remove action with `不可移除` and a visible reason `系统角色成员`.
 
-- [ ] **Step 6: Add pagination and empty-state readiness**
+- [x] **Step 6: Add pagination and empty-state readiness**
 
 Place compact pagination at the table bottom with `共 6 人`, previous/next controls, page `1`, and `20 条/页`. Create an unused component variant for the filtered-empty state with action `清除筛选`, but keep the populated state in the final frame.
 
-- [ ] **Step 7: Validate the member frame**
+- [x] **Step 7: Validate the member frame**
 
 Screenshot and inspect metadata. Verify columns do not overlap, names and roles truncate gracefully, text actions remain readable, pagination stays pinned beneath the table, and the right workspace does not create horizontal overflow.
 
@@ -529,3 +529,15 @@ Provide the user with the Figma prototype URL, the four local screenshot links, 
 - Durable original-scale screenshot: `.superpowers/sdd/2026-09-04-permission-management-figma-prototype/task-4-data-scope.png`, `1440x1024`, `147753` bytes, SHA-256 `32deb3d569a77b0a48327a64a6147723b6f7a0d7c8c6f564e07e6ce3fa6d1863`. Visual inspection confirmed aligned radios, unclipped descriptions, contained tree content, visible last option, and clear separation above the fixed action bar.
 - Source preservation: organization section `499:9745` remains `22720,0`, `4800x2368`, with its five original children; source frame `499:9746` remains `1440x1024`; Task 3 frame `572:11100` remains `80,3000`, `1440x1024`.
 - Concern: Figma normalizes paint-level opacity on nested instances, so the selected option keeps the reusable radio-row instance for content and uses an auto-layout wrapper plus a variable-bound background layer at node opacity `0.08`; no repeated role, tab, scope-option, or action structure is detached.
+
+### Task 5: Member Management Frame
+
+- Status: `DONE`.
+- Deliverable frame: `Permission Management / Member Management` (`622:12746`) in section `538:10667`, exactly `1440x1024` at `80,5480`; final workspace instance `622:13142` resolves to reusable component `621:12538` (`836x784`).
+- Reusable member assets: toolbar component `619:12511`; member-table set `614:12375` with populated `614:12373` and unused filtered-empty `614:12374`; final member-region instances `621:13919` and `621:13947`. Search, department select, disabled bulk removal, add member, member rows, pagination, tabs, and bottom actions retain component ancestry.
+- Content: six organization identities are present. `陈雯` has `组织管理员 +1` and `周敏` has `采购专员 +1`; both resolve to `全公司（最宽）`. Locked `张瑜` uses row variant `546:10703` with visible `不可移除` and `系统角色成员`.
+- Pagination: instance `615:12508` renders `共 6 人`, previous/next controls, active page `1`, and `20 条/页`. The hidden tooltip state `621:12536` contains the widest-active-role explanation in text `621:12537`.
+- Validation: Plugin API audit returned `PASS`; workspace child heights total `784`; no placeholders or horizontal overflow were found; six `836x1` row separators and zero direct vertical rules were found. Noto Sans SC and Inter use zero letter spacing.
+- Durable original-scale screenshot: `.superpowers/sdd/2026-09-04-permission-management-figma-prototype/task-5-member-management.png`, `1440x1024`, `175086` bytes, SHA-256 `c7587186a871c61f432827e1c1f4c14f7005772a4cb3bdf3dd79a69dc12bcd2c`.
+- Source preservation: organization section `499:9745` remains at `22720,0`, `4800x2368`, with original children `499:9746`, `499:9909`, `499:10072`, `499:10235`, and `499:10398`; source frame `499:9746`, Task 3 frame `572:11100`, and Task 4 frame `600:11953` retain their baseline geometry.
+- Concern: nested instance layer names for the data-scope and member tabs retain their cloned labels, but their authoritative main-component IDs resolve correctly to data-scope Default `542:10691` and member Active `542:10699`; the rendered state is correct.
