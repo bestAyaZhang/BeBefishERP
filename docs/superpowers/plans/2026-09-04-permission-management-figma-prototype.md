@@ -338,27 +338,27 @@ Screenshot at original scale. Verify the drawer matches organization drawer dime
 - Consumes: completed frame IDs from Tasks 3-6
 - Produces: a navigable desktop prototype with a stable start point
 
-- [ ] **Step 1: Set the prototype start point**
+- [x] **Step 1: Set the prototype start point**
 
 Set `Permission Management / Permission Matrix` as the flow starting frame named `权限管理`.
 
-- [ ] **Step 2: Connect the three tabs**
+- [x] **Step 2: Connect the three tabs**
 
 Connect `权限配置`, `数据范围`, and `成员管理` to their corresponding frames using instant navigation so the stable shell does not animate or shift.
 
-- [ ] **Step 3: Connect role creation**
+- [x] **Step 3: Connect role creation**
 
 Connect `新增角色` from each main frame to `Permission Management / Create Role Drawer` using an overlay-style transition. Connect close and cancel back to the matrix frame.
 
-- [ ] **Step 4: Connect create success**
+- [x] **Step 4: Connect create success**
 
 Connect `创建角色` to `Permission Management / Permission Matrix`. The destination must show `商品运营` selected and the permission tab editable; if that state cannot coexist with the read-only default without ambiguity, add it as a component-state change inside the matrix frame rather than creating a fifth deliverable frame.
 
-- [ ] **Step 5: Add interaction notes for non-navigating behavior**
+- [x] **Step 5: Add interaction notes for non-navigating behavior**
 
 Use concise Figma annotations for automatic view-permission selection, clearing dependent permissions when view is unchecked, unsaved-change confirmation, duplicate-member skipping, and widest-scope calculation. Keep annotations outside the visible application viewport.
 
-- [ ] **Step 6: Walk the prototype end to end**
+- [x] **Step 6: Walk the prototype end to end**
 
 Start at the matrix frame, visit both tabs, open and close the role drawer, reopen it, and submit the role. Confirm every hotspot lands on the intended frame and no dead-end blocks returning to the main state.
 
@@ -566,4 +566,18 @@ Provide the user with the Figma prototype URL, the four local screenshot links, 
 - Inspected approved data-scope strip `604:12724` without mutation. Focused write mutated helper `628:13985` and exact-copy text `628:13986`, and created 3x20 info accent `636:2`. Final treatment uses subtle surface `VariableID:6:9` (`#F8FAFC`), info accent `VariableID:6:15` (`#22B8CF`), secondary text `VariableID:6:11` (`#64748B`), and `Radius/6`; source nodes `604:12724`, `604:12725`, and `604:12726` remain unchanged.
 - Readback returned `PASS`: helper export bounds are `x=744..1415`, `y=890..927` (`672x38`); exact copy is `复制权限仅包含功能权限和数据范围，不复制成员。`; text is Noto Sans SC Regular 13/20 with `0px` letter spacing. Helper bottom `y=928` has `20px` clearance before fixed footer `627:13964` at `y=948`; body `627:13963` remains the only vertical scroll region.
 - Re-exported original-scale PNG is `1440x1024`, `181073` bytes, SHA-256 `b0d77703d50f5d2163b0d9de2de7d884c2e81a0989b6ac58e0371750cda2b347`. Pixel scan inside the helper found `23341` exact `#F8FAFC`, `56` exact `#22B8CF`, and `77` exact `#64748B` pixels; 1:1 visual inspection confirmed readable copy and no footer overlap.
+- Concerns: none.
+
+### Task 7: Interactive Prototype Connections
+
+- Status: `DONE`.
+- Flow start: page `1:3` now starts at `Permission Management / Permission Matrix` (`572:11100`) under the named flow `权限管理`; pre-existing product and organization flows remain present, and the incidental component-specimen flow was removed.
+- Exactly four `1440x1024` deliverables remain: matrix `572:11100`, data scope `600:11953`, member management `622:12746`, and create-role drawer `626:13258`. Supporting documentation frame `538:10668` is not a deliverable.
+- Main workspace state set: `Permissions/Main Workspace` (`641:14385`) with `State=SuperAdminReadOnly` (`562:10728`) and `State=NewRoleEditable` (`641:13966`). Matrix instance `574:11274` is bound to prototype variable `VariableID:644:14194` and resolves initially to `SuperAdminReadOnly`.
+- Create success uses one multi-action reaction on `629:13971`: set workspace to `NewRoleEditable`, set super-admin row `576:11698` to `Default`, set `商品运营` row `576:11738` to `Selected`, then navigate instantly to matrix `572:11100`. The editable variant shows role code `PRODUCT_OPERATOR`, 48 unchecked instances including the group legend, zero read-only checked cells, and 13 N/A cells.
+- Authoritative tab variants in set `542:10711` own all tab reactions, so the stale nested Task 5 layer names are not used. All three main frames resolve their three tabs to matrix/data/member correctly. Add Role hotspots on all three frames open drawer `626:13258`; close `627:13958` and cancel `629:13962` return to matrix.
+- Five exact rule annotations are stored on nodes `648:14193` through `648:14197` at section-local `x=3600`, outside every application viewport.
+- Final Plugin API audit: `PASS`, with first flow start, all 15 authoritative tab/hotspot reaction sources, variable bindings/defaults, create-success state resolution, exact four-frame count, annotation placement, complete reachability, no dead ends, and source preservation verified. No screenshot was required because the initial visible matrix state remained unchanged.
+- Durable audit: `.superpowers/sdd/2026-09-04-permission-management-figma-prototype/task-7-report.md`.
+- Source preservation: permission section `538:10667` remains `4200x7960`; organization section `499:9745` remains `22720,0`, `4800x2368`, with original children `499:9746`, `499:9909`, `499:10072`, `499:10235`, and `499:10398`.
 - Concerns: none.
