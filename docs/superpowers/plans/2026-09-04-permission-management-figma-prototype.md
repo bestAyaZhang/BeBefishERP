@@ -293,19 +293,19 @@ Screenshot and inspect metadata. Verify columns do not overlap, names and roles 
 - Consumes: permission matrix frame and existing organization drawer/form components
 - Produces: role-creation overlay state linked from the primary action
 
-- [ ] **Step 1: Duplicate the default matrix state**
+- [x] **Step 1: Duplicate the default matrix state**
 
 Duplicate `Permission Management / Permission Matrix`, rename the copy `Permission Management / Create Role Drawer`, and keep the underlying page content in the same state and position.
 
-- [ ] **Step 2: Add the overlay scrim and drawer**
+- [x] **Step 2: Add the overlay scrim and drawer**
 
 Add a neutral scrim over the application content while preserving visible context. Reuse the organization form drawer width and structure. Anchor the drawer to the right edge at full viewport height, with header and footer fixed and form content scrollable.
 
-- [ ] **Step 3: Build the drawer header**
+- [x] **Step 3: Build the drawer header**
 
 Use title `新增角色`, subtitle `创建角色后继续配置权限和成员`, and a close icon button with tooltip `关闭`.
 
-- [ ] **Step 4: Build the role form**
+- [x] **Step 4: Build the role form**
 
 Add these fields:
 
@@ -318,11 +318,11 @@ Add these fields:
 
 Use a text input for name, uppercase code input with helper text `仅支持大写字母、数字和下划线`, multiline textarea for description, and the shared select component for copy source. Add an inline uniqueness-success state `角色编码可用`.
 
-- [ ] **Step 5: Build the drawer footer**
+- [x] **Step 5: Build the drawer footer**
 
 Add `取消` and primary `创建角色`. Include helper copy above the footer: `复制权限仅包含功能权限和数据范围，不复制成员。`
 
-- [ ] **Step 6: Validate the drawer frame**
+- [x] **Step 6: Validate the drawer frame**
 
 Screenshot at original scale. Verify the drawer matches organization drawer dimensions, all labels and helper text fit, the select style matches the project standard, footer actions remain visible, and the scrim does not obscure the drawer.
 
@@ -541,3 +541,21 @@ Provide the user with the Figma prototype URL, the four local screenshot links, 
 - Durable original-scale screenshot: `.superpowers/sdd/2026-09-04-permission-management-figma-prototype/task-5-member-management.png`, `1440x1024`, `175086` bytes, SHA-256 `c7587186a871c61f432827e1c1f4c14f7005772a4cb3bdf3dd79a69dc12bcd2c`.
 - Source preservation: organization section `499:9745` remains at `22720,0`, `4800x2368`, with original children `499:9746`, `499:9909`, `499:10072`, `499:10235`, and `499:10398`; source frame `499:9746`, Task 3 frame `572:11100`, and Task 4 frame `600:11953` retain their baseline geometry.
 - Concern: nested instance layer names for the data-scope and member tabs retain their cloned labels, but their authoritative main-component IDs resolve correctly to data-scope Default `542:10691` and member Active `542:10699`; the rendered state is correct.
+
+### Task 6: Create Role Drawer Frame
+
+- Status: `DONE`.
+- Write 1 duplicated source frame `572:11100` into `Permission Management / Create Role Drawer` (`626:13258`), exactly `1440x1024` at `80,6720`; the containing section `538:10667` was resized from `4200x6720` to `4200x7960`.
+- Write 1 created IDs: `626:13258`, `626:13259`, `626:13260`, `626:13261`, `626:13262`, `626:13263`, `626:13264`, `626:13265`, `626:13266`, `626:13267`, `626:13268`, `626:13269`, `626:13270`, `626:13271`, `626:13272`, `626:13273`, `626:13274`, `626:13275`, `626:13276`, `626:13277`, `626:13278`, `626:13279`; mutated ID: section `538:10667` only.
+- Source matrix baseline remains `572:11100` at `80,3000`, exactly `1440x1024`, with direct children `584:11997`, `572:11231`, and `572:11262`.
+- Write 2 created scrim `627:13952`; drawer `627:13953`; header `627:13954`; header copy `627:13955`; title `627:13956`; subtitle `627:13957`; close button `627:13958`; X-icon instance `627:13959` with created descendant `I627:13959;53:230`; hidden tooltip `627:13961` and text `627:13962`; vertical-scroll body `627:13963`; footer `627:13964`. Mutated ID: Task 6 frame `626:13258` only.
+- Write 2 geometry: drawer `720x1024` at `720,0`; header/body/footer heights `76/872/76`; body overflow is `VERTICAL`; the header and footer are direct drawer siblings outside the scrolling body.
+- Write 3 created IDs: role-information card `628:13953`; form title `628:13954`; name field subtree `628:13955` through `628:13960`; code field subtree `628:13961` through `628:13969`; description field subtree `628:13970` through `628:13974`; shared-select instance `628:13975` with created descendants `I628:13975;61:343`, `I628:13975;61:344`, `I628:13975;61:346`, `I628:13975;61:347`, `I628:13975;61:348`, `I628:13975;61:348;23:49`, and `I628:13975;61:348;23:50`; pre-footer helper `628:13985` and text `628:13986`. Mutated ID: scroll body `627:13963` only.
+- Write 3 component ancestry: `628:13975` -> filled select `61:342` -> `Field/Select` set `61:352`. The role card is `672x460` at body `y=20`; the helper is `672x38` at body `y=814`; scroll overflow remains `VERTICAL`.
+- Write 4 created secondary cancel instance `629:13962` and descendant `I629:13962;56:299`, plus primary create-role instance `629:13971` and descendant `I629:13971;56:218`. Mutated ID: fixed footer `627:13964` only.
+- Write 4 component ancestry and geometry: `629:13962` -> secondary medium default hidden-icon variant `56:297`; `629:13971` -> primary medium default hidden-icon variant `56:216`; both resolve to `Button/Command` set `58:285` and render at `80x40` and `104x40` in the `720x76` footer.
+- Write 5 recovered SectionNode containment after the first audit found the cloned frame parented to page `1:3`. No nodes were created; mutated IDs were section `538:10667` and Task 6 frame `626:13258`. Final readback is parent `538:10667`, local position `80,6720`, exact `1440x1024`, and section containment `true`.
+- Final Plugin API audit returned `PASS`: the frame has layer order underlying shell -> scrim -> drawer; the drawer is `720x1024`; header/body/footer are sibling regions at `76/872/76`; only body `627:13963` has `overflowDirection=VERTICAL`; all four field roots and all required strings are present exactly once inside the drawer; select, buttons, and close icon retain component ancestry; no new out-of-bounds nodes, overlaps, placeholders, unsupported fonts, or nonzero letter spacing were found.
+- Durable original-scale screenshot: `.superpowers/sdd/2026-09-04-permission-management-figma-prototype/task-6-create-role-drawer.png`, `1440x1024`, `176766` bytes, SHA-256 `5e1628d0ee98902579d47d125e6e4525240fbf5a297292257401d387ff9b6873`. Visual inspection confirmed readable labels/helpers, visible underlying context, an unobscured drawer, matching select styling, and fixed visible footer actions.
+- Source preservation passed: matrix `572:11100`, data scope `600:11953`, member management `622:12746`, organization section `499:9745`, organization frame `499:9746`, organization drawer frame `499:10398`, and all shared components retain their prior geometry/content. Only permission section `538:10667` was intentionally enlarged to `4200x7960` to contain Task 6.
+- Concerns: none.
