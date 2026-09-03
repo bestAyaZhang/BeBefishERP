@@ -50,6 +50,19 @@ describe('DepartmentTree', () => {
     expect(wrapper.emitted('select')).toBeUndefined();
   });
 
+  it('totals direct employee counts across roots and descendants exactly once', () => {
+    const wrapper = mount(DepartmentTree, {
+      props: {
+        nodes: tree,
+        selectedId: null,
+        expandedIds: [],
+        employeeCounts: { 1: 2, 2: 3, 3: 5, 4: 1 }
+      }
+    });
+
+    expect(wrapper.get('[data-testid="department-all"]').text()).toContain('11');
+  });
+
   it('filters by department name while preserving matching ancestors and counts', async () => {
     const wrapper = mount(DepartmentTree, {
       props: {
@@ -60,7 +73,6 @@ describe('DepartmentTree', () => {
       }
     });
 
-    expect(wrapper.get('[data-testid="department-all"]').text()).toContain('11');
     await wrapper.get('[data-testid="department-search"]').setValue('设计');
 
     expect(wrapper.find('[data-testid="department-node-1"]').exists()).toBe(true);

@@ -29,10 +29,14 @@ const searchKeyword = ref('');
 const normalizedSearch = computed(() => searchKeyword.value.trim());
 const visibleTree = computed(() => filterDepartmentTree(props.nodes, normalizedSearch.value));
 const expandedIdSet = computed(() => new Set(props.expandedIds));
-const allEmployeeCount = computed(() => props.nodes.reduce(
-  (total, node) => total + (props.employeeCounts[node.id] ?? 0),
-  0
-));
+const allEmployeeCount = computed(() => {
+  const sumEmployeeCounts = (nodes: DepartmentTreeNode[]): number => nodes.reduce(
+    (total, node) => total + (props.employeeCounts[node.id] ?? 0) + sumEmployeeCounts(node.children),
+    0
+  );
+
+  return sumEmployeeCounts(props.nodes);
+});
 
 const rows = computed<DepartmentRow[]>(() => {
   const result: DepartmentRow[] = [];
