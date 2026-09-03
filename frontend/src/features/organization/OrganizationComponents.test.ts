@@ -50,17 +50,43 @@ describe('DepartmentTree', () => {
     expect(wrapper.emitted('select')).toBeUndefined();
   });
 
-  it('totals direct employee counts across roots and descendants exactly once', () => {
+  it('shows recursive employee totals for every node and counts all company exactly once', () => {
     const wrapper = mount(DepartmentTree, {
       props: {
         nodes: tree,
         selectedId: null,
-        expandedIds: [],
+        expandedIds: [1, 2],
         employeeCounts: { 1: 2, 2: 3, 3: 5, 4: 1 }
       }
     });
 
     expect(wrapper.get('[data-testid="department-all"]').text()).toContain('11');
+    expect(wrapper.get('[data-testid="department-node-1"]').text()).toContain('10');
+    expect(wrapper.get('[data-testid="department-node-2"]').text()).toContain('8');
+    expect(wrapper.get('[data-testid="department-node-3"]').text()).toContain('5');
+    expect(wrapper.get('[data-testid="department-node-4"]').text()).toContain('1');
+  });
+
+  it('renders a page-specific title and selected-node summary footer', () => {
+    const wrapper = mount(DepartmentTree, {
+      props: {
+        nodes: tree,
+        selectedId: 2,
+        expandedIds: [1, 2],
+        employeeCounts: { 1: 2, 2: 3, 3: 5, 4: 1 },
+        title: '部门结构',
+        summary: {
+          label: '当前选中',
+          title: '产品中心',
+          meta: '负责人：陈雯 · 直属员工 3 人'
+        }
+      }
+    });
+
+    expect(wrapper.get('[data-testid="department-tree-title"]').text()).toBe('部门结构');
+    expect(wrapper.get('[data-testid="department-tree-summary"]').text()).toContain('当前选中');
+    expect(wrapper.get('[data-testid="department-tree-summary-title"]').text()).toBe('产品中心');
+    expect(wrapper.get('[data-testid="department-tree-summary"]').text()).toContain('负责人：陈雯 · 直属员工 3 人');
   });
 
   it('filters by department name while preserving matching ancestors and counts', async () => {

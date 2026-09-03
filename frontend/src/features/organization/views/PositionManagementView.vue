@@ -5,10 +5,11 @@ import DepartmentTree from '../components/DepartmentTree.vue';
 import OrganizationPagination from '../components/OrganizationPagination.vue';
 import OrganizationStatusBadge from '../components/OrganizationStatusBadge.vue';
 import PositionFormDrawer, { type PositionDrawerMode } from '../components/PositionFormDrawer.vue';
-import { buildDepartmentTree } from '../organizationTree';
+import { buildDepartmentTree, collectDepartmentSubtreeIds } from '../organizationTree';
 import { organizationService, type OrganizationService } from '../organizationService';
 import type {
   Department,
+  Employee,
   OrganizationRecordStatus,
   PageResult,
   Position,
@@ -18,6 +19,7 @@ import type {
 const service = inject<OrganizationService>('organizationService', organizationService);
 
 const departments = ref<Department[]>([]);
+const employees = ref<Employee[]>([]);
 const employeeCounts = ref<Record<number, number>>({});
 const result = ref<PageResult<Position>>({ records: [], page: 1, pageSize: 20, total: 0 });
 const selectedDepartmentId = ref<number | null>(null);
@@ -39,22 +41,44 @@ const departmentTree = computed(() => buildDepartmentTree(departments.value));
 const departmentById = computed(() => new Map(departments.value.map((department) => [department.id, department])));
 const selectedDepartment = computed(() => departmentById.value.get(selectedDepartmentId.value ?? -1));
 const listTitle = computed(() => selectedDepartment.value ? `${selectedDepartment.value.departmentName}岗位` : '全部岗位');
+const scopedActiveEmployeeCount = computed(() => {
+  const departmentIds = selectedDepartmentId.value === null
+    ? null
+    : collectDepartmentSubtreeIds(departments.value, selectedDepartmentId.value);
+  return employees.value.filter((employee) => (
+    employee.status === 'active'
+    && (departmentIds === null || departmentIds.has(employee.departmentId))
+  )).length;
+});
+const treeSummary = computed(() => ({
+  label: '岗位范围',
+  title: selectedDepartment.value?.departmentName ?? '全公司',
+  meta: `共 ${result.value.total} 个岗位 · 在岗员工 ${scopedActiveEmployeeCount.value} 人`
+}));
 
 function messageFrom(value: unknown) {
   return value instanceof Error ? value.message : '请求失败，请稍后重试';
+}
+
+function currentPositionQuery() {
+  return {
+    page: page.value,
+    size: pageSize.value,
+    keyword: keyword.value || undefined,
+    departmentId: selectedDepartmentId.value ?? undefined,
+    status: status.value || undefined
+  };
+}
+
+async function fetchPositions() {
+  result.value = await service.listPositions(currentPositionQuery());
 }
 
 async function loadPositions() {
   loading.value = true;
   error.value = '';
   try {
-    result.value = await service.listPositions({
-      page: page.value,
-      size: pageSize.value,
-      keyword: keyword.value || undefined,
-      departmentId: selectedDepartmentId.value ?? undefined,
-      status: status.value || undefined
-    });
+    await fetchPositions();
   } catch (requestError) {
     error.value = messageFrom(requestError);
     result.value = { records: [], page: page.value, pageSize: pageSize.value, total: 0 };
@@ -67,11 +91,13 @@ async function loadReferenceData() {
   loading.value = true;
   error.value = '';
   try {
-    const [departmentItems, counts] = await Promise.all([
+    const [departmentItems, employeeItems, counts] = await Promise.all([
       service.listAllDepartments(),
+      service.listAllEmployees(),
       service.getDepartmentEmployeeCounts()
     ]);
     departments.value = departmentItems;
+    employees.value = employeeItems;
     employeeCounts.value = counts;
     expandedIds.value = departmentItems
       .filter((department) => departmentItems.some((candidate) => candidate.parentId === department.id))
@@ -85,13 +111,15 @@ async function loadReferenceData() {
 }
 
 async function refreshReferenceData() {
-  const [departmentItems, counts] = await Promise.all([
+  const [departmentItems, employeeItems, counts] = await Promise.all([
     service.listAllDepartments(),
+    service.listAllEmployees(),
     service.getDepartmentEmployeeCounts()
   ]);
   departments.value = departmentItems;
+  employees.value = employeeItems;
   employeeCounts.value = counts;
-  await loadPositions();
+  await fetchPositions();
 }
 
 async function selectDepartment(id: number | null) {
@@ -187,9 +215,15 @@ async function togglePositionStatus(position: Position) {
       position.id,
       position.status === 'enabled' ? 'disabled' : 'enabled'
     );
-    await refreshReferenceData();
   } catch (requestError) {
     pageNotice.value = messageFrom(requestError);
+    return;
+  }
+
+  try {
+    await refreshReferenceData();
+  } catch {
+    pageNotice.value = '操作已成功，但列表刷新失败，请手动重试';
   }
 }
 
@@ -220,6 +254,8 @@ onMounted(loadReferenceData);
         :selected-id="selectedDepartmentId"
         :expanded-ids="expandedIds"
         :employee-counts="employeeCounts"
+        title="所属部门"
+        :summary="treeSummary"
         @select="selectDepartment"
         @toggle="toggleDepartment"
       />
@@ -287,7 +323,7 @@ onMounted(loadReferenceData);
                 <td class="px-2.5">
                   <span class="flex items-center gap-2.5 whitespace-nowrap text-sm">
                     <button :data-testid="`edit-position-${positionItem.id}`" type="button" class="font-medium text-[#536dff] transition hover:text-[#465eea]" @click="openEdit(positionItem)">编辑</button>
-                    <button :data-testid="`position-status-action-${positionItem.id}`" type="button" class="text-slate-500 transition hover:text-[#25314d]" @click="togglePositionStatus(positionItem)">{{ positionItem.status === 'enabled' ? '停用' : '启用' }}</button>
+                    <button :data-testid="`position-status-action-${positionItem.id}`" type="button" class="text-xs text-slate-500 transition hover:text-[#25314d]" @click="togglePositionStatus(positionItem)">{{ positionItem.status === 'enabled' ? '停用' : '启用' }}</button>
                   </span>
                 </td>
               </tr>

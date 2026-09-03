@@ -10,14 +10,24 @@ interface DepartmentRow {
   expanded: boolean;
 }
 
+export interface DepartmentTreeSummary {
+  label: string;
+  title: string;
+  meta: string;
+}
+
 const props = withDefaults(defineProps<{
   nodes: DepartmentTreeNode[];
   selectedId: number | null;
   expandedIds?: number[];
   employeeCounts?: Record<number, number>;
+  title?: string;
+  summary?: DepartmentTreeSummary | null;
 }>(), {
   expandedIds: () => [],
-  employeeCounts: () => ({})
+  employeeCounts: () => ({}),
+  title: '组织架构',
+  summary: null
 });
 
 const emit = defineEmits<{
@@ -29,14 +39,23 @@ const searchKeyword = ref('');
 const normalizedSearch = computed(() => searchKeyword.value.trim());
 const visibleTree = computed(() => filterDepartmentTree(props.nodes, normalizedSearch.value));
 const expandedIdSet = computed(() => new Set(props.expandedIds));
-const allEmployeeCount = computed(() => {
-  const sumEmployeeCounts = (nodes: DepartmentTreeNode[]): number => nodes.reduce(
-    (total, node) => total + (props.employeeCounts[node.id] ?? 0) + sumEmployeeCounts(node.children),
-    0
-  );
+const subtreeEmployeeCounts = computed(() => {
+  const totals: Record<number, number> = {};
+  const sumNode = (node: DepartmentTreeNode): number => {
+    const total = (props.employeeCounts[node.id] ?? 0)
+      + node.children.reduce((sum, child) => sum + sumNode(child), 0);
+    totals[node.id] = total;
+    return total;
+  };
 
-  return sumEmployeeCounts(props.nodes);
+  props.nodes.forEach(sumNode);
+  return totals;
 });
+
+const allEmployeeCount = computed(() => props.nodes.reduce(
+  (total, root) => total + (subtreeEmployeeCounts.value[root.id] ?? 0),
+  0
+));
 
 const rows = computed<DepartmentRow[]>(() => {
   const result: DepartmentRow[] = [];
@@ -63,7 +82,7 @@ const rows = computed<DepartmentRow[]>(() => {
   >
     <header class="flex h-12 shrink-0 items-center gap-2 border-b border-slate-200 px-3 text-card-title text-[#25314d]">
       <Building2 class="h-[18px] w-[18px] text-slate-500" aria-hidden="true" />
-      <span class="min-w-0 flex-1 truncate">组织架构</span>
+      <span data-testid="department-tree-title" class="min-w-0 flex-1 truncate">{{ title }}</span>
     </header>
 
     <div class="shrink-0 px-3 pb-2 pt-3">
@@ -133,10 +152,16 @@ const rows = computed<DepartmentRow[]>(() => {
             {{ row.node.departmentName }}
           </span>
           <span class="shrink-0 font-numeric text-xs tabular-nums text-slate-400">
-            {{ employeeCounts[row.node.id] ?? 0 }}
+            {{ subtreeEmployeeCounts[row.node.id] ?? 0 }}
           </span>
         </button>
       </div>
     </div>
+
+    <footer v-if="summary" data-testid="department-tree-summary" class="min-h-[104px] shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-3">
+      <p class="text-xs text-slate-400">{{ summary.label }}</p>
+      <p data-testid="department-tree-summary-title" class="mt-1 truncate text-sm font-medium text-[#25314d]">{{ summary.title }}</p>
+      <p class="mt-1 text-xs leading-[18px] text-slate-500">{{ summary.meta }}</p>
+    </footer>
   </aside>
 </template>

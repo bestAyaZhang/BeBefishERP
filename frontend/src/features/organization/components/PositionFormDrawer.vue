@@ -32,10 +32,14 @@ function firstEnabledDepartmentId() {
 }
 
 function initialForm(): PositionFormState {
+  const createDepartmentId = props.departmentId !== null
+    && props.departments.some((department) => department.id === props.departmentId && department.status === 'enabled')
+    ? props.departmentId
+    : firstEnabledDepartmentId();
   return {
     positionCode: props.position?.positionCode ?? '',
     positionName: props.position?.positionName ?? '',
-    departmentId: props.position?.departmentId ?? props.departmentId ?? firstEnabledDepartmentId(),
+    departmentId: props.position ? props.position.departmentId : createDepartmentId,
     responsibilities: props.position?.responsibilities ?? '',
     status: props.position?.status ?? 'enabled'
   };

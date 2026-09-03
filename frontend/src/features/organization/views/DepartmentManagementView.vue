@@ -39,21 +39,42 @@ const saveError = ref('');
 
 const departmentTree = computed(() => buildDepartmentTree(departments.value));
 const departmentById = computed(() => new Map(departments.value.map((department) => [department.id, department])));
+const selectedTreeDepartment = computed(() => departmentById.value.get(selectedDepartmentId.value ?? -1));
+const treeSummary = computed(() => {
+  const department = selectedTreeDepartment.value;
+  if (!department) {
+    const total = Object.values(employeeCounts.value).reduce((sum, count) => sum + count, 0);
+    return { label: '当前选中', title: '全公司', meta: `共 ${total} 人` };
+  }
+  return {
+    label: '当前选中',
+    title: department.departmentName,
+    meta: `负责人：${department.managerName || '未设置'} · 直属员工 ${employeeCounts.value[department.id] ?? 0} 人`
+  };
+});
 
 function messageFrom(value: unknown) {
   return value instanceof Error ? value.message : '请求失败，请稍后重试';
+}
+
+function currentDepartmentQuery() {
+  return {
+    page: page.value,
+    size: pageSize.value,
+    keyword: keyword.value || undefined,
+    status: status.value || undefined
+  };
+}
+
+async function fetchDepartments() {
+  result.value = await service.listDepartmentPage(currentDepartmentQuery());
 }
 
 async function loadDepartments() {
   loading.value = true;
   error.value = '';
   try {
-    result.value = await service.listDepartmentPage({
-      page: page.value,
-      size: pageSize.value,
-      keyword: keyword.value || undefined,
-      status: status.value || undefined
-    });
+    await fetchDepartments();
   } catch (requestError) {
     error.value = messageFrom(requestError);
     result.value = { records: [], page: page.value, pageSize: pageSize.value, total: 0 };
@@ -93,7 +114,7 @@ async function refreshReferenceData() {
   departments.value = departmentItems;
   employees.value = employeeItems;
   employeeCounts.value = counts;
-  await loadDepartments();
+  await fetchDepartments();
 }
 
 function selectDepartment(id: number | null) {
@@ -188,9 +209,15 @@ async function toggleDepartmentStatus(department: DepartmentListItem) {
       department.id,
       department.status === 'enabled' ? 'disabled' : 'enabled'
     );
-    await refreshReferenceData();
   } catch (requestError) {
     pageNotice.value = messageFrom(requestError);
+    return;
+  }
+
+  try {
+    await refreshReferenceData();
+  } catch {
+    pageNotice.value = '操作已成功，但列表刷新失败，请手动重试';
   }
 }
 
@@ -221,6 +248,8 @@ onMounted(loadReferenceData);
         :selected-id="selectedDepartmentId"
         :expanded-ids="expandedIds"
         :employee-counts="employeeCounts"
+        title="部门结构"
+        :summary="treeSummary"
         @select="selectDepartment"
         @toggle="toggleDepartment"
       />
@@ -291,7 +320,7 @@ onMounted(loadReferenceData);
                     <button
                       :data-testid="`department-status-action-${department.id}`"
                       type="button"
-                      class="text-slate-500 transition enabled:hover:text-[#25314d] disabled:cursor-not-allowed disabled:text-slate-400"
+                      class="text-xs text-slate-500 transition enabled:hover:text-[#25314d] disabled:cursor-not-allowed disabled:text-slate-400"
                       :disabled="department.status === 'enabled' && department.statusActionDisabled"
                       :title="department.status === 'enabled' && department.statusActionDisabled ? '部门存在启用中的子部门或在职员工，暂不可停用' : undefined"
                       @click="toggleDepartmentStatus(department)"

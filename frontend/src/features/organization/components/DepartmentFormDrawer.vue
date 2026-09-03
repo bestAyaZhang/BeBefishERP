@@ -31,10 +31,14 @@ interface DepartmentFormState {
 }
 
 function initialForm(): DepartmentFormState {
+  const createParentId = props.parentId !== null
+    && props.departments.some((department) => department.id === props.parentId && department.status === 'enabled')
+    ? props.parentId
+    : null;
   return {
     departmentCode: props.department?.departmentCode ?? '',
     departmentName: props.department?.departmentName ?? '',
-    parentId: props.department?.parentId ?? props.parentId,
+    parentId: props.department ? props.department.parentId : createParentId,
     managerEmployeeId: props.department?.managerEmployeeId ?? null,
     sortOrder: props.department?.sortOrder ?? 10,
     status: props.department?.status ?? 'enabled'

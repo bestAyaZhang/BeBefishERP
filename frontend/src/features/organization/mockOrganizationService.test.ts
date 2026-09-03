@@ -48,6 +48,18 @@ describe('mockOrganizationService', () => {
     expect(positions.total).toBeGreaterThanOrEqual(10);
   });
 
+  it('filters positions by the complete selected department subtree', async () => {
+    const page = await service.listPositions({ page: 1, size: 20, departmentId: 2 });
+    const departmentIds = new Set(page.records.map((item) => item.departmentId));
+
+    expect(departmentIds.has(2)).toBe(true);
+    expect(departmentIds.has(3)).toBe(true);
+    expect(departmentIds.has(4)).toBe(true);
+    expect(page.records.some((item) => item.positionName === '后端工程师')).toBe(true);
+    expect(page.records.some((item) => item.positionName === '产品设计师')).toBe(true);
+    expect(page.records.every((item) => [2, 3, 4, 11].includes(item.departmentId))).toBe(true);
+  });
+
   it('provides stable unpaged employee options and isolates service instances', async () => {
     const other = createMockOrganizationService();
     const initialOptions = await service.listAllEmployees();

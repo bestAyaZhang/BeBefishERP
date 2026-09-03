@@ -259,9 +259,12 @@ export function createMockOrganizationService(): OrganizationService {
     },
 
     async listPositions(query: PositionQuery) {
+      const departmentIds = query.departmentId === undefined
+        ? null
+        : collectDepartmentSubtreeIds(departments, query.departmentId);
       const records = positions
         .filter((position) => (!query.status || position.status === query.status)
-          && (query.departmentId === undefined || position.departmentId === query.departmentId)
+          && (departmentIds === null || departmentIds.has(position.departmentId))
           && includesKeyword([position.positionCode, position.positionName, position.responsibilities], query.keyword))
         .map(materializePosition);
       return page(records, query.page, query.size);
