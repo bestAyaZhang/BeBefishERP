@@ -57,7 +57,7 @@
 - Consumes: current Figma account and the existing organization prototype
 - Produces: verified IDs and reusable visual contracts for every later task
 
-- [ ] **Step 1: Load the required Figma skills and tool schemas**
+- [x] **Step 1: Load the required Figma skills and tool schemas**
 
 Read `figma:figma-use` in full immediately before each `use_figma` call. Also read `figma:figma-generate-design` before the first design-writing call. Discover the schemas for `use_figma`, metadata inspection, screenshots, and design-system search before invoking them.
 
@@ -67,19 +67,19 @@ Use the authenticated Figma workspace or an existing file URL from the current t
 
 Expected: one verified file key and one page ID for `04 Organization`.
 
-- [ ] **Step 3: Inspect the organization source frames**
+- [x] **Step 3: Inspect the organization source frames**
 
 Read metadata for the employee list, department list, position list, and employee form frames. Record the application-shell instance, sidebar, toolbar, page title, table, tabs, drawer, button, input, select, checkbox, tag, and pagination components that can be reused.
 
-- [ ] **Step 4: Inspect variables, text styles, and fonts**
+- [x] **Step 4: Inspect variables, text styles, and fonts**
 
 Confirm the IDs and current values for brand, surface, text, border, status, spacing, and radius variables. Confirm the exact installed style names for Noto Sans SC and Inter and load those font styles before creating text.
 
-- [ ] **Step 5: Capture visual references**
+- [x] **Step 5: Capture visual references**
 
 Take screenshots of the employee list and its form/drawer state at original scale. Verify shell dimensions, sidebar width, top-toolbar height, content padding, table density, field height, and drawer width against metadata.
 
-- [ ] **Step 6: Record the execution checkpoint**
+- [x] **Step 6: Record the execution checkpoint**
 
 Add an `Execution Notes` section at the end of this plan containing the resolved Figma URL, file key, page ID, reusable component IDs, and variable/style IDs. Do not continue until all identifiers come from tool output.
 
@@ -450,3 +450,20 @@ Expected: the permission prototype commit contains only the plan record and perm
 - [ ] **Step 3: Deliver the prototype**
 
 Provide the user with the Figma prototype URL, the four local screenshot links, a short list of covered interactions, and any validation limitation. Do not claim backend authorization or persistence because those are explicitly outside this prototype.
+
+## Execution Notes
+
+### Task 1: Existing Figma Workspace Audit
+
+- Status: `DONE_WITH_CONCERNS`.
+- Authenticated file: `BeBefish ERP — Master Data UI` (`figma`, file key `jIz9HNkSoXH63gvTc3yOtj`). Browser-resolved URL: `https://www.figma.com/design/jIz9HNkSoXH63gvTc3yOtj/BeBefish-ERP-%E2%80%94-Master-Data-UI?node-id=1-3&p=f&t=kkv9k4jGUtUCoSWB-0`.
+- Hierarchy concern: the file has pages `01 Foundations` (`0:1`), `02 Components` (`1:2`), and `03 Master Data` (`1:3`). `04 Organization` is a section (`499:9745`) on `03 Master Data`, not a page. Task 1 Step 2 remains unchecked because the required page does not exist under the approved name/type.
+- Organization source frames: employee list `499:9746`; employee list, Product Center state `499:9909`; department list `499:10072`; position list `499:10235`; employee form/drawer state `499:10398`.
+- Shell and header instances: sidebar `499:9747` -> `Navigation/Sidebar` component `28:81`; top toolbar `499:9877` -> `Header/Top Bar` component `31:186`; employee page header `500:10541`, department page header `502:10565`, and position page header `504:10577` -> `Header/Page Header` set `33:234`, `Action=Shown` variant `33:208`.
+- Source pattern IDs: employee workspace `500:10554`, filters `500:10624`, keyword input `500:10625`, employment select `500:10627`, status select `500:10630`, query button `500:10633`, reset button `500:10635`, table `500:10646`, selection control `500:10676`, status chip `500:10638`, and pagination `500:10841`; department workspace `502:10578`, table `503:10588`, and pagination `503:10767`; position workspace `504:10578`, table `505:10600`, and pagination `505:10679`; employee drawer `506:10894`, field input sample `506:10909`, cancel button `506:10991`, and save button `506:10993`.
+- Reusable local component IDs: `Button/Command` set `58:285`; `Field/Text` set `60:322`; `Field/Search` set `60:456`; `Field/Select` set `61:352`; `Tag/Status` set `64:348`; `Pagination` `66:441`; `__Table/Selection Control` set `106:658`; `Table/Header Cell` set `101:623`; `Table/Data Cell` set `103:614`; `Table/Row` set `106:761`; `Table/Container` `107:654`; `Overlay/Drawer` `67:459`. No local tab component was found, and the organization tables, fields, tags, buttons, pagination, and drawer are mostly raw frames rather than instances.
+- Semantic variables: Brand `VariableID:6:5` (`#536DFF`) and `VariableID:6:6` (`#465EEA`); surfaces `VariableID:6:7` (`#F6F7FB`), `VariableID:6:8` (`#FFFFFF`), and `VariableID:6:9` (`#F8FAFC`); text `VariableID:6:10` (`#25314D`), `VariableID:6:11` (`#64748B`), and `VariableID:6:12` (`#94A3B8`); border `VariableID:6:13` (`#E2E8F0`); status `VariableID:6:14` through `VariableID:6:17`; spacing `VariableID:6:18` through `VariableID:6:25` (`4`, `8`, `12`, `16`, `20`, `24`, `32`, `40`); radii `VariableID:6:26` (`6`) and `VariableID:6:27` (`8`).
+- Text style IDs: page title `S:5fe7bb5c2575a078964587ca4defc176ebaafd97,`; section title `S:b78418d75a93de672fe41d4221b9d7760362ca7d,`; card title `S:eac6a5041e269484a2847f3cc92ba876b6c108be,`; body `S:b803ede944e73a4a4d38d0a6c5998ebb5ad7e06b,`; body strong `S:f2fc909c143c7c88e9cf769d60bae9fb62988c0a,`; label `S:aaffcae05e4a0a2e32b0ba92a8dd8741150a1893,`; caption `S:ee2b232ff33b617b92fd1ad16368ab221946d71c,`; table number `S:d89771bae53e5f7313faf2d296585702f4b228a4,`.
+- Font checks: successfully loaded `Noto Sans SC` styles `Regular`, `Medium`, and `Bold`, plus `Inter` style `Semi Bold`. Letter spacing is `0px` for every local text style. The organization section currently uses Noto Sans SC only; the Inter table-number style has zero uses there.
+- Original-scale screenshots were captured for employee list `499:9746` and employee form `499:10398`; both rendered at their natural `1440x1024`. Metadata and visual checks confirm sidebar `244px`, top toolbar `64px`, content padding `32px`, employee rows `72px`, form controls `40px`, and drawer `720px` wide. The rendered references were nonblank and showed no clipping, overlap, or browser/editor chrome.
+- Design-system search returned no published library matches for the combined button/input/select/checkbox/tag/pagination/tab/drawer query; reusable IDs above were therefore verified directly from the local `02 Components` page through the Figma Plugin API.
