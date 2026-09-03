@@ -54,9 +54,12 @@ const categoryNames = computed(() => new Map(
   props.categories.map((category) => [category.id, category.categoryName])
 ));
 const failedImageUrls = ref<Record<number, string>>({});
-const activeColumns = computed(() => PRODUCT_CATALOG_COLUMNS.filter((column) => (
-  props.columnIds.includes(column.id)
-)));
+const catalogColumnById = new Map<ProductCatalogColumnId, ProductCatalogColumnDefinition>(
+  PRODUCT_CATALOG_COLUMNS.map((column) => [column.id, column])
+);
+const activeColumns = computed(() => props.columnIds
+  .map((id) => catalogColumnById.get(id))
+  .filter((column): column is ProductCatalogColumnDefinition => Boolean(column)));
 const totalColumnCount = computed(() => activeColumns.value.length + 1);
 const minimumWidth = computed(() => activeColumns.value.reduce((sum, column) => (
   sum + column.width

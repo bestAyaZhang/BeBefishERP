@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { AlertCircle, Check, ChevronLeft, ChevronRight, LoaderCircle, RotateCcw } from 'lucide-vue-next';
+import { AlertCircle, Boxes, Check, ChevronLeft, ChevronRight, LoaderCircle, RotateCcw } from 'lucide-vue-next';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter, type RouteLocationNormalized } from 'vue-router';
+import AccessibleDialog from '../../../components/AccessibleDialog.vue';
 import { message } from '../../../components/feedback/message';
 import { masterdataService } from '../../masterdata/masterdataService';
 import type { Category, PageResult, Supplier } from '../../masterdata/types';
@@ -44,6 +45,7 @@ const saving = ref(false);
 const imageUploading = ref(false);
 const loadError = ref('');
 const optionError = ref('');
+const createdProduct = ref<Product | null>(null);
 const initialSnapshot = ref(serializeState(state.value));
 let latestProductRequestId = 0;
 let latestOptionRequestId = 0;
@@ -250,6 +252,10 @@ async function submit() {
     if (!componentActive || requestId !== latestSaveRequestId || routeGeneration !== sourceRouteGeneration) return;
     initialSnapshot.value = serializeState(state.value);
     message.success(wasCreate ? '商品已创建' : '商品已更新');
+    if (wasCreate) {
+      createdProduct.value = saved;
+      return;
+    }
     const navigationAuthorization = {
       requestId,
       routeGeneration: sourceRouteGeneration,
@@ -267,6 +273,23 @@ async function submit() {
   } finally {
     if (requestId === latestSaveRequestId && routeGeneration === sourceRouteGeneration) saving.value = false;
   }
+}
+
+function finishProductCreate() {
+  const saved = createdProduct.value;
+  if (!saved) return;
+  createdProduct.value = null;
+  void router.push({ name: 'product-detail', params: { id: saved.id } });
+}
+
+function startOpeningStock() {
+  const saved = createdProduct.value;
+  if (!saved) return;
+  createdProduct.value = null;
+  void router.push({
+    name: 'inventory-adjustments',
+    query: { mode: 'opening', productId: String(saved.id) }
+  });
 }
 
 function activeOperationMessage() {
@@ -314,6 +337,7 @@ watch(() => route.fullPath, () => {
   latestSaveRequestId += 1;
   saving.value = false;
   saveNavigationAuthorization = null;
+  createdProduct.value = null;
   void loadEditor();
 }, { immediate: true, flush: 'sync' });
 
@@ -324,6 +348,7 @@ onBeforeUnmount(() => {
   latestOptionRequestId += 1;
   latestSaveRequestId += 1;
   saveNavigationAuthorization = null;
+  createdProduct.value = null;
   window.removeEventListener('beforeunload', handleBeforeUnload);
 });
 </script>
@@ -427,6 +452,54 @@ onBeforeUnmount(() => {
           </div>
         </footer>
       </section>
+
+      <AccessibleDialog
+        :open="createdProduct !== null"
+        title="商品创建成功"
+        description="商品主资料与 SKU 已保存"
+        test-id="product-create-success-dialog"
+        body-test-id="product-create-success-body"
+        footer-test-id="product-create-success-footer"
+        close-test-id="product-create-success-close"
+        panel-class="w-[520px]"
+        body-class="px-6 py-6"
+        footer-class="px-6 py-4"
+        @cancel="finishProductCreate"
+      >
+        <div v-if="createdProduct" class="space-y-4">
+          <div class="flex items-center gap-4 rounded-lg border border-emerald-100 bg-emerald-50/70 p-4">
+            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-emerald-100 text-emerald-600">
+              <Check class="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div class="min-w-0">
+              <p class="truncate text-base font-semibold text-[#25314d]">{{ createdProduct.productName }}</p>
+              <p class="mt-1 text-xs text-slate-500">{{ createdProduct.itemNo }} · {{ createdProduct.skus.length }} 个 SKU</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 rounded-lg bg-[#f5f7ff] px-4 py-3 text-sm leading-6 text-slate-600">
+            <Boxes class="mt-0.5 h-4 w-4 shrink-0 text-[#536dff]" aria-hidden="true" />
+            <p>库存作为独立业务数据维护。现在录入可自动带入本商品的全部 SKU，也可以稍后从库存调整中处理。</p>
+          </div>
+        </div>
+        <template #footer>
+          <button
+            data-testid="product-create-success-complete"
+            type="button"
+            class="h-10 min-w-24 rounded-lg border border-[#dbe4f1] bg-white px-4 text-sm font-medium text-[#25314d] hover:border-[#b9c8df]"
+            @click="finishProductCreate"
+          >
+            完成
+          </button>
+          <button
+            data-testid="product-create-success-opening-stock"
+            type="button"
+            class="h-10 min-w-36 rounded-lg bg-[#536dff] px-5 text-sm font-medium text-white hover:bg-[#465eea]"
+            @click="startOpeningStock"
+          >
+            录入期初库存
+          </button>
+        </template>
+      </AccessibleDialog>
     </template>
   </section>
 </template>

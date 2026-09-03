@@ -156,7 +156,8 @@ async function mountEditor(path = '/products/new') {
       { path: '/products', name: 'products', component: { template: '<div data-testid="products-page" />' } },
       { path: '/products/new', name: 'product-new', component: ProductEditorView },
       { path: '/products/:id/edit', name: 'product-edit', component: ProductEditorView },
-      { path: '/products/:id', name: 'product-detail', component: { template: '<div data-testid="product-detail-page" />' } }
+      { path: '/products/:id', name: 'product-detail', component: { template: '<div data-testid="product-detail-page" />' } },
+      { path: '/inventory/adjustments', name: 'inventory-adjustments', component: { template: '<div data-testid="inventory-adjustments-page" />' } }
     ]
   });
   await router.push(path);
@@ -281,7 +282,31 @@ describe('Task 10 product editor', () => {
       })]
     }));
     expect(vi.mocked(productService.createProduct).mock.calls[0][0]).not.toHaveProperty('packagingMode');
+    expect(router.currentRoute.value.name).toBe('product-new');
+    expect(wrapper.get('[data-testid="product-create-success-dialog"]').text()).toContain('按压瓶');
+    expect(wrapper.get('[data-testid="product-create-success-dialog"]').text()).toContain('1 个 SKU');
+    await wrapper.get('[data-testid="product-create-success-complete"]').trigger('click');
+    await flushPromises();
     expect(router.currentRoute.value).toMatchObject({ name: 'product-detail', params: { id: '77' } });
+  });
+
+  it('continues from a newly created product to opening stock with the saved product id', async () => {
+    const { router, wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await next(wrapper);
+    await addSku(wrapper, '白色款', '6970000000210');
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="product-create-success-dialog"]').attributes('role')).toBe('dialog');
+    await wrapper.get('[data-testid="product-create-success-opening-stock"]').trigger('click');
+    await flushPromises();
+
+    expect(router.currentRoute.value).toMatchObject({
+      name: 'inventory-adjustments',
+      query: { mode: 'opening', productId: '77' }
+    });
   });
 
   it('renders the edit route with the six-step Figma desktop wizard layout', async () => {

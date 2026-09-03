@@ -157,7 +157,7 @@ describe('product catalog column registry', () => {
     expect(DEFAULT_PRODUCT_COLUMN_IDS.length + 1).toBe(7);
   });
 
-  it('filters known identifiers and restores their canonical registry order', () => {
+  it('filters known identifiers while preserving the requested order', () => {
     expect(normalizeProductColumnIds([
       'capacity',
       'stock',
@@ -168,7 +168,15 @@ describe('product catalog column registry', () => {
       'capacity',
       'brandSupplier',
       'completenessStatus'
-    ])).toEqual([...DEFAULT_COLUMN_IDS, 'capacity']);
+    ])).toEqual([
+      'capacity',
+      'stock',
+      'productInfo',
+      'price',
+      'category',
+      'brandSupplier',
+      'completenessStatus'
+    ]);
   });
 
   it.each([
@@ -183,7 +191,7 @@ describe('product catalog column registry', () => {
 });
 
 describe('product catalog column preference persistence', () => {
-  it('uses the versioned storage key and saves only normalized canonical identifiers', () => {
+  it('uses the versioned storage key and saves the normalized user order', () => {
     const storage = createMemoryStorage();
 
     saveProductColumnIds([
@@ -198,12 +206,17 @@ describe('product catalog column preference persistence', () => {
 
     expect(PRODUCT_CATALOG_STORAGE_KEY).toBe('bebefish.product.catalog.columns.v1');
     expect(storage.getItem(PRODUCT_CATALOG_STORAGE_KEY)).toBe(JSON.stringify([
-      ...DEFAULT_COLUMN_IDS,
-      'capacity'
+      'capacity',
+      'stock',
+      'productInfo',
+      'price',
+      'category',
+      'brandSupplier',
+      'completenessStatus'
     ]));
   });
 
-  it('loads valid preferences in canonical order', () => {
+  it('loads valid preferences in the saved user order', () => {
     const storage = createMemoryStorage({
       [PRODUCT_CATALOG_STORAGE_KEY]: JSON.stringify([
         'capacity',
@@ -216,7 +229,15 @@ describe('product catalog column preference persistence', () => {
       ])
     });
 
-    expect(loadProductColumnIds(storage)).toEqual([...DEFAULT_COLUMN_IDS, 'capacity']);
+    expect(loadProductColumnIds(storage)).toEqual([
+      'capacity',
+      'stock',
+      'productInfo',
+      'price',
+      'category',
+      'brandSupplier',
+      'completenessStatus'
+    ]);
   });
 
   it.each([

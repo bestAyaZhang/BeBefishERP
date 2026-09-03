@@ -80,12 +80,14 @@ function defaultProductColumnIds(): ProductCatalogColumnId[] {
 export function normalizeProductColumnIds(ids: unknown): ProductCatalogColumnId[] {
   if (!Array.isArray(ids)) return defaultProductColumnIds();
 
-  const requested = new Set(
-    ids.filter((id): id is ProductCatalogColumnId => knownIds.has(id as ProductCatalogColumnId))
-  );
-  const normalized = PRODUCT_CATALOG_COLUMNS
-    .map(({ id }) => id)
-    .filter((id) => requested.has(id));
+  const normalized: ProductCatalogColumnId[] = [];
+  const seen = new Set<ProductCatalogColumnId>();
+  for (const value of ids) {
+    const id = value as ProductCatalogColumnId;
+    if (!knownIds.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    normalized.push(id);
+  }
 
   return normalized.length >= MIN_CONFIGURABLE_PRODUCT_COLUMNS
     ? normalized

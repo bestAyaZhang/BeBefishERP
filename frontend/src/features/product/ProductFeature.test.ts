@@ -271,7 +271,7 @@ describe('Task 8 product catalog list', () => {
     window.localStorage.clear();
   });
 
-  it('customizes catalog fields in canonical order, persists them, enforces the minimum, and resets defaults', async () => {
+  it('customizes and reorders catalog fields, persists them, enforces the minimum, and resets defaults', async () => {
     const product = catalogProduct(42, '容量测试杯', {
       skus: [catalogSku(421)]
     });
@@ -285,6 +285,9 @@ describe('Task 8 product catalog list', () => {
 
     await trigger.trigger('click');
     expect(wrapper.get('[data-testid="product-column-panel"]').isVisible()).toBe(true);
+    expect(wrapper.get('[data-testid="product-column-options"]').classes()).toContain(
+      'max-h-[clamp(220px,calc(100vh-440px),430px)]'
+    );
     expect(wrapper.get('[data-testid="product-column-count"]').text()).toContain('已选 6');
     expect(wrapper.get('[data-testid="product-column-help"]').text()).toContain('至少保留 6 个业务字段，操作列固定显示。');
 
@@ -296,22 +299,29 @@ describe('Task 8 product catalog list', () => {
     ]);
     expect(wrapper.get('[data-testid="product-cell-productDimensions-42"]').text()).toBe('12.5 × 8.25 × 20 cm');
     expect(wrapper.get('[data-testid="product-cell-capacity-42"]').text()).toBe('450 ml');
+
+    await wrapper.get('[data-testid="product-column-drag-capacity"]').trigger('dragstart');
+    await wrapper.get('[data-testid="product-column-row-category"]').trigger('drop', { clientY: 0 });
+
+    expect(wrapper.get('thead tr').findAll('th').map((header) => header.text())).toEqual([
+      '商品信息', '容量', '分类', '品牌 / 供应商', '库存', '价格', '资料状态', '产品尺寸', '操作'
+    ]);
     expect(window.localStorage.getItem(PRODUCT_CATALOG_STORAGE_KEY)).toBe(JSON.stringify([
       'productInfo',
+      'capacity',
       'category',
       'brandSupplier',
       'stock',
       'price',
       'completenessStatus',
-      'productDimensions',
-      'capacity'
+      'productDimensions'
     ]));
 
     const { wrapper: restoredWrapper } = await mountCatalog({
       service: catalogService(mockListProducts(productPage([product])))
     });
     expect(restoredWrapper.get('thead tr').findAll('th').map((header) => header.text())).toEqual([
-      '商品信息', '分类', '品牌 / 供应商', '库存', '价格', '资料状态', '产品尺寸', '容量', '操作'
+      '商品信息', '容量', '分类', '品牌 / 供应商', '库存', '价格', '资料状态', '产品尺寸', '操作'
     ]);
     restoredWrapper.unmount();
 
