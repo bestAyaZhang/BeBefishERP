@@ -35,6 +35,7 @@ const employmentType = ref<EmploymentType | ''>('');
 const status = ref<EmployeeStatus | ''>('');
 const loading = ref(true);
 const error = ref('');
+const pageNotice = ref('');
 const drawerMode = ref<EmployeeDrawerMode | null>(null);
 const selectedEmployee = ref<Employee | null>(null);
 const saving = ref(false);
@@ -50,9 +51,10 @@ function messageFrom(errorValue: unknown) {
   return errorValue instanceof Error ? errorValue.message : '请求失败，请稍后重试';
 }
 
-async function loadEmployees() {
+async function loadEmployees(context: 'standard' | 'after-save' = 'standard') {
   loading.value = true;
   error.value = '';
+  if (context === 'standard') pageNotice.value = '';
   try {
     result.value = await service.listEmployees({
       page: page.value,
@@ -63,8 +65,12 @@ async function loadEmployees() {
       status: status.value || undefined
     });
   } catch (requestError) {
-    error.value = messageFrom(requestError);
-    result.value = { records: [], page: page.value, pageSize: pageSize.value, total: 0 };
+    if (context === 'after-save') {
+      pageNotice.value = `员工保存成功，但列表刷新失败：${messageFrom(requestError)}`;
+    } else {
+      error.value = messageFrom(requestError);
+      result.value = { records: [], page: page.value, pageSize: pageSize.value, total: 0 };
+    }
   } finally {
     loading.value = false;
   }
@@ -101,7 +107,7 @@ async function refreshAfterSave() {
   employeeCounts.value = counts;
   summary.value = summaryData;
   positions.value = positionItems;
-  await loadEmployees();
+  await loadEmployees('after-save');
 }
 
 async function selectDepartment(id: number | null) {
@@ -181,10 +187,18 @@ async function saveEmployee(payload: SaveEmployeePayload) {
     } else {
       await service.createEmployee(payload);
     }
-    closeDrawer();
-    await refreshAfterSave();
   } catch (requestError) {
     saveError.value = messageFrom(requestError);
+    saving.value = false;
+    return;
+  }
+
+  closeDrawer();
+  pageNotice.value = '';
+  try {
+    await refreshAfterSave();
+  } catch (requestError) {
+    pageNotice.value = `员工保存成功，但列表刷新失败：${messageFrom(requestError)}`;
   } finally {
     saving.value = false;
   }
@@ -216,7 +230,7 @@ onMounted(loadReferenceData);
     <header class="mb-5 flex min-h-[60px] items-center justify-between gap-6">
       <div class="min-w-0">
         <div class="flex items-center gap-2">
-          <h1 class="text-2xl font-semibold leading-8 tracking-[0]">员工管理</h1>
+          <h1 class="text-2xl font-bold leading-8 tracking-[0]">员工管理</h1>
           <span class="inline-flex h-6 min-w-6 items-center justify-center rounded-[6px] border border-slate-200 bg-slate-50 px-2 font-numeric text-xs text-slate-500">{{ result.total }}</span>
         </div>
         <p class="mt-1 text-sm leading-[22px] text-slate-500">统一维护员工归属、岗位、用工类型与登录账号。</p>
@@ -227,7 +241,9 @@ onMounted(loadReferenceData);
       </button>
     </header>
 
-    <div class="grid h-[calc(100vh-184px)] min-h-[680px] grid-cols-[280px_minmax(0,1fr)] gap-4">
+    <p v-if="pageNotice" data-testid="employee-page-notice" class="mb-4 rounded-[6px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700" role="status">{{ pageNotice }}</p>
+
+    <div data-testid="employee-workspace" class="grid h-[572px] grid-cols-[280px_minmax(0,1fr)] gap-4">
       <DepartmentTree
         :nodes="departmentTree"
         :selected-id="selectedDepartmentId"
@@ -239,7 +255,7 @@ onMounted(loadReferenceData);
 
       <section class="flex min-w-0 flex-col overflow-hidden rounded-[6px] border border-slate-200 bg-white">
         <div class="flex min-h-[60px] items-center justify-between gap-4 border-b border-slate-200 px-4">
-          <h2 data-testid="employee-list-title" class="text-[15px] font-semibold text-[#25314d]">{{ listTitle }}</h2>
+          <h2 data-testid="employee-list-title" class="text-[15px] font-medium text-[#25314d]">{{ listTitle }}</h2>
           <span class="font-numeric text-sm text-slate-500">共 {{ result.total }} 人</span>
         </div>
 
@@ -249,12 +265,12 @@ onMounted(loadReferenceData);
             <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
             <input data-testid="employee-keyword" v-model="keywordDraft" class="h-10 w-full rounded-[6px] border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none placeholder:text-slate-400 focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/10" placeholder="姓名 / 手机号 / 工号" @keyup.enter="searchEmployees" />
           </label>
-          <select :value="employmentType" class="h-10 w-[132px] rounded-[6px] border border-slate-200 bg-white px-3 text-sm text-slate-600 outline-none focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/10" aria-label="用工类型" @change="changeEmploymentType">
+          <select data-testid="employee-employment-filter" :value="employmentType" class="h-10 w-[132px] rounded-[6px] border border-slate-200 bg-white px-3 text-sm text-slate-600 outline-none focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/10" aria-label="用工类型" @change="changeEmploymentType">
             <option value="">全部用工类型</option>
             <option value="formal">正式员工</option>
             <option value="temporary">临时员工</option>
           </select>
-          <select :value="status" class="h-10 w-[116px] rounded-[6px] border border-slate-200 bg-white px-3 text-sm text-slate-600 outline-none focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/10" aria-label="员工状态" @change="changeStatus">
+          <select data-testid="employee-status-filter" :value="status" class="h-10 w-[116px] rounded-[6px] border border-slate-200 bg-white px-3 text-sm text-slate-600 outline-none focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/10" aria-label="员工状态" @change="changeStatus">
             <option value="">全部状态</option>
             <option value="active">在职</option>
             <option value="disabled">停用</option>

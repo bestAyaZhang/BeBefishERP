@@ -1,4 +1,5 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import EmployeeFormDrawer from './components/EmployeeFormDrawer.vue';
 import { createMockOrganizationService } from './mockOrganizationService';
@@ -98,6 +99,20 @@ describe('EmployeeManagementView', () => {
     expect(wrapper.get('[data-testid="employee-empty"]').text()).toContain('暂无匹配员工');
   });
 
+  it('applies employment and status filters and resets each query to page one', async () => {
+    const service = createMockOrganizationService();
+    const listEmployees = vi.spyOn(service, 'listEmployees');
+    const wrapper = await mountPage(service);
+
+    await wrapper.get('[data-testid="employee-employment-filter"]').setValue('temporary');
+    await flushPromises();
+    expect(listEmployees).toHaveBeenLastCalledWith(expect.objectContaining({ employmentType: 'temporary', page: 1 }));
+
+    await wrapper.get('[data-testid="employee-status-filter"]').setValue('disabled');
+    await flushPromises();
+    expect(listEmployees).toHaveBeenLastCalledWith(expect.objectContaining({ employmentType: 'temporary', status: 'disabled', page: 1 }));
+  });
+
   it('shows loading and a readable service error', async () => {
     let rejectRequest: ((error: Error) => void) | undefined;
     const pending = new Promise<never>((_resolve, reject) => { rejectRequest = reject; });
@@ -172,9 +187,72 @@ describe('EmployeeManagementView', () => {
     expect(wrapper.get('[data-testid="employee-drawer-error"]').text()).toContain('手机号已绑定其他员工');
     expect((wrapper.get('[data-testid="employee-name"]').element as HTMLInputElement).value).toBe('重复手机号员工');
   });
+
+  it('closes the drawer and reports that save succeeded when the following refresh fails', async () => {
+    const service = createMockOrganizationService();
+    const initialResult = await service.listEmployees({ page: 1, size: 20 });
+    const listEmployees = vi.spyOn(service, 'listEmployees');
+    listEmployees.mockResolvedValueOnce(initialResult);
+    listEmployees.mockRejectedValueOnce(new Error('列表服务暂不可用'));
+    const wrapper = await mountPage(service);
+
+    await wrapper.get('[data-testid="add-employee"]').trigger('click');
+    await wrapper.get('[data-testid="employee-name"]').setValue('刷新失败员工');
+    await wrapper.get('[data-testid="employee-mobile"]').setValue('13900139002');
+    await wrapper.get('[data-testid="employee-number"]').setValue('EMP0997');
+    await wrapper.get('[data-testid="employee-department"]').setValue('2');
+    await wrapper.get('[data-testid="employee-position"]').setValue('2');
+    await wrapper.get('[data-testid="employee-hire-date"]').setValue('2026-09-03');
+    await wrapper.get('[data-testid="save-employee"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="employee-drawer"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="employee-page-notice"]').text()).toContain('员工保存成功，但列表刷新失败');
+    expect(wrapper.get('[data-testid="employee-page-notice"]').text()).toContain('列表服务暂不可用');
+  });
+
+  it('focuses the drawer, traps focus, closes on Escape and restores the trigger', async () => {
+    const wrapper = await mountPage();
+    const trigger = wrapper.get('[data-testid="add-employee"]');
+    (trigger.element as HTMLButtonElement).focus();
+    await trigger.trigger('click');
+    await nextTick();
+
+    const nameInput = wrapper.get('[data-testid="employee-name"]');
+    expect(document.activeElement).toBe(nameInput.element);
+
+    const saveButton = wrapper.get('[data-testid="save-employee"]');
+    (saveButton.element as HTMLButtonElement).focus();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="close-employee-drawer"]').element);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
+    expect(document.activeElement).toBe(saveButton.element);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await nextTick();
+    expect(wrapper.find('[data-testid="employee-drawer"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(trigger.element);
+  });
+
+  it('uses the Figma desktop height and typography hierarchy', async () => {
+    const wrapper = await mountPage();
+
+    expect(wrapper.get('[data-testid="employee-workspace"]').classes()).toContain('h-[572px]');
+    expect(wrapper.get('h1').classes()).toContain('font-bold');
+    expect(wrapper.get('[data-testid="employee-list-title"]').classes()).toContain('font-medium');
+  });
 });
 
 describe('EmployeeFormDrawer', () => {
+  it('places an accessible employment mode fieldset inside the login section', () => {
+    const wrapper = mountDrawer();
+    const loginSection = wrapper.get('[data-testid="employee-login-section"]');
+
+    expect(loginSection.get('[data-testid="employment-type-fieldset"]').element.tagName).toBe('FIELDSET');
+    expect(wrapper.find('label label').exists()).toBe(false);
+  });
+
   it('validates temporary account rules before emitting save', async () => {
     const wrapper = mountDrawer();
 
@@ -213,5 +291,50 @@ describe('EmployeeFormDrawer', () => {
     expect(payload?.password).toBe('Secret123');
     expect(payload?.passwordLoginEnabled).toBe(true);
     expect(payload).not.toHaveProperty('feishuDisplayName');
+  });
+
+  it('requires a new password when converting a formal employee to temporary', async () => {
+    const wrapper = mountDrawer({ mode: 'edit', employee });
+
+    await wrapper.get('[data-testid="employment-temporary"]').setValue(true);
+    await wrapper.get('[data-testid="save-employee"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="employee-drawer-error"]').text()).toContain('临时员工必须启用手机号和密码登录');
+    expect(wrapper.emitted('save')).toBeUndefined();
+  });
+
+  it('does not force password replacement for an established temporary password account', async () => {
+    const temporaryEmployee: Employee = {
+      ...employee,
+      employeeNo: 'TMP0007',
+      employmentType: 'temporary',
+      feishuBindingStatus: 'unbound',
+      feishuDisplayName: '',
+      passwordLoginEnabled: true
+    };
+    const wrapper = mountDrawer({ mode: 'edit', employee: temporaryEmployee });
+
+    await wrapper.get('[data-testid="save-employee"]').trigger('click');
+
+    const payload = wrapper.emitted<SaveEmployeePayload[]>('save')?.[0]?.[0];
+    expect(payload?.employmentType).toBe('temporary');
+    expect(payload).not.toHaveProperty('password');
+  });
+
+  it('requires a password for a legacy temporary employee without password login', async () => {
+    const legacyTemporaryEmployee: Employee = {
+      ...employee,
+      employmentType: 'temporary',
+      feishuBindingStatus: 'unbound',
+      feishuDisplayName: '',
+      passwordLoginEnabled: false
+    };
+    const wrapper = mountDrawer({ mode: 'edit', employee: legacyTemporaryEmployee });
+
+    expect(wrapper.find('[data-testid="employee-password"]').exists()).toBe(true);
+    await wrapper.get('[data-testid="save-employee"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="employee-drawer-error"]').text()).toContain('临时员工必须启用手机号和密码登录');
+    expect(wrapper.emitted('save')).toBeUndefined();
   });
 });
