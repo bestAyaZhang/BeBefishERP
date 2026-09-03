@@ -144,19 +144,19 @@ Place every variant in a specimen row inside the `Permission Management` section
 - Consumes: shared organization shell and permission components
 - Produces: the default entry state and primary prototype destination
 
-- [ ] **Step 1: Create the desktop frame and shared shell**
+- [x] **Step 1: Create the desktop frame and shared shell**
 
 Create a `1440x1024` frame in the new section. Reuse the exact sidebar and toolbar from the organization source frame. Set the `组织架构 > 权限管理` navigation item to active and keep all other navigation states unchanged.
 
-- [ ] **Step 2: Build the page title area**
+- [x] **Step 2: Build the page title area**
 
 At the top of the content region, add title `权限管理`, subtitle `按角色维护功能权限、数据范围与授权成员`, a role-count badge `8 个角色`, and the primary action `新增角色`. Match existing organization title spacing and button height.
 
-- [ ] **Step 3: Build the full-height two-column workspace**
+- [x] **Step 3: Build the full-height two-column workspace**
 
 Create a workspace that fills the remaining viewport height. Use a `280px` left role panel, `16px` gap, and a flexible right panel. Both panels must be equal height. Give each panel its own vertical scrolling region and reserve `64px` at the bottom of the right panel for the action bar.
 
-- [ ] **Step 4: Populate the role panel**
+- [x] **Step 4: Populate the role panel**
 
 Add a search input `搜索角色`, then two role groups:
 
@@ -176,19 +176,19 @@ Add a search input `搜索角色`, then two role groups:
 
 Select `超级管理员` in the default frame.
 
-- [ ] **Step 5: Build the selected-role summary**
+- [x] **Step 5: Build the selected-role summary**
 
 Show `超级管理员`, code `SUPER_ADMIN`, status `启用`, members `2`, and `最近更新：系统内置`. Replace edit actions with a read-only notice `系统角色不可编辑`.
 
-- [ ] **Step 6: Build the permission matrix**
+- [x] **Step 6: Build the permission matrix**
 
 Use columns `模块`, `权限说明`, `查看`, `新增`, `编辑`, `删除`, `审核`, and `导出`. Populate module rows for 工作台、商品、分类、客户、供应商、仓库、库存、销售、财务、组织架构. Display the super administrator as read-only checked for supported actions and disabled em dashes for unsupported actions. Include one indeterminate group-control example in a compact matrix legend above the table.
 
-- [ ] **Step 7: Add the pristine action bar**
+- [x] **Step 7: Add the pristine action bar**
 
 Place the `Pristine` bottom action bar instance. Both actions are disabled because the selected system role is read-only.
 
-- [ ] **Step 8: Validate the matrix frame**
+- [x] **Step 8: Validate the matrix frame**
 
 Take a screenshot and inspect metadata. Verify: frame is exactly `1440x1024`; sidebar is `244px`; role panel is `280px`; headers remain visible; no permission label or checkbox is clipped; table rows remain distinguishable without vertical grid lines; bottom bar does not overlap the final row.
 
@@ -485,3 +485,17 @@ Provide the user with the Figma prototype URL, the four local screenshot links, 
 - Reused components: checkbox variants from set `106:658`, disclosure chevrons `23:48` and `23:51`, and command buttons from set `58:285`. All seven checkbox instances audit at `20x20`.
 - Original-scale specimen screenshots: Roles & Tabs `538:10671` rendered `1900x800`; Permissions & Scope `538:10673` rendered `2060x800`; Members & Actions `538:10675` rendered `4040x1780`. The whole-section capture for `538:10667` reports natural geometry `4200x3000`; the PNG is `4280x3080` because Figma includes the section label and outline in the render.
 - Final Plugin API audit status: `PASS`. It confirmed all seven component-set names, IDs, variant counts and dimensions, 20px checkbox instances, zero font-rule mismatches, zero placeholders, intact specimen bounds, and unchanged source-section geometry. Visual inspection found no clipping or incoherent overlap.
+
+### Task 3: Permission Matrix Frame
+
+- Status: `DONE_WITH_CONCERNS`.
+- Deliverable frame: `Permission Management / Permission Matrix` (`572:11100`) in `Permission Management` (`538:10667`) on `03 Master Data` (`1:3`). The frame is exactly `1440x1024` at `80,3000` within the section.
+- Reusable workspace: `Permissions/Main Workspace` component `562:10728` (`836x784`) with final-frame instance `574:11274`. Its default composition is `SuperAdminReadOnly`; Task 7 may convert it to a component set or add the `NewRoleEditable` state without creating a fifth deliverable frame. Supporting row component: `Permissions/Matrix Row` `561:10698` (`836x40`).
+- Shared shell instances: sidebar `572:11101` -> `Navigation/Sidebar` `28:81`; topbar `572:11231` -> `Header/Top Bar` `31:186`; page header `574:11259` -> `Header/Page Header` `33:208`. The permission label is a local override on active sidebar item `I572:11101;29:91`; no shared shell component was mutated.
+- Layout readback: sidebar `244x1024`; topbar `1196x64`; content `1196x960` with `32px` padding and `16px` vertical gap; workspace row `1132x784`; role panel `280x784`; inter-panel gap `16px`; workspace `836x784`; right action bar `836x64`. Role scroll region `575:11694` and matrix scroll region `I574:11274;562:10731` both use vertical overflow.
+- Role nodes: group headers `576:11691` and `576:11731`; role instances `576:11698`, `576:11709`, `576:11720`, `576:11738`, `576:11749`, `576:11760`, `576:11771`, and `576:11782`. `超级管理员` is selected and the disabled `临时访客` uses the Disabled variant.
+- Matrix readback: ten row instances from reusable row component `561:10698`, each `836x40`; 60 permission cells total, comprising 47 `ReadOnlyChecked` and 13 `NotApplicable` states. The pristine bottom action instance resolves to `548:10682`; the indeterminate legend uses component `543:10684` via source instance `565:10747`.
+- Token readback: page fill `VariableID:6:7`; panel fill `VariableID:6:8`; border `VariableID:6:13`; spacing `VariableID:6:19`, `VariableID:6:20`, `VariableID:6:21`, and `VariableID:6:24`; radius `VariableID:6:26`. Typography audit found only Noto Sans SC and Inter, zero negative letter spacing, all required strings present, and zero remaining placeholders.
+- Durable original-scale screenshot: `.superpowers/sdd/2026-09-04-permission-management-figma-prototype/task-3-permission-matrix.png`, `1440x1024`, `162474` bytes, SHA-256 `cedc7819b117643cd83d93e2f2dd3524c3faf60e082216833428598faeabf5a4`. Visual inspection confirmed readable selected-role content, distinct border-only rows, no clipped permission labels or checkboxes, and no final-row/action-bar overlap.
+- Source preservation: `04 Organization` (`499:9745`) remains at `22720,0`, `4800x2368`, with primary source frame `499:9746` still `1440x1024`; the validation baseline matched exactly.
+- Concern: the shared sidebar has no dedicated permission item, so the approved local-instance override repurposes its active navigation label while preserving the shell geometry and main-component ancestry.
