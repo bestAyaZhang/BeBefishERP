@@ -48,11 +48,11 @@ export function collectDepartmentSubtreeIds(departments: Department[], rootId: n
 }
 
 export function filterDepartmentTree(nodes: DepartmentTreeNode[], keyword: string): DepartmentTreeNode[] {
-  const normalizedKeyword = keyword.trim().toLocaleLowerCase();
+  const normalizedKeyword = keyword.trim().toLowerCase();
 
   return nodes.flatMap((node) => {
     const children = filterDepartmentTree(node.children, normalizedKeyword);
-    const matches = node.departmentName.toLocaleLowerCase().includes(normalizedKeyword);
+    const matches = node.departmentName.toLowerCase().includes(normalizedKeyword);
     return matches || children.length > 0 ? [{ ...node, children }] : [];
   });
 }
