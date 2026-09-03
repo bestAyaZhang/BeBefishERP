@@ -119,6 +119,19 @@ function sameNormalized(left: string, right: string) {
   return left.trim().toLowerCase() === right.trim().toLowerCase();
 }
 
+function validateEmployeeAssignment(
+  departmentId: number,
+  positionId: number,
+  departments: Department[],
+  positions: Position[]
+) {
+  const department = departments.find((item) => item.id === departmentId);
+  if (!department || department.status !== 'enabled') throw new Error('所属部门未启用');
+  const position = positions.find((item) => item.id === positionId);
+  if (!position || position.departmentId !== departmentId) throw new Error('岗位不属于所选部门');
+  if (position.status !== 'enabled') throw new Error('所属岗位未启用');
+}
+
 function validateEmployee(
   payload: SaveEmployeePayload,
   departments: Department[],
@@ -130,11 +143,7 @@ function validateEmployee(
   if (!/^1\d{10}$/.test(payload.mobile)) throw new Error('请输入正确的手机号');
   if (employees.some((item) => item.id !== current?.id && item.employeeNo === payload.employeeNo.trim())) throw new Error('员工工号已存在');
   if (employees.some((item) => item.id !== current?.id && item.mobile === payload.mobile.trim())) throw new Error('手机号已绑定其他员工');
-  const department = departments.find((item) => item.id === payload.departmentId);
-  if (!department || department.status !== 'enabled') throw new Error('所属部门未启用');
-  const position = positions.find((item) => item.id === payload.positionId);
-  if (!position || position.departmentId !== payload.departmentId) throw new Error('岗位不属于所选部门');
-  if (position.status !== 'enabled') throw new Error('所属岗位未启用');
+  validateEmployeeAssignment(payload.departmentId, payload.positionId, departments, positions);
   if (payload.employmentType === 'temporary' && !payload.passwordLoginEnabled) throw new Error('临时员工必须启用手机号和密码登录');
   const hasPassword = Boolean(payload.password?.trim());
   const hasEstablishedTemporaryLogin = current?.employmentType === 'temporary' && current.passwordLoginEnabled;
@@ -192,12 +201,21 @@ function validatePosition(
   }
 }
 
-function validateDepartmentCanDisable(id: number, departments: Department[], employees: Employee[]) {
+function validateDepartmentCanDisable(
+  id: number,
+  departments: Department[],
+  positions: Position[],
+  employees: Employee[]
+) {
   if (departments.some((item) => item.parentId === id && item.status === 'enabled')) {
     throw new Error('存在启用中的子部门，无法停用');
   }
   if (employees.some((item) => item.departmentId === id && item.status === 'active')) {
     throw new Error('部门下存在在职员工，无法停用');
+  }
+  const departmentIds = collectDepartmentSubtreeIds(departments, id);
+  if (positions.some((item) => departmentIds.has(item.departmentId) && item.status === 'enabled')) {
+    throw new Error('部门或下级部门存在启用岗位，无法停用');
   }
 }
 
@@ -256,7 +274,9 @@ export function createMockOrganizationService(): OrganizationService {
 
   const departmentStatusActionDisabled = (department: Department) => department.status === 'enabled'
     && (departments.some((item) => item.parentId === department.id && item.status === 'enabled')
-      || employees.some((item) => item.departmentId === department.id && item.status === 'active'));
+      || employees.some((item) => item.departmentId === department.id && item.status === 'active')
+      || positions.some((item) => item.status === 'enabled'
+        && collectDepartmentSubtreeIds(departments, department.id).has(item.departmentId)));
 
   const materializeDepartmentListItem = (department: Department): DepartmentListItem => ({
     ...materializeDepartment(department),
@@ -349,6 +369,9 @@ export function createMockOrganizationService(): OrganizationService {
     async changeEmployeeStatus(id, status) {
       const current = employees.find((item) => item.id === id);
       if (!current) throw new Error('员工不存在');
+      if (status === 'active') {
+        validateEmployeeAssignment(current.departmentId, current.positionId, departments, positions);
+      }
       const employee = { ...current, status };
       employees = employees.map((item) => item.id === id ? employee : item);
       return cloneEmployee(employee);
@@ -371,7 +394,7 @@ export function createMockOrganizationService(): OrganizationService {
       const current = departments.find((item) => item.id === id);
       if (!current) throw new Error('部门不存在');
       validateDepartment(payload, departments, id);
-      if (payload.status === 'disabled') validateDepartmentCanDisable(id, departments, employees);
+      if (payload.status === 'disabled') validateDepartmentCanDisable(id, departments, positions, employees);
       const department: Department = {
         ...payload,
         id,
@@ -386,7 +409,7 @@ export function createMockOrganizationService(): OrganizationService {
     async changeDepartmentStatus(id, status) {
       const current = departments.find((item) => item.id === id);
       if (!current) throw new Error('部门不存在');
-      if (status === 'disabled') validateDepartmentCanDisable(id, departments, employees);
+      if (status === 'disabled') validateDepartmentCanDisable(id, departments, positions, employees);
       if (status === 'enabled' && current.parentId !== null
         && departments.find((item) => item.id === current.parentId)?.status !== 'enabled') {
         throw new Error('启用部门的上级部门必须已启用');

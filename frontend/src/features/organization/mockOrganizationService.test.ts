@@ -111,6 +111,34 @@ describe('mockOrganizationService', () => {
     }))).rejects.toThrow('所属岗位未启用');
   });
 
+  it('revalidates assignment hierarchy before reactivating a disabled employee', async () => {
+    const department = await service.createDepartment(validDepartment({
+      departmentCode: 'REACTIVATE',
+      departmentName: '重新启用测试部'
+    }));
+    const position = await service.createPosition(validPosition({
+      positionCode: 'REACTIVATE-ROLE',
+      positionName: '重新启用测试岗',
+      departmentId: department.id
+    }));
+    const created = await service.createEmployee(validEmployee({
+      employeeNo: 'E-REACTIVATE',
+      mobile: '13900000119',
+      departmentId: department.id,
+      positionId: position.id
+    }));
+    await service.changeEmployeeStatus(created.id, 'disabled');
+    await service.changePositionStatus(position.id, 'disabled');
+    await service.changeDepartmentStatus(department.id, 'disabled');
+
+    await expect(service.changeEmployeeStatus(created.id, 'active'))
+      .rejects.toThrow('所属部门未启用');
+
+    await service.changeDepartmentStatus(department.id, 'enabled');
+    await expect(service.changeEmployeeStatus(created.id, 'active'))
+      .rejects.toThrow('所属岗位未启用');
+  });
+
   it('paginates department and position management queries', async () => {
     const departments = await service.listDepartmentPage({ page: 2, size: 3, status: 'enabled' });
     const positions = await service.listPositions({ page: 2, size: 4, status: 'enabled' });
@@ -308,6 +336,29 @@ describe('mockOrganizationService', () => {
       .rejects.toThrow('存在启用中的子部门，无法停用');
     await expect(service.changeDepartmentStatus(4, 'disabled'))
       .rejects.toThrow('部门下存在在职员工，无法停用');
+  });
+
+  it('prevents disabling a department whose subtree contains an enabled position', async () => {
+    const department = await service.createDepartment(validDepartment({
+      departmentCode: 'POSITION-HOLDER',
+      departmentName: '岗位占用部门'
+    }));
+    await service.createPosition(validPosition({
+      positionCode: 'POSITION-HOLDER-ROLE',
+      positionName: '岗位占用角色',
+      departmentId: department.id
+    }));
+
+    await expect(service.changeDepartmentStatus(department.id, 'disabled'))
+      .rejects.toThrow('部门或下级部门存在启用岗位，无法停用');
+    await expect(service.updateDepartment(department.id, {
+      departmentCode: department.departmentCode,
+      departmentName: department.departmentName,
+      parentId: department.parentId,
+      managerEmployeeId: department.managerEmployeeId,
+      sortOrder: department.sortOrder,
+      status: 'disabled'
+    })).rejects.toThrow('部门或下级部门存在启用岗位，无法停用');
   });
 
   it('prevents disabling a position assigned to active employees', async () => {

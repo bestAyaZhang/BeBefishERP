@@ -142,6 +142,42 @@ describe('DepartmentManagementView', () => {
     expect((wrapper.get('[data-testid="department-code"]').element as HTMLInputElement).value).toBe('PD');
   });
 
+  it('marks a department unavailable when its subtree contains an enabled position', async () => {
+    const service = createMockOrganizationService();
+    const department = await service.createDepartment({
+      departmentCode: 'POSITION-HOLDER',
+      departmentName: '岗位占用部门',
+      parentId: 1,
+      managerEmployeeId: null,
+      sortOrder: 99,
+      status: 'enabled'
+    });
+    await service.createPosition({
+      positionCode: 'POSITION-HOLDER-ROLE',
+      positionName: '岗位占用角色',
+      departmentId: department.id,
+      responsibilities: '',
+      status: 'enabled'
+    });
+    const originalList = service.listDepartmentPage.bind(service);
+    vi.spyOn(service, 'listDepartmentPage').mockImplementation(async (query) => {
+      const page = await originalList(query);
+      return {
+        ...page,
+        records: page.records.map((item) => item.id === department.id
+          ? { ...item, statusActionDisabled: false }
+          : item)
+      };
+    });
+
+    const wrapper = await mountDepartmentPage(service);
+    const statusAction = wrapper.get(`[data-testid="department-status-action-${department.id}"]`);
+
+    expect(statusAction.attributes('disabled')).toBeDefined();
+    expect(statusAction.text()).toBe('不可停用');
+    expect(statusAction.attributes('title')).toContain('启用岗位');
+  });
+
   it('preserves department values when the service rejects a duplicate', async () => {
     const wrapper = await mountDepartmentPage();
 
@@ -208,6 +244,66 @@ describe('DepartmentManagementView', () => {
     await flushPromises();
     expect(wrapper.get('table').text()).toContain('销售中心');
     expect(wrapper.get('table').text()).not.toContain('产品研发部');
+  });
+
+  it('ignores stale initial-reference success while a newer department query is pending', async () => {
+    const service = createMockOrganizationService();
+    const departmentItems = await service.listAllDepartments();
+    const latestPage = await service.listDepartmentPage({ page: 1, size: 20, keyword: '销售' });
+    const stalePage = await service.listDepartmentPage({ page: 1, size: 20, keyword: '产品' });
+    const initialReferences = deferred<Department[]>();
+    const latestRequest = deferred<PageResult<DepartmentListItem>>();
+    vi.spyOn(service, 'listAllDepartments').mockReturnValueOnce(initialReferences.promise);
+    const listDepartments = vi.spyOn(service, 'listDepartmentPage')
+      .mockReturnValueOnce(latestRequest.promise)
+      .mockResolvedValueOnce(stalePage);
+    const wrapper = mount(DepartmentManagementView, {
+      global: { provide: { organizationService: service } }
+    });
+    activeWrapper = wrapper;
+    await nextTick();
+
+    await wrapper.get('[data-testid="department-keyword"]').setValue('销售');
+    await wrapper.get('[data-testid="department-search-button"]').trigger('click');
+    initialReferences.resolve(departmentItems);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="department-loading"]').exists()).toBe(true);
+    expect(listDepartments).toHaveBeenCalledOnce();
+
+    latestRequest.resolve(latestPage);
+    await flushPromises();
+    expect(wrapper.get('table').text()).toContain('销售中心');
+    expect(wrapper.get('table').text()).not.toContain('产品研发部');
+    expect(wrapper.find('[data-testid="department-error"]').exists()).toBe(false);
+  });
+
+  it('ignores stale initial-reference failure while a newer department query is pending', async () => {
+    const service = createMockOrganizationService();
+    const latestPage = await service.listDepartmentPage({ page: 1, size: 20, keyword: '销售' });
+    const initialReferences = deferred<Department[]>();
+    const latestRequest = deferred<PageResult<DepartmentListItem>>();
+    vi.spyOn(service, 'listAllDepartments').mockReturnValueOnce(initialReferences.promise);
+    vi.spyOn(service, 'listDepartmentPage').mockReturnValueOnce(latestRequest.promise);
+    const wrapper = mount(DepartmentManagementView, {
+      global: { provide: { organizationService: service } }
+    });
+    activeWrapper = wrapper;
+    await nextTick();
+
+    await wrapper.get('[data-testid="department-keyword"]').setValue('销售');
+    await wrapper.get('[data-testid="department-search-button"]').trigger('click');
+    initialReferences.reject(new Error('过期部门初始化失败'));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="department-loading"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="department-error"]').exists()).toBe(false);
+
+    latestRequest.resolve(latestPage);
+    await flushPromises();
+    expect(wrapper.get('table').text()).toContain('销售中心');
+    expect(wrapper.find('[data-testid="department-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="department-loading"]').exists()).toBe(false);
   });
 
   it('supports row and select-all department selection and clears stale selections on new records', async () => {
@@ -420,6 +516,66 @@ describe('PositionManagementView', () => {
     expect(wrapper.text()).not.toContain('后端工程师');
   });
 
+  it('ignores stale initial-reference success while a newer position query is pending', async () => {
+    const service = createMockOrganizationService();
+    const departmentItems = await service.listAllDepartments();
+    const latestPage = await service.listPositions({ page: 1, size: 20, keyword: '总经理' });
+    const stalePage = await service.listPositions({ page: 1, size: 20, keyword: '产品经理' });
+    const initialReferences = deferred<Department[]>();
+    const latestRequest = deferred<PageResult<Position>>();
+    vi.spyOn(service, 'listAllDepartments').mockReturnValueOnce(initialReferences.promise);
+    const listPositions = vi.spyOn(service, 'listPositions')
+      .mockReturnValueOnce(latestRequest.promise)
+      .mockResolvedValueOnce(stalePage);
+    const wrapper = mount(PositionManagementView, {
+      global: { provide: { organizationService: service } }
+    });
+    activeWrapper = wrapper;
+    await nextTick();
+
+    await wrapper.get('[data-testid="position-keyword"]').setValue('总经理');
+    await wrapper.get('[data-testid="position-search-button"]').trigger('click');
+    initialReferences.resolve(departmentItems);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="position-loading"]').exists()).toBe(true);
+    expect(listPositions).toHaveBeenCalledOnce();
+
+    latestRequest.resolve(latestPage);
+    await flushPromises();
+    expect(wrapper.get('table').text()).toContain('总经理');
+    expect(wrapper.get('table').text()).not.toContain('产品经理');
+    expect(wrapper.find('[data-testid="position-error"]').exists()).toBe(false);
+  });
+
+  it('ignores stale initial-reference failure while a newer position query is pending', async () => {
+    const service = createMockOrganizationService();
+    const latestPage = await service.listPositions({ page: 1, size: 20, keyword: '总经理' });
+    const initialReferences = deferred<Department[]>();
+    const latestRequest = deferred<PageResult<Position>>();
+    vi.spyOn(service, 'listAllDepartments').mockReturnValueOnce(initialReferences.promise);
+    vi.spyOn(service, 'listPositions').mockReturnValueOnce(latestRequest.promise);
+    const wrapper = mount(PositionManagementView, {
+      global: { provide: { organizationService: service } }
+    });
+    activeWrapper = wrapper;
+    await nextTick();
+
+    await wrapper.get('[data-testid="position-keyword"]').setValue('总经理');
+    await wrapper.get('[data-testid="position-search-button"]').trigger('click');
+    initialReferences.reject(new Error('过期岗位初始化失败'));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="position-loading"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="position-error"]').exists()).toBe(false);
+
+    latestRequest.resolve(latestPage);
+    await flushPromises();
+    expect(wrapper.get('table').text()).toContain('总经理');
+    expect(wrapper.find('[data-testid="position-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="position-loading"]').exists()).toBe(false);
+  });
+
   it('supports row and select-all position selection and clears stale selections on new records', async () => {
     const wrapper = await mountPositionPage();
     const selectAll = wrapper.get('[data-testid="select-all-positions"]');
@@ -617,6 +773,10 @@ describe('organization management drawers', () => {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
-  return { promise, resolve };
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }

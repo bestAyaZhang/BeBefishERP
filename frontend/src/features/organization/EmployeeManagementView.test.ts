@@ -185,6 +185,67 @@ describe('EmployeeManagementView', () => {
     expect(wrapper.text()).not.toContain('最旧全公司员工');
   });
 
+  it('ignores stale initial-reference success while a newer employee query is pending', async () => {
+    const service = createMockOrganizationService();
+    const departmentItems = await service.listAllDepartments();
+    const initialReferences = deferred<Department[]>();
+    const latestRequest = deferred<PageResult<Employee>>();
+    const stalePage = employeePage({ ...employee, id: 211, employeeName: '过期初始化员工' });
+    const latestPage = employeePage({ ...employee, id: 212, employeeName: '最新查询员工' });
+    vi.spyOn(service, 'listAllDepartments').mockReturnValueOnce(initialReferences.promise);
+    const listEmployees = vi.spyOn(service, 'listEmployees')
+      .mockReturnValueOnce(latestRequest.promise)
+      .mockResolvedValueOnce(stalePage);
+    const wrapper = mount(EmployeeManagementView, {
+      global: { provide: { organizationService: service } }
+    });
+    activeWrapper = wrapper;
+    await nextTick();
+
+    await wrapper.get('[data-testid="employee-keyword"]').setValue('最新查询员工');
+    await wrapper.get('[data-testid="employee-search"]').trigger('click');
+    initialReferences.resolve(departmentItems);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="employee-loading"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain('过期初始化员工');
+    expect(listEmployees).toHaveBeenCalledOnce();
+
+    latestRequest.resolve(latestPage);
+    await flushPromises();
+    expect(wrapper.text()).toContain('最新查询员工');
+    expect(wrapper.find('[data-testid="employee-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="employee-loading"]').exists()).toBe(false);
+  });
+
+  it('ignores stale initial-reference failure while a newer employee query is pending', async () => {
+    const service = createMockOrganizationService();
+    const initialReferences = deferred<Department[]>();
+    const latestRequest = deferred<PageResult<Employee>>();
+    const latestPage = employeePage({ ...employee, id: 213, employeeName: '失败后最新员工' });
+    vi.spyOn(service, 'listAllDepartments').mockReturnValueOnce(initialReferences.promise);
+    vi.spyOn(service, 'listEmployees').mockReturnValueOnce(latestRequest.promise);
+    const wrapper = mount(EmployeeManagementView, {
+      global: { provide: { organizationService: service } }
+    });
+    activeWrapper = wrapper;
+    await nextTick();
+
+    await wrapper.get('[data-testid="employee-keyword"]').setValue('失败后最新员工');
+    await wrapper.get('[data-testid="employee-search"]').trigger('click');
+    initialReferences.reject(new Error('过期初始化失败'));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="employee-loading"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="employee-error"]').exists()).toBe(false);
+
+    latestRequest.resolve(latestPage);
+    await flushPromises();
+    expect(wrapper.text()).toContain('失败后最新员工');
+    expect(wrapper.find('[data-testid="employee-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="employee-loading"]').exists()).toBe(false);
+  });
+
   it('supports row and select-all employee selection and clears stale selections on new records', async () => {
     const wrapper = await mountPage();
     const selectAll = wrapper.get('[data-testid="select-all-employees"]');
@@ -336,7 +397,8 @@ describe('EmployeeManagementView', () => {
       { employee: { ...employee, id: 105, feishuBindingStatus: 'unbound', feishuDisplayName: '', passwordLoginEnabled: true }, label: '手机号账号' },
       { employee: { ...employee, id: 106, feishuBindingStatus: 'pending', feishuDisplayName: '', passwordLoginEnabled: false }, label: '待绑定飞书' },
       { employee: { ...employee, id: 107, employmentType: 'temporary', feishuBindingStatus: 'unbound', feishuDisplayName: '', passwordLoginEnabled: true }, label: '手机号账号' },
-      { employee: { ...employee, id: 108, employmentType: 'temporary', feishuBindingStatus: 'unbound', feishuDisplayName: '', passwordLoginEnabled: false }, label: '不可登录' }
+      { employee: { ...employee, id: 108, employmentType: 'temporary', feishuBindingStatus: 'unbound', feishuDisplayName: '', passwordLoginEnabled: false }, label: '不可登录' },
+      { employee: { ...employee, id: 109, feishuBindingStatus: 'unbound', feishuDisplayName: '', passwordLoginEnabled: false }, label: '飞书未绑定' }
     ];
     vi.spyOn(service, 'listEmployees').mockResolvedValue({
       records: cases.map(({ employee: item }) => item),
@@ -554,8 +616,12 @@ async function fillValidDrawer(wrapper: VueWrapper) {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
-  return { promise, resolve };
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 function employeePage(item: Employee): PageResult<Employee> {

@@ -5,7 +5,7 @@ import DepartmentFormDrawer, { type DepartmentDrawerMode } from '../components/D
 import DepartmentTree from '../components/DepartmentTree.vue';
 import OrganizationPagination from '../components/OrganizationPagination.vue';
 import OrganizationStatusBadge from '../components/OrganizationStatusBadge.vue';
-import { buildDepartmentTree } from '../organizationTree';
+import { buildDepartmentTree, collectDepartmentSubtreeIds } from '../organizationTree';
 import { organizationService, type OrganizationService } from '../organizationService';
 import { currentUser } from '../../../services/authSession';
 import type {
@@ -14,6 +14,7 @@ import type {
   Employee,
   OrganizationRecordStatus,
   PageResult,
+  Position,
   SaveDepartmentPayload
 } from '../types';
 
@@ -21,6 +22,7 @@ const service = inject<OrganizationService>('organizationService', organizationS
 
 const departments = ref<Department[]>([]);
 const employees = ref<Employee[]>([]);
+const positions = ref<Position[]>([]);
 const employeeCounts = ref<Record<number, number>>({});
 const result = ref<PageResult<DepartmentListItem>>({ records: [], page: 1, pageSize: 20, total: 0 });
 const selectedDepartmentId = ref<number | null>(null);
@@ -38,7 +40,7 @@ const selectedDepartment = ref<Department | null>(null);
 const saving = ref(false);
 const saveError = ref('');
 const selectedDepartmentIds = ref<number[]>([]);
-let departmentListGeneration = 0;
+let departmentOperationGeneration = 0;
 
 const departmentTree = computed(() => buildDepartmentTree(departments.value));
 const canManage = computed(() => currentUser.value?.permissions.includes('organization:manage') ?? false);
@@ -79,62 +81,71 @@ function currentDepartmentQuery() {
   };
 }
 
-async function fetchDepartments() {
-  const requestGeneration = ++departmentListGeneration;
+async function fetchDepartments(requestGeneration: number) {
   loading.value = true;
   error.value = '';
   try {
     const nextResult = await service.listDepartmentPage(currentDepartmentQuery());
-    if (requestGeneration !== departmentListGeneration) return;
+    if (requestGeneration !== departmentOperationGeneration) return;
     result.value = nextResult;
   } catch (requestError) {
-    if (requestGeneration !== departmentListGeneration) return;
+    if (requestGeneration !== departmentOperationGeneration) return;
     error.value = messageFrom(requestError);
     result.value = { records: [], page: page.value, pageSize: pageSize.value, total: 0 };
     throw requestError;
   } finally {
-    if (requestGeneration === departmentListGeneration) loading.value = false;
+    if (requestGeneration === departmentOperationGeneration) loading.value = false;
   }
 }
 
 async function loadDepartments() {
+  const requestGeneration = ++departmentOperationGeneration;
   try {
-    await fetchDepartments();
+    await fetchDepartments(requestGeneration);
   } catch {}
 }
 
 async function loadReferenceData() {
+  const requestGeneration = ++departmentOperationGeneration;
   loading.value = true;
   error.value = '';
   try {
-    const [departmentItems, employeeItems, counts] = await Promise.all([
+    const [departmentItems, employeeItems, positionItems, counts] = await Promise.all([
       service.listAllDepartments(),
       service.listAllEmployees(),
+      service.listAllPositions(),
       service.getDepartmentEmployeeCounts()
     ]);
     departments.value = departmentItems;
     employees.value = employeeItems;
+    positions.value = positionItems;
     employeeCounts.value = counts;
     expandedIds.value = departmentItems
       .filter((department) => departmentItems.some((candidate) => candidate.parentId === department.id))
       .map((department) => department.id);
-    await loadDepartments();
+    if (requestGeneration !== departmentOperationGeneration) return;
+    await fetchDepartments(requestGeneration);
   } catch (requestError) {
+    if (requestGeneration !== departmentOperationGeneration) return;
     error.value = messageFrom(requestError);
     loading.value = false;
   }
 }
 
 async function refreshReferenceData() {
-  const [departmentItems, employeeItems, counts] = await Promise.all([
+  const requestGeneration = ++departmentOperationGeneration;
+  const [departmentItems, employeeItems, positionItems, counts] = await Promise.all([
     service.listAllDepartments(),
     service.listAllEmployees(),
+    service.listAllPositions(),
     service.getDepartmentEmployeeCounts()
   ]);
   departments.value = departmentItems;
   employees.value = employeeItems;
+  positions.value = positionItems;
   employeeCounts.value = counts;
-  await fetchDepartments();
+  if (requestGeneration !== departmentOperationGeneration) return;
+  await fetchDepartments(requestGeneration);
 }
 
 function selectDepartment(id: number | null) {
@@ -227,7 +238,7 @@ async function saveDepartment(payload: SaveDepartmentPayload) {
 
 async function toggleDepartmentStatus(department: DepartmentListItem) {
   if (!canManage.value) return;
-  if (department.status === 'enabled' && department.statusActionDisabled) return;
+  if (departmentStatusActionUnavailable(department)) return;
   pageNotice.value = '';
   try {
     await service.changeDepartmentStatus(
@@ -256,6 +267,13 @@ function toggleDepartmentSelection(id: number, event: Event) {
 
 function toggleAllDepartments(event: Event) {
   selectedDepartmentIds.value = (event.target as HTMLInputElement).checked ? [...pageDepartmentIds.value] : [];
+}
+
+function departmentStatusActionUnavailable(department: DepartmentListItem) {
+  if (department.status !== 'enabled') return false;
+  const departmentIds = collectDepartmentSubtreeIds(departments.value, department.id);
+  return department.statusActionDisabled
+    || positions.value.some((item) => item.status === 'enabled' && departmentIds.has(item.departmentId));
 }
 
 onMounted(loadReferenceData);
@@ -359,10 +377,10 @@ onMounted(loadReferenceData);
                       :data-testid="`department-status-action-${department.id}`"
                       type="button"
                       class="text-xs text-slate-500 transition enabled:hover:text-[#25314d] disabled:cursor-not-allowed disabled:text-slate-400"
-                      :disabled="department.status === 'enabled' && department.statusActionDisabled"
-                      :title="department.status === 'enabled' && department.statusActionDisabled ? '部门存在启用中的子部门或在职员工，暂不可停用' : undefined"
+                      :disabled="departmentStatusActionUnavailable(department)"
+                      :title="departmentStatusActionUnavailable(department) ? '部门或下级部门存在启用岗位、启用中的子部门或在职员工，暂不可停用' : undefined"
                       @click="toggleDepartmentStatus(department)"
-                    >{{ department.status === 'disabled' ? '启用' : department.statusActionDisabled ? '不可停用' : '停用' }}</button>
+                    >{{ department.status === 'disabled' ? '启用' : departmentStatusActionUnavailable(department) ? '不可停用' : '停用' }}</button>
                   </span>
                 </td>
               </tr>

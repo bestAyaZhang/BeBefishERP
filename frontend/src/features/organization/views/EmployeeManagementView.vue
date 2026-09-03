@@ -42,7 +42,7 @@ const selectedEmployee = ref<Employee | null>(null);
 const saving = ref(false);
 const saveError = ref('');
 const selectedEmployeeIds = ref<number[]>([]);
-let employeeListGeneration = 0;
+let employeeOperationGeneration = 0;
 
 const departmentTree = computed(() => buildDepartmentTree(departments.value));
 const canManage = computed(() => currentUser.value?.permissions.includes('organization:manage') ?? false);
@@ -64,8 +64,10 @@ function messageFrom(errorValue: unknown) {
   return errorValue instanceof Error ? errorValue.message : '请求失败，请稍后重试';
 }
 
-async function loadEmployees(context: 'standard' | 'after-save' = 'standard') {
-  const requestGeneration = ++employeeListGeneration;
+async function loadEmployees(
+  context: 'standard' | 'after-save' = 'standard',
+  requestGeneration = ++employeeOperationGeneration
+) {
   loading.value = true;
   error.value = '';
   if (context === 'standard') pageNotice.value = '';
@@ -78,10 +80,10 @@ async function loadEmployees(context: 'standard' | 'after-save' = 'standard') {
       employmentType: employmentType.value || undefined,
       status: status.value || undefined
     });
-    if (requestGeneration !== employeeListGeneration) return;
+    if (requestGeneration !== employeeOperationGeneration) return;
     result.value = nextResult;
   } catch (requestError) {
-    if (requestGeneration !== employeeListGeneration) return;
+    if (requestGeneration !== employeeOperationGeneration) return;
     if (context === 'after-save') {
       pageNotice.value = `员工保存成功，但列表刷新失败：${messageFrom(requestError)}`;
     } else {
@@ -89,11 +91,12 @@ async function loadEmployees(context: 'standard' | 'after-save' = 'standard') {
       result.value = { records: [], page: page.value, pageSize: pageSize.value, total: 0 };
     }
   } finally {
-    if (requestGeneration === employeeListGeneration) loading.value = false;
+    if (requestGeneration === employeeOperationGeneration) loading.value = false;
   }
 }
 
 async function loadReferenceData() {
+  const requestGeneration = ++employeeOperationGeneration;
   loading.value = true;
   error.value = '';
   try {
@@ -108,14 +111,17 @@ async function loadReferenceData() {
     employeeCounts.value = counts;
     summary.value = summaryData;
     expandedIds.value = departmentItems.filter((item) => departmentItems.some((candidate) => candidate.parentId === item.id)).map((item) => item.id);
-    await loadEmployees();
+    if (requestGeneration !== employeeOperationGeneration) return;
+    await loadEmployees('standard', requestGeneration);
   } catch (requestError) {
+    if (requestGeneration !== employeeOperationGeneration) return;
     error.value = messageFrom(requestError);
     loading.value = false;
   }
 }
 
 async function refreshAfterSave() {
+  const requestGeneration = ++employeeOperationGeneration;
   const [counts, summaryData, positionItems] = await Promise.all([
     service.getDepartmentEmployeeCounts(),
     service.getSummary(),
@@ -124,7 +130,8 @@ async function refreshAfterSave() {
   employeeCounts.value = counts;
   summary.value = summaryData;
   positions.value = positionItems;
-  await loadEmployees('after-save');
+  if (requestGeneration !== employeeOperationGeneration) return;
+  await loadEmployees('after-save', requestGeneration);
 }
 
 async function selectDepartment(id: number | null) {
@@ -232,13 +239,15 @@ function loginMethod(employee: Employee) {
   if (employee.feishuBindingStatus === 'bound') {
     return employee.passwordLoginEnabled ? '飞书 + 手机号' : '飞书已绑定';
   }
-  return employee.passwordLoginEnabled ? '手机号账号' : '待绑定飞书';
+  if (employee.passwordLoginEnabled) return '手机号账号';
+  return employee.feishuBindingStatus === 'pending' ? '待绑定飞书' : '飞书未绑定';
 }
 
 function loginMethodClass(employee: Employee) {
   if (employee.status !== 'active' || (employee.employmentType === 'temporary' && !employee.passwordLoginEnabled)) return 'text-slate-400';
   if (employee.employmentType === 'temporary' || employee.passwordLoginEnabled) return 'text-cyan-600';
-  if (employee.feishuBindingStatus !== 'bound') return 'text-amber-500';
+  if (employee.feishuBindingStatus === 'pending') return 'text-amber-500';
+  if (employee.feishuBindingStatus === 'unbound') return 'text-rose-500';
   return 'text-emerald-600';
 }
 

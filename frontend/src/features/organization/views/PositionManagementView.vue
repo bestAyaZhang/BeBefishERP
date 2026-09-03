@@ -38,7 +38,7 @@ const selectedPosition = ref<Position | null>(null);
 const saving = ref(false);
 const saveError = ref('');
 const selectedPositionIds = ref<number[]>([]);
-let positionListGeneration = 0;
+let positionOperationGeneration = 0;
 
 const departmentTree = computed(() => buildDepartmentTree(departments.value));
 const canManage = computed(() => currentUser.value?.permissions.includes('organization:manage') ?? false);
@@ -83,31 +83,32 @@ function currentPositionQuery() {
   };
 }
 
-async function fetchPositions() {
-  const requestGeneration = ++positionListGeneration;
+async function fetchPositions(requestGeneration: number) {
   loading.value = true;
   error.value = '';
   try {
     const nextResult = await service.listPositions(currentPositionQuery());
-    if (requestGeneration !== positionListGeneration) return;
+    if (requestGeneration !== positionOperationGeneration) return;
     result.value = nextResult;
   } catch (requestError) {
-    if (requestGeneration !== positionListGeneration) return;
+    if (requestGeneration !== positionOperationGeneration) return;
     error.value = messageFrom(requestError);
     result.value = { records: [], page: page.value, pageSize: pageSize.value, total: 0 };
     throw requestError;
   } finally {
-    if (requestGeneration === positionListGeneration) loading.value = false;
+    if (requestGeneration === positionOperationGeneration) loading.value = false;
   }
 }
 
 async function loadPositions() {
+  const requestGeneration = ++positionOperationGeneration;
   try {
-    await fetchPositions();
+    await fetchPositions(requestGeneration);
   } catch {}
 }
 
 async function loadReferenceData() {
+  const requestGeneration = ++positionOperationGeneration;
   loading.value = true;
   error.value = '';
   try {
@@ -122,15 +123,18 @@ async function loadReferenceData() {
     expandedIds.value = departmentItems
       .filter((department) => departmentItems.some((candidate) => candidate.parentId === department.id))
       .map((department) => department.id);
+    if (requestGeneration !== positionOperationGeneration) return;
     selectedDepartmentId.value = departmentItems.find((department) => department.departmentName === '产品中心')?.id ?? null;
-    await loadPositions();
+    await fetchPositions(requestGeneration);
   } catch (requestError) {
+    if (requestGeneration !== positionOperationGeneration) return;
     error.value = messageFrom(requestError);
     loading.value = false;
   }
 }
 
 async function refreshReferenceData() {
+  const requestGeneration = ++positionOperationGeneration;
   const [departmentItems, employeeItems, counts] = await Promise.all([
     service.listAllDepartments(),
     service.listAllEmployees(),
@@ -139,7 +143,8 @@ async function refreshReferenceData() {
   departments.value = departmentItems;
   employees.value = employeeItems;
   employeeCounts.value = counts;
-  await fetchPositions();
+  if (requestGeneration !== positionOperationGeneration) return;
+  await fetchPositions(requestGeneration);
 }
 
 async function selectDepartment(id: number | null) {
