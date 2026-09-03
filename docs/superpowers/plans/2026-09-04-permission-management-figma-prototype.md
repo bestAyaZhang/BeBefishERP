@@ -374,23 +374,23 @@ Start at the matrix frame, visit both tabs, open and close the role drawer, reop
 - Consumes: final Figma frames and approved design spec
 - Produces: inspectable design evidence and a final Figma URL
 
-- [ ] **Step 1: Run metadata validation**
+- [x] **Step 1: Run metadata validation**
 
 Verify every deliverable frame is exactly `1440x1024`, all four live in `Permission Management`, and their names exactly match the artifact map. Confirm the shared shell and permission-specific parts are component instances rather than duplicated detached groups.
 
-- [ ] **Step 2: Run typography and token validation**
+- [x] **Step 2: Run typography and token validation**
 
 Confirm all Chinese copy uses the verified Noto Sans SC style, numbers/English use Inter where appropriate, letter spacing is `0`, and visible fills/strokes/radii come from approved variables or matching existing organization components.
 
-- [ ] **Step 3: Run visual collision checks**
+- [x] **Step 3: Run visual collision checks**
 
 Inspect screenshots at original scale for overlapping text, clipped table headers, hidden final rows, action bars covering content, inconsistent select styling, horizontal overflow, and mismatched panel heights. Repair every discovered issue and capture again.
 
-- [ ] **Step 4: Check permission-state completeness**
+- [x] **Step 4: Check permission-state completeness**
 
 Confirm the delivered prototype visibly demonstrates selected, unselected, indeterminate, disabled, and read-only permission states; all four data scopes; ordinary and locked members; pristine and dirty bottom bars; and the create-role form.
 
-- [ ] **Step 5: Export the four prototype images**
+- [x] **Step 5: Export the four prototype images**
 
 Export each deliverable frame at `1x` PNG to:
 
@@ -403,15 +403,15 @@ frontend/prototype-screenshots/permissions/permission-management-create-role.png
 
 Do not overwrite screenshots belonging to product or organization modules.
 
-- [ ] **Step 6: Verify exported artifacts locally**
+- [x] **Step 6: Verify exported artifacts locally**
 
 Open all four PNGs and confirm they are readable, nonblank, correctly framed, and free of browser/editor chrome. Verify the names and directory match the artifact map exactly.
 
-- [ ] **Step 7: Update execution notes**
+- [x] **Step 7: Update execution notes**
 
 Record the final Figma URL, section ID, four frame IDs, prototype flow start ID, export paths, and any deliberate deviations from the spec. The expected deviation count is zero.
 
-- [ ] **Step 8: Commit the completed prototype artifacts**
+- [x] **Step 8: Commit the completed prototype artifacts**
 
 Stage only this plan's checkbox updates and the four exported permission screenshots. Leave unrelated organization layout changes untouched.
 
@@ -581,3 +581,16 @@ Provide the user with the Figma prototype URL, the four local screenshot links, 
 - Durable audit: `.superpowers/sdd/2026-09-04-permission-management-figma-prototype/task-7-report.md`.
 - Source preservation: permission section `538:10667` remains `4200x7960`; organization section `499:9745` remains `22720,0`, `4800x2368`, with original children `499:9746`, `499:9909`, `499:10072`, `499:10235`, and `499:10398`.
 - Concerns: none.
+
+### Task 8: Visual QA And Named Artifacts
+
+- Status: `DONE`.
+- Final Figma URL: `https://www.figma.com/design/jIz9HNkSoXH63gvTc3yOtj/BeBefish-ERP-%E2%80%94-Master-Data-UI?node-id=572-11100&p=f`; file `jIz9HNkSoXH63gvTc3yOtj`, page `03 Master Data` (`1:3`), section `Permission Management` (`538:10667`). Prototype flow start is matrix frame `572:11100` under the named flow `权限管理`.
+- Deliverables: matrix `572:11100`, data scope `600:11953`, member management `622:12746`, and create-role drawer `626:13258`. All four are direct section children, exactly `1440x1024`, and retain sidebar, topbar, and permission-workspace component ancestry.
+- Final Plugin API acceptance gate returned `PASS`: `644` visible text nodes use only the approved Noto Sans SC and Inter styles, with zero CJK mismatches, zero applicable English/number mismatches, zero nonzero letter-spacing values, zero text overflow, and zero unapproved variable IDs. Required unchecked, checked, indeterminate, disabled, read-only, N/A, selected data-scope, ordinary/locked member, pristine/dirty action-bar, filtered-empty, and editable-role states remain present.
+- Prototype QA preserved all six active/default tab destinations and all six designated direct hotspots. Disabled tab variants `542:10683`, `542:10695`, and `542:10707` now have no reactions. Fresh defaults remain `SuperAdminReadOnly`, super-admin `Selected`, and 商品运营 `Default`; create action `629:13971` still sets the three variables in order before navigating to `572:11100`. Drawer overlay ordering, `720x1024` bounds, fixed header/footer, and `20px` helper clearance passed.
+- Final-QA Figma mutations created no nodes. Font corrections: 11 final member text overrides `I622:13142;621:13947;615:12381;546:10706`, `I622:13142;621:13947;615:12402;546:10685`, `I622:13142;621:13947;615:12402;546:10686`, `I622:13142;621:13947;615:12423;546:10685`, `I622:13142;621:13947;615:12423;546:10686`, `I622:13142;621:13947;615:12444;546:10685`, `I622:13142;621:13947;615:12444;546:10686`, `I622:13142;621:13947;615:12465;546:10685`, `I622:13142;621:13947;615:12465;546:10686`, `I622:13142;621:13947;615:12486;546:10685`, and `I622:13142;621:13947;615:12486;546:10686` now use Noto Sans SC Medium; sidebar phone source `584:11833` and drawer role code `628:13966` now use Inter Regular.
+- Remaining exact mutations: locked-action container `617:12514` is vertical `124x36` at `700,14`; action `617:12515` uses secondary text token `VariableID:6:11`, with reason `617:12516` on the second line. Member-tab names `621:12559` and `621:12560` now match their authoritative Default/Active variants. Workspace set `641:14385` is compacted to `1696x784` at `1600,3000`, with editable variant `641:13966` at `0,0` and super-admin variant `562:10728` at `860,0`.
+- Original-scale visual inspection found no overlapping text, clipped headers, hidden rows, action-bar obstruction, inconsistent select styling, horizontal overflow, mismatched panel heights, editor chrome, or browser chrome. Protected organization section `499:9745` and frame `499:9746` retain their accepted geometry and children.
+- Exports: `frontend/prototype-screenshots/permissions/permission-management-matrix.png`, `1440x1024`, `164182` bytes, SHA-256 `8ba38c80a5eb34cad8bb63c29e5189b1d20991486202163ee5586482b7037e7f`; `frontend/prototype-screenshots/permissions/permission-management-data-scope.png`, `1440x1024`, `147679` bytes, SHA-256 `73192b24df5ea52878f4199b516eaee65c73e79961b0c3ac7cd1799d479bd309`; `frontend/prototype-screenshots/permissions/permission-management-members.png`, `1440x1024`, `175298` bytes, SHA-256 `295bccf262aeb8591e586502ec54845b95efc79402c6f9c908d1b2f8e6ded1de`; `frontend/prototype-screenshots/permissions/permission-management-create-role.png`, `1440x1024`, `180995` bytes, SHA-256 `25204f9160a405bb389c470ece5e14125037dd12ed375d37f6b18d5d22b18ea5`.
+- Deliberate deviations from the approved specification: `0`. Concerns: none.
