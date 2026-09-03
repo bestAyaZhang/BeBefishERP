@@ -61,7 +61,8 @@ describe('SidebarNav', () => {
     expect(sidebar.classes()).not.toContain('rounded-[24px]');
     expect(sidebar.classes().some((name) => name.startsWith('shadow-'))).toBe(false);
     expect(wrapper.text()).toContain('Menu');
-    expect(wrapper.text()).toContain('Topics');
+    expect(wrapper.text()).not.toContain('Topics');
+    expect(wrapper.text()).not.toContain('库存协同');
     expect(wrapper.find('[data-testid="erp-sidebar-user"]').exists()).toBe(true);
     expect(wrapper.get('[data-testid="erp-sidebar-brand"]').classes()).toContain('h-[88px]');
     expect(wrapper.get('[data-testid="erp-sidebar-logo"]').classes()).toEqual(expect.arrayContaining([

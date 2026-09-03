@@ -773,7 +773,7 @@ describe('Task 8 product catalog list', () => {
     expect(wrapper.get('[data-testid="product-detail-42"]').text()).toBe('查看详情');
     expect(wrapper.get('[data-testid="product-thumb-42"]').classes()).toContain('h-10');
     expect(wrapper.get('[data-testid="product-thumb-42"]').classes()).toContain('w-10');
-    expect(wrapper.get('[data-testid="product-table-scroll"]').classes()).toContain('overflow-x-auto');
+    expect(wrapper.get('[data-testid="product-table-scroll"]').classes()).toContain('overflow-auto');
     expect(wrapper.get('[data-testid="product-table"]').attributes('style')).toContain('min-width: 862px');
     expect(wrapper.get('[data-testid="product-pagination"]').element.parentElement?.getAttribute('data-testid')).not.toBe('product-table-scroll');
 
@@ -783,14 +783,24 @@ describe('Task 8 product catalog list', () => {
     expect(wrapper.emitted('create-product')).toHaveLength(1);
   });
 
-  it('matches the approved Figma page header and split catalog workspace', async () => {
+  it('uses a compact single-screen product workspace', async () => {
     const product = catalogProduct(42, '高硼硅玻璃杯');
     const { wrapper } = await mountCatalog({
       allProductTotal: 5,
       service: catalogService(mockListProducts(productPage([product], 5)))
     });
 
-    expect(wrapper.get('[data-testid="product-page-header"]').classes()).toEqual(expect.arrayContaining(['h-24']));
+    expect(wrapper.classes()).toEqual(expect.arrayContaining([
+      'flex',
+      'h-full',
+      'min-h-0',
+      'flex-col',
+      'gap-3'
+    ]));
+    expect(wrapper.get('[data-testid="product-page-header"]').classes()).toEqual(expect.arrayContaining([
+      'h-[72px]',
+      'shrink-0'
+    ]));
     expect(wrapper.get('[data-testid="product-page-title"]').text()).toBe('商品资料');
     expect(wrapper.get('[data-testid="product-page-title"]').classes()).toContain('text-page-title');
     expect(wrapper.get('[data-testid="product-page-count"]').text()).toBe('5');
@@ -798,7 +808,9 @@ describe('Task 8 product catalog list', () => {
     expect(wrapper.get('[data-testid="add-product"]').element.closest('[data-testid="product-page-header"]')).not.toBeNull();
 
     expect(wrapper.get('[data-testid="product-workspace"]').classes()).toEqual(expect.arrayContaining([
-      'gap-4',
+      'flex-1',
+      'gap-3',
+      'lg:min-h-0',
       'lg:grid-cols-[260px_minmax(0,1fr)]'
     ]));
     expect(wrapper.get('[data-testid="product-category-panel"]').classes()).toEqual(expect.arrayContaining([
@@ -812,9 +824,17 @@ describe('Task 8 product catalog list', () => {
       'bg-white'
     ]));
     expect(wrapper.get('[data-testid="product-list-heading"]').text()).toContain('商品列表');
+    expect(wrapper.get('[data-testid="product-list-heading"]').classes()).toContain('h-12');
     expect(wrapper.get('[data-testid="product-list-heading"]').get('h2').classes()).toContain('text-card-title');
     expect(wrapper.get('[data-testid="product-list-total"]').text()).toBe('共 5 件商品');
+    expect(wrapper.get('[data-testid="product-filter-bar"]').classes()).toContain('min-h-[60px]');
     expect(wrapper.get('[data-testid="product-filter-bar"]').find('[data-testid="add-product"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="product-table"] thead').classes()).toEqual(expect.arrayContaining([
+      'sticky',
+      'top-0'
+    ]));
+    expect(wrapper.get('[data-testid="product-row-42"]').classes()).toContain('h-16');
+    expect(wrapper.get('[data-testid="product-pagination"]').classes()).toContain('lg:h-14');
   });
 
   it('falls back after an image error and retries when the same product receives a new url', async () => {

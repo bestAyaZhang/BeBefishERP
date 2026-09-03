@@ -206,14 +206,14 @@ function openProduct(product: Product) {
 </script>
 
 <template>
-  <div data-testid="product-table-scroll" class="h-full min-w-0 overflow-x-auto">
+  <div data-testid="product-table-scroll" class="h-full min-w-0 overflow-auto">
     <table
       data-testid="product-table"
       class="w-full table-fixed border-collapse text-left text-sm"
       :style="{ minWidth: `${minimumWidth}px` }"
       :aria-busy="loading"
     >
-      <thead class="bg-slate-50 text-xs font-medium text-slate-500">
+      <thead class="sticky top-0 z-10 bg-slate-50 text-xs font-medium text-slate-500">
         <tr class="h-10">
           <th
             v-for="column in activeColumns"
@@ -261,7 +261,7 @@ function openProduct(product: Product) {
           tabindex="0"
           role="link"
           :aria-label="`查看${product.productName}详情`"
-          class="h-[72px] cursor-pointer border-b border-slate-200 odd:bg-white even:bg-slate-50/70 hover:bg-blue-50/50 focus-visible:bg-blue-50 focus-visible:outline-none"
+          class="h-16 cursor-pointer border-b border-slate-200 odd:bg-white even:bg-slate-50/70 hover:bg-blue-50/50 focus-visible:bg-blue-50 focus-visible:outline-none"
           @click="openProduct(product)"
           @keyup.enter.self="openProduct(product)"
         >

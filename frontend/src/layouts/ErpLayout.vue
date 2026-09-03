@@ -144,15 +144,15 @@ async function handleLogout() {
 </script>
 
 <template>
-  <main data-testid="erp-shell" class="bebefish-prototype min-h-screen bg-[#f6f7fb] text-[#25314d]">
+  <main data-testid="erp-shell" class="bebefish-prototype h-dvh min-h-screen overflow-hidden bg-[#f6f7fb] text-[#25314d]">
     <MessageHost />
-    <div data-testid="erp-layout-grid" class="grid min-h-screen grid-cols-1 lg:grid-cols-[244px_minmax(0,1fr)]" :inert="mobileNavigationModalActive || undefined" :aria-hidden="mobileNavigationModalActive ? 'true' : undefined">
-      <aside class="sticky top-0 hidden h-screen min-h-0 border-r border-slate-200 bg-white lg:flex">
+    <div data-testid="erp-layout-grid" class="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[244px_minmax(0,1fr)]" :inert="mobileNavigationModalActive || undefined" :aria-hidden="mobileNavigationModalActive ? 'true' : undefined">
+      <aside class="sticky top-0 hidden h-full min-h-0 border-r border-slate-200 bg-white lg:flex">
         <SidebarNav />
       </aside>
 
-      <section data-testid="erp-main" class="min-w-0">
-        <header v-if="!routeOwnsHeader" data-testid="erp-topbar" class="flex h-16 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:gap-4 sm:px-4 lg:gap-5 lg:px-6">
+      <section data-testid="erp-main" class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+        <header v-if="!routeOwnsHeader" data-testid="erp-topbar" class="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:gap-4 sm:px-4 lg:gap-5 lg:px-6">
           <div data-testid="erp-topbar-leading" class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:gap-4">
             <button ref="mobileNavigationTrigger" data-testid="erp-mobile-trigger" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-white hover:text-[#25314d] lg:hidden" type="button" aria-label="打开菜单" @click="openMobileNavigation">
               <Menu class="h-5 w-5" aria-hidden="true" />
@@ -181,7 +181,7 @@ async function handleLogout() {
           </div>
         </header>
 
-        <div data-testid="erp-page-content" class="min-w-0 p-4 lg:px-8 lg:pb-3 lg:pt-8">
+        <div data-testid="erp-page-content" class="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 lg:px-8 lg:pb-3 lg:pt-8">
           <RouterView />
         </div>
       </section>

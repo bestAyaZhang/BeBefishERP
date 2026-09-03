@@ -191,10 +191,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="min-w-0 space-y-4">
+  <section class="flex h-full min-h-0 min-w-0 flex-col gap-3">
     <header
       data-testid="product-page-header"
-      class="flex h-24 min-w-0 items-center justify-between gap-6"
+      class="flex h-[72px] min-w-0 shrink-0 items-center justify-between gap-6"
     >
       <div class="min-w-0">
         <div class="flex min-w-0 items-center gap-3">
@@ -223,7 +223,7 @@ onBeforeUnmount(() => {
 
     <div
       data-testid="product-workspace"
-      class="grid min-w-0 gap-4 lg:min-h-[calc(100vh-220px)] lg:grid-cols-[260px_minmax(0,1fr)] lg:items-stretch"
+      class="grid min-h-[560px] min-w-0 flex-1 gap-3 lg:min-h-0 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-stretch"
     >
       <ProductCategoryTree
         :categories="categories"
@@ -242,7 +242,7 @@ onBeforeUnmount(() => {
       >
         <header
           data-testid="product-list-heading"
-          class="flex h-14 min-w-0 shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-4"
+          class="flex h-12 min-w-0 shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-4"
         >
           <h2 class="text-card-title text-[#25314d]">商品列表</h2>
           <p data-testid="product-list-total" class="shrink-0 text-sm text-slate-500">共 {{ result.total }} 件商品</p>
@@ -250,7 +250,7 @@ onBeforeUnmount(() => {
 
         <div
           data-testid="product-filter-bar"
-          class="flex min-h-[72px] min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-3"
+          class="flex min-h-[60px] min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-2"
         >
           <label class="relative min-w-[220px] flex-1 sm:max-w-[268px]">
             <span class="sr-only">货号 / SKU</span>
