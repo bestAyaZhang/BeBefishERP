@@ -203,6 +203,20 @@ describe('mockOrganizationService', () => {
       status: 'disabled'
     })).rejects.toThrow('岗位已分配给在职员工，无法停用');
   });
+
+  it('rejects moving an occupied position and preserves its department', async () => {
+    const productManager = (await service.listAllPositions()).find((item) => item.id === 3)!;
+
+    await expect(service.updatePosition(productManager.id, {
+      positionCode: productManager.positionCode,
+      positionName: productManager.positionName,
+      departmentId: 5,
+      responsibilities: productManager.responsibilities,
+      status: productManager.status
+    })).rejects.toThrow('该岗位已有员工，不能调整所属部门');
+    expect((await service.listAllPositions()).find((item) => item.id === productManager.id))
+      .toEqual(productManager);
+  });
 });
 
 function validEmployee(overrides: Partial<SaveEmployeePayload> = {}): SaveEmployeePayload {

@@ -383,6 +383,10 @@ export function createMockOrganizationService(): OrganizationService {
       const current = positions.find((item) => item.id === id);
       if (!current) throw new Error('岗位不存在');
       validatePosition(payload, departments, positions, id);
+      if (payload.departmentId !== current.departmentId
+        && employees.some((item) => item.positionId === id)) {
+        throw new Error('该岗位已有员工，不能调整所属部门');
+      }
       if (payload.status === 'disabled') validatePositionCanDisable(id, employees);
       const position: Position = {
         ...payload,
