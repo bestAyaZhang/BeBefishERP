@@ -204,19 +204,19 @@ Take a screenshot and inspect metadata. Verify: frame is exactly `1440x1024`; si
 - Consumes: Task 3 frame structure and reusable permission components
 - Produces: data-scope configuration state for a custom role
 
-- [ ] **Step 1: Duplicate only the shared frame structure**
+- [x] **Step 1: Duplicate only the shared frame structure**
 
 Duplicate the matrix frame into the same section, rename it `Permission Management / Data Scope`, select `商品运营`, and activate the `数据范围` tab. Detach no reusable instances.
 
-- [ ] **Step 2: Update the custom-role summary**
+- [x] **Step 2: Update the custom-role summary**
 
 Show role code `PRODUCT_OPERATOR`, status `启用`, members `6`, and `最近更新：Aya Zhang · 2026-09-03`. Provide text actions `编辑角色`, `复制角色`, and `停用` with the destructive action visually separated.
 
-- [ ] **Step 3: Add the multi-role scope notice**
+- [x] **Step 3: Add the multi-role scope notice**
 
 Add an informational strip: `员工拥有多个角色时，最终数据范围按最宽授权计算。` Use the existing subtle information treatment without creating a decorative card.
 
-- [ ] **Step 4: Build four scope options**
+- [x] **Step 4: Build four scope options**
 
 Display these radio choices in one vertical list:
 
@@ -229,15 +229,15 @@ Display these radio choices in one vertical list:
 
 Select `本部门及下级`.
 
-- [ ] **Step 5: Build the organization-range summary**
+- [x] **Step 5: Build the organization-range summary**
 
 On the right side of the scope content, show `当前可访问范围` with `产品中心及 3 个下级组织`, then a compact tree containing 产品中心、产品研发部、产品设计部、归档项目组. This summary is read-only.
 
-- [ ] **Step 6: Add the dirty action state**
+- [x] **Step 6: Add the dirty action state**
 
 Use the `Dirty` bottom action bar variant, enabling both cancel and save. Add a small unsaved dot to the selected role item.
 
-- [ ] **Step 7: Validate the data-scope frame**
+- [x] **Step 7: Validate the data-scope frame**
 
 Screenshot at original scale. Verify radio rows align, option descriptions wrap without clipping, the tree remains inside its column, and the fixed action bar leaves the entire last option visible.
 
@@ -516,3 +516,16 @@ Provide the user with the Figma prototype URL, the four local screenshot links, 
 - The accepted matrix was not changed: `562:10731` remains non-scrolling, body `585:11913` remains the only vertical scroll region, and all eight cells of row `561:10698` still have zero stroke paints.
 - Re-exported the exact `1440x1024` durable PNG, `164252` bytes, SHA-256 `f4782643f05089523b670ef8620db1c819930abf2a37e04d14744073267f49f3`. Visual inspection confirmed the full sidebar, matrix, and pinned footer are visible without clipping or overlap.
 - Source section `499:9745`, source frame `499:9746`, and shared component `28:81` retain their prior geometry and content. Task 3 remains `SuperAdminReadOnly`; Task 7 retains ownership of `NewRoleEditable`.
+
+### Task 4: Data Scope Frame
+
+- Status: `DONE`.
+- Deliverable frame: `Permission Management / Data Scope` (`600:11953`) in `Permission Management` (`538:10667`) on `03 Master Data` (`1:3`), exactly `1440x1024` at `80,4240`.
+- Reusable workspace: `Permissions/Main Workspace / Data Scope` component `604:12647` (`836x784`) with final instance `600:11974`. The duplicated frame retains sidebar `600:11954` -> `584:11811`, topbar `600:11955` -> `31:186`, and page header `600:11957` -> `33:208`.
+- Selected custom role: `600:11969` -> `State=Unsaved` component `539:10711`, with `商品运营`, `6`, `启用`, brand-selected surface, and visible unsaved dot `I600:11969;539:10712`. The prior `超级管理员` row `600:11965` is `State=Default`.
+- Workspace state: summary `I600:11974;604:12648`, active data-scope tab `I600:11974;604:12665` -> `542:10687`, four option instances from set `544:10714`, selected `本部门及下级` instance `I600:11974;604:12737` -> `544:10698`, organization tree `I600:11974;604:12765`, and Dirty action bar `I600:11974;604:12693` -> `548:10704`.
+- Layout readback: sidebar `244x1024`; topbar `1196x64`; content `1196x960`; role panel `280x784`; workspace gap `16`; workspace `836x784`; summary/tabs/content/action heights `120/48/552/64`; scope columns `804x408` with `520px` options, `16px` gap, and `268px` summary. Option rows are `520x96` at `y=0/104/208/312`.
+- Final Plugin API audit returned `PASS`: every required string is present, Noto Sans SC/Inter checks passed with zero negative letter spacing, all role rows/tabs/scope options/actions retain component ancestry, and the final selected surface uses approved `Color/Brand/Primary` through background `I600:11974;610:12372` at node opacity `0.08`.
+- Durable original-scale screenshot: `.superpowers/sdd/2026-09-04-permission-management-figma-prototype/task-4-data-scope.png`, `1440x1024`, `147753` bytes, SHA-256 `32deb3d569a77b0a48327a64a6147723b6f7a0d7c8c6f564e07e6ce3fa6d1863`. Visual inspection confirmed aligned radios, unclipped descriptions, contained tree content, visible last option, and clear separation above the fixed action bar.
+- Source preservation: organization section `499:9745` remains `22720,0`, `4800x2368`, with its five original children; source frame `499:9746` remains `1440x1024`; Task 3 frame `572:11100` remains `80,3000`, `1440x1024`.
+- Concern: Figma normalizes paint-level opacity on nested instances, so the selected option keeps the reusable radio-row instance for content and uses an auto-layout wrapper plus a variable-bound background layer at node opacity `0.08`; no repeated role, tab, scope-option, or action structure is detached.
