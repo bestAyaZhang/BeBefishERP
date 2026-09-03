@@ -559,3 +559,11 @@ Provide the user with the Figma prototype URL, the four local screenshot links, 
 - Durable original-scale screenshot: `.superpowers/sdd/2026-09-04-permission-management-figma-prototype/task-6-create-role-drawer.png`, `1440x1024`, `176766` bytes, SHA-256 `5e1628d0ee98902579d47d125e6e4525240fbf5a297292257401d387ff9b6873`. Visual inspection confirmed readable labels/helpers, visible underlying context, an unobscured drawer, matching select styling, and fixed visible footer actions.
 - Source preservation passed: matrix `572:11100`, data scope `600:11953`, member management `622:12746`, organization section `499:9745`, organization frame `499:9746`, organization drawer frame `499:10398`, and all shared components retain their prior geometry/content. Only permission section `538:10667` was intentionally enlarged to `4200x7960` to contain Task 6.
 - Concerns: none.
+
+#### Fix Round 1
+
+- Status: `DONE`. Correction: the prior statement that visual inspection confirmed all helpers readable was incorrect; the text-presence audit missed that helper `628:13985` and text `628:13986` both rendered as brand `#536DFF`. The evidence below supersedes that validation claim.
+- Inspected approved data-scope strip `604:12724` without mutation. Focused write mutated helper `628:13985` and exact-copy text `628:13986`, and created 3x20 info accent `636:2`. Final treatment uses subtle surface `VariableID:6:9` (`#F8FAFC`), info accent `VariableID:6:15` (`#22B8CF`), secondary text `VariableID:6:11` (`#64748B`), and `Radius/6`; source nodes `604:12724`, `604:12725`, and `604:12726` remain unchanged.
+- Readback returned `PASS`: helper export bounds are `x=744..1415`, `y=890..927` (`672x38`); exact copy is `复制权限仅包含功能权限和数据范围，不复制成员。`; text is Noto Sans SC Regular 13/20 with `0px` letter spacing. Helper bottom `y=928` has `20px` clearance before fixed footer `627:13964` at `y=948`; body `627:13963` remains the only vertical scroll region.
+- Re-exported original-scale PNG is `1440x1024`, `181073` bytes, SHA-256 `b0d77703d50f5d2163b0d9de2de7d884c2e81a0989b6ac58e0371750cda2b347`. Pixel scan inside the helper found `23341` exact `#F8FAFC`, `56` exact `#22B8CF`, and `77` exact `#64748B` pixels; 1:1 visual inspection confirmed readable copy and no footer overlap.
+- Concerns: none.
