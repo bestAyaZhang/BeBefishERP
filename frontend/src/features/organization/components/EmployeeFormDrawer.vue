@@ -19,6 +19,7 @@ const props = defineProps<{
   positions: Position[];
   saving: boolean;
   error: string;
+  canManage?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -41,7 +42,13 @@ interface EmployeeFormState {
   passwordConfirm: string;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+function today() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 function initialForm(): EmployeeFormState {
   const item = props.employee;
@@ -68,6 +75,7 @@ const editFromViewElement = ref<HTMLButtonElement | null>(null);
 let previouslyFocusedElement: HTMLElement | null = null;
 const readOnly = computed(() => props.mode === 'view');
 const isCreate = computed(() => props.mode === 'create');
+const canManage = computed(() => props.canManage !== false);
 const drawerTitle = computed(() => ({ create: '新增员工', edit: '编辑员工', view: '员工详情' })[props.mode]);
 const visibleDepartments = computed(() => props.departments.filter((item) => item.status === 'enabled' || item.id === props.employee?.departmentId));
 const visiblePositions = computed(() => props.positions.filter((item) => (
@@ -75,10 +83,11 @@ const visiblePositions = computed(() => props.positions.filter((item) => (
   && (item.status === 'enabled' || item.id === props.employee?.positionId)
 )));
 const displayedError = computed(() => validationError.value || props.error);
-const temporaryPasswordRequired = computed(() => {
-  if (form.value.employmentType !== 'temporary') return false;
+const passwordRequired = computed(() => {
+  if (!form.value.passwordLoginEnabled) return false;
   if (isCreate.value || !props.employee) return true;
-  return props.employee.employmentType !== 'temporary' || !props.employee.passwordLoginEnabled;
+  if (form.value.employmentType === 'temporary' && props.employee.employmentType !== 'temporary') return true;
+  return !props.employee.passwordLoginEnabled;
 });
 const feishuStatusLabel = computed(() => {
   if (!props.employee) return '保存后生成绑定二维码';
@@ -112,16 +121,28 @@ watch(() => form.value.employmentType, (employmentType) => {
   validationError.value = '';
 });
 
+watch(() => form.value.passwordLoginEnabled, (enabled) => {
+  if (!enabled) {
+    form.value.password = '';
+    form.value.passwordConfirm = '';
+  }
+  validationError.value = '';
+});
+
 function validate(): string {
   const value = form.value;
-  if (value.employmentType === 'temporary' && (
-    !value.passwordLoginEnabled || (temporaryPasswordRequired.value && !value.password.trim())
-  )) return '临时员工必须启用手机号和密码登录';
+  if (value.employmentType === 'temporary' && !value.passwordLoginEnabled) return '临时员工必须启用手机号和密码登录';
+  if (passwordRequired.value && !value.password.trim()) {
+    return value.employmentType === 'temporary'
+      ? '临时员工必须启用手机号和密码登录'
+      : '启用手机号和密码登录时必须设置密码';
+  }
   if (!value.employeeName.trim() || !value.mobile.trim() || !value.employeeNo.trim()) return '请完整填写员工基本资料';
   if (!/^1\d{10}$/.test(value.mobile.trim())) return '请输入正确的手机号';
   if (value.departmentId === '' || value.positionId === '') return '请选择员工所属部门和岗位';
   if (!value.hireDate) return '请选择入职日期';
-  if (value.password && value.password !== value.passwordConfirm) return '两次输入的密码不一致';
+  if (value.passwordLoginEnabled && (value.password || value.passwordConfirm)
+    && value.password !== value.passwordConfirm) return '两次输入的密码不一致';
   return '';
 }
 
@@ -141,7 +162,7 @@ function submit() {
     hireDate: form.value.hireDate,
     passwordLoginEnabled: form.value.passwordLoginEnabled
   };
-  if (form.value.password.trim()) payload.password = form.value.password;
+  if (form.value.passwordLoginEnabled && form.value.password.trim()) payload.password = form.value.password;
   emit('save', payload);
 }
 
@@ -208,7 +229,7 @@ onBeforeUnmount(() => {
           </p>
         </div>
         <button
-          v-if="mode === 'view'"
+          v-if="mode === 'view' && canManage"
           ref="editFromViewElement"
           data-testid="edit-from-view"
           type="button"
@@ -312,7 +333,14 @@ onBeforeUnmount(() => {
               <p class="text-sm font-medium text-[#25314d]">飞书账号</p>
               <p class="mt-0.5 text-xs text-amber-600">{{ feishuStatusLabel }}</p>
             </div>
-            <button v-if="!readOnly" type="button" class="h-9 rounded-[6px] border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600">生成二维码</button>
+            <button
+              v-if="!readOnly"
+              data-testid="generate-feishu-qr"
+              type="button"
+              disabled
+              title="暂未接入飞书二维码"
+              class="h-9 rounded-[6px] border border-slate-200 bg-white px-3 text-xs font-medium text-slate-400 disabled:cursor-not-allowed"
+            >二维码暂未接入</button>
           </div>
 
           <label class="mt-3 flex min-h-[52px] items-center justify-between gap-4 rounded-[6px] bg-slate-50 px-3.5 py-2">

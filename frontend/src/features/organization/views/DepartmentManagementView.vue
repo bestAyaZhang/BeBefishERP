@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { Building2, Plus, Search } from 'lucide-vue-next';
-import { computed, inject, onMounted, ref } from 'vue';
+import { computed, inject, onMounted, ref, watch } from 'vue';
 import DepartmentFormDrawer, { type DepartmentDrawerMode } from '../components/DepartmentFormDrawer.vue';
 import DepartmentTree from '../components/DepartmentTree.vue';
 import OrganizationPagination from '../components/OrganizationPagination.vue';
 import OrganizationStatusBadge from '../components/OrganizationStatusBadge.vue';
 import { buildDepartmentTree } from '../organizationTree';
 import { organizationService, type OrganizationService } from '../organizationService';
+import { currentUser } from '../../../services/authSession';
 import type {
   Department,
   DepartmentListItem,
@@ -36,8 +37,11 @@ const drawerMode = ref<DepartmentDrawerMode | null>(null);
 const selectedDepartment = ref<Department | null>(null);
 const saving = ref(false);
 const saveError = ref('');
+const selectedDepartmentIds = ref<number[]>([]);
+let departmentListGeneration = 0;
 
 const departmentTree = computed(() => buildDepartmentTree(departments.value));
+const canManage = computed(() => currentUser.value?.permissions.includes('organization:manage') ?? false);
 const departmentById = computed(() => new Map(departments.value.map((department) => [department.id, department])));
 const selectedTreeDepartment = computed(() => departmentById.value.get(selectedDepartmentId.value ?? -1));
 const treeSummary = computed(() => {
@@ -51,6 +55,15 @@ const treeSummary = computed(() => {
     title: department.departmentName,
     meta: `负责人：${department.managerName || '未设置'} · 直属员工 ${employeeCounts.value[department.id] ?? 0} 人`
   };
+});
+const pageDepartmentIds = computed(() => result.value.records.map((item) => item.id));
+const allPageDepartmentsSelected = computed(() => pageDepartmentIds.value.length > 0
+  && pageDepartmentIds.value.every((id) => selectedDepartmentIds.value.includes(id)));
+const somePageDepartmentsSelected = computed(() => !allPageDepartmentsSelected.value
+  && pageDepartmentIds.value.some((id) => selectedDepartmentIds.value.includes(id)));
+
+watch(pageDepartmentIds, () => {
+  selectedDepartmentIds.value = [];
 });
 
 function messageFrom(value: unknown) {
@@ -67,20 +80,27 @@ function currentDepartmentQuery() {
 }
 
 async function fetchDepartments() {
-  result.value = await service.listDepartmentPage(currentDepartmentQuery());
-}
-
-async function loadDepartments() {
+  const requestGeneration = ++departmentListGeneration;
   loading.value = true;
   error.value = '';
   try {
-    await fetchDepartments();
+    const nextResult = await service.listDepartmentPage(currentDepartmentQuery());
+    if (requestGeneration !== departmentListGeneration) return;
+    result.value = nextResult;
   } catch (requestError) {
+    if (requestGeneration !== departmentListGeneration) return;
     error.value = messageFrom(requestError);
     result.value = { records: [], page: page.value, pageSize: pageSize.value, total: 0 };
+    throw requestError;
   } finally {
-    loading.value = false;
+    if (requestGeneration === departmentListGeneration) loading.value = false;
   }
+}
+
+async function loadDepartments() {
+  try {
+    await fetchDepartments();
+  } catch {}
 }
 
 async function loadReferenceData() {
@@ -159,12 +179,14 @@ async function changePageSize(nextSize: number) {
 }
 
 function openCreate() {
+  if (!canManage.value) return;
   selectedDepartment.value = null;
   drawerMode.value = 'create';
   saveError.value = '';
 }
 
 function openEdit(department: DepartmentListItem) {
+  if (!canManage.value) return;
   selectedDepartment.value = { ...department };
   drawerMode.value = 'edit';
   saveError.value = '';
@@ -177,6 +199,7 @@ function closeDrawer() {
 }
 
 async function saveDepartment(payload: SaveDepartmentPayload) {
+  if (!canManage.value) return;
   saving.value = true;
   saveError.value = '';
   try {
@@ -194,6 +217,7 @@ async function saveDepartment(payload: SaveDepartmentPayload) {
   closeDrawer();
   try {
     await refreshReferenceData();
+    pageNotice.value = '';
   } catch (requestError) {
     pageNotice.value = `部门保存成功，但列表刷新失败：${messageFrom(requestError)}`;
   } finally {
@@ -202,6 +226,7 @@ async function saveDepartment(payload: SaveDepartmentPayload) {
 }
 
 async function toggleDepartmentStatus(department: DepartmentListItem) {
+  if (!canManage.value) return;
   if (department.status === 'enabled' && department.statusActionDisabled) return;
   pageNotice.value = '';
   try {
@@ -216,9 +241,21 @@ async function toggleDepartmentStatus(department: DepartmentListItem) {
 
   try {
     await refreshReferenceData();
+    pageNotice.value = '';
   } catch {
     pageNotice.value = '操作已成功，但列表刷新失败，请手动重试';
   }
+}
+
+function toggleDepartmentSelection(id: number, event: Event) {
+  const checked = (event.target as HTMLInputElement).checked;
+  selectedDepartmentIds.value = checked
+    ? [...new Set([...selectedDepartmentIds.value, id])]
+    : selectedDepartmentIds.value.filter((item) => item !== id);
+}
+
+function toggleAllDepartments(event: Event) {
+  selectedDepartmentIds.value = (event.target as HTMLInputElement).checked ? [...pageDepartmentIds.value] : [];
 }
 
 onMounted(loadReferenceData);
@@ -234,7 +271,7 @@ onMounted(loadReferenceData);
         </div>
         <p class="mt-1 text-sm leading-[22px] text-slate-500">维护多级部门结构、负责人、排序与启停状态。</p>
       </div>
-      <button data-testid="add-department" type="button" class="inline-flex h-10 w-32 shrink-0 items-center justify-center gap-2 rounded-[6px] bg-[#536dff] text-sm font-medium text-white shadow-[0_8px_18px_rgba(83,109,255,0.2)] transition hover:bg-[#465eea]" @click="openCreate">
+      <button v-if="canManage" data-testid="add-department" type="button" class="inline-flex h-10 w-32 shrink-0 items-center justify-center gap-2 rounded-[6px] bg-[#536dff] text-sm font-medium text-white shadow-[0_8px_18px_rgba(83,109,255,0.2)] transition hover:bg-[#465eea]" @click="openCreate">
         <Plus class="h-[18px] w-[18px]" aria-hidden="true" />
         新增部门
       </button>
@@ -295,7 +332,7 @@ onMounted(loadReferenceData);
           <table v-else class="w-full min-w-[796px] table-fixed border-collapse text-left">
             <thead class="sticky top-0 z-10 bg-slate-50 text-xs font-normal text-slate-500">
               <tr class="h-11">
-                <th class="w-[42px] px-3 font-normal"><input type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300" aria-label="选择全部部门" /></th>
+                <th class="w-[42px] px-3 font-normal"><input data-testid="select-all-departments" type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300" aria-label="选择全部部门" :checked="allPageDepartmentsSelected" :indeterminate="somePageDepartmentsSelected" @change="toggleAllDepartments" /></th>
                 <th class="w-[90px] px-2.5 font-normal">部门编码</th>
                 <th class="w-[150px] px-2.5 font-normal">部门名称</th>
                 <th class="w-[130px] px-2.5 font-normal">上级部门</th>
@@ -307,7 +344,7 @@ onMounted(loadReferenceData);
             </thead>
             <tbody>
               <tr v-for="department in result.records" :key="department.id" class="h-16 border-t border-slate-200 bg-white transition hover:bg-slate-50/70">
-                <td class="px-3"><input type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300" :aria-label="`选择${department.departmentName}`" /></td>
+                <td class="px-3"><input :data-testid="`select-department-${department.id}`" type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300" :aria-label="`选择${department.departmentName}`" :checked="selectedDepartmentIds.includes(department.id)" @change="toggleDepartmentSelection(department.id, $event)" /></td>
                 <td class="truncate px-2.5 font-numeric text-xs text-slate-500">{{ department.departmentCode }}</td>
                 <td class="truncate px-2.5 text-sm font-medium">{{ department.departmentName }}</td>
                 <td class="truncate px-2.5 text-sm text-slate-500">{{ department.parentId === null ? '全公司' : departmentById.get(department.parentId)?.departmentName ?? '--' }}</td>
@@ -316,8 +353,9 @@ onMounted(loadReferenceData);
                 <td class="px-2.5"><OrganizationStatusBadge :status="department.status" /></td>
                 <td class="px-2.5">
                   <span class="flex items-center gap-2.5 whitespace-nowrap text-sm">
-                    <button :data-testid="`edit-department-${department.id}`" type="button" class="font-medium text-[#536dff] transition hover:text-[#465eea]" @click="openEdit(department)">编辑</button>
+                    <button v-if="canManage" :data-testid="`edit-department-${department.id}`" type="button" class="font-medium text-[#536dff] transition hover:text-[#465eea]" @click="openEdit(department)">编辑</button>
                     <button
+                      v-if="canManage"
                       :data-testid="`department-status-action-${department.id}`"
                       type="button"
                       class="text-xs text-slate-500 transition enabled:hover:text-[#25314d] disabled:cursor-not-allowed disabled:text-slate-400"

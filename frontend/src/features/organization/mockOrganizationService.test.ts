@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createMockOrganizationService } from './mockOrganizationService';
-import type { SaveDepartmentPayload, SaveEmployeePayload, SavePositionPayload } from './types';
+import type { Employee, SaveDepartmentPayload, SaveEmployeePayload, SavePositionPayload } from './types';
 
 describe('mockOrganizationService', () => {
   let service: ReturnType<typeof createMockOrganizationService>;
@@ -29,11 +29,86 @@ describe('mockOrganizationService', () => {
     expect(created).not.toHaveProperty('password');
   });
 
+  it('requires a password whenever password login is enabled for a new employee', async () => {
+    await expect(service.createEmployee(validEmployee({ passwordLoginEnabled: true })))
+      .rejects.toThrow('启用手机号和密码登录时必须设置密码');
+
+    const created = await service.createEmployee(validEmployee({
+      passwordLoginEnabled: true,
+      password: 'Formal@123456'
+    }));
+
+    expect(created.passwordLoginEnabled).toBe(true);
+    expect(created).not.toHaveProperty('password');
+  });
+
+  it('requires a new password only when an edit establishes password login', async () => {
+    const formalEmployee = (await service.listAllEmployees()).find((item) => (
+      item.employmentType === 'formal' && !item.passwordLoginEnabled
+    ))!;
+
+    await expect(service.updateEmployee(formalEmployee.id, employeePayload(formalEmployee, {
+      passwordLoginEnabled: true
+    }))).rejects.toThrow('启用手机号和密码登录时必须设置密码');
+
+    const enabled = await service.updateEmployee(formalEmployee.id, employeePayload(formalEmployee, {
+      passwordLoginEnabled: true,
+      password: 'Formal@123456'
+    }));
+    const renamed = await service.updateEmployee(formalEmployee.id, employeePayload(enabled, {
+      employeeName: '保留密码账号'
+    }));
+
+    expect(renamed).toMatchObject({ employeeName: '保留密码账号', passwordLoginEnabled: true });
+    expect(renamed).not.toHaveProperty('password');
+  });
+
+  it('requires a password when transitioning to temporary unless the temporary account is established', async () => {
+    const formalEmployee = (await service.listAllEmployees()).find((item) => item.id === 20)!;
+
+    await expect(service.updateEmployee(formalEmployee.id, employeePayload(formalEmployee, {
+      employmentType: 'temporary',
+      passwordLoginEnabled: true
+    }))).rejects.toThrow('转为临时员工时必须设置密码');
+
+    const temporaryEmployee = (await service.listAllEmployees()).find((item) => (
+      item.employmentType === 'temporary' && item.passwordLoginEnabled
+    ))!;
+    const updated = await service.updateEmployee(temporaryEmployee.id, employeePayload(temporaryEmployee, {
+      employeeName: '临时员工免重置'
+    }));
+
+    expect(updated).toMatchObject({
+      employeeName: '临时员工免重置',
+      employmentType: 'temporary',
+      passwordLoginEnabled: true
+    });
+  });
+
   it('rejects a position outside the selected department', async () => {
     await expect(service.createEmployee({
       employeeNo: 'E-099', employeeName: '错配员工', mobile: '13900000011', departmentId: 2, positionId: 8,
       employmentType: 'formal', status: 'active', hireDate: '2026-09-03', passwordLoginEnabled: false
     })).rejects.toThrow('岗位不属于所选部门');
+  });
+
+  it('requires enabled departments and positions when creating or updating employees', async () => {
+    await expect(service.createEmployee(validEmployee({
+      departmentId: 11,
+      positionId: 13
+    }))).rejects.toThrow('所属部门未启用');
+
+    await service.changeDepartmentStatus(11, 'enabled');
+    await expect(service.createEmployee(validEmployee({
+      departmentId: 11,
+      positionId: 13
+    }))).rejects.toThrow('所属岗位未启用');
+
+    const existing = (await service.listAllEmployees())[0];
+    await expect(service.updateEmployee(existing.id, employeePayload(existing, {
+      departmentId: 11,
+      positionId: 13
+    }))).rejects.toThrow('所属岗位未启用');
   });
 
   it('paginates department and position management queries', async () => {
@@ -179,6 +254,55 @@ describe('mockOrganizationService', () => {
     expect(created).toMatchObject({ positionCode: 'PM', positionName: '产品经理', departmentId: 5 });
   });
 
+  it('requires an enabled department when saving or enabling an enabled position', async () => {
+    await expect(service.createPosition(validPosition({
+      positionCode: 'ARCHIVE-ENABLED',
+      positionName: '归档启用岗位',
+      departmentId: 11
+    }))).rejects.toThrow('启用岗位必须属于启用部门');
+
+    const disabledPosition = await service.createPosition(validPosition({
+      positionCode: 'ARCHIVE-DISABLED',
+      positionName: '归档停用岗位',
+      departmentId: 11,
+      status: 'disabled'
+    }));
+    await expect(service.updatePosition(disabledPosition.id, {
+      positionCode: disabledPosition.positionCode,
+      positionName: disabledPosition.positionName,
+      departmentId: disabledPosition.departmentId,
+      responsibilities: disabledPosition.responsibilities,
+      status: 'enabled'
+    })).rejects.toThrow('启用岗位必须属于启用部门');
+    await expect(service.changePositionStatus(13, 'enabled'))
+      .rejects.toThrow('启用岗位必须属于启用部门');
+  });
+
+  it('requires an enabled parent when saving or enabling an enabled child department', async () => {
+    await expect(service.createDepartment(validDepartment({
+      departmentCode: 'ARCHIVE-CHILD',
+      departmentName: '归档子部门',
+      parentId: 11
+    }))).rejects.toThrow('启用部门的上级部门必须已启用');
+
+    const disabledChild = await service.createDepartment(validDepartment({
+      departmentCode: 'ARCHIVE-DISABLED-CHILD',
+      departmentName: '归档停用子部门',
+      parentId: 11,
+      status: 'disabled'
+    }));
+    await expect(service.updateDepartment(disabledChild.id, {
+      departmentCode: disabledChild.departmentCode,
+      departmentName: disabledChild.departmentName,
+      parentId: disabledChild.parentId,
+      managerEmployeeId: disabledChild.managerEmployeeId,
+      sortOrder: disabledChild.sortOrder,
+      status: 'enabled'
+    })).rejects.toThrow('启用部门的上级部门必须已启用');
+    await expect(service.changeDepartmentStatus(disabledChild.id, 'enabled'))
+      .rejects.toThrow('启用部门的上级部门必须已启用');
+  });
+
   it('prevents disabling departments with enabled children or active employees', async () => {
     await expect(service.changeDepartmentStatus(1, 'disabled'))
       .rejects.toThrow('存在启用中的子部门，无法停用');
@@ -242,6 +366,21 @@ function validEmployee(overrides: Partial<SaveEmployeePayload> = {}): SaveEmploy
     status: 'active',
     hireDate: '2026-09-03',
     passwordLoginEnabled: false,
+    ...overrides
+  };
+}
+
+function employeePayload(employee: Employee, overrides: Partial<SaveEmployeePayload> = {}): SaveEmployeePayload {
+  return {
+    employeeNo: employee.employeeNo,
+    employeeName: employee.employeeName,
+    mobile: employee.mobile,
+    departmentId: employee.departmentId,
+    positionId: employee.positionId,
+    employmentType: employee.employmentType,
+    status: employee.status,
+    hireDate: employee.hireDate,
+    passwordLoginEnabled: employee.passwordLoginEnabled,
     ...overrides
   };
 }

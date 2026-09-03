@@ -1,10 +1,11 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import EmployeeFormDrawer from './components/EmployeeFormDrawer.vue';
 import { createMockOrganizationService } from './mockOrganizationService';
 import type { OrganizationService } from './organizationService';
-import type { Department, Employee, Position, SaveEmployeePayload } from './types';
+import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
+import type { Department, Employee, PageResult, Position, SaveEmployeePayload } from './types';
 import EmployeeManagementView from './views/EmployeeManagementView.vue';
 
 const departments: Department[] = [
@@ -37,9 +38,25 @@ const employee: Employee = {
 
 let activeWrapper: VueWrapper | undefined;
 
+function setPermissions(permissions: string[]) {
+  saveCurrentUser({
+    accessToken: 'organization-test-token',
+    mobile: '13800138000',
+    roles: ['ADMIN'],
+    permissions,
+    loginMethod: 'password'
+  });
+}
+
+beforeEach(() => {
+  setPermissions(['organization:view', 'organization:manage']);
+});
+
 afterEach(() => {
   activeWrapper?.unmount();
   activeWrapper = undefined;
+  clearCurrentUser();
+  vi.useRealTimers();
 });
 
 async function mountPage(service: OrganizationService = createMockOrganizationService()) {
@@ -136,6 +153,61 @@ describe('EmployeeManagementView', () => {
     expect(wrapper.get('[data-testid="employee-error"]').text()).toContain('员工数据加载失败');
   });
 
+  it('keeps the newest employee request authoritative while stale requests finish around it', async () => {
+    const service = createMockOrganizationService();
+    const initialRequest = deferred<PageResult<Employee>>();
+    const productRequest = deferred<PageResult<Employee>>();
+    const researchRequest = deferred<PageResult<Employee>>();
+    vi.spyOn(service, 'listEmployees')
+      .mockReturnValueOnce(initialRequest.promise)
+      .mockReturnValueOnce(productRequest.promise)
+      .mockReturnValueOnce(researchRequest.promise);
+    const wrapper = mount(EmployeeManagementView, {
+      global: { provide: { organizationService: service } }
+    });
+    activeWrapper = wrapper;
+    await flushPromises();
+
+    await wrapper.get('[data-testid="department-node-2"]').trigger('click');
+    await wrapper.get('[data-testid="department-node-3"]').trigger('click');
+    productRequest.resolve(employeePage({ ...employee, id: 201, employeeName: '过期产品员工' }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="employee-loading"]').exists()).toBe(true);
+
+    researchRequest.resolve(employeePage({ ...employee, id: 202, departmentId: 3, positionId: 4, employeeName: '最新研发员工' }));
+    await flushPromises();
+    expect(wrapper.text()).toContain('最新研发员工');
+    expect(wrapper.text()).not.toContain('过期产品员工');
+
+    initialRequest.resolve(employeePage({ ...employee, id: 203, employeeName: '最旧全公司员工' }));
+    await flushPromises();
+    expect(wrapper.text()).toContain('最新研发员工');
+    expect(wrapper.text()).not.toContain('最旧全公司员工');
+  });
+
+  it('supports row and select-all employee selection and clears stale selections on new records', async () => {
+    const wrapper = await mountPage();
+    const selectAll = wrapper.get('[data-testid="select-all-employees"]');
+    const firstRow = wrapper.findAll('[data-testid^="select-employee-"]')[0];
+
+    await firstRow.setValue(true);
+    expect((firstRow.element as HTMLInputElement).checked).toBe(true);
+    expect((selectAll.element as HTMLInputElement).indeterminate).toBe(true);
+
+    await selectAll.setValue(true);
+    expect(wrapper.findAll('[data-testid^="select-employee-"]')
+      .every((item) => (item.element as HTMLInputElement).checked)).toBe(true);
+    await selectAll.setValue(false);
+    await firstRow.setValue(true);
+
+    await wrapper.get('[data-testid="employee-keyword"]').setValue('张敏');
+    await wrapper.get('[data-testid="employee-search"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid^="select-employee-"]')
+      .every((item) => !(item.element as HTMLInputElement).checked)).toBe(true);
+    expect((wrapper.get('[data-testid="select-all-employees"]').element as HTMLInputElement).indeterminate).toBe(false);
+  });
+
   it('creates, edits, views and cancels through the employee drawer', async () => {
     const service = createMockOrganizationService();
     const createEmployee = vi.spyOn(service, 'createEmployee');
@@ -160,6 +232,8 @@ describe('EmployeeManagementView', () => {
     expect(wrapper.find('[data-testid="employee-password"]').exists()).toBe(false);
     await wrapper.get('[data-testid="password-login-enabled"]').setValue(true);
     expect((wrapper.get('[data-testid="employee-password"]').element as HTMLInputElement).value).toBe('');
+    await wrapper.get('[data-testid="employee-password"]').setValue('Formal@123456');
+    await wrapper.get('[data-testid="employee-password-confirm"]').setValue('Formal@123456');
     await wrapper.get('[data-testid="employee-name"]').setValue('编辑后的员工');
     await wrapper.get('[data-testid="save-employee"]').trigger('click');
     await flushPromises();
@@ -251,6 +325,45 @@ describe('EmployeeManagementView', () => {
     expect(wrapper.get('h1').classes()).toContain('font-bold');
     expect(wrapper.get('[data-testid="employee-list-title"]').classes()).toContain('font-medium');
   });
+
+  it('renders exact login availability labels for every employee account state', async () => {
+    const service = createMockOrganizationService();
+    const cases: Array<{ employee: Employee; label: string }> = [
+      { employee: { ...employee, id: 101, status: 'disabled', passwordLoginEnabled: true }, label: '不可登录' },
+      { employee: { ...employee, id: 102, status: 'resigned', employmentType: 'temporary', passwordLoginEnabled: true }, label: '不可登录' },
+      { employee: { ...employee, id: 103, passwordLoginEnabled: true }, label: '飞书 + 手机号' },
+      { employee: { ...employee, id: 104, passwordLoginEnabled: false }, label: '飞书已绑定' },
+      { employee: { ...employee, id: 105, feishuBindingStatus: 'unbound', feishuDisplayName: '', passwordLoginEnabled: true }, label: '手机号账号' },
+      { employee: { ...employee, id: 106, feishuBindingStatus: 'pending', feishuDisplayName: '', passwordLoginEnabled: false }, label: '待绑定飞书' },
+      { employee: { ...employee, id: 107, employmentType: 'temporary', feishuBindingStatus: 'unbound', feishuDisplayName: '', passwordLoginEnabled: true }, label: '手机号账号' },
+      { employee: { ...employee, id: 108, employmentType: 'temporary', feishuBindingStatus: 'unbound', feishuDisplayName: '', passwordLoginEnabled: false }, label: '不可登录' }
+    ];
+    vi.spyOn(service, 'listEmployees').mockResolvedValue({
+      records: cases.map(({ employee: item }) => item),
+      page: 1,
+      pageSize: 20,
+      total: cases.length
+    });
+
+    const wrapper = await mountPage(service);
+
+    for (const { employee: item, label } of cases) {
+      expect(wrapper.get(`[data-testid="employee-login-method-${item.id}"]`).text()).toBe(label);
+    }
+  });
+
+  it('keeps view access while hiding every employee mutation control without manage permission', async () => {
+    setPermissions(['organization:view']);
+    const wrapper = await mountPage();
+
+    expect(wrapper.find('[data-testid="add-employee"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid^="edit-employee-"]').exists()).toBe(false);
+    const viewAction = wrapper.get('[data-testid^="view-employee-"]');
+    await viewAction.trigger('click');
+
+    expect(wrapper.get('[data-testid="employee-drawer"]').attributes('data-mode')).toBe('view');
+    expect(wrapper.find('[data-testid="edit-from-view"]').exists()).toBe(false);
+  });
 });
 
 describe('EmployeeFormDrawer', () => {
@@ -278,6 +391,80 @@ describe('EmployeeFormDrawer', () => {
 
     expect(wrapper.text()).toContain('临时员工必须启用手机号和密码登录');
     expect(wrapper.emitted('save')).toBeUndefined();
+  });
+
+  it('requires a password and matching confirmation when creating any password account', async () => {
+    const wrapper = mountDrawer();
+    await fillValidDrawer(wrapper);
+    await wrapper.get('[data-testid="password-login-enabled"]').setValue(true);
+    await wrapper.get('[data-testid="save-employee"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="employee-drawer-error"]').text()).toContain('启用手机号和密码登录时必须设置密码');
+    expect(wrapper.emitted('save')).toBeUndefined();
+
+    await wrapper.get('[data-testid="employee-password"]').setValue('Formal@123456');
+    await wrapper.get('[data-testid="save-employee"]').trigger('click');
+    expect(wrapper.get('[data-testid="employee-drawer-error"]').text()).toContain('两次输入的密码不一致');
+    expect(wrapper.emitted('save')).toBeUndefined();
+  });
+
+  it('requires a password when an edit enables password login', async () => {
+    const wrapper = mountDrawer({ mode: 'edit', employee });
+
+    await wrapper.get('[data-testid="password-login-enabled"]').setValue(true);
+    await wrapper.get('[data-testid="save-employee"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="employee-drawer-error"]').text()).toContain('启用手机号和密码登录时必须设置密码');
+    expect(wrapper.emitted('save')).toBeUndefined();
+  });
+
+  it('allows an established password account to be edited without replacing its password', async () => {
+    const wrapper = mountDrawer({
+      mode: 'edit',
+      employee: { ...employee, passwordLoginEnabled: true }
+    });
+
+    await wrapper.get('[data-testid="save-employee"]').trigger('click');
+
+    const payload = wrapper.emitted<SaveEmployeePayload[]>('save')?.[0]?.[0];
+    expect(payload?.passwordLoginEnabled).toBe(true);
+    expect(payload).not.toHaveProperty('password');
+  });
+
+  it('clears a typed password and omits it after password login is turned off', async () => {
+    const wrapper = mountDrawer();
+    await fillValidDrawer(wrapper);
+    await wrapper.get('[data-testid="password-login-enabled"]').setValue(true);
+    await wrapper.get('[data-testid="employee-password"]').setValue('Stale@123456');
+    await wrapper.get('[data-testid="employee-password-confirm"]').setValue('Stale@123456');
+    await wrapper.get('[data-testid="password-login-enabled"]').setValue(false);
+    await wrapper.get('[data-testid="save-employee"]').trigger('click');
+
+    const payload = wrapper.emitted<SaveEmployeePayload[]>('save')?.[0]?.[0];
+    expect(payload?.passwordLoginEnabled).toBe(false);
+    expect(payload).not.toHaveProperty('password');
+
+    await wrapper.get('[data-testid="password-login-enabled"]').setValue(true);
+    expect((wrapper.get('[data-testid="employee-password"]').element as HTMLInputElement).value).toBe('');
+    expect((wrapper.get('[data-testid="employee-password-confirm"]').element as HTMLInputElement).value).toBe('');
+  });
+
+  it('uses the browser-local calendar date for a new employee', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 3, 0, 30));
+
+    const wrapper = mountDrawer();
+
+    expect((wrapper.get('[data-testid="employee-hire-date"]').element as HTMLInputElement).value).toBe('2026-09-03');
+  });
+
+  it('marks the Feishu QR action as unavailable until it is connected', () => {
+    const wrapper = mountDrawer();
+    const qrAction = wrapper.get('[data-testid="generate-feishu-qr"]');
+
+    expect(qrAction.attributes('disabled')).toBeDefined();
+    expect(qrAction.attributes('title')).toBe('暂未接入飞书二维码');
+    expect(qrAction.text()).toContain('暂未接入');
   });
 
   it('filters enabled positions when department changes', async () => {
@@ -355,3 +542,22 @@ describe('EmployeeFormDrawer', () => {
     expect(wrapper.emitted('save')).toBeUndefined();
   });
 });
+
+async function fillValidDrawer(wrapper: VueWrapper) {
+  await wrapper.get('[data-testid="employee-name"]').setValue('测试员工');
+  await wrapper.get('[data-testid="employee-mobile"]').setValue('13900139009');
+  await wrapper.get('[data-testid="employee-number"]').setValue('EMP0009');
+  await wrapper.get('[data-testid="employee-department"]').setValue('2');
+  await wrapper.get('[data-testid="employee-position"]').setValue('2');
+  await wrapper.get('[data-testid="employee-hire-date"]').setValue('2026-09-03');
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
+function employeePage(item: Employee): PageResult<Employee> {
+  return { records: [item], page: 1, pageSize: 20, total: 1 };
+}

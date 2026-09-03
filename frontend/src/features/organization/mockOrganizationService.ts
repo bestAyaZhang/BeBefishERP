@@ -119,14 +119,32 @@ function sameNormalized(left: string, right: string) {
   return left.trim().toLowerCase() === right.trim().toLowerCase();
 }
 
-function validateEmployee(payload: SaveEmployeePayload, positions: Position[], employees: Employee[], editingId?: number) {
+function validateEmployee(
+  payload: SaveEmployeePayload,
+  departments: Department[],
+  positions: Position[],
+  employees: Employee[],
+  current?: Employee
+) {
   if (!payload.employeeNo.trim() || !payload.employeeName.trim() || !payload.mobile.trim()) throw new Error('请完整填写员工基本资料');
   if (!/^1\d{10}$/.test(payload.mobile)) throw new Error('请输入正确的手机号');
-  if (employees.some((item) => item.id !== editingId && item.employeeNo === payload.employeeNo.trim())) throw new Error('员工工号已存在');
-  if (employees.some((item) => item.id !== editingId && item.mobile === payload.mobile.trim())) throw new Error('手机号已绑定其他员工');
-  if (!positions.some((item) => item.id === payload.positionId && item.departmentId === payload.departmentId && item.status === 'enabled')) throw new Error('岗位不属于所选部门');
+  if (employees.some((item) => item.id !== current?.id && item.employeeNo === payload.employeeNo.trim())) throw new Error('员工工号已存在');
+  if (employees.some((item) => item.id !== current?.id && item.mobile === payload.mobile.trim())) throw new Error('手机号已绑定其他员工');
+  const department = departments.find((item) => item.id === payload.departmentId);
+  if (!department || department.status !== 'enabled') throw new Error('所属部门未启用');
+  const position = positions.find((item) => item.id === payload.positionId);
+  if (!position || position.departmentId !== payload.departmentId) throw new Error('岗位不属于所选部门');
+  if (position.status !== 'enabled') throw new Error('所属岗位未启用');
   if (payload.employmentType === 'temporary' && !payload.passwordLoginEnabled) throw new Error('临时员工必须启用手机号和密码登录');
-  if (payload.employmentType === 'temporary' && !editingId && !payload.password?.trim()) throw new Error('请设置临时员工登录密码');
+  const hasPassword = Boolean(payload.password?.trim());
+  const hasEstablishedTemporaryLogin = current?.employmentType === 'temporary' && current.passwordLoginEnabled;
+  if (payload.employmentType === 'temporary' && !hasEstablishedTemporaryLogin && !hasPassword) {
+    if (current && current.employmentType !== 'temporary') throw new Error('转为临时员工时必须设置密码');
+    throw new Error('请设置临时员工登录密码');
+  }
+  if (payload.passwordLoginEnabled && !current?.passwordLoginEnabled && !hasPassword) {
+    throw new Error('启用手机号和密码登录时必须设置密码');
+  }
 }
 
 function validateDepartment(
@@ -144,6 +162,10 @@ function validateDepartment(
   if (payload.parentId !== null && !departments.some((item) => item.id === payload.parentId)) {
     throw new Error('上级部门不存在');
   }
+  if (payload.status === 'enabled' && payload.parentId !== null
+    && departments.find((item) => item.id === payload.parentId)?.status !== 'enabled') {
+    throw new Error('启用部门的上级部门必须已启用');
+  }
   if (editingId !== undefined && payload.parentId !== null
     && collectDepartmentSubtreeIds(departments, editingId).has(payload.parentId)) {
     throw new Error('上级部门不能选择当前部门或其下级部门');
@@ -157,7 +179,9 @@ function validatePosition(
   editingId?: number
 ) {
   if (!payload.positionCode.trim() || !payload.positionName.trim()) throw new Error('请完整填写岗位资料');
-  if (!departments.some((item) => item.id === payload.departmentId)) throw new Error('所属部门不存在');
+  const department = departments.find((item) => item.id === payload.departmentId);
+  if (!department) throw new Error('所属部门不存在');
+  if (payload.status === 'enabled' && department.status !== 'enabled') throw new Error('启用岗位必须属于启用部门');
   if (positions.some((item) => item.id !== editingId && item.departmentId === payload.departmentId
     && sameNormalized(item.positionCode, payload.positionCode))) {
     throw new Error('岗位编码已存在');
@@ -307,7 +331,7 @@ export function createMockOrganizationService(): OrganizationService {
     },
 
     async createEmployee(payload: SaveEmployeePayload) {
-      validateEmployee(payload, positions, employees);
+      validateEmployee(payload, departments, positions, employees);
       const employee = employeeFromPayload(nextEmployeeId++, payload);
       employees = [...employees, employee];
       return cloneEmployee(employee);
@@ -316,7 +340,7 @@ export function createMockOrganizationService(): OrganizationService {
     async updateEmployee(id: number, payload: SaveEmployeePayload) {
       const current = employees.find((item) => item.id === id);
       if (!current) throw new Error('员工不存在');
-      validateEmployee(payload, positions, employees, id);
+      validateEmployee(payload, departments, positions, employees, current);
       const employee = employeeFromPayload(id, payload, current);
       employees = employees.map((item) => item.id === id ? employee : item);
       return cloneEmployee(employee);
@@ -363,6 +387,10 @@ export function createMockOrganizationService(): OrganizationService {
       const current = departments.find((item) => item.id === id);
       if (!current) throw new Error('部门不存在');
       if (status === 'disabled') validateDepartmentCanDisable(id, departments, employees);
+      if (status === 'enabled' && current.parentId !== null
+        && departments.find((item) => item.id === current.parentId)?.status !== 'enabled') {
+        throw new Error('启用部门的上级部门必须已启用');
+      }
       const department = { ...current, status };
       departments = departments.map((item) => item.id === id ? department : item);
       return materializeDepartment(department);
@@ -407,6 +435,10 @@ export function createMockOrganizationService(): OrganizationService {
       const current = positions.find((item) => item.id === id);
       if (!current) throw new Error('岗位不存在');
       if (status === 'disabled') validatePositionCanDisable(id, employees);
+      if (status === 'enabled'
+        && departments.find((item) => item.id === current.departmentId)?.status !== 'enabled') {
+        throw new Error('启用岗位必须属于启用部门');
+      }
       const position = { ...current, status };
       positions = positions.map((item) => item.id === id ? position : item);
       return materializePosition(position);

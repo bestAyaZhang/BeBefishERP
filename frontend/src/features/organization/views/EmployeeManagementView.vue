@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, ref } from 'vue';
+import { computed, inject, onMounted, ref, watch } from 'vue';
 import { Plus, Search, UsersRound } from 'lucide-vue-next';
 import DepartmentTree from '../components/DepartmentTree.vue';
 import EmployeeFormDrawer, { type EmployeeDrawerMode } from '../components/EmployeeFormDrawer.vue';
@@ -7,6 +7,7 @@ import OrganizationPagination from '../components/OrganizationPagination.vue';
 import OrganizationStatusBadge from '../components/OrganizationStatusBadge.vue';
 import { buildDepartmentTree } from '../organizationTree';
 import { organizationService, type OrganizationService } from '../organizationService';
+import { currentUser } from '../../../services/authSession';
 import type {
   Department,
   Employee,
@@ -40,23 +41,36 @@ const drawerMode = ref<EmployeeDrawerMode | null>(null);
 const selectedEmployee = ref<Employee | null>(null);
 const saving = ref(false);
 const saveError = ref('');
+const selectedEmployeeIds = ref<number[]>([]);
+let employeeListGeneration = 0;
 
 const departmentTree = computed(() => buildDepartmentTree(departments.value));
+const canManage = computed(() => currentUser.value?.permissions.includes('organization:manage') ?? false);
 const selectedDepartment = computed(() => departments.value.find((item) => item.id === selectedDepartmentId.value));
 const listTitle = computed(() => selectedDepartment.value?.departmentName ?? '全部员工');
 const departmentById = computed(() => new Map(departments.value.map((item) => [item.id, item])));
 const positionById = computed(() => new Map(positions.value.map((item) => [item.id, item])));
+const pageEmployeeIds = computed(() => result.value.records.map((item) => item.id));
+const allPageEmployeesSelected = computed(() => pageEmployeeIds.value.length > 0
+  && pageEmployeeIds.value.every((id) => selectedEmployeeIds.value.includes(id)));
+const somePageEmployeesSelected = computed(() => !allPageEmployeesSelected.value
+  && pageEmployeeIds.value.some((id) => selectedEmployeeIds.value.includes(id)));
+
+watch(pageEmployeeIds, () => {
+  selectedEmployeeIds.value = [];
+});
 
 function messageFrom(errorValue: unknown) {
   return errorValue instanceof Error ? errorValue.message : '请求失败，请稍后重试';
 }
 
 async function loadEmployees(context: 'standard' | 'after-save' = 'standard') {
+  const requestGeneration = ++employeeListGeneration;
   loading.value = true;
   error.value = '';
   if (context === 'standard') pageNotice.value = '';
   try {
-    result.value = await service.listEmployees({
+    const nextResult = await service.listEmployees({
       page: page.value,
       size: pageSize.value,
       keyword: keyword.value || undefined,
@@ -64,7 +78,10 @@ async function loadEmployees(context: 'standard' | 'after-save' = 'standard') {
       employmentType: employmentType.value || undefined,
       status: status.value || undefined
     });
+    if (requestGeneration !== employeeListGeneration) return;
+    result.value = nextResult;
   } catch (requestError) {
+    if (requestGeneration !== employeeListGeneration) return;
     if (context === 'after-save') {
       pageNotice.value = `员工保存成功，但列表刷新失败：${messageFrom(requestError)}`;
     } else {
@@ -72,7 +89,7 @@ async function loadEmployees(context: 'standard' | 'after-save' = 'standard') {
       result.value = { records: [], page: page.value, pageSize: pageSize.value, total: 0 };
     }
   } finally {
-    loading.value = false;
+    if (requestGeneration === employeeListGeneration) loading.value = false;
   }
 }
 
@@ -161,12 +178,14 @@ async function changePageSize(nextSize: number) {
 }
 
 function openCreate() {
+  if (!canManage.value) return;
   selectedEmployee.value = null;
   drawerMode.value = 'create';
   saveError.value = '';
 }
 
 function openEmployee(employee: Employee, mode: EmployeeDrawerMode) {
+  if (mode === 'edit' && !canManage.value) return;
   selectedEmployee.value = { ...employee };
   drawerMode.value = mode;
   saveError.value = '';
@@ -179,6 +198,7 @@ function closeDrawer() {
 }
 
 async function saveEmployee(payload: SaveEmployeePayload) {
+  if (!canManage.value) return;
   saving.value = true;
   saveError.value = '';
   try {
@@ -205,21 +225,40 @@ async function saveEmployee(payload: SaveEmployeePayload) {
 }
 
 function loginMethod(employee: Employee) {
-  if (employee.employmentType === 'temporary') return '手机号账号';
-  if (employee.feishuBindingStatus === 'bound') return '飞书已绑定';
-  if (employee.feishuBindingStatus === 'pending') return '待绑定飞书';
-  return '飞书已解绑';
+  if (employee.status !== 'active') return '不可登录';
+  if (employee.employmentType === 'temporary') {
+    return employee.passwordLoginEnabled ? '手机号账号' : '不可登录';
+  }
+  if (employee.feishuBindingStatus === 'bound') {
+    return employee.passwordLoginEnabled ? '飞书 + 手机号' : '飞书已绑定';
+  }
+  return employee.passwordLoginEnabled ? '手机号账号' : '待绑定飞书';
 }
 
 function loginMethodClass(employee: Employee) {
-  if (employee.feishuBindingStatus === 'unbound' && employee.employmentType === 'formal') return 'text-rose-500';
-  if (employee.feishuBindingStatus === 'pending') return 'text-amber-500';
-  if (employee.employmentType === 'temporary') return 'text-cyan-600';
+  if (employee.status !== 'active' || (employee.employmentType === 'temporary' && !employee.passwordLoginEnabled)) return 'text-slate-400';
+  if (employee.employmentType === 'temporary' || employee.passwordLoginEnabled) return 'text-cyan-600';
+  if (employee.feishuBindingStatus !== 'bound') return 'text-amber-500';
   return 'text-emerald-600';
+}
+
+function editViewedEmployee() {
+  if (canManage.value) drawerMode.value = 'edit';
 }
 
 function avatarClass(index: number) {
   return ['bg-emerald-50', 'bg-blue-50', 'bg-amber-50', 'bg-violet-50', 'bg-rose-50'][index % 5];
+}
+
+function toggleEmployeeSelection(id: number, event: Event) {
+  const checked = (event.target as HTMLInputElement).checked;
+  selectedEmployeeIds.value = checked
+    ? [...new Set([...selectedEmployeeIds.value, id])]
+    : selectedEmployeeIds.value.filter((item) => item !== id);
+}
+
+function toggleAllEmployees(event: Event) {
+  selectedEmployeeIds.value = (event.target as HTMLInputElement).checked ? [...pageEmployeeIds.value] : [];
 }
 
 onMounted(loadReferenceData);
@@ -235,7 +274,7 @@ onMounted(loadReferenceData);
         </div>
         <p class="mt-1 text-sm leading-[22px] text-slate-500">统一维护员工归属、岗位、用工类型与登录账号。</p>
       </div>
-      <button data-testid="add-employee" type="button" class="inline-flex h-10 w-32 shrink-0 items-center justify-center gap-2 rounded-[6px] bg-[#536dff] text-sm font-medium text-white shadow-[0_8px_18px_rgba(83,109,255,0.2)] transition hover:bg-[#465eea]" @click="openCreate">
+      <button v-if="canManage" data-testid="add-employee" type="button" class="inline-flex h-10 w-32 shrink-0 items-center justify-center gap-2 rounded-[6px] bg-[#536dff] text-sm font-medium text-white shadow-[0_8px_18px_rgba(83,109,255,0.2)] transition hover:bg-[#465eea]" @click="openCreate">
         <Plus class="h-[18px] w-[18px]" aria-hidden="true" />
         新增员工
       </button>
@@ -307,7 +346,7 @@ onMounted(loadReferenceData);
           <table v-else class="w-full min-w-[806px] table-fixed border-collapse text-left">
             <thead class="bg-slate-50 text-xs font-normal text-slate-500">
               <tr class="h-11">
-                <th class="w-[36px] px-3"><input type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300" aria-label="选择全部员工" /></th>
+                <th class="w-[36px] px-3"><input data-testid="select-all-employees" type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300" aria-label="选择全部员工" :checked="allPageEmployeesSelected" :indeterminate="somePageEmployeesSelected" @change="toggleAllEmployees" /></th>
                 <th class="w-[150px] px-2.5 font-normal">员工信息</th>
                 <th class="w-[80px] px-2.5 font-normal">工号</th>
                 <th class="w-[120px] px-2.5 font-normal">部门 / 岗位</th>
@@ -320,7 +359,7 @@ onMounted(loadReferenceData);
             </thead>
             <tbody>
               <tr v-for="(employee, index) in result.records" :key="employee.id" class="h-[72px] border-t border-slate-200 bg-white transition hover:bg-slate-50/70">
-                <td class="px-3"><input type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300" :aria-label="`选择${employee.employeeName}`" /></td>
+                <td class="px-3"><input :data-testid="`select-employee-${employee.id}`" type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300" :aria-label="`选择${employee.employeeName}`" :checked="selectedEmployeeIds.includes(employee.id)" @change="toggleEmployeeSelection(employee.id, $event)" /></td>
                 <td class="px-2.5">
                   <div class="flex min-w-0 items-center gap-2">
                     <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-medium" :class="avatarClass(index)">{{ employee.employeeName.slice(0, 1) }}</span>
@@ -336,13 +375,13 @@ onMounted(loadReferenceData);
                   <span class="mt-0.5 block truncate text-xs text-slate-400">{{ positionById.get(employee.positionId)?.positionName ?? '--' }}</span>
                 </td>
                 <td class="px-2.5"><span class="inline-flex h-7 min-w-[54px] items-center justify-center rounded-[6px] px-2 text-xs font-medium" :class="employee.employmentType === 'formal' ? 'bg-emerald-50 text-emerald-600' : 'bg-cyan-50 text-cyan-600'">{{ employee.employmentType === 'formal' ? '正式' : '临时' }}</span></td>
-                <td class="truncate px-2.5 text-xs" :class="loginMethodClass(employee)">{{ loginMethod(employee) }}</td>
+                <td :data-testid="`employee-login-method-${employee.id}`" class="truncate px-2.5 text-xs" :class="loginMethodClass(employee)">{{ loginMethod(employee) }}</td>
                 <td class="px-2.5"><OrganizationStatusBadge :status="employee.status" /></td>
                 <td class="truncate px-2.5 font-numeric text-xs text-slate-600">{{ employee.hireDate }}</td>
                 <td class="px-2.5">
                   <span class="flex items-center gap-2.5 whitespace-nowrap text-sm font-medium">
                     <button :data-testid="`view-employee-${employee.id}`" type="button" class="text-[#536dff] transition hover:text-[#465eea]" @click="openEmployee(employee, 'view')">查看</button>
-                    <button :data-testid="`edit-employee-${employee.id}`" type="button" class="text-slate-500 transition hover:text-[#25314d]" @click="openEmployee(employee, 'edit')">编辑</button>
+                    <button v-if="canManage" :data-testid="`edit-employee-${employee.id}`" type="button" class="text-slate-500 transition hover:text-[#25314d]" @click="openEmployee(employee, 'edit')">编辑</button>
                   </span>
                 </td>
               </tr>
@@ -362,8 +401,9 @@ onMounted(loadReferenceData);
       :positions="positions"
       :saving="saving"
       :error="saveError"
+      :can-manage="canManage"
       @close="closeDrawer"
-      @edit="drawerMode = 'edit'"
+      @edit="editViewedEmployee"
       @save="saveEmployee"
     />
   </div>

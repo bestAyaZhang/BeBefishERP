@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { BriefcaseBusiness, Plus, Search } from 'lucide-vue-next';
-import { computed, inject, onMounted, ref } from 'vue';
+import { computed, inject, onMounted, ref, watch } from 'vue';
 import DepartmentTree from '../components/DepartmentTree.vue';
 import OrganizationPagination from '../components/OrganizationPagination.vue';
 import OrganizationStatusBadge from '../components/OrganizationStatusBadge.vue';
 import PositionFormDrawer, { type PositionDrawerMode } from '../components/PositionFormDrawer.vue';
 import { buildDepartmentTree, collectDepartmentSubtreeIds } from '../organizationTree';
 import { organizationService, type OrganizationService } from '../organizationService';
+import { currentUser } from '../../../services/authSession';
 import type {
   Department,
   Employee,
@@ -36,8 +37,11 @@ const drawerMode = ref<PositionDrawerMode | null>(null);
 const selectedPosition = ref<Position | null>(null);
 const saving = ref(false);
 const saveError = ref('');
+const selectedPositionIds = ref<number[]>([]);
+let positionListGeneration = 0;
 
 const departmentTree = computed(() => buildDepartmentTree(departments.value));
+const canManage = computed(() => currentUser.value?.permissions.includes('organization:manage') ?? false);
 const departmentById = computed(() => new Map(departments.value.map((department) => [department.id, department])));
 const selectedDepartment = computed(() => departmentById.value.get(selectedDepartmentId.value ?? -1));
 const listTitle = computed(() => selectedDepartment.value ? `${selectedDepartment.value.departmentName}岗位` : '全部岗位');
@@ -55,6 +59,15 @@ const treeSummary = computed(() => ({
   title: selectedDepartment.value?.departmentName ?? '全公司',
   meta: `共 ${result.value.total} 个岗位 · 在岗员工 ${scopedActiveEmployeeCount.value} 人`
 }));
+const pagePositionIds = computed(() => result.value.records.map((item) => item.id));
+const allPagePositionsSelected = computed(() => pagePositionIds.value.length > 0
+  && pagePositionIds.value.every((id) => selectedPositionIds.value.includes(id)));
+const somePagePositionsSelected = computed(() => !allPagePositionsSelected.value
+  && pagePositionIds.value.some((id) => selectedPositionIds.value.includes(id)));
+
+watch(pagePositionIds, () => {
+  selectedPositionIds.value = [];
+});
 
 function messageFrom(value: unknown) {
   return value instanceof Error ? value.message : '请求失败，请稍后重试';
@@ -71,20 +84,27 @@ function currentPositionQuery() {
 }
 
 async function fetchPositions() {
-  result.value = await service.listPositions(currentPositionQuery());
-}
-
-async function loadPositions() {
+  const requestGeneration = ++positionListGeneration;
   loading.value = true;
   error.value = '';
   try {
-    await fetchPositions();
+    const nextResult = await service.listPositions(currentPositionQuery());
+    if (requestGeneration !== positionListGeneration) return;
+    result.value = nextResult;
   } catch (requestError) {
+    if (requestGeneration !== positionListGeneration) return;
     error.value = messageFrom(requestError);
     result.value = { records: [], page: page.value, pageSize: pageSize.value, total: 0 };
+    throw requestError;
   } finally {
-    loading.value = false;
+    if (requestGeneration === positionListGeneration) loading.value = false;
   }
+}
+
+async function loadPositions() {
+  try {
+    await fetchPositions();
+  } catch {}
 }
 
 async function loadReferenceData() {
@@ -166,12 +186,14 @@ async function changePageSize(nextSize: number) {
 }
 
 function openCreate() {
+  if (!canManage.value) return;
   selectedPosition.value = null;
   drawerMode.value = 'create';
   saveError.value = '';
 }
 
 function openEdit(position: Position) {
+  if (!canManage.value) return;
   selectedPosition.value = { ...position };
   drawerMode.value = 'edit';
   saveError.value = '';
@@ -184,6 +206,7 @@ function closeDrawer() {
 }
 
 async function savePosition(payload: SavePositionPayload) {
+  if (!canManage.value) return;
   saving.value = true;
   saveError.value = '';
   try {
@@ -201,6 +224,7 @@ async function savePosition(payload: SavePositionPayload) {
   closeDrawer();
   try {
     await refreshReferenceData();
+    pageNotice.value = '';
   } catch (requestError) {
     pageNotice.value = `岗位保存成功，但列表刷新失败：${messageFrom(requestError)}`;
   } finally {
@@ -209,6 +233,7 @@ async function savePosition(payload: SavePositionPayload) {
 }
 
 async function togglePositionStatus(position: Position) {
+  if (!canManage.value) return;
   pageNotice.value = '';
   try {
     await service.changePositionStatus(
@@ -222,9 +247,21 @@ async function togglePositionStatus(position: Position) {
 
   try {
     await refreshReferenceData();
+    pageNotice.value = '';
   } catch {
     pageNotice.value = '操作已成功，但列表刷新失败，请手动重试';
   }
+}
+
+function togglePositionSelection(id: number, event: Event) {
+  const checked = (event.target as HTMLInputElement).checked;
+  selectedPositionIds.value = checked
+    ? [...new Set([...selectedPositionIds.value, id])]
+    : selectedPositionIds.value.filter((item) => item !== id);
+}
+
+function toggleAllPositions(event: Event) {
+  selectedPositionIds.value = (event.target as HTMLInputElement).checked ? [...pagePositionIds.value] : [];
 }
 
 onMounted(loadReferenceData);
@@ -240,7 +277,7 @@ onMounted(loadReferenceData);
         </div>
         <p class="mt-1 text-sm leading-[22px] text-slate-500">按部门维护岗位名称、岗位编码、职责与启停状态。</p>
       </div>
-      <button data-testid="add-position" type="button" class="inline-flex h-10 w-32 shrink-0 items-center justify-center gap-2 rounded-[6px] bg-[#536dff] text-sm font-medium text-white shadow-[0_8px_18px_rgba(83,109,255,0.2)] transition hover:bg-[#465eea]" @click="openCreate">
+      <button v-if="canManage" data-testid="add-position" type="button" class="inline-flex h-10 w-32 shrink-0 items-center justify-center gap-2 rounded-[6px] bg-[#536dff] text-sm font-medium text-white shadow-[0_8px_18px_rgba(83,109,255,0.2)] transition hover:bg-[#465eea]" @click="openCreate">
         <Plus class="h-[18px] w-[18px]" aria-hidden="true" />
         新增岗位
       </button>
@@ -301,7 +338,7 @@ onMounted(loadReferenceData);
           <table v-else class="w-full min-w-[796px] table-fixed border-collapse text-left">
             <thead class="sticky top-0 z-10 bg-slate-50 text-xs font-normal text-slate-500">
               <tr class="h-11">
-                <th class="w-[42px] px-3 font-normal"><input type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300" aria-label="选择全部岗位" /></th>
+                <th class="w-[42px] px-3 font-normal"><input data-testid="select-all-positions" type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300" aria-label="选择全部岗位" :checked="allPagePositionsSelected" :indeterminate="somePagePositionsSelected" @change="toggleAllPositions" /></th>
                 <th class="w-[94px] px-2.5 font-normal">岗位编码</th>
                 <th class="w-[132px] px-2.5 font-normal">岗位名称</th>
                 <th class="w-[116px] px-2.5 font-normal">所属部门</th>
@@ -313,7 +350,7 @@ onMounted(loadReferenceData);
             </thead>
             <tbody>
               <tr v-for="positionItem in result.records" :key="positionItem.id" class="h-[72px] border-t border-slate-200 bg-white transition hover:bg-slate-50/70">
-                <td class="px-3"><input type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300" :aria-label="`选择${positionItem.positionName}`" /></td>
+                <td class="px-3"><input :data-testid="`select-position-${positionItem.id}`" type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300" :aria-label="`选择${positionItem.positionName}`" :checked="selectedPositionIds.includes(positionItem.id)" @change="togglePositionSelection(positionItem.id, $event)" /></td>
                 <td class="truncate px-2.5 font-numeric text-xs text-slate-500">{{ positionItem.positionCode }}</td>
                 <td class="truncate px-2.5 text-sm font-medium">{{ positionItem.positionName }}</td>
                 <td class="truncate px-2.5 text-sm text-slate-500">{{ departmentById.get(positionItem.departmentId)?.departmentName ?? '--' }}</td>
@@ -322,8 +359,8 @@ onMounted(loadReferenceData);
                 <td class="px-2.5"><OrganizationStatusBadge :status="positionItem.status" /></td>
                 <td class="px-2.5">
                   <span class="flex items-center gap-2.5 whitespace-nowrap text-sm">
-                    <button :data-testid="`edit-position-${positionItem.id}`" type="button" class="font-medium text-[#536dff] transition hover:text-[#465eea]" @click="openEdit(positionItem)">编辑</button>
-                    <button :data-testid="`position-status-action-${positionItem.id}`" type="button" class="text-xs text-slate-500 transition hover:text-[#25314d]" @click="togglePositionStatus(positionItem)">{{ positionItem.status === 'enabled' ? '停用' : '启用' }}</button>
+                    <button v-if="canManage" :data-testid="`edit-position-${positionItem.id}`" type="button" class="font-medium text-[#536dff] transition hover:text-[#465eea]" @click="openEdit(positionItem)">编辑</button>
+                    <button v-if="canManage" :data-testid="`position-status-action-${positionItem.id}`" type="button" class="text-xs text-slate-500 transition hover:text-[#25314d]" @click="togglePositionStatus(positionItem)">{{ positionItem.status === 'enabled' ? '停用' : '启用' }}</button>
                   </span>
                 </td>
               </tr>

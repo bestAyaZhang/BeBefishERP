@@ -1,11 +1,12 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DepartmentFormDrawer from './components/DepartmentFormDrawer.vue';
 import PositionFormDrawer from './components/PositionFormDrawer.vue';
 import { createMockOrganizationService } from './mockOrganizationService';
 import type { OrganizationService } from './organizationService';
-import type { Department, Employee, Position } from './types';
+import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
+import type { Department, DepartmentListItem, Employee, PageResult, Position } from './types';
 import DepartmentManagementView from './views/DepartmentManagementView.vue';
 import PositionManagementView from './views/PositionManagementView.vue';
 
@@ -43,9 +44,24 @@ const position: Position = {
 
 let activeWrapper: VueWrapper | undefined;
 
+function setPermissions(permissions: string[]) {
+  saveCurrentUser({
+    accessToken: 'organization-test-token',
+    mobile: '13800138000',
+    roles: ['ADMIN'],
+    permissions,
+    loginMethod: 'password'
+  });
+}
+
+beforeEach(() => {
+  setPermissions(['organization:view', 'organization:manage']);
+});
+
 afterEach(() => {
   activeWrapper?.unmount();
   activeWrapper = undefined;
+  clearCurrentUser();
 });
 
 async function mountDepartmentPage(service: OrganizationService = createMockOrganizationService()) {
@@ -157,6 +173,64 @@ describe('DepartmentManagementView', () => {
     expect(wrapper.get('[data-testid="department-empty"]').text()).toContain('暂无匹配部门');
   });
 
+  it('keeps the newest department request authoritative while stale requests finish around it', async () => {
+    const service = createMockOrganizationService();
+    const initialPage = await service.listDepartmentPage({ page: 1, size: 20 });
+    const productPage = await service.listDepartmentPage({ page: 1, size: 20, keyword: '产品' });
+    const salesPage = await service.listDepartmentPage({ page: 1, size: 20, keyword: '销售' });
+    const initialRequest = deferred<PageResult<DepartmentListItem>>();
+    const productRequest = deferred<PageResult<DepartmentListItem>>();
+    const salesRequest = deferred<PageResult<DepartmentListItem>>();
+    vi.spyOn(service, 'listDepartmentPage')
+      .mockReturnValueOnce(initialRequest.promise)
+      .mockReturnValueOnce(productRequest.promise)
+      .mockReturnValueOnce(salesRequest.promise);
+    const wrapper = mount(DepartmentManagementView, {
+      global: { provide: { organizationService: service } }
+    });
+    activeWrapper = wrapper;
+    await flushPromises();
+
+    await wrapper.get('[data-testid="department-keyword"]').setValue('产品');
+    await wrapper.get('[data-testid="department-search-button"]').trigger('click');
+    await wrapper.get('[data-testid="department-keyword"]').setValue('销售');
+    await wrapper.get('[data-testid="department-search-button"]').trigger('click');
+    productRequest.resolve(productPage);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="department-loading"]').exists()).toBe(true);
+
+    salesRequest.resolve(salesPage);
+    await flushPromises();
+    expect(wrapper.get('table').text()).toContain('销售中心');
+    expect(wrapper.get('table').text()).not.toContain('产品研发部');
+
+    initialRequest.resolve(initialPage);
+    await flushPromises();
+    expect(wrapper.get('table').text()).toContain('销售中心');
+    expect(wrapper.get('table').text()).not.toContain('产品研发部');
+  });
+
+  it('supports row and select-all department selection and clears stale selections on new records', async () => {
+    const wrapper = await mountDepartmentPage();
+    const selectAll = wrapper.get('[data-testid="select-all-departments"]');
+    const firstRow = wrapper.findAll('[data-testid^="select-department-"]')[0];
+
+    await firstRow.setValue(true);
+    expect((selectAll.element as HTMLInputElement).indeterminate).toBe(true);
+    await selectAll.setValue(true);
+    expect(wrapper.findAll('[data-testid^="select-department-"]')
+      .every((item) => (item.element as HTMLInputElement).checked)).toBe(true);
+    await selectAll.setValue(false);
+    await firstRow.setValue(true);
+
+    await wrapper.get('[data-testid="department-keyword"]').setValue('销售');
+    await wrapper.get('[data-testid="department-search-button"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid^="select-department-"]')
+      .every((item) => !(item.element as HTMLInputElement).checked)).toBe(true);
+    expect((wrapper.get('[data-testid="select-all-departments"]').element as HTMLInputElement).indeterminate).toBe(false);
+  });
+
   it('separates a successful department status mutation from a successful refresh', async () => {
     const service = createMockOrganizationService();
     const changeStatus = vi.spyOn(service, 'changeDepartmentStatus');
@@ -185,6 +259,33 @@ describe('DepartmentManagementView', () => {
     expect(changeStatus).toHaveBeenCalledOnce();
     expect(wrapper.get('[data-testid="department-page-error"]').text())
       .toContain('操作已成功，但列表刷新失败，请手动重试');
+  });
+
+  it('clears an earlier department warning after a later save succeeds', async () => {
+    const service = createMockOrganizationService();
+    vi.spyOn(service, 'changeDepartmentStatus').mockRejectedValueOnce(new Error('部门状态服务暂不可用'));
+    const wrapper = await mountDepartmentPage(service);
+
+    await wrapper.get('[data-testid="department-status-action-11"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="department-page-error"]').text()).toContain('部门状态服务暂不可用');
+
+    await wrapper.get('[data-testid="add-department"]').trigger('click');
+    await wrapper.get('[data-testid="department-code"]').setValue('WARN-CLEAR');
+    await wrapper.get('[data-testid="department-name"]').setValue('告警清理部门');
+    await wrapper.get('[data-testid="save-department"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="department-page-error"]').exists()).toBe(false);
+  });
+
+  it('lists departments but hides every mutation control without manage permission', async () => {
+    setPermissions(['organization:view']);
+    const wrapper = await mountDepartmentPage();
+
+    expect(wrapper.text()).toContain('贝贝鱼科技有限公司');
+    expect(wrapper.find('[data-testid="add-department"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid^="edit-department-"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid^="department-status-action-"]').exists()).toBe(false);
   });
 });
 
@@ -284,8 +385,64 @@ describe('PositionManagementView', () => {
     expect(wrapper.get('[data-testid="position-empty"]').text()).toContain('暂无匹配岗位');
   });
 
+  it('keeps the newest position request authoritative while stale requests finish around it', async () => {
+    const service = createMockOrganizationService();
+    const initialPage = await service.listPositions({ page: 1, size: 20, departmentId: 2 });
+    const researchPage = await service.listPositions({ page: 1, size: 20, departmentId: 3 });
+    const designPage = await service.listPositions({ page: 1, size: 20, departmentId: 4 });
+    const initialRequest = deferred<PageResult<Position>>();
+    const researchRequest = deferred<PageResult<Position>>();
+    const designRequest = deferred<PageResult<Position>>();
+    vi.spyOn(service, 'listPositions')
+      .mockReturnValueOnce(initialRequest.promise)
+      .mockReturnValueOnce(researchRequest.promise)
+      .mockReturnValueOnce(designRequest.promise);
+    const wrapper = mount(PositionManagementView, {
+      global: { provide: { organizationService: service } }
+    });
+    activeWrapper = wrapper;
+    await flushPromises();
+
+    await wrapper.get('[data-testid="department-node-3"]').trigger('click');
+    await wrapper.get('[data-testid="department-node-4"]').trigger('click');
+    researchRequest.resolve(researchPage);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="position-loading"]').exists()).toBe(true);
+
+    designRequest.resolve(designPage);
+    await flushPromises();
+    expect(wrapper.text()).toContain('产品设计师');
+    expect(wrapper.text()).not.toContain('后端工程师');
+
+    initialRequest.resolve(initialPage);
+    await flushPromises();
+    expect(wrapper.text()).toContain('产品设计师');
+    expect(wrapper.text()).not.toContain('后端工程师');
+  });
+
+  it('supports row and select-all position selection and clears stale selections on new records', async () => {
+    const wrapper = await mountPositionPage();
+    const selectAll = wrapper.get('[data-testid="select-all-positions"]');
+    const firstRow = wrapper.findAll('[data-testid^="select-position-"]')[0];
+
+    await firstRow.setValue(true);
+    expect((selectAll.element as HTMLInputElement).indeterminate).toBe(true);
+    await selectAll.setValue(true);
+    expect(wrapper.findAll('[data-testid^="select-position-"]')
+      .every((item) => (item.element as HTMLInputElement).checked)).toBe(true);
+    await selectAll.setValue(false);
+    await firstRow.setValue(true);
+
+    await wrapper.get('[data-testid="department-node-3"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid^="select-position-"]')
+      .every((item) => !(item.element as HTMLInputElement).checked)).toBe(true);
+    expect((wrapper.get('[data-testid="select-all-positions"]').element as HTMLInputElement).indeterminate).toBe(false);
+  });
+
   it('separates a successful position status mutation from a successful refresh', async () => {
     const service = createMockOrganizationService();
+    await service.changeDepartmentStatus(11, 'enabled');
     const changeStatus = vi.spyOn(service, 'changePositionStatus');
     const wrapper = await mountPositionPage(service);
 
@@ -301,6 +458,7 @@ describe('PositionManagementView', () => {
 
   it('reports that a position status mutation succeeded when its refresh fails', async () => {
     const service = createMockOrganizationService();
+    await service.changeDepartmentStatus(11, 'enabled');
     const initialDepartments = await service.listAllDepartments();
     vi.spyOn(service, 'listAllDepartments')
       .mockResolvedValueOnce(initialDepartments)
@@ -316,6 +474,31 @@ describe('PositionManagementView', () => {
     expect(changeStatus).toHaveBeenCalledOnce();
     expect(wrapper.get('[data-testid="position-page-error"]').text())
       .toContain('操作已成功，但列表刷新失败，请手动重试');
+  });
+
+  it('clears an earlier position warning after a later save succeeds', async () => {
+    const wrapper = await mountPositionPage();
+
+    await wrapper.get('[data-testid="position-status-action-3"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="position-page-error"]').text()).toContain('岗位已分配给在职员工');
+
+    await wrapper.get('[data-testid="add-position"]').trigger('click');
+    await wrapper.get('[data-testid="position-code"]').setValue('WARN-CLEAR');
+    await wrapper.get('[data-testid="position-name"]').setValue('告警清理岗位');
+    await wrapper.get('[data-testid="save-position"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="position-page-error"]').exists()).toBe(false);
+  });
+
+  it('lists positions but hides every mutation control without manage permission', async () => {
+    setPermissions(['organization:view']);
+    const wrapper = await mountPositionPage();
+
+    expect(wrapper.text()).toContain('产品经理');
+    expect(wrapper.find('[data-testid="add-position"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid^="edit-position-"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid^="position-status-action-"]').exists()).toBe(false);
   });
 });
 
@@ -431,3 +614,9 @@ describe('organization management drawers', () => {
     trigger.remove();
   });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
