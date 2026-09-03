@@ -488,7 +488,7 @@ Provide the user with the Figma prototype URL, the four local screenshot links, 
 
 ### Task 3: Permission Matrix Frame
 
-- Status: `DONE_WITH_CONCERNS`.
+- Status: `DONE`.
 - Deliverable frame: `Permission Management / Permission Matrix` (`572:11100`) in `Permission Management` (`538:10667`) on `03 Master Data` (`1:3`). The frame is exactly `1440x1024` at `80,3000` within the section.
 - Reusable workspace: `Permissions/Main Workspace` component `562:10728` (`836x784`) with final-frame instance `574:11274`. Its default composition is `SuperAdminReadOnly`; Task 7 may convert it to a component set or add the `NewRoleEditable` state without creating a fifth deliverable frame. Supporting row component: `Permissions/Matrix Row` `561:10698` (`836x40`).
 - Shared shell instances: sidebar `572:11101` -> `Navigation/Sidebar` `28:81`; topbar `572:11231` -> `Header/Top Bar` `31:186`; page header `574:11259` -> `Header/Page Header` `33:208`. The permission label is a local override on active sidebar item `I572:11101;29:91`; no shared shell component was mutated.
@@ -507,3 +507,12 @@ Provide the user with the Figma prototype URL, the four local screenshot links, 
 - Created body-only scroll region `585:11913`; outer matrix region `562:10731` is non-scrolling, and header `566:10752` is its sibling outside the vertical-scrolling body `567:10752`.
 - Re-exported the exact `1440x1024` durable PNG, `162166` bytes, SHA-256 `e5d95023202bbbe66be844ea90b0e75541288fa6921ae86791f24274dd69266c`. Visual inspection passed with no vertical matrix rails, clipping, or overlap.
 - Source section `499:9745` and source frame `499:9746` retain their baseline geometry. Task 3 remains `SuperAdminReadOnly`; Task 7 retains ownership of `NewRoleEditable`.
+
+#### Fix Round 2
+
+- Status: `DONE`. Added collapsed inventory-group instance `594:11914` -> `27:22` to derived sidebar component `584:11811`; final-frame path is `I584:11997;594:11914`. Shared sidebar component `28:81` remains untouched.
+- Final top-level order is `工作台`, `商品管理`, `分类管理`, `客户管理`, `供应商管理`, `仓库管理`, `库存管理`, `组织架构`, `财务管理`. `组织架构` remains expanded with `员工列表`, `部门管理`, `岗位管理`, and active `权限管理`; `财务管理` remains collapsed.
+- Main Navigation content ends at local `y=790`; pinned user section `I584:11997;584:11828` begins at `y=936`, leaving `146px` clearance and ending exactly at the `1024px` sidebar boundary. Readback found no direct-entry overlaps.
+- The accepted matrix was not changed: `562:10731` remains non-scrolling, body `585:11913` remains the only vertical scroll region, and all eight cells of row `561:10698` still have zero stroke paints.
+- Re-exported the exact `1440x1024` durable PNG, `164252` bytes, SHA-256 `f4782643f05089523b670ef8620db1c819930abf2a37e04d14744073267f49f3`. Visual inspection confirmed the full sidebar, matrix, and pinned footer are visible without clipping or overlap.
+- Source section `499:9745`, source frame `499:9746`, and shared component `28:81` retain their prior geometry and content. Task 3 remains `SuperAdminReadOnly`; Task 7 retains ownership of `NewRoleEditable`.
