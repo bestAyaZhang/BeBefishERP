@@ -100,35 +100,35 @@ Add an `Execution Notes` section at the end of this plan containing the resolved
 - Consumes: existing design variables and organization components from Task 1
 - Produces: component IDs reused by all four permission-management frames
 
-- [ ] **Step 1: Create the role-list item component set**
+- [x] **Step 1: Create the role-list item component set**
 
 Build a `256x64` item with role name, member count, status, and an optional system-role tag. Create variants for `Default`, `Hover`, `Selected`, `Disabled`, and `Unsaved`. The selected state uses a subtle brand-blue fill and brand-blue role name; the unsaved state adds a small semantic warning dot without changing row dimensions.
 
-- [ ] **Step 2: Create the role-group header**
+- [x] **Step 2: Create the role-group header**
 
 Build a compact header for `系统角色` and `自定义角色` with group count and disclosure chevron. Create `Expanded` and `Collapsed` variants while keeping the label baseline aligned with the role list.
 
-- [ ] **Step 3: Create the workspace-tab component**
+- [x] **Step 3: Create the workspace-tab component**
 
 Create three fixed-width tabs: `权限配置`, `数据范围`, and `成员管理`. Add `Active`, `Default`, and `Disabled` states with a stable `40px` height and no layout shift between states.
 
-- [ ] **Step 4: Create permission-cell states**
+- [x] **Step 4: Create permission-cell states**
 
 Create checkbox-cell variants for `Unchecked`, `Checked`, `Indeterminate`, `Disabled`, and `ReadOnlyChecked`. Use a real checkbox component or component instance for interactive states and a centered em dash only for actions that do not apply.
 
-- [ ] **Step 5: Create the data-scope option**
+- [x] **Step 5: Create the data-scope option**
 
 Build a full-width radio row containing title, explanation, and one-line example. Add `Default`, `Hover`, `Selected`, and `Disabled` variants. Keep selection styling restrained: border and pale background only.
 
-- [ ] **Step 6: Create the member-row pattern**
+- [x] **Step 6: Create the member-row pattern**
 
 Build a compact row with selection checkbox, avatar/name/mobile/employee number, department and position, employment type, other roles, final data scope, and text actions. Add a locked variant for the super administrator member with a lock reason replacing the remove action.
 
-- [ ] **Step 7: Create the fixed action bar**
+- [x] **Step 7: Create the fixed action bar**
 
 Build a `64px`-high bottom bar with `取消修改` and `保存配置`. Create `Pristine`, `Dirty`, `Saving`, and `Error` variants. In the error state, place a concise retry message left of the actions without changing the bar height.
 
-- [ ] **Step 8: Validate the component set**
+- [x] **Step 8: Validate the component set**
 
 Place every variant in a specimen row inside the `Permission Management` section. Screenshot at original scale and verify consistent typography, `6px` radii, border color, checkbox sizes, and stable dimensions.
 
@@ -467,3 +467,21 @@ Provide the user with the Figma prototype URL, the four local screenshot links, 
 - Font checks: successfully loaded `Noto Sans SC` styles `Regular`, `Medium`, and `Bold`, plus `Inter` style `Semi Bold`. Letter spacing is `0px` for every local text style. The organization section currently uses Noto Sans SC only; the Inter table-number style has zero uses there.
 - Original-scale screenshots were captured for employee list `499:9746` and employee form `499:10398`; both rendered at their natural `1440x1024`. Metadata and visual checks confirm sidebar `244px`, top toolbar `64px`, content padding `32px`, employee rows `72px`, form controls `40px`, and drawer `720px` wide. The rendered references were nonblank and showed no clipping, overlap, or browser/editor chrome.
 - Design-system search returned no published library matches for the combined button/input/select/checkbox/tag/pagination/tab/drawer query; reusable IDs above were therefore verified directly from the local `02 Components` page through the Figma Plugin API.
+
+### Task 2: Permission-Specific Components
+
+- Status: `DONE_WITH_CONCERNS`.
+- Hierarchy: created sibling section `Permission Management` (`538:10667`) on `03 Master Data` (`1:3`) at `27680,0`, sized `4200x3000`. The existing `04 Organization` section (`499:9745`) remains at `22720,0`, sized `4800x2368`.
+- Specimen groups: Roles & Tabs `538:10671` (`1900x800`); Permissions & Scope `538:10673` (`2060x800`); Members & Actions `538:10675` (`4040x1780`).
+- `Permissions/Role List Item` set `539:10722`: `State=Default` `539:10667`, `State=Hover` `539:10678`, `State=Selected` `539:10689`, `State=Disabled` `539:10700`, and `State=Unsaved` `539:10711`; every variant is `256x64`.
+- `Permissions/Role Group Header` set `541:10695`: `Group=系统角色, State=Expanded` `541:10667`, `Group=系统角色, State=Collapsed` `541:10674`, `Group=自定义角色, State=Expanded` `541:10681`, and `Group=自定义角色, State=Collapsed` `541:10688`; every variant is `256x36`.
+- `Permissions/Workspace Tabs` set `542:10711`: `权限配置` Active/Default/Disabled `542:10675`, `542:10679`, `542:10683`; `数据范围` Active/Default/Disabled `542:10687`, `542:10691`, `542:10695`; `成员管理` Active/Default/Disabled `542:10699`, `542:10703`, `542:10707`; every variant is `120x40`.
+- `Permissions/Permission Checkbox Cell` set `543:10702`: `State=Unchecked` `543:10675`, `State=Checked` `543:10678`, `State=Indeterminate` `543:10684`, `State=Disabled` `543:10691`, `State=ReadOnlyChecked` `543:10694`, and `State=NotApplicable` `543:10700`; every variant is `64x40`. `NotApplicable` is the explicit centered-em-dash state requested for actions that do not apply.
+- `Permissions/Data Scope Option` set `544:10714`: `State=Default` `544:10682`, `State=Hover` `544:10690`, `State=Selected` `544:10698`, and `State=Disabled` `544:10706`; every variant is `760x96`.
+- `Permissions/Member Row` set `546:10724`: `State=Default` `546:10682` and `State=Locked` `546:10703`; both are `836x80`. The locked super-administrator row replaces removal with `系统角色成员`.
+- `Permissions/Bottom Action Bar` set `548:10758`: `State=Pristine` `548:10682`, `State=Dirty` `548:10704`, `State=Saving` `548:10726`, and `State=Error` `548:10742`; every variant is `836x64`. Its actions are instances from `Button/Command` set `58:285`, and the error message occupies a stable left slot.
+- Reused tokens: Brand `VariableID:6:5` and `VariableID:6:6`; surfaces `VariableID:6:8` and `VariableID:6:9`; text `VariableID:6:10` through `VariableID:6:12`; border `VariableID:6:13`; status `VariableID:6:14` through `VariableID:6:17`; spacing `VariableID:6:18` through `VariableID:6:25`; radius `VariableID:6:26`. Added scoped semantic surface variable `Color/Surface/BrandSubtle` (`VariableID:540:10667`, `#F1F3FF`, `FRAME_FILL`, WEB `var(--color-surface-brand-subtle)`) because the audited variables had no pale brand surface.
+- Reused text styles: page title, section title, card title, body, body strong, label, caption, and table number IDs recorded in Task 1. Final typography audit covered 100 text nodes and found no Chinese font mismatch or ASCII-only font mismatch; Noto Sans SC and Inter styles were loaded before every text mutation.
+- Reused components: checkbox variants from set `106:658`, disclosure chevrons `23:48` and `23:51`, and command buttons from set `58:285`. All seven checkbox instances audit at `20x20`.
+- Original-scale specimen screenshots: Roles & Tabs `538:10671` rendered `1900x800`; Permissions & Scope `538:10673` rendered `2060x800`; Members & Actions `538:10675` rendered `4040x1780`. The whole-section capture for `538:10667` reports natural geometry `4200x3000`; the PNG is `4280x3080` because Figma includes the section label and outline in the render.
+- Final Plugin API audit status: `PASS`. It confirmed all seven component-set names, IDs, variant counts and dimensions, 20px checkbox instances, zero font-rule mismatches, zero placeholders, intact specimen bounds, and unchanged source-section geometry. Visual inspection found no clipping or incoherent overlap.
