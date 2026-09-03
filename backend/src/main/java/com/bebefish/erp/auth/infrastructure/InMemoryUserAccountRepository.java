@@ -32,6 +32,8 @@ public class InMemoryUserAccountRepository implements UserAccountRepository {
                         "masterdata:edit",
                         "product:view",
                         "product:edit",
+                        "organization:view",
+                        "organization:manage",
                         "inventory:view",
                         "inventory:adjust",
                         "sales:view",

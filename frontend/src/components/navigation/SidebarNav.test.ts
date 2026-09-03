@@ -13,7 +13,8 @@ const ADMIN_PERMISSIONS = [
   'sales:view',
   'sales:create',
   'finance:view',
-  'finance:receipt'
+  'finance:receipt',
+  'organization:view'
 ];
 
 function storeCurrentUser(permissions = ADMIN_PERMISSIONS) {
@@ -47,11 +48,31 @@ describe('SidebarNav', () => {
       '仓库管理',
       '库存管理',
       '销售单据',
-      '财务管理'
+      '财务管理',
+      '组织架构'
     ]) {
       expect(wrapper.text()).toContain(label);
     }
     expect(wrapper.text()).not.toContain('销售开单');
+  });
+
+  it('shows organization children only with organization permission', () => {
+    storeCurrentUser(['organization:view']);
+    const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
+
+    expect(wrapper.text()).toContain('组织架构');
+    expect(wrapper.text()).toContain('员工管理');
+    expect(wrapper.text()).toContain('部门管理');
+    expect(wrapper.text()).toContain('岗位管理');
+
+    wrapper.unmount();
+    storeCurrentUser(['product:view']);
+    const hiddenWrapper = mount(SidebarNav, { global: { plugins: [router] } });
+
+    expect(hiddenWrapper.text()).not.toContain('组织架构');
+    expect(hiddenWrapper.text()).not.toContain('员工管理');
+    expect(hiddenWrapper.text()).not.toContain('部门管理');
+    expect(hiddenWrapper.text()).not.toContain('岗位管理');
   });
 
   it('uses the full-height ERP navigation structure without a card shell', () => {

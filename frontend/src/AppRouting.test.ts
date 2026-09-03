@@ -87,6 +87,22 @@ describe('application routes', () => {
     expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('商品资料');
   });
 
+  it.each([
+    ['/organization/employees', '员工管理', 'employee-workspace'],
+    ['/organization/departments', '部门管理', 'department-workspace'],
+    ['/organization/positions', '岗位管理', 'position-workspace']
+  ])('renders the organization route %s inside the shared ERP layout', async (path, title, testId) => {
+    await router.push(path);
+    await router.isReady();
+    wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="erp-shell"]').exists()).toBe(true);
+    expect(wrapper.find(`[data-testid="${testId}"]`).exists()).toBe(true);
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('组织架构');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe(title);
+  });
+
   it('renders the final product create, detail, and edit route surfaces', async () => {
     await router.push('/products/new');
     await router.isReady();

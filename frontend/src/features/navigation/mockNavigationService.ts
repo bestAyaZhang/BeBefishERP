@@ -18,6 +18,16 @@ const mockNavigationCatalog: NavigationCatalog = {
         { label: '库存调整', routeName: 'inventory-adjustments', permission: 'inventory:adjust' }
       ]
     },
+    {
+      id: 'organization',
+      label: '组织架构',
+      icon: 'organization',
+      children: [
+        { label: '员工管理', routeName: 'organization-employees', permission: 'organization:view' },
+        { label: '部门管理', routeName: 'organization-departments', permission: 'organization:view' },
+        { label: '岗位管理', routeName: 'organization-positions', permission: 'organization:view' }
+      ]
+    },
     { id: 'sales-orders', label: '销售单据', icon: 'sales-orders', routeName: 'sales-orders', permission: 'sales:view' },
     {
       id: 'finance',

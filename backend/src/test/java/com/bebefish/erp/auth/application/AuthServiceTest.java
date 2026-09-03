@@ -8,12 +8,15 @@ import com.bebefish.erp.auth.domain.SmsCodeStore;
 import com.bebefish.erp.auth.domain.TokenIssuer;
 import com.bebefish.erp.auth.domain.UserAccount;
 import com.bebefish.erp.auth.domain.UserAccountRepository;
+import com.bebefish.erp.auth.infrastructure.InMemoryUserAccountRepository;
+import java.time.Clock;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 class AuthServiceTest {
     private FakeUserAccountRepository users;
@@ -38,8 +41,32 @@ class AuthServiceTest {
         assertThat(result.accessToken()).isEqualTo("token-13800138000-password");
         assertThat(result.mobile()).isEqualTo("13800138000");
         assertThat(result.roles()).containsExactly("ADMIN");
-        assertThat(result.permissions()).containsExactly("system:user:view", "system:role:view");
+        assertThat(result.permissions()).containsExactly(
+                "system:user:view",
+                "system:role:view",
+                "organization:view",
+                "organization:manage"
+        );
         assertThat(users.lastLoginMethod("13800138000")).isEqualTo("password");
+    }
+
+    @Test
+    void demoAdministratorIncludesOrganizationPermissions() {
+        PasswordEncoder passwordEncoder = new PasswordEncoder() {
+            @Override
+            public String encode(CharSequence rawPassword) {
+                return rawPassword.toString();
+            }
+
+            @Override
+            public boolean matches(CharSequence rawPassword, String encodedPassword) {
+                return rawPassword.toString().equals(encodedPassword);
+            }
+        };
+        var repository = new InMemoryUserAccountRepository(Clock.systemUTC(), passwordEncoder);
+
+        assertThat(repository.findByMobile("13800138000").orElseThrow().permissions())
+                .contains("organization:view", "organization:manage");
     }
 
     @Test
@@ -88,7 +115,7 @@ class AuthServiceTest {
                 true,
                 true,
                 List.of("ADMIN"),
-                List.of("system:user:view", "system:role:view")
+                List.of("system:user:view", "system:role:view", "organization:view", "organization:manage")
         );
     }
 

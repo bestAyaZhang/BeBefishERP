@@ -35,12 +35,13 @@ const sidebarIcons = {
   supplier: Truck,
   warehouse: Warehouse,
   inventory: Boxes,
+  organization: UsersRound,
   'sales-orders': FileText,
   finance: WalletCards
 };
 
 const activeRouteName = computed(() => String(route.name ?? ''));
-const expandedGroups = ref<string[]>(['库存管理', '财务管理']);
+const expandedGroups = ref<string[]>(['库存管理', '组织架构', '财务管理']);
 const visibleMenuItems = computed<SidebarNavigationItem[]>(() => props.navigationItems.flatMap((item) => {
   if (item.routeName) return currentUser.value?.permissions.includes(item.permission ?? '') ? [item] : [];
   const children = item.children?.filter((child) => currentUser.value?.permissions.includes(child.permission)) ?? [];
