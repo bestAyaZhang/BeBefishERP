@@ -499,3 +499,11 @@ Provide the user with the Figma prototype URL, the four local screenshot links, 
 - Durable original-scale screenshot: `.superpowers/sdd/2026-09-04-permission-management-figma-prototype/task-3-permission-matrix.png`, `1440x1024`, `162474` bytes, SHA-256 `cedc7819b117643cd83d93e2f2dd3524c3faf60e082216833428598faeabf5a4`. Visual inspection confirmed readable selected-role content, distinct border-only rows, no clipped permission labels or checkboxes, and no final-row/action-bar overlap.
 - Source preservation: `04 Organization` (`499:9745`) remains at `22720,0`, `4800x2368`, with primary source frame `499:9746` still `1440x1024`; the validation baseline matched exactly.
 - Concern: the shared sidebar has no dedicated permission item, so the approved local-instance override repurposes its active navigation label while preserving the shell geometry and main-component ancestry.
+
+#### Fix Round 1
+
+- Status: `DONE`. Replaced the relabeled shared-sidebar instance with permission-specific derived component `584:11811` and final instance `584:11997`; nested organization group `583:11775` now shows `员工列表`, `部门管理`, `岗位管理`, and active `权限管理`. Shared component `28:81` remains unchanged.
+- Removed action-cell fills and strokes on `561:10703`, `561:10709`, `561:10715`, `561:10721`, `561:10727`, and `561:10733`; row `561:10698` keeps only its 1px bottom separator. Audit: zero vertical rail cells, `47` read-only checks, and `13` visible not-applicable em dashes.
+- Created body-only scroll region `585:11913`; outer matrix region `562:10731` is non-scrolling, and header `566:10752` is its sibling outside the vertical-scrolling body `567:10752`.
+- Re-exported the exact `1440x1024` durable PNG, `162166` bytes, SHA-256 `e5d95023202bbbe66be844ea90b0e75541288fa6921ae86791f24274dd69266c`. Visual inspection passed with no vertical matrix rails, clipping, or overlap.
+- Source section `499:9745` and source frame `499:9746` retain their baseline geometry. Task 3 remains `SuperAdminReadOnly`; Task 7 retains ownership of `NewRoleEditable`.
