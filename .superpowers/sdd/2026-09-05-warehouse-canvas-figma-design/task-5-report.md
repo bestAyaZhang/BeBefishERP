@@ -157,3 +157,28 @@ Visual review passed padding, alignment, typography, borders, radii, explicit wa
 ## Concerns
 
 None blocking. One initial preflight call failed in transport before execution; authentication was confirmed and the retry succeeded. One first clone attempt tried to set unsupported `description` on a Frame and failed atomically; the corrected call created the root. Both failures produced no partial mutation. The QA board is intentionally wrapped by a top-level Group so the file retains exactly six screen roots.
+
+## Final Review Fix Appendix
+
+Date: 2026-09-05. This appendix records the scoped response to the final whole-plan review and supersedes the earlier prototype-target and screenshot evidence where the two differ. Full evidence is in `final-fix-report.md`.
+
+### Findings resolved
+
+1. Reflowed B-01 contents in Add, Selected, and Partial states. Target blocks `1193:40750`, `1195:1994`, and `1196:2003` are now `210×135`, fully inside B-01, non-overlapping with their two sibling blocks, and contain every text label.
+2. Canonicalized `1211:40961` to `茉莉绿茶 1L`; `SKU-TEA-1L-绿 / 80 个 / 4 件 / B-01` is unchanged.
+3. Deleted the exact 18 leaked page-level instances `1193:4146`, `1193:4164`, `1193:4190`, `1193:4216`, `1193:4314`, `1193:4438`, `1193:4452`, `1193:4466`, `1193:4480`, `1193:4494`, `1193:4514`, `1193:4534`, `1193:4554`, `1193:4574`, `1193:4580`, `1193:4586`, `1193:4592`, and `1193:4622`. Components now has exactly eight approved roots and zero page-level instances.
+4. Removed root reactions from `1187:2`, `1190:516`, and `1193:39676`. Visible controls now provide Overview → Draw → Add → Selected. The selected SKU opens warning; the safe dialog button scrolls to corrected group `1211:40933`; corrected save returns to Overview.
+5. Warning root `1210:2466` now clips with vertical overflow. Dialog `1211:40976` is initially visible; corrected group at local `y=1088` is initially hidden and revealed by `I1211:40976;68:540`.
+6. Reusable action `1171:3585` uses existing Brand Hover `VariableID:6:6`; white contrast is `5.1857:1`. Six visible enabled MVP primary actions use the same accessible fill; two disabled actions retain `VariableID:6:9`.
+
+### Fresh verification
+
+- Six MVP `1440×1024` roots: `1187:2`, `1190:516`, `1193:39676`, `1193:40024`, `1193:40372`, `1210:2466`.
+- Sole flow start: `1187:2`. Nine explicit edges. No archive destinations.
+- Four public Warehouse sets: `1166:38305`, `1168:38293`, `1169:38576`, `1171:3600`.
+- Counts preserved: five pages; four variable collections / 33 variables; eight text styles; zero paint/effect/grid styles; 430 MVP instances / zero missing masters; Components 362 components / 40 sets.
+- Archive preserved at six roots / 8314 descendants / zero starts / zero reactions.
+- Authoritative values preserved, including `250 → 190 + 60`, all derived-case copies, and corrected warning values `576 / 24` plus `80 / 4`.
+- Six equal-scale full renders and required close crops were visually inspected under the `warehouse-finalfix-*` filenames in `%TEMP%`.
+
+No frontend/backend file, plan checkbox, legacy master, page, variable, or style was changed in this final-review fix round.
