@@ -114,6 +114,14 @@ Task base: `8f668ead68193a2ca85e1a98c0c8fca1e9a163ab`
 - Refreshed full screenshots of Draft `1077:3451` and Validation `1077:3537`, plus close screenshots of Object Properties `1077:3623`, layer panel `1077:3478`, Draft canvas `1077:3496`, inspector `1079:4918`, and validation Drawer `1081:5012`. PASS: live input affordances are clear, labels/controls do not clip, severity copy is readable, and A-13 identity and measurements remain visible.
 - Final structural audit: roots remain `1440×1024`, `1440×1024`, and `1360×1024`; every context has 12 linked fields; inspector has 12 linked fields; no effects were introduced; fonts remain Noto Sans SC and Inter; the document still has the same four pages.
 
+## Fix round 2 — Error severity contrast
+
+- Changed only the `Severity Cue` fills inside the two real unresolved Error instances: `I1081:5012;67:466;1081:35294;1024:2331` and `I1081:5012;67:466;1081:35315;1024:2331`. Both parent instances remain linked to main component `1024:2325` with `Severity=Error` and `Resolved=No`; no instance was detached and the master was not edited.
+- The new cue surface is `#FDE9EE`, the exact 12% sRGB composite of existing `Color/Status/Danger` `#EF476F` over `Color/Surface/Panel` `#FFFFFF`. It is stored as the resolved tint on the two instance overrides because paint opacity on the variable-bound nested fill normalized back to 100% during verification.
+- Severity labels `I1081:5012;67:466;1081:35294;1024:2332` and `I1081:5012;67:466;1081:35315;1024:2332` remain 9px Noto Sans SC and remain bound to `Color/Text/Primary` (`VariableID:6:10`, `#25314D`). WCAG relative-luminance contrast against `#FDE9EE` is `11.11:1` for both, exceeding the required `4.5:1`.
+- Warning instance `I1081:5012;67:466;1081:35355` was not changed; its cue `I1081:5012;67:466;1081:35355;1024:2376` remains `Color/Status/Warning` (`VariableID:6:16`, `#F59E0B`) at 100% opacity.
+- Refreshed the close screenshot of Drawer `1081:5012`. PASS: both Error labels are clearly readable on the light danger-tint pills; item borders, rules, affected objects, locate actions, and disabled publish state remain unchanged; the Warning row is visually unchanged.
+
 ## Concerns
 
 None.
