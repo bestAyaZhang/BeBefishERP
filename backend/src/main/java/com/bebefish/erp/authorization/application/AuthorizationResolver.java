@@ -1,6 +1,7 @@
 package com.bebefish.erp.authorization.application;
 
 import com.bebefish.erp.authorization.domain.DataScope;
+import com.bebefish.erp.authorization.domain.PermissionDefinition;
 import com.bebefish.erp.authorization.domain.Role;
 import com.bebefish.erp.authorization.domain.RoleRepository;
 import java.util.List;
@@ -33,7 +34,11 @@ public class AuthorizationResolver {
 
     private List<String> permissionCodesFor(List<Role> assignedRoles) {
         if (assignedRoles.stream().anyMatch(Role::superAdministrator)) {
-            return roles.findAllPermissionCodes().stream().sorted().toList();
+            return roles.findAllPermissions().stream()
+                    .map(PermissionDefinition::code)
+                    .distinct()
+                    .sorted()
+                    .toList();
         }
         return assignedRoles.stream()
                 .map(Role::permissionCodes)

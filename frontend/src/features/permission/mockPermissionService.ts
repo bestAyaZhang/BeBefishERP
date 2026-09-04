@@ -24,6 +24,13 @@ const ALL_PERMISSION_CODES = PERMISSION_MODULES.flatMap((module) =>
   module.supportedActions.map((action) => `${module.key}:${action}`)
 );
 const PERMISSION_CODE_SET = new Set(ALL_PERMISSION_CODES);
+const REQUIRED_VIEW_BY_PERMISSION: ReadonlyMap<string, string> = new Map(
+  PERMISSION_MODULES.flatMap((module) =>
+    module.supportedActions
+      .filter((action) => action !== 'view')
+      .map((action) => [`${module.key}:${action}`, `${module.key}:view`] as const)
+  )
+);
 const DATA_SCOPES: PermissionDataScope[] = [
   'company', 'department-and-descendants', 'department', 'self'
 ];
@@ -170,6 +177,13 @@ function validateConfiguration(payload: SaveRoleConfigurationPayload): void {
     || payload.permissionCodes.some((code) => typeof code !== 'string' || !PERMISSION_CODE_SET.has(code))) {
     throw new Error('权限编码无效');
   }
+  const permissionCodes = new Set(payload.permissionCodes);
+  if ([...permissionCodes].some((code) => {
+    const requiredView = REQUIRED_VIEW_BY_PERMISSION.get(code);
+    return requiredView !== undefined && !permissionCodes.has(requiredView);
+  })) {
+    throw new Error('非查看权限必须同时包含查看权限');
+  }
   if (!DATA_SCOPES.includes(payload.dataScope)) throw new Error('数据范围无效');
 }
 
@@ -264,6 +278,7 @@ export function createMockPermissionService(organization: OrganizationService): 
       .filter((employee) => (candidates ? !memberIds.has(employee.id) : memberIds.has(employee.id)))
       .filter((employee) => !candidates || employee.status === 'active')
       .map((employee) => materializeMember(role, employee, !candidates))
+      .filter((member) => !candidates || member.lockedReason === null)
       .filter((member) => departmentIds === null || departmentIds.has(member.departmentId))
       .filter((member) => !keyword || [member.employeeNo, member.employeeName, member.mobile, member.departmentName]
         .some((value) => value.toLowerCase().includes(keyword)));

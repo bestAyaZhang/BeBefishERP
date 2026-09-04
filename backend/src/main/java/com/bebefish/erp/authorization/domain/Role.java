@@ -13,6 +13,9 @@ public record Role(
         Set<String> memberKeys
 ) {
     public Role {
+        if (superAdministrator != "SUPER_ADMIN".equals(code)) {
+            throw new IllegalArgumentException("Super administrator flag must match the reserved SUPER_ADMIN code");
+        }
         if (superAdministrator && (!system || !enabled || dataScope != DataScope.COMPANY)) {
             throw new IllegalArgumentException("Super administrator roles must be system, enabled, and company scoped");
         }

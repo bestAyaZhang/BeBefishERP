@@ -118,4 +118,20 @@ describe('MemberSelectionDrawer', () => {
     await wrapper.get('[data-testid="member-selection-submit"]').trigger('click');
     expect(wrapper.emitted('submit')).toEqual([[[7]]]);
   });
+
+  it('disables a defensively supplied locked candidate', async () => {
+    const page: RoleMemberPage = {
+      records: [{ employeeId: 1, employeeNo: 'E001', employeeName: '超级管理员', mobile: '13800000001', departmentId: 1, departmentName: '总部', positionName: '管理员', employmentType: 'formal', otherRoleNames: ['超级管理员'], finalDataScope: 'company', lockedReason: '超级管理员不可移除' }],
+      page: 1,
+      pageSize: 20,
+      total: 1
+    };
+    const wrapper = mount(MemberSelectionDrawer, {
+      props: { open: true, page, selectedIds: [], saving: false }
+    });
+
+    expect(wrapper.get('[data-testid="candidate-select-1"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="candidate-select-1"]').setValue(true);
+    expect(wrapper.emitted('update:selectedIds')).toBeUndefined();
+  });
 });

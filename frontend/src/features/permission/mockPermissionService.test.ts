@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { organizationService } from '../organization/organizationService';
 import { createMockPermissionService } from './mockPermissionService';
+import { PERMISSION_MODULES } from './permissionCatalog';
 
 describe('mockPermissionService', () => {
   it('creates an uppercase unique custom role and copies configuration without members', async () => {
@@ -48,6 +49,18 @@ describe('mockPermissionService', () => {
     expect(productOnlyMember.finalDataScope).toBeNull();
   });
 
+  it('excludes locked employees from candidates for a new custom role', async () => {
+    const service = createMockPermissionService(organizationService);
+    const role = await service.createRole({
+      name: '新角色', code: 'NEW_ROLE', description: '', copyFromRoleId: null
+    });
+
+    const candidates = await service.listCandidates(role.id, { page: 1, size: 100 });
+
+    expect(candidates.records.map((member) => member.employeeId)).not.toContain(1);
+    expect(candidates.records.every((member) => member.lockedReason === null)).toBe(true);
+  });
+
   it('rejects invalid runtime configuration and status values without mutating the role', async () => {
     const service = createMockPermissionService(organizationService);
     const before = await service.getRole(4);
@@ -63,6 +76,30 @@ describe('mockPermissionService', () => {
     await expect(service.changeRoleStatus(4, 'archived' as never)).rejects.toThrow('角色状态无效');
 
     await expect(service.getRole(4)).resolves.toEqual(before);
+  });
+
+  it('rejects every non-view action without its module view and permits complete module removal', async () => {
+    const service = createMockPermissionService(organizationService);
+    const nonViewPermissions = PERMISSION_MODULES.flatMap((module) =>
+      module.supportedActions
+        .filter((action) => action !== 'view')
+        .map((action) => `${module.key}:${action}`)
+    );
+
+    for (const permissionCode of nonViewPermissions) {
+      await expect(service.saveConfiguration(4, {
+        permissionCodes: [permissionCode],
+        dataScope: 'department'
+      })).rejects.toThrow('非查看权限必须同时包含查看权限');
+    }
+
+    const before = await service.getRole(4);
+    const withoutProduct = before.permissionCodes.filter((code) => !code.startsWith('product:'));
+    const saved = await service.saveConfiguration(4, {
+      permissionCodes: withoutProduct,
+      dataScope: before.dataScope
+    });
+    expect(saved.permissionCodes.filter((code) => code.startsWith('product:'))).toEqual([]);
   });
 
   it('exposes page context and treats disabled custom roles as copy-only until re-enabled', async () => {

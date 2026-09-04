@@ -50,6 +50,55 @@ describe('PermissionManagementView', () => {
     expect(wrapper.findAll('[role="tab"]')).toHaveLength(3);
   });
 
+  it('links tabs to panels and supports Left, Right, Home, and End roving focus', async () => {
+    const service = createMockPermissionService(organizationService);
+    saveCurrentUser({
+      accessToken: 'token', mobile: '13800138000', roles: ['SUPER_ADMIN'],
+      permissions: ['system:role:view', 'system:role:manage'], loginMethod: 'password'
+    });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const wrapper = mount(PermissionManagementView, { props: { service }, attachTo: host });
+
+    try {
+      await flushPromises();
+      const tabs = wrapper.findAll('[role="tab"]');
+      const panels = wrapper.findAll('[role="tabpanel"]');
+      expect(tabs.map((tab) => tab.attributes('id'))).toEqual([
+        'role-permissions-tab', 'role-scope-tab', 'role-members-tab'
+      ]);
+      expect(tabs.map((tab) => tab.attributes('aria-controls'))).toEqual([
+        'role-permissions-panel', 'role-scope-panel', 'role-members-panel'
+      ]);
+      expect(tabs.map((tab) => tab.attributes('tabindex'))).toEqual(['0', '-1', '-1']);
+      expect(panels.map((panel) => panel.attributes('id'))).toEqual([
+        'role-permissions-panel', 'role-scope-panel', 'role-members-panel'
+      ]);
+      expect(panels.map((panel) => panel.attributes('aria-labelledby'))).toEqual([
+        'role-permissions-tab', 'role-scope-tab', 'role-members-tab'
+      ]);
+
+      await tabs[0].trigger('keydown', { key: 'ArrowRight' });
+      expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe('数据范围');
+      expect(document.activeElement).toBe(tabs[1].element);
+
+      await tabs[1].trigger('keydown', { key: 'ArrowLeft' });
+      expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe('权限配置');
+      expect(document.activeElement).toBe(tabs[0].element);
+
+      await tabs[0].trigger('keydown', { key: 'End' });
+      expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe('成员管理');
+      expect(document.activeElement).toBe(tabs[2].element);
+
+      await tabs[2].trigger('keydown', { key: 'Home' });
+      expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe('权限配置');
+      expect(document.activeElement).toBe(tabs[0].element);
+    } finally {
+      wrapper.unmount();
+      host.remove();
+    }
+  });
+
   it('preserves dirty edits on save failure and confirms before role switch', async () => {
     const service = createMockPermissionService(organizationService);
     service.saveConfiguration = vi.fn().mockRejectedValue(new Error('保存失败，请重试'));

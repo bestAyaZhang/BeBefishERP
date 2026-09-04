@@ -11,6 +11,7 @@ import com.bebefish.erp.auth.domain.UserAccount;
 import com.bebefish.erp.auth.domain.UserAccountRepository;
 import com.bebefish.erp.authorization.application.AuthorizationResolver;
 import com.bebefish.erp.authorization.domain.DataScope;
+import com.bebefish.erp.authorization.domain.PermissionDefinition;
 import com.bebefish.erp.authorization.domain.Role;
 import com.bebefish.erp.authorization.domain.RoleRepository;
 import com.bebefish.erp.authorization.infrastructure.InMemoryRoleRepository;
@@ -179,11 +180,8 @@ class AuthServiceTest {
         }
 
         @Override
-        public Set<String> findAllPermissionCodes() {
-            return roles.stream()
-                    .map(Role::permissionCodes)
-                    .flatMap(Set::stream)
-                    .collect(java.util.stream.Collectors.toSet());
+        public List<PermissionDefinition> findAllPermissions() {
+            return List.of();
         }
     }
 

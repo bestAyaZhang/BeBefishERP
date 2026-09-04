@@ -16,6 +16,17 @@ type FormMode = 'create' | 'edit';
 type State = 'loading' | 'error' | 'ready';
 type Configuration = { permissionCodes: string[]; dataScope: PermissionDataScope };
 type Query = Required<Pick<RoleMemberQuery, 'page' | 'size'>> & Pick<RoleMemberQuery, 'keyword' | 'departmentId'>;
+const TAB_ORDER: Tab[] = ['permissions', 'scope', 'members'];
+const TAB_IDS: Record<Tab, string> = {
+  permissions: 'role-permissions-tab',
+  scope: 'role-scope-tab',
+  members: 'role-members-tab'
+};
+const TAB_PANEL_IDS: Record<Tab, string> = {
+  permissions: 'role-permissions-panel',
+  scope: 'role-scope-panel',
+  members: 'role-members-panel'
+};
 const props = withDefaults(defineProps<{ service?: PermissionService }>(), { service: () => permissionService });
 const EMPTY_PAGE: RoleMemberPage = { records: [], page: 1, pageSize: 20, total: 0 };
 const roles = ref<PermissionRoleSummary[]>([]);
@@ -179,6 +190,19 @@ async function selectTab(tab: Tab) {
   activeTab.value = tab;
   if (tab === 'members') await refreshMembers();
 }
+function handleTabKeydown(event: KeyboardEvent, currentTab: Tab) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  if (isBusy.value) return;
+  const currentIndex = TAB_ORDER.indexOf(currentTab);
+  const targetTab = event.key === 'Home'
+    ? TAB_ORDER[0]
+    : event.key === 'End'
+      ? TAB_ORDER[TAB_ORDER.length - 1]
+      : TAB_ORDER[(currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + TAB_ORDER.length) % TAB_ORDER.length];
+  void selectTab(targetTab);
+  document.getElementById(TAB_IDS[targetTab])?.focus();
+}
 async function saveConfiguration() {
   if (!selectedRole.value || !configurationDraft.value || !canEdit.value || !configurationDirty.value || isBusy.value) return;
   const roleId = selectedRole.value.id;
@@ -338,17 +362,23 @@ onMounted(loadPage);
             </div>
           </div>
           <div class="mt-5 flex border-b border-slate-200" role="tablist" aria-label="角色管理页签">
-            <button type="button" role="tab" :aria-selected="activeTab === 'permissions'" class="px-4 py-3 text-sm font-medium" :class="activeTab === 'permissions' ? 'border-b-2 border-[#536dff] text-[#536dff]' : 'text-slate-500'" :disabled="isBusy" @click="selectTab('permissions')">权限配置</button>
-            <button type="button" role="tab" :aria-selected="activeTab === 'scope'" class="px-4 py-3 text-sm font-medium" :class="activeTab === 'scope' ? 'border-b-2 border-[#536dff] text-[#536dff]' : 'text-slate-500'" :disabled="isBusy" @click="selectTab('scope')">数据范围</button>
-            <button data-testid="tab-members" type="button" role="tab" :aria-selected="activeTab === 'members'" class="px-4 py-3 text-sm font-medium" :class="activeTab === 'members' ? 'border-b-2 border-[#536dff] text-[#536dff]' : 'text-slate-500'" :disabled="isBusy" @click="selectTab('members')">成员管理</button>
+            <button :id="TAB_IDS.permissions" type="button" role="tab" :aria-selected="activeTab === 'permissions'" :aria-controls="TAB_PANEL_IDS.permissions" :tabindex="activeTab === 'permissions' ? 0 : -1" class="px-4 py-3 text-sm font-medium" :class="activeTab === 'permissions' ? 'border-b-2 border-[#536dff] text-[#536dff]' : 'text-slate-500'" :disabled="isBusy" @click="selectTab('permissions')" @keydown="handleTabKeydown($event, 'permissions')">权限配置</button>
+            <button :id="TAB_IDS.scope" type="button" role="tab" :aria-selected="activeTab === 'scope'" :aria-controls="TAB_PANEL_IDS.scope" :tabindex="activeTab === 'scope' ? 0 : -1" class="px-4 py-3 text-sm font-medium" :class="activeTab === 'scope' ? 'border-b-2 border-[#536dff] text-[#536dff]' : 'text-slate-500'" :disabled="isBusy" @click="selectTab('scope')" @keydown="handleTabKeydown($event, 'scope')">数据范围</button>
+            <button :id="TAB_IDS.members" data-testid="tab-members" type="button" role="tab" :aria-selected="activeTab === 'members'" :aria-controls="TAB_PANEL_IDS.members" :tabindex="activeTab === 'members' ? 0 : -1" class="px-4 py-3 text-sm font-medium" :class="activeTab === 'members' ? 'border-b-2 border-[#536dff] text-[#536dff]' : 'text-slate-500'" :disabled="isBusy" @click="selectTab('members')" @keydown="handleTabKeydown($event, 'members')">成员管理</button>
           </div>
           <div v-if="configurationDraft" class="min-h-0 flex-1 py-5">
-            <PermissionMatrix v-if="activeTab === 'permissions'" :modules="PERMISSION_MODULES" :model-value="configurationDraft.permissionCodes" :readonly="readonly || isBusy" @update:model-value="configurationDraft.permissionCodes = $event" />
-            <DataScopePanel v-else-if="activeTab === 'scope'" :model-value="configurationDraft.dataScope" :readonly="readonly || isBusy" :organization-summary="organizationSummary" @update:model-value="configurationDraft.dataScope = $event" />
-            <template v-else>
-              <p v-if="memberError" data-testid="member-load-error" class="mb-3 text-sm text-rose-600">{{ memberError }} <button type="button" class="text-[#536dff] underline" @click="refreshMembers">重试</button></p>
-              <RoleMembersPanel :page="memberPage" :can-manage="canEdit && !isBusy" :selected-ids="memberSelectedIds" :keyword="memberQuery.keyword" :department-id="memberQuery.departmentId" :departments="departments" @page="updateMemberQuery({ page: $event })" @page-size="updateMemberQuery({ size: $event, page: 1 })" @keyword="updateMemberQuery({ keyword: $event, page: 1 })" @department="updateMemberQuery({ departmentId: $event, page: 1 })" @update:selected-ids="memberSelectedIds = $event" @add="openMemberDrawer" @remove="removeMembers" @clear="clearMemberFilters" />
-            </template>
+            <div :id="TAB_PANEL_IDS.permissions" role="tabpanel" :aria-labelledby="TAB_IDS.permissions" :hidden="activeTab !== 'permissions'">
+              <PermissionMatrix v-if="activeTab === 'permissions'" :modules="PERMISSION_MODULES" :model-value="configurationDraft.permissionCodes" :readonly="readonly || isBusy" @update:model-value="configurationDraft.permissionCodes = $event" />
+            </div>
+            <div :id="TAB_PANEL_IDS.scope" role="tabpanel" :aria-labelledby="TAB_IDS.scope" :hidden="activeTab !== 'scope'">
+              <DataScopePanel v-if="activeTab === 'scope'" :model-value="configurationDraft.dataScope" :readonly="readonly || isBusy" :organization-summary="organizationSummary" @update:model-value="configurationDraft.dataScope = $event" />
+            </div>
+            <div :id="TAB_PANEL_IDS.members" role="tabpanel" :aria-labelledby="TAB_IDS.members" :hidden="activeTab !== 'members'">
+              <template v-if="activeTab === 'members'">
+                <p v-if="memberError" data-testid="member-load-error" class="mb-3 text-sm text-rose-600">{{ memberError }} <button type="button" class="text-[#536dff] underline" @click="refreshMembers">重试</button></p>
+                <RoleMembersPanel :page="memberPage" :can-manage="canEdit && !isBusy" :selected-ids="memberSelectedIds" :keyword="memberQuery.keyword" :department-id="memberQuery.departmentId" :departments="departments" @page="updateMemberQuery({ page: $event })" @page-size="updateMemberQuery({ size: $event, page: 1 })" @keyword="updateMemberQuery({ keyword: $event, page: 1 })" @department="updateMemberQuery({ departmentId: $event, page: 1 })" @update:selected-ids="memberSelectedIds = $event" @add="openMemberDrawer" @remove="removeMembers" @clear="clearMemberFilters" />
+              </template>
+            </div>
           </div>
           <div v-if="configurationDraft" data-testid="configuration-footer" class="sticky bottom-0 z-10 flex items-center gap-3 border-t border-slate-200 bg-white py-4"><button data-testid="cancel-role-configuration" type="button" class="rounded-[6px] border border-slate-200 px-4 py-2 text-sm text-slate-600 disabled:opacity-50" :disabled="!configurationDirty || isBusy" @click="cancelConfiguration">取消修改</button><button data-testid="save-role-configuration" type="button" class="rounded-[6px] bg-[#536dff] px-4 py-2 text-sm text-white disabled:opacity-50" :disabled="!canEdit || !configurationDirty || isBusy" @click="saveConfiguration">{{ configurationSaving ? '保存中...' : '保存配置' }}</button><p v-if="saveError" data-testid="permission-save-error" class="text-sm text-rose-600">{{ saveError }}</p></div>
         </template>
