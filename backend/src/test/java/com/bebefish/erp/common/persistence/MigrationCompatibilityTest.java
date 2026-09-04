@@ -17,7 +17,8 @@ class MigrationCompatibilityTest {
             "db/migration/V4__inventory_schema.sql",
             "db/migration/V5__stock_adjustment_schema.sql",
             "db/migration/V6__sales_draft_schema.sql",
-            "db/migration/V7__supplier_quote_integrity.sql");
+            "db/migration/V7__supplier_quote_integrity.sql",
+            "db/migration/V10__identity_auth_rbac.sql");
 
     @Test
     void migrationsUseCollationSupportedByMySql8AndMariaDb() throws IOException {
