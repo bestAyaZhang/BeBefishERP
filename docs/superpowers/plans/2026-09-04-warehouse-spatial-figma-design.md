@@ -331,35 +331,35 @@ Record both frame IDs, the object-property state IDs, and the publish-confirmati
 - Consumes: the exact zones, locations, stacks, quantities, and risk states used in Task 3
 - Produces: a consistent derived scene and a usable 2D fallback path
 
-- [ ] **Step 1: Create the 3D browser wrapper**
+- [x] **Step 1: Create the 3D browser wrapper**
 
 Duplicate the base 2D monitor shell into `Warehouse Spatial / 3D Browse`, switch the segmented control to `3D`, and retain warehouse, SKU search, risk filter, and layer visibility controls. Add orbit, pan, zoom, reset view, and floor-label toggles using existing icon-button patterns.
 
-- [ ] **Step 2: Compose a derived box-stack scene**
+- [x] **Step 2: Compose a derived box-stack scene**
 
 Represent the same A-zone fixed locations and B-zone temporary locations as simple perspective box stacks. Each visual stack must correspond to a Task 3 stack and communicate packaging dimensions, orientation, rows, columns, layers, and remaining partial layer. Use surfaces and outlines from the existing palette; do not create a photorealistic scene or decorative warehouse illustration.
 
-- [ ] **Step 3: Add orientation and utilization cues**
+- [x] **Step 3: Add orientation and utilization cues**
 
 Show two packaging orientations, a partial top layer, stack height markers, floor labels, and a subtle utilization legend. Do not expose direct drag handles for individual boxes. Editing belongs to stack-rule forms, not the 3D viewport.
 
-- [ ] **Step 4: Create the risk-selected state**
+- [x] **Step 4: Create the risk-selected state**
 
 Duplicate the scene as `Warehouse Spatial / 3D Risk Selected`. Select the over-capacity stack from Task 3, outline the full stack, dim nonmatching stacks, and open the right inspector with the same SKU/package/quantity/rule data plus `修正规则` and `查看二维位置` actions.
 
-- [ ] **Step 5: Create the unavailable fallback**
+- [x] **Step 5: Create the unavailable fallback**
 
 Create `Warehouse Spatial / 3D Unavailable` using the same shell. Replace only the viewport with a concise message that 3D rendering is unavailable, a technical-details disclosure, and a primary `返回二维视图` action. Preserve the selected warehouse, search, and risk filters so context is not lost.
 
-- [ ] **Step 6: Cross-check 2D and 3D consistency**
+- [x] **Step 6: Cross-check 2D and 3D consistency**
 
 Compare location codes, stack IDs, SKU, quantity, package level, utilization, and risk states between Tasks 3 and 5. Treat any mismatch as a design defect and correct the derived 3D scene.
 
-- [ ] **Step 7: Validate the three 3D frames**
+- [x] **Step 7: Validate the three 3D frames**
 
 Screenshot the full scene, selected risk, and fallback. Verify labels do not collide, depth ordering remains understandable, partial layers are visible, no rack/shelf metaphor appears, and the fallback retains a direct operational route to 2D.
 
-- [ ] **Step 8: Record the checkpoint**
+- [x] **Step 8: Record the checkpoint**
 
 Record all three frame IDs and the reusable 3D scene group ID.
 
