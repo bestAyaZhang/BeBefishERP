@@ -14,6 +14,9 @@ spring:
       ddl-auto: validate
     open-in-view: false
 erp:
+  auth:
+    session-ttl: ${ERP_AUTH_SESSION_TTL:PT12H}
+    ticket-ttl: ${ERP_AUTH_TICKET_TTL:PT60S}
   file:
     storage:
       provider: ${ERP_FILE_STORAGE_PROVIDER:local}

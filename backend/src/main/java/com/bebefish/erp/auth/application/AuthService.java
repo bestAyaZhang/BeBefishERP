@@ -77,7 +77,11 @@ public class AuthService {
     private LoginResult issueLogin(UserAccount user, String method) {
         var authorization = authorizationResolver.resolve(user.id());
         var authenticatedUser = new AuthenticatedUser(
+                user.id(),
+                user.employeeId(),
                 user.mobile(),
+                user.displayName(),
+                user.avatarUrl(),
                 authorization.roles(),
                 authorization.permissions()
         );
