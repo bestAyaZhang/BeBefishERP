@@ -1,6 +1,7 @@
 package com.bebefish.erp.authorization.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.bebefish.erp.authorization.domain.DataScope;
 import com.bebefish.erp.authorization.domain.Role;
@@ -45,6 +46,26 @@ class AuthorizationResolverTest {
 
         assertThat(resolver.resolve("13800138000").permissions())
                 .containsExactlyElementsOf(repository.findAllPermissionCodes().stream().sorted().toList());
+    }
+
+    @Test
+    void superAdministratorMustBeSystemEnabledAndCompanyScoped() {
+        assertThatThrownBy(() -> new Role("SUPER_ADMIN", "超级管理员", false, true, true,
+                DataScope.COMPANY, Set.of(), Set.of("13800138000")))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new Role("SUPER_ADMIN", "超级管理员", true, true, false,
+                DataScope.COMPANY, Set.of(), Set.of("13800138000")))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new Role("SUPER_ADMIN", "超级管理员", true, true, true,
+                DataScope.DEPARTMENT, Set.of(), Set.of("13800138000")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void resolvedAuthorizationRejectsNullDataScopeOptional() {
+        assertThatThrownBy(() -> new ResolvedAuthorization(List.of(), List.of(), null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("dataScope");
     }
 
     private static Role role(

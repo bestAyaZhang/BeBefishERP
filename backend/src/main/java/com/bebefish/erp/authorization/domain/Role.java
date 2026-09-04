@@ -13,6 +13,9 @@ public record Role(
         Set<String> memberKeys
 ) {
     public Role {
+        if (superAdministrator && (!system || !enabled || dataScope != DataScope.COMPANY)) {
+            throw new IllegalArgumentException("Super administrator roles must be system, enabled, and company scoped");
+        }
         permissionCodes = Set.copyOf(permissionCodes);
         memberKeys = Set.copyOf(memberKeys);
     }

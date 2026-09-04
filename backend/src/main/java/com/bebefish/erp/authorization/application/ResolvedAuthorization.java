@@ -2,6 +2,7 @@ package com.bebefish.erp.authorization.application;
 
 import com.bebefish.erp.authorization.domain.DataScope;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 public record ResolvedAuthorization(
@@ -12,6 +13,6 @@ public record ResolvedAuthorization(
     public ResolvedAuthorization {
         roles = List.copyOf(roles);
         permissions = List.copyOf(permissions);
-        dataScope = Optional.ofNullable(dataScope).orElseGet(Optional::empty);
+        dataScope = Objects.requireNonNull(dataScope, "dataScope");
     }
 }
