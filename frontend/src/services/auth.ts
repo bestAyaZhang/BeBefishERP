@@ -1,12 +1,5 @@
-import type { LoginResult, PasswordLoginPayload, SmsLoginPayload } from '../types/auth';
+import type { FeishuLoginStatus, LoginResult, PasswordLoginPayload } from '../types/auth';
 import { request } from './http';
-
-export function sendSmsCode(mobile: string): Promise<void> {
-  return request<void>('/api/auth/sms-code', {
-    method: 'POST',
-    body: JSON.stringify({ mobile })
-  });
-}
 
 export function loginWithPassword(payload: PasswordLoginPayload): Promise<LoginResult> {
   return request<LoginResult>('/api/auth/login/password', {
@@ -15,10 +8,18 @@ export function loginWithPassword(payload: PasswordLoginPayload): Promise<LoginR
   });
 }
 
-export function loginWithSms(payload: SmsLoginPayload): Promise<LoginResult> {
-  return request<LoginResult>('/api/auth/login/sms', {
+export function getFeishuStatus(): Promise<FeishuLoginStatus> {
+  return request<FeishuLoginStatus>('/api/auth/feishu/status');
+}
+
+export function beginFeishuLogin(): void {
+  window.location.assign('/api/auth/feishu/authorize');
+}
+
+export function exchangeFeishuTicket(ticket: string): Promise<LoginResult> {
+  return request<LoginResult>('/api/auth/feishu/exchange', {
     method: 'POST',
-    body: JSON.stringify(payload)
+    body: JSON.stringify({ ticket })
   });
 }
 

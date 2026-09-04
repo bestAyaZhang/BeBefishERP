@@ -65,6 +65,12 @@ const router = createRouter({
     { path: '/', redirect: { name: 'workbench' } },
     { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
     {
+      path: '/auth/feishu/result',
+      name: 'feishu-login-result',
+      component: () => import('../views/FeishuLoginResultView.vue'),
+      meta: { public: true }
+    },
+    {
       path: '/',
       component: ErpLayout,
       meta: { requiresAuth: true },

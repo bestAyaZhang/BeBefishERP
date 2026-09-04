@@ -7,10 +7,10 @@ function isLoginResult(value: unknown): value is LoginResult {
   if (!value || typeof value !== 'object') return false;
   const user = value as Partial<LoginResult>;
   return typeof user.accessToken === 'string'
-    && typeof user.mobile === 'string'
+    && (typeof user.mobile === 'string' || user.mobile === null)
     && Array.isArray(user.roles)
     && Array.isArray(user.permissions)
-    && (user.loginMethod === 'password' || user.loginMethod === 'sms' || user.loginMethod === 'feishu');
+    && (user.loginMethod === 'password' || user.loginMethod === 'feishu');
 }
 
 function readStoredCurrentUser(): LoginResult | null {
@@ -36,7 +36,8 @@ export function saveCurrentUser(user: LoginResult) {
   currentUser.value = {
     ...user,
     roles: [...user.roles],
-    permissions: [...user.permissions]
+    permissions: [...user.permissions],
+    warnings: [...(user.warnings ?? [])]
   };
   localStorage.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify(currentUser.value));
 }

@@ -56,6 +56,14 @@ describe('ERP router', () => {
     expect(route.meta.requiredPermission).toBe('system:role:view');
   });
 
+  it('keeps the feishu result route public', () => {
+    const route = router.resolve('/auth/feishu/result?ticket=one-time');
+
+    expect(route.name).toBe('feishu-login-result');
+    expect(route.meta.public).toBe(true);
+    expect(route.meta.requiresAuth).not.toBe(true);
+  });
+
   it('redirects authenticated users missing the required permission to workbench', async () => {
     localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, 'test-token');
     saveCurrentUser({
