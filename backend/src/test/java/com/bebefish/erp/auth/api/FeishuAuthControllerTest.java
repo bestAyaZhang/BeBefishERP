@@ -2,8 +2,9 @@ package com.bebefish.erp.auth.api;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -15,6 +16,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import jakarta.servlet.http.Cookie;
 import com.bebefish.erp.auth.application.FeishuLoginService;
 import com.bebefish.erp.auth.application.OAuthStateService;
+import com.bebefish.erp.auth.domain.LoginAuditEvent;
+import com.bebefish.erp.auth.domain.LoginAuditRepository;
 import com.bebefish.erp.feishu.FeishuAvailability;
 import com.bebefish.erp.feishu.FeishuOAuthClient;
 import com.bebefish.erp.feishu.FeishuProperties;
@@ -53,6 +56,9 @@ class FeishuAuthControllerTest {
 
     @SpyBean
     private FeishuOAuthClient oauthClient;
+
+    @SpyBean
+    private LoginAuditRepository auditRepository;
 
     @Test
     void authorizeCallbackAndExchangeCompleteWithoutPuttingSessionInUrl() throws Exception {
@@ -152,6 +158,22 @@ class FeishuAuthControllerTest {
                 "select count(*) from sys_login_audit where error_code = 'LOGIN_FAILED'",
                 Integer.class
         )).isEqualTo(failuresBefore + 1);
+    }
+
+    @Test
+    void auditStorageFailureCannotBreakSafeCallbackRedirect() throws Exception {
+        var authorization = mvc.perform(get("/api/auth/feishu/authorize")).andReturn();
+        Cookie stateCookie = authorization.getResponse().getCookie("erp_feishu_state");
+        String state = query(authorization.getResponse().getHeader("Location"), "state");
+        doThrow(new IllegalStateException("audit storage unavailable"))
+                .when(auditRepository).record(any(LoginAuditEvent.class));
+
+        mvc.perform(get("/api/auth/feishu/callback")
+                        .param("state", state)
+                        .cookie(stateCookie))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", containsString("error=FEISHU_CALLBACK_EXPIRED")))
+                .andExpect(cookie().maxAge("erp_feishu_state", 0));
     }
 
     @Test

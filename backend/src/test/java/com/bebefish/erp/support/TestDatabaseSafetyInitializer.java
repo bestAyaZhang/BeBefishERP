@@ -15,8 +15,8 @@ public final class TestDatabaseSafetyInitializer
     public void initialize(ConfigurableApplicationContext applicationContext) {
         String url = applicationContext.getEnvironment().getProperty("spring.datasource.url", "").trim();
         var matcher = MYSQL_DATABASE.matcher(url);
-        if (!matcher.matches() || !matcher.group(1).toLowerCase(Locale.ROOT).contains("test")) {
-            throw new IllegalStateException("集成测试只能连接名称包含 test 的专用测试数据库");
+        if (!matcher.matches() || !matcher.group(1).toLowerCase(Locale.ROOT).endsWith("_test")) {
+            throw new IllegalStateException("集成测试只能连接名称以 _test 结尾的专用测试数据库");
         }
     }
 }

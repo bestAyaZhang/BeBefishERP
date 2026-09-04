@@ -19,6 +19,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.web.bind.annotation.CookieValue;
@@ -32,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/auth/feishu")
 public class FeishuAuthController {
+    private static final Logger log = LoggerFactory.getLogger(FeishuAuthController.class);
     static final String STATE_COOKIE = "erp_feishu_state";
     private static final String RESULT_PATH = "/auth/feishu/result";
 
@@ -100,7 +103,7 @@ public class FeishuAuthController {
             redirectValue = ticket;
         } catch (AuthException exception) {
             if (!delegatedToLoginService) {
-                audits.record(new LoginAuditEvent(
+                recordAuditSafely(new LoginAuditEvent(
                         null, "feishu", "failure", exception.code(), null,
                         request.getRemoteAddr(), truncate(request.getHeader("User-Agent")), Instant.now(clock)
                 ));
@@ -108,7 +111,7 @@ public class FeishuAuthController {
             redirectName = "error";
             redirectValue = exception.code();
         } catch (RuntimeException exception) {
-            audits.record(new LoginAuditEvent(
+            recordAuditSafely(new LoginAuditEvent(
                     null, "feishu", "failure", "LOGIN_FAILED", null,
                     request.getRemoteAddr(), truncate(request.getHeader("User-Agent")), Instant.now(clock)
             ));
@@ -118,6 +121,14 @@ public class FeishuAuthController {
             response.addHeader(HttpHeaders.SET_COOKIE, stateCookie("", Duration.ZERO).toString());
         }
         redirect(response, redirectName, redirectValue);
+    }
+
+    private void recordAuditSafely(LoginAuditEvent event) {
+        try {
+            audits.record(event);
+        } catch (RuntimeException auditFailure) {
+            log.error("Failed to persist Feishu callback audit", auditFailure);
+        }
     }
 
     @PostMapping("/exchange")

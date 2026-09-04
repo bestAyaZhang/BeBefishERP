@@ -82,7 +82,7 @@ $env:ERP_TEST_DB_PASSWORD = '<test-password>'
 mvn test
 ```
 
-测试启动器会拒绝数据库名不含 `test` 的 JDBC URL，避免集成测试误连开发或生产库。
+测试启动器会拒绝数据库名不以 `_test` 结尾的 JDBC URL，避免集成测试误连开发或生产库。
 
 后端默认地址：
 

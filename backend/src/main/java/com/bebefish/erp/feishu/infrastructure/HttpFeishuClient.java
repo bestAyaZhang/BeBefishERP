@@ -29,6 +29,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(prefix = "erp.feishu", name = "mock-enabled", havingValue = "false", matchIfMissing = true)
 public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClient {
+    private static final int FUNCTIONAL_ROLE_MEMBER_NOT_FOUND_CODE = 41203;
     private final FeishuProperties properties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
@@ -197,7 +198,7 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
                 .header("Authorization", "Bearer " + accessToken)
                 .GET()
                 .build();
-        return send(request, true) != null;
+        return send(request, FUNCTIONAL_ROLE_MEMBER_NOT_FOUND_CODE) != null;
     }
 
     private String primaryDepartmentId(JsonNode user) {
@@ -257,20 +258,23 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
     }
 
     private JsonNode send(HttpRequest request) {
-        return send(request, false);
+        return send(request, null);
     }
 
-    private JsonNode send(HttpRequest request, boolean notFoundAsEmpty) {
+    private JsonNode send(HttpRequest request, Integer absentBusinessCode) {
         try {
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (notFoundAsEmpty && response.statusCode() == 404) {
+            JsonNode root = objectMapper.readTree(response.body());
+            if (response.statusCode() == 404
+                    && absentBusinessCode != null
+                    && root != null
+                    && root.path("code").asInt(Integer.MIN_VALUE) == absentBusinessCode) {
                 return null;
             }
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new FeishuClientException("飞书接口返回非成功状态");
             }
-            JsonNode root = objectMapper.readTree(response.body());
-            if (root.path("code").asInt(0) != 0) {
+            if (root == null || root.path("code").asInt(0) != 0) {
                 throw new FeishuClientException("飞书接口返回业务错误");
             }
             return root;

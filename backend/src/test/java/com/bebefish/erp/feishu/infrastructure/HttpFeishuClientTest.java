@@ -121,7 +121,7 @@ class HttpFeishuClientTest {
             json(exchange, "{\"code\":0,\"data\":{\"member\":{\"user_id\":\"ou_1\"}}}");
         });
         server.createContext("/open-apis/contact/v3/functional_roles/role-2/members/ou_1", exchange ->
-                json(exchange, 404, "{\"code\":404,\"msg\":\"member not found\"}"));
+                json(exchange, 404, "{\"code\":41203,\"msg\":\"member id is not exist\"}"));
         server.createContext("/open-apis/contact/v3/functional_roles/role-1/members", exchange -> {
             listCalls.incrementAndGet();
             if (exchange.getRequestURI().getRawQuery().contains("page_token=next-1")) {
@@ -162,6 +162,18 @@ class HttpFeishuClientTest {
                         }
                 );
         assertThat(listCalls).hasValue(3);
+    }
+
+    @Test
+    void rejectsMissingConfiguredBusinessRoleInsteadOfTreatingItAsNonMembership() {
+        properties.setBusinessRoles("missing-role|已删除角色");
+        server.createContext("/open-apis/auth/v3/tenant_access_token/internal", exchange -> json(exchange,
+                "{\"code\":0,\"tenant_access_token\":\"t-token\",\"expire\":7200}"));
+        server.createContext("/open-apis/contact/v3/functional_roles/missing-role/members/ou_1", exchange ->
+                json(exchange, 404, "{\"code\":41202,\"msg\":\"role id is not exist\"}"));
+
+        assertThatThrownBy(() -> client().businessRoles("ou_1"))
+                .isInstanceOf(FeishuClientException.class);
     }
 
     @Test

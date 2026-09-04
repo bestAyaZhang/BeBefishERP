@@ -25,6 +25,17 @@ class TestDatabaseSafetyInitializerTest {
                 .doesNotThrowAnyException();
     }
 
+    @Test
+    void rejectsDatabaseNamesThatOnlyContainTestAsPartOfAnotherWord() {
+        for (String database : java.util.List.of("contest", "latest")) {
+            var context = context("jdbc:mysql://127.0.0.1:33306/" + database + "?useSSL=false");
+
+            assertThatThrownBy(() -> new TestDatabaseSafetyInitializer().initialize(context))
+                    .as(database)
+                    .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
     private GenericApplicationContext context(String datasourceUrl) {
         var context = new GenericApplicationContext();
         context.setEnvironment(new MockEnvironment().withProperty("spring.datasource.url", datasourceUrl));
