@@ -25,10 +25,10 @@ const mockNavigationCatalog: NavigationCatalog = {
       children: [
         { label: '员工管理', routeName: 'organization-employees', permission: 'organization:view' },
         { label: '部门管理', routeName: 'organization-departments', permission: 'organization:view' },
-        { label: '岗位管理', routeName: 'organization-positions', permission: 'organization:view' },
-        { label: '权限管理', routeName: 'organization-permissions', permission: 'system:role:view' }
+        { label: '岗位管理', routeName: 'organization-positions', permission: 'organization:view' }
       ]
     },
+    { id: 'permissions', label: '权限管理', icon: 'permission', routeName: 'organization-permissions', permission: 'system:role:view' },
     { id: 'sales-orders', label: '销售单据', icon: 'sales-orders', routeName: 'sales-orders', permission: 'sales:view' },
     {
       id: 'finance',

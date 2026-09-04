@@ -92,14 +92,8 @@ describe('application routes', () => {
   it.each([
     ['/organization/employees', '员工管理', 'employee-workspace'],
     ['/organization/departments', '部门管理', 'department-workspace'],
-    ['/organization/positions', '岗位管理', 'position-workspace'],
-    ['/organization/permissions', '权限管理', 'permission-workspace']
+    ['/organization/positions', '岗位管理', 'position-workspace']
   ])('renders the organization route %s inside the shared ERP layout', async (path, title, testId) => {
-    if (path === '/organization/permissions') {
-      saveCurrentUser({
-        accessToken: 'test-token', mobile: '13800138000', roles: ['ADMIN'], permissions: ['system:role:view'], loginMethod: 'password'
-      });
-    }
     await router.push(path);
     await router.isReady();
     wrapper = mount(App, { global: { plugins: [router] } });
@@ -109,6 +103,21 @@ describe('application routes', () => {
     expect(wrapper.find(`[data-testid="${testId}"]`).exists()).toBe(true);
     expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('组织架构');
     expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe(title);
+  });
+
+  it('renders permission management as an independent navigation area', async () => {
+    saveCurrentUser({
+      accessToken: 'test-token', mobile: '13800138000', roles: ['ADMIN'], permissions: ['system:role:view'], loginMethod: 'password'
+    });
+    await router.push('/organization/permissions');
+    await router.isReady();
+    wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="erp-shell"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="permission-workspace"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('权限管理');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('权限管理');
   });
 
   it('renders the final product create, detail, and edit route surfaces', async () => {

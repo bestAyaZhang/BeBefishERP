@@ -44,7 +44,7 @@ const pageHeaders: Record<string, PageHeader> = {
   'organization-employees': { group: '组织架构', groupRoute: 'organization-employees', title: '员工管理', titleRoute: 'organization-employees' },
   'organization-departments': { group: '组织架构', groupRoute: 'organization-employees', title: '部门管理', titleRoute: 'organization-departments' },
   'organization-positions': { group: '组织架构', groupRoute: 'organization-employees', title: '岗位管理', titleRoute: 'organization-positions' },
-  'organization-permissions': { group: '组织架构', groupRoute: 'organization-employees', title: '权限管理', titleRoute: 'organization-permissions' },
+  'organization-permissions': { group: '权限管理', groupRoute: 'organization-permissions', title: '权限管理', titleRoute: 'organization-permissions' },
   'sales-create': { group: 'Sales', groupRoute: 'sales-orders', title: 'Create Order', titleRoute: 'sales-create' },
   'sales-orders': { group: 'Sales', groupRoute: 'sales-orders', title: 'Orders', titleRoute: 'sales-orders' },
   receipts: { group: 'Finance', groupRoute: 'receipts', title: 'Receipts', titleRoute: 'receipts' },
@@ -59,6 +59,7 @@ const pageHeader = computed<PageHeader>(() => pageHeaders[String(route.name)] ??
 });
 const globalSearchPlaceholder = computed(() => {
   const routeName = String(route.name);
+  if (routeName === 'organization-permissions') return '搜索角色或成员';
   if (routeName.startsWith('organization-')) return '搜索员工、手机号或岗位';
   if (routeName.startsWith('product')) return '搜索商品、货号或供应商';
   return 'Search here';

@@ -7,6 +7,7 @@ export type SidebarIconName =
   | 'warehouse'
   | 'inventory'
   | 'organization'
+  | 'permission'
   | 'sales-orders'
   | 'finance';
 

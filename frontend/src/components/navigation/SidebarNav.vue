@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Package,
   ReceiptText,
+  ShieldCheck,
   Truck,
   UsersRound,
   WalletCards,
@@ -36,6 +37,7 @@ const sidebarIcons = {
   warehouse: Warehouse,
   inventory: Boxes,
   organization: UsersRound,
+  permission: ShieldCheck,
   'sales-orders': FileText,
   finance: WalletCards
 };

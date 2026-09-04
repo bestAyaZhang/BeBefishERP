@@ -170,14 +170,22 @@ describe('ErpLayout', () => {
   it.each([
     ['/organization/employees', '员工管理'],
     ['/organization/departments', '部门管理'],
-    ['/organization/positions', '岗位管理'],
-    ['/organization/permissions', '权限管理']
+    ['/organization/positions', '岗位管理']
   ])('matches the organization breadcrumb and search copy for %s', async (path, title) => {
     ({ router, wrapper } = await mountLayout(path));
 
     expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('组织架构');
     expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe(title);
     expect(wrapper.get('[data-testid="erp-global-search"]').attributes('placeholder')).toBe('搜索员工、手机号或岗位');
+  });
+
+  it('uses an independent permission breadcrumb and search context', async () => {
+    ({ router, wrapper } = await mountLayout('/organization/permissions'));
+
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('权限管理');
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').attributes('href')).toBe('/organization/permissions');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('权限管理');
+    expect(wrapper.get('[data-testid="erp-global-search"]').attributes('placeholder')).toBe('搜索角色或成员');
   });
 
   it.each([

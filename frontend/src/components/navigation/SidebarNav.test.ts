@@ -14,7 +14,8 @@ const ADMIN_PERMISSIONS = [
   'sales:create',
   'finance:view',
   'finance:receipt',
-  'organization:view'
+  'organization:view',
+  'system:role:view'
 ];
 
 function storeCurrentUser(permissions = ADMIN_PERMISSIONS) {
@@ -49,7 +50,8 @@ describe('SidebarNav', () => {
       '库存管理',
       '销售单据',
       '财务管理',
-      '组织架构'
+      '组织架构',
+      '权限管理'
     ]) {
       expect(wrapper.text()).toContain(label);
     }
@@ -65,6 +67,7 @@ describe('SidebarNav', () => {
     expect(wrapper.text()).toContain('部门管理');
     expect(wrapper.text()).toContain('岗位管理');
     expect(wrapper.text()).toContain('权限管理');
+    expect(wrapper.get('a[href="/organization/permissions"]').classes()).not.toContain('ml-6');
 
     wrapper.unmount();
     storeCurrentUser(['product:view']);
@@ -89,9 +92,10 @@ describe('SidebarNav', () => {
     storeCurrentUser(['system:role:view']);
     const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
 
-    expect(wrapper.text()).toContain('组织架构');
+    expect(wrapper.text()).not.toContain('组织架构');
     expect(wrapper.text()).toContain('权限管理');
     expect(wrapper.text()).not.toContain('员工管理');
+    expect(wrapper.get('a[href="/organization/permissions"]').classes()).not.toContain('ml-6');
   });
 
   it('uses the full-height ERP navigation structure without a card shell', () => {
