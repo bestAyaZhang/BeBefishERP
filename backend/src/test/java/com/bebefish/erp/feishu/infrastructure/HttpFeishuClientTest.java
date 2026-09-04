@@ -73,6 +73,9 @@ class HttpFeishuClientTest {
         server.createContext("/open-apis/contact/v3/users/ou_1/functional_roles", exchange -> json(exchange, """
                 {"code":0,"data":{"items":[{"role_id":"role-1","role_name":"仓库主管"}]}}
                 """));
+        server.createContext("/open-apis/contact/v3/functional_roles", exchange -> json(exchange, """
+                {"code":0,"data":{"items":[{"role_id":"role-1","role_name":"仓库主管","member_count":7}]}}
+                """));
         var client = client();
 
         assertThat(client.currentTenantKey()).isEqualTo("tenant-a");
@@ -84,6 +87,9 @@ class HttpFeishuClientTest {
                     assertThat(role.id()).isEqualTo("role-1");
                     assertThat(role.name()).isEqualTo("仓库主管");
                 });
+        assertThat(client.allBusinessRoles())
+                .singleElement()
+                .satisfies(role -> assertThat(role.memberCount()).isEqualTo(7));
     }
 
     @Test

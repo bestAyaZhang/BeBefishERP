@@ -10,10 +10,12 @@
 
 ## 当前阶段
 
-当前已完成后台主页与商品模块重构；本地联调设置 `VITE_DATA_SOURCE=real` 后使用真实 API。
+当前已完成后台主页、商品模块以及持久化身份认证与权限管理；本地联调设置 `VITE_DATA_SOURCE=real` 后使用真实 API。
 
 已落地：
 
+- 正式员工飞书 OAuth 登录、临时员工密码登录、持久会话与登录审计。
+- 飞书员工自动建档、企业隔离、飞书业务角色到 ERP 角色映射。
 - 登录、路由守卫、登录过期处理和全高后台壳层。
 - 实时工作台指标、趋势图与近期订单。
 - 商品分类树、商品/SKU 搜索、分页和横向表格浏览。
@@ -30,6 +32,8 @@
 /products/new
 /products/:id
 /products/:id/edit
+/permissions
+/auth/feishu/result
 ```
 
 ## 本地开发
@@ -44,6 +48,21 @@ $env:ERP_DB_PASSWORD = '<password>'
 mvn spring-boot:run
 ```
 
+默认不开启飞书。无需真实凭据的本地 OAuth 闭环只允许在 `local` 或 `test` Profile 使用：
+
+```powershell
+$env:SPRING_PROFILES_ACTIVE = 'local'
+$env:ERP_FEISHU_ENABLED = 'true'
+$env:ERP_FEISHU_APP_ID = 'mock-app'
+$env:ERP_FEISHU_APP_SECRET = 'mock-secret'
+$env:ERP_FEISHU_REDIRECT_URI = 'http://127.0.0.1:8080/api/auth/feishu/callback'
+$env:ERP_FEISHU_ALLOWED_TENANT_KEY = 'tenant-a'
+$env:ERP_FEISHU_MOCK_ENABLED = 'true'
+mvn spring-boot:run
+```
+
+模拟凭据仅是本地开关所需的非敏感占位值。生产 Profile 会拒绝模拟客户端。真实企业接入见 [飞书企业验收说明](docs/feishu-enterprise-acceptance.md)，密钥只通过部署环境或密钥管理系统注入。
+
 在 Windows 的 Unicode / 非 ASCII 工作区路径下，如果 `mvn spring-boot:run` 生成的 argfile 或 classpath 出现乱码，优先使用已在此类路径中验证过的可执行 JAR 启动方式：
 
 ```powershell
@@ -51,9 +70,12 @@ mvn -DskipTests package
 java -jar target/bebefish-erp-0.1.0-SNAPSHOT.jar
 ```
 
-后端测试：
+后端测试需要独立 MySQL 测试库：
 
-```bash
+```powershell
+$env:ERP_TEST_DB_URL = 'jdbc:mysql://127.0.0.1:3306/<test-database>?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai'
+$env:ERP_TEST_DB_USERNAME = '<test-username>'
+$env:ERP_TEST_DB_PASSWORD = '<test-password>'
 mvn test
 ```
 
@@ -101,17 +123,15 @@ QINIU_REGION=z0
 
 `QINIU_DOMAIN` 必须是该 Bucket 可访问的域名；如果空间是私有空间，还需要增加私有下载签名方案，当前版本按公开图片 URL 设计。已有本地图片不会自动迁移到七牛云。
 
-## 本地登录账号
+## 登录策略
 
-当前应用内置一个仅供开发联调的内存演示管理员，登录页会显示该账号的演示登录信息；README 不重复记录具体值。
+- 正式员工只能通过本企业飞书登录；首次成功登录会创建或安全合并员工与账号。
+- 临时员工只能使用本地手机号和密码；不能绑定飞书身份。
+- ERP 权限始终由 ERP 角色定义。飞书映射角色与本地附加角色取并集，敏感角色禁止自动映射。
+- 会话、OAuth state、一次性登录票据和登录审计均保存在 MySQL；数据库只保存令牌哈希。
 
-该演示账号和凭据不得用于生产。生产部署前必须移除这套开发账号与页面提示，或将生产身份与凭据交由外部安全配置和密钥管理系统提供。
+开发迁移会初始化一个临时管理员账号，登录页会显示本地演示信息。它只用于开发联调，生产部署必须禁用或替换。
 
-## 当前认证实现说明
+## 配置
 
-当前认证基础用于开发联调：
-
-- 用户、短信验证码和访问令牌暂使用内存实现。
-- 前端登录令牌保存在浏览器 `localStorage`，key 为 `bebefish_access_token`。
-- 生产目标仍是 MySQL 保存用户和权限，Redis 保存验证码、发送频率限制和短期会话数据。
-- 飞书登录只展示禁用态预留入口，不调用飞书 OAuth。
+环境变量模板见 [`.env.example`](.env.example)。该文件不包含真实凭据；不要把 App Secret、访问令牌或生产数据库密码提交到仓库。

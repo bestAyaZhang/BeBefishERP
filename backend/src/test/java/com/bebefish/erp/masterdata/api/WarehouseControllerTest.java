@@ -33,8 +33,8 @@ class WarehouseControllerTest {
     void setUp() {
         jdbc.update("delete from warehouse where warehouse_no like 'T5-%'");
         jdbc.update("delete from warehouse where warehouse_name = '自动编号仓库-T5'");
-        editToken = token("masterdata:view", "masterdata:edit");
-        viewToken = token("masterdata:view");
+        editToken = token("warehouse:view", "warehouse:create", "warehouse:edit");
+        viewToken = token("warehouse:view");
     }
 
     @Test
@@ -99,8 +99,8 @@ class WarehouseControllerTest {
     }
 
     private String token(String... permissions) {
-        return tokenIssuer.issue(new AuthenticatedUser("13900000003",
-                List.of("TESTER"), List.of(permissions)), "test").accessToken();
+        return com.bebefish.erp.support.TestAuthTokens.issue(
+                jdbc, tokenIssuer, "13900000003", permissions);
     }
     private String bearer(String token) { return "Bearer " + token; }
     private record Input(String warehouseNo, String warehouseName, String address, boolean defaultWarehouse) {}

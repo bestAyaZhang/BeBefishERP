@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.hamcrest.Matchers.startsWith;
 
 import com.bebefish.erp.auth.domain.TokenIssuer;
 import com.bebefish.erp.auth.domain.AuthenticatedUser;
@@ -114,7 +115,7 @@ class SalesOrderControllerTest {
                 .andExpect(jsonPath("$.data.outstandingAmount").value(29.00))
                 .andExpect(jsonPath("$.data.items[0].skuId").value(skuId))
                 .andExpect(jsonPath("$.data.items[0].skuCodeSnapshot").isNotEmpty())
-                .andExpect(jsonPath("$.data.salespersonMobile").value("13800138000"));
+                .andExpect(jsonPath("$.data.salespersonMobile").value(startsWith("13900000010-")));
     }
 
     @Test
@@ -177,8 +178,7 @@ class SalesOrderControllerTest {
     }
 
     private String bearerToken() {
-        return "Bearer " + tokenIssuer.issue(new AuthenticatedUser(
-                "13800138000", List.of("SALES"), List.of("sales:view", "sales:create")
-        ), "sales-order-controller-test").accessToken();
+        return "Bearer " + com.bebefish.erp.support.TestAuthTokens.issue(
+                jdbc, tokenIssuer, "13900000010", "sales:view", "sales:create");
     }
 }

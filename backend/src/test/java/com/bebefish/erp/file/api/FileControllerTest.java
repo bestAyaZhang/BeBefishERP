@@ -21,6 +21,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -37,6 +38,7 @@ class FileControllerTest {
     @Autowired MockMvc mvc;
     @Autowired TokenIssuer tokenIssuer;
     @Autowired ObjectMapper objectMapper;
+    @Autowired JdbcTemplate jdbc;
     private String editToken;
     private String viewToken;
 
@@ -98,8 +100,8 @@ class FileControllerTest {
     }
 
     private String token(String... permissions) {
-        return tokenIssuer.issue(new AuthenticatedUser("13900000006",
-                List.of("TESTER"), List.of(permissions)), "test").accessToken();
+        return com.bebefish.erp.support.TestAuthTokens.issue(
+                jdbc, tokenIssuer, "13900000006", permissions);
     }
 
     private String bearer(String token) {

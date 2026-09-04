@@ -28,7 +28,7 @@ public class CategoryController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('masterdata:view')")
+    @PreAuthorize("hasAuthority('category:view')")
     public ApiResponse<PageResponse<CategoryResponse>> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -50,19 +50,19 @@ public class CategoryController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('masterdata:view')")
+    @PreAuthorize("hasAuthority('category:view')")
     public ApiResponse<CategoryResponse> get(@PathVariable long id) {
         return ApiResponse.success(CategoryResponse.from(service.get(id)));
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('masterdata:edit')")
+    @PreAuthorize("hasAuthority('category:create')")
     public ApiResponse<CategoryResponse> create(@Valid @RequestBody SaveCategoryRequest request) {
         return ApiResponse.success(CategoryResponse.from(service.create(request.toCommand())));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('masterdata:edit')")
+    @PreAuthorize("hasAuthority('category:edit')")
     public ApiResponse<CategoryResponse> update(
             @PathVariable long id,
             @Valid @RequestBody SaveCategoryRequest request
@@ -71,7 +71,7 @@ public class CategoryController {
     }
 
     @PostMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('masterdata:edit')")
+    @PreAuthorize("hasAuthority('category:edit')")
     public ApiResponse<CategoryResponse> changeStatus(
             @PathVariable long id,
             @Valid @RequestBody ChangeCategoryStatusRequest request

@@ -20,6 +20,12 @@ vi.mock('./features/dashboard/dashboardService', () => ({
   }
 }));
 
+vi.mock('./features/permission/permissionService', async () => {
+  const { createMockPermissionService } = await import('./features/permission/mockPermissionService');
+  const { organizationService } = await import('./features/organization/organizationService');
+  return { permissionService: createMockPermissionService(organizationService) };
+});
+
 describe('application routes', () => {
   let wrapper: ReturnType<typeof mount> | null = null;
 

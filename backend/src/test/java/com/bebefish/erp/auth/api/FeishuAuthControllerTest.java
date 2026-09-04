@@ -1,6 +1,9 @@
 package com.bebefish.erp.auth.api;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
@@ -9,6 +12,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import jakarta.servlet.http.Cookie;
+import com.bebefish.erp.auth.application.FeishuLoginService;
+import com.bebefish.erp.auth.application.OAuthStateService;
+import com.bebefish.erp.feishu.FeishuAvailability;
+import com.bebefish.erp.feishu.FeishuOAuthClient;
+import com.bebefish.erp.feishu.FeishuProperties;
 import java.net.URI;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +27,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -100,6 +109,24 @@ class FeishuAuthControllerTest {
                 .andExpect(status().isNotFound());
         mvc.perform(post("/api/auth/login/sms").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void httpsRedirectUsesSecureStateCookie() throws Exception {
+        var properties = new FeishuProperties();
+        properties.setRedirectUri("https://erp.example.com/api/auth/feishu/callback");
+        var oauth = mock(FeishuOAuthClient.class);
+        var states = mock(OAuthStateService.class);
+        when(states.issue()).thenReturn("secure-state");
+        when(oauth.authorizationUri("secure-state")).thenReturn(URI.create("https://accounts.feishu.cn/auth"));
+        var controller = new FeishuAuthController(
+                FeishuAvailability.ready(), oauth, states, mock(FeishuLoginService.class), properties
+        );
+        var response = new MockHttpServletResponse();
+
+        controller.authorize(response);
+
+        assertThat(response.getHeader("Set-Cookie")).contains("Secure");
     }
 
     private String query(String location, String name) {

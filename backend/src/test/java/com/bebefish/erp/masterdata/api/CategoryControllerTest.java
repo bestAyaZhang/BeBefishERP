@@ -43,8 +43,8 @@ class CategoryControllerTest {
     void setUp() {
         jdbc.update("delete from product_category where category_code like 'T3-%'");
         jdbc.update("delete from product_category where category_name = '自动编号分类-T3'");
-        editToken = issueToken("masterdata:view", "masterdata:edit");
-        viewToken = issueToken("masterdata:view");
+        editToken = issueToken("category:view", "category:create", "category:edit");
+        viewToken = issueToken("category:view");
     }
 
     @Test
@@ -157,10 +157,8 @@ class CategoryControllerTest {
     }
 
     private String issueToken(String... permissions) {
-        var user = new AuthenticatedUser(
-                "13900000001", List.of("TESTER"), List.of(permissions)
-        );
-        return tokenIssuer.issue(user, "test").accessToken();
+        return com.bebefish.erp.support.TestAuthTokens.issue(
+                jdbc, tokenIssuer, "13900000001", permissions);
     }
 
     private String bearer(String token) {

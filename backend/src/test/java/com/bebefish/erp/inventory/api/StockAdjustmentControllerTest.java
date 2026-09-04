@@ -80,9 +80,8 @@ class StockAdjustmentControllerTest {
     }
 
     private String token(String... permissions) {
-        return tokenIssuer.issue(new AuthenticatedUser(
-                "13900000003", List.of("TESTER"), List.of(permissions)
-        ), "inventory-test").accessToken();
+        return com.bebefish.erp.support.TestAuthTokens.issue(
+                jdbc, tokenIssuer, "13900000014", permissions);
     }
 
     private String bearer(String token) {

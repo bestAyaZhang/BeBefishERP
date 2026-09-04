@@ -35,13 +35,9 @@ public class MockFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
     @Override
     public FeishuOAuthIdentity exchangeCode(String code) {
         scenario = code;
-        String mobile = switch (code) {
-            case "mock-no-mobile" -> null;
-            case "mock-existing-mobile" -> "13800138000";
-            default -> "13900000001";
-        };
+        String mobile = mobileFor(code);
         return new FeishuOAuthIdentity(
-                properties.getAllowedTenantKey(),
+                "mock-other-tenant".equals(code) ? "tenant-other" : properties.getAllowedTenantKey(),
                 "ou_" + code,
                 "on_" + code,
                 "模拟飞书员工",
@@ -57,7 +53,7 @@ public class MockFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
 
     @Override
     public FeishuEmployeeProfile employeeProfile(String openId) {
-        String mobile = "mock-no-mobile".equals(scenario) ? null : "13900000001";
+        String mobile = mobileFor(scenario);
         return new FeishuEmployeeProfile(openId, null, mobile, null, "模拟飞书员工");
     }
 
@@ -72,8 +68,18 @@ public class MockFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
     @Override
     public List<FeishuBusinessRole> allBusinessRoles() {
         return List.of(
-                new FeishuBusinessRole("mock-role-warehouse", "模拟仓库主管"),
-                new FeishuBusinessRole("mock-role-finance", "模拟财务")
+                new FeishuBusinessRole("mock-role-warehouse", "模拟仓库主管", 4),
+                new FeishuBusinessRole("mock-role-finance", "模拟财务", 2)
         );
+    }
+
+    private String mobileFor(String code) {
+        return switch (code) {
+            case "mock-no-mobile" -> null;
+            case "mock-existing-mobile" -> "13800138000";
+            case "mock-role-degraded" -> "13900000002";
+            case "mock-other-tenant" -> "13900000003";
+            default -> "13900000001";
+        };
     }
 }

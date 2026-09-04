@@ -32,8 +32,9 @@ class CustomerSupplierControllerTest {
     void setUp() {
         jdbc.update("delete from customer where customer_no like 'T4-%'");
         jdbc.update("delete from supplier where supplier_no like 'T4-%'");
-        editToken = token("masterdata:view", "masterdata:edit");
-        viewToken = token("masterdata:view");
+        editToken = token("customer:view", "customer:create", "customer:edit",
+                "supplier:view", "supplier:create", "supplier:edit");
+        viewToken = token("customer:view", "supplier:view");
     }
 
     @Test
@@ -123,8 +124,8 @@ class CustomerSupplierControllerTest {
     }
 
     private String token(String... permissions) {
-        return tokenIssuer.issue(new AuthenticatedUser("13900000002",
-                List.of("TESTER"), List.of(permissions)), "test").accessToken();
+        return com.bebefish.erp.support.TestAuthTokens.issue(
+                jdbc, tokenIssuer, "13900000002", permissions);
     }
     private String bearer(String token) { return "Bearer " + token; }
 }

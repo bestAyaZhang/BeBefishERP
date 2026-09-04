@@ -160,8 +160,8 @@ class SupplierQuoteControllerTest {
     }
 
     private String token(String... permissions) {
-        return tokenIssuer.issue(new AuthenticatedUser("13900000005",
-                List.of("TESTER"), List.of(permissions)), "test").accessToken();
+        return com.bebefish.erp.support.TestAuthTokens.issue(
+                jdbc, tokenIssuer, "13900000005", permissions);
     }
 
     private String bearer(String token) {

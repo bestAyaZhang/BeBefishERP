@@ -7,6 +7,7 @@ import com.bebefish.erp.auth.application.OAuthStateService;
 import com.bebefish.erp.common.api.ApiResponse;
 import com.bebefish.erp.feishu.FeishuAvailability;
 import com.bebefish.erp.feishu.FeishuOAuthClient;
+import com.bebefish.erp.feishu.FeishuProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -34,17 +35,22 @@ public class FeishuAuthController {
     private final FeishuOAuthClient oauth;
     private final OAuthStateService states;
     private final FeishuLoginService loginService;
+    private final boolean secureStateCookie;
 
     public FeishuAuthController(
             FeishuAvailability availability,
             FeishuOAuthClient oauth,
             OAuthStateService states,
-            FeishuLoginService loginService
+            FeishuLoginService loginService,
+            FeishuProperties properties
     ) {
         this.availability = availability;
         this.oauth = oauth;
         this.states = states;
         this.loginService = loginService;
+        this.secureStateCookie = "https".equalsIgnoreCase(
+                java.net.URI.create(properties.getRedirectUri()).getScheme()
+        );
     }
 
     @GetMapping("/status")
@@ -97,7 +103,7 @@ public class FeishuAuthController {
     private ResponseCookie stateCookie(String value, Duration maxAge) {
         return ResponseCookie.from(STATE_COOKIE, value)
                 .httpOnly(true)
-                .secure(false)
+                .secure(secureStateCookie)
                 .sameSite("Lax")
                 .path("/api/auth/feishu")
                 .maxAge(maxAge)

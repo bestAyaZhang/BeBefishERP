@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.bebefish.erp.auth.domain.PasswordHasher;
+import com.bebefish.erp.auth.domain.LoginAuditEvent;
+import com.bebefish.erp.auth.domain.LoginAuditRepository;
 import com.bebefish.erp.auth.domain.EmployeeStatus;
 import com.bebefish.erp.auth.domain.EmploymentType;
 import com.bebefish.erp.auth.domain.TokenIssuer;
@@ -22,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.time.Clock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -29,6 +32,7 @@ class AuthServiceTest {
     private FakeUserAccountRepository users;
     private FakeRoleRepository roles;
     private AuthService authService;
+    private FakeLoginAuditRepository audits;
 
     @BeforeEach
     void setUp() {
@@ -36,7 +40,8 @@ class AuthServiceTest {
         roles = new FakeRoleRepository();
         PasswordHasher passwordHasher = (rawPassword, passwordHash) -> ("hash:" + rawPassword).equals(passwordHash);
         TokenIssuer tokenIssuer = new FakeTokenIssuer();
-        authService = new AuthService(users, passwordHasher, tokenIssuer, new AuthorizationResolver(roles));
+        audits = new FakeLoginAuditRepository();
+        authService = new AuthService(users, passwordHasher, tokenIssuer, new AuthorizationResolver(roles), audits, Clock.systemUTC());
     }
 
     @Test
@@ -51,6 +56,11 @@ class AuthServiceTest {
         assertThat(result.roles()).containsExactly("ORG_ADMIN");
         assertThat(result.permissions()).containsExactly("organization:manage", "organization:view");
         assertThat(users.lastLoginMethod("13800138000")).isEqualTo("password");
+        assertThat(audits.events).singleElement().satisfies(event -> {
+            assertThat(event.identityMethod()).isEqualTo("password");
+            assertThat(event.result()).isEqualTo("success");
+            assertThat(event.userId()).isEqualTo(1L);
+        });
     }
 
     @Test
@@ -71,6 +81,10 @@ class AuthServiceTest {
                 .isInstanceOf(AuthException.class)
                 .extracting("code")
                 .isEqualTo("LOGIN_FAILED");
+        assertThat(audits.events).singleElement().satisfies(event -> {
+            assertThat(event.result()).isEqualTo("failure");
+            assertThat(event.errorCode()).isEqualTo("LOGIN_FAILED");
+        });
     }
 
     @Test
@@ -200,6 +214,15 @@ class AuthServiceTest {
 
         @Override
         public void revoke(String accessToken) {
+        }
+    }
+
+    private static class FakeLoginAuditRepository implements LoginAuditRepository {
+        private final List<LoginAuditEvent> events = new ArrayList<>();
+
+        @Override
+        public void record(LoginAuditEvent event) {
+            events.add(event);
         }
     }
 }

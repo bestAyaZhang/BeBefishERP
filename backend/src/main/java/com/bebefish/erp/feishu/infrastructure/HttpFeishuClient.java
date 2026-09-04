@@ -115,7 +115,8 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
         if (items.isArray()) {
             items.forEach(item -> result.add(new FeishuBusinessRole(
                     firstText(item, "role_id", "id"),
-                    firstText(item, "role_name", "name")
+                    firstText(item, "role_name", "name"),
+                    firstInt(item, "member_count", "user_count")
             )));
         }
         return List.copyOf(result);
@@ -129,7 +130,8 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
         if (items.isArray()) {
             items.forEach(item -> result.add(new FeishuBusinessRole(
                     firstText(item, "role_id", "id"),
-                    firstText(item, "role_name", "name")
+                    firstText(item, "role_name", "name"),
+                    firstInt(item, "member_count", "user_count")
             )));
         }
         return List.copyOf(result);
@@ -210,6 +212,14 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
     private String firstText(JsonNode node, String first, String second) {
         String value = text(node, first);
         return value == null || value.isBlank() ? text(node, second) : value;
+    }
+
+    private int firstInt(JsonNode node, String first, String second) {
+        JsonNode value = node == null ? null : node.get(first);
+        if (value == null || value.isNull()) {
+            value = node == null ? null : node.get(second);
+        }
+        return value == null || value.isNull() ? 0 : Math.max(0, value.asInt());
     }
 
     private String encode(String value) {

@@ -113,9 +113,11 @@ public class FeishuRoleMappingService {
             for (FeishuBusinessRole role : roles) {
                 jdbc.update("""
                         update sys_feishu_role_mapping
-                        set feishu_role_name = ?, last_synced_at = ?, last_error = null, updated_at = now(3)
+                        set feishu_role_name = ?, member_count = ?, last_synced_at = ?,
+                            last_error = null, updated_at = now(3)
                         where tenant_key = ? and feishu_role_id = ?
-                        """, role.name(), Timestamp.from(now), properties.getAllowedTenantKey(), role.id());
+                        """, role.name(), role.memberCount(), Timestamp.from(now),
+                        properties.getAllowedTenantKey(), role.id());
             }
             return listMappings();
         } catch (BusinessException exception) {
