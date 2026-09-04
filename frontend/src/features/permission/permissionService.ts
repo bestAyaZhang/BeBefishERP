@@ -7,6 +7,7 @@ import type {
   PermissionRole,
   PermissionRoleStatus,
   PermissionRoleSummary,
+  PermissionPageContext,
   RoleMemberPage,
   RoleMemberQuery,
   SaveRoleConfigurationPayload,
@@ -14,6 +15,7 @@ import type {
 } from './types';
 
 export interface PermissionService {
+  getPermissionContext(): Promise<PermissionPageContext>;
   listRoles(keyword?: string): Promise<PermissionRoleSummary[]>;
   getRole(id: number): Promise<PermissionRole>;
   createRole(payload: CreateRolePayload): Promise<PermissionRole>;

@@ -11,6 +11,7 @@ import type {
   PermissionRole,
   PermissionRoleStatus,
   PermissionRoleSummary,
+  PermissionPageContext,
   RoleMember,
   RoleMemberPage,
   RoleMemberQuery,
@@ -225,6 +226,7 @@ export function createMockPermissionService(organization: OrganizationService): 
 
   const assertMutable = (role: PermissionRole) => {
     if (role.immutable) throw new Error('系统角色不可编辑');
+    if (role.status === 'disabled') throw new Error('已停用角色不可编辑');
   };
 
   const employeeHasSuperAdmin = (employeeId: number) =>
@@ -268,6 +270,15 @@ export function createMockPermissionService(organization: OrganizationService): 
   };
 
   return {
+    async getPermissionContext(): Promise<PermissionPageContext> {
+      await ensureInitialized();
+      const summary = await organization.getSummary();
+      return {
+        departments: departments.map((department) => ({ id: department.id, name: department.departmentName })),
+        organizationSummary: `当前组织有 ${summary.formalEmployees + summary.temporaryEmployees} 名在职员工，其中正式员工 ${summary.formalEmployees} 名。`
+      };
+    },
+
     async listRoles(keyword?: string) {
       await ensureInitialized();
       const normalized = normalizeKeyword(keyword);

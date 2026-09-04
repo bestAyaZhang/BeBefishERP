@@ -64,4 +64,18 @@ describe('mockPermissionService', () => {
 
     await expect(service.getRole(4)).resolves.toEqual(before);
   });
+
+  it('exposes page context and treats disabled custom roles as copy-only until re-enabled', async () => {
+    const service = createMockPermissionService(organizationService);
+    await expect(service.getPermissionContext()).resolves.toMatchObject({
+      departments: expect.arrayContaining([expect.objectContaining({ id: 2, name: '产品中心' })])
+    });
+    await service.changeRoleStatus(4, 'disabled');
+    await expect(service.updateRole(4, { name: '不可编辑', description: '' })).rejects.toThrow('已停用角色不可编辑');
+    await expect(service.saveConfiguration(4, { permissionCodes: ['product:view'], dataScope: 'self' })).rejects.toThrow('已停用角色不可编辑');
+    await expect(service.addMembers(4, [2])).rejects.toThrow('已停用角色不可编辑');
+    await expect(service.removeMembers(4, [3])).rejects.toThrow('已停用角色不可编辑');
+    await expect(service.createRole({ name: '副本', code: 'COPY_DISABLED', description: '', copyFromRoleId: 4 })).resolves.toMatchObject({ code: 'COPY_DISABLED' });
+    await expect(service.changeRoleStatus(4, 'enabled')).resolves.toMatchObject({ status: 'enabled' });
+  });
 });

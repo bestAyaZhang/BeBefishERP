@@ -76,6 +76,15 @@ describe('SidebarNav', () => {
     expect(hiddenWrapper.text()).not.toContain('岗位管理');
   });
 
+  it('keeps organization navigation visible without exposing permissions to view-only organization users', () => {
+    storeCurrentUser(['organization:view']);
+    const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
+
+    expect(wrapper.text()).toContain('组织架构');
+    expect(wrapper.text()).toContain('员工管理');
+    expect(wrapper.text()).not.toContain('权限管理');
+  });
+
   it('uses the full-height ERP navigation structure without a card shell', () => {
     const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
 

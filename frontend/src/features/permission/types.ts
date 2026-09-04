@@ -58,6 +58,12 @@ export interface RoleMemberPage {
   total: number;
 }
 
+/** Dependencies the permission page needs from the organization boundary. */
+export interface PermissionPageContext {
+  departments: Array<{ id: number; name: string }>;
+  organizationSummary: string;
+}
+
 export interface CreateRolePayload {
   name: string;
   code: string;
