@@ -7,6 +7,8 @@ public interface UserAccountRepository {
 
     Optional<UserAccount> findByMobile(String mobile);
 
+    Optional<UserAccount> findByEmployeeId(long employeeId);
+
     UserAccount save(UserAccount account);
 
     void recordLogin(long userId, String loginMethod);

@@ -40,6 +40,11 @@ public class JpaUserAccountRepository implements UserAccountRepository {
     }
 
     @Override
+    public Optional<UserAccount> findByEmployeeId(long employeeId) {
+        return users.findByEmployee_Id(employeeId).map(this::toDomain);
+    }
+
+    @Override
     @Transactional
     public UserAccount save(UserAccount account) {
         Instant now = Instant.now(clock);

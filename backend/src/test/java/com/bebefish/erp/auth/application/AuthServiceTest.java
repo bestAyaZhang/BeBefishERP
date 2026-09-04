@@ -150,6 +150,13 @@ class AuthServiceTest {
         }
 
         @Override
+        public Optional<UserAccount> findByEmployeeId(long employeeId) {
+            return usersById.values().stream()
+                    .filter(user -> user.employeeId() == employeeId)
+                    .findFirst();
+        }
+
+        @Override
         public void recordLogin(long userId, String loginMethod) {
             loginMethods.put(usersById.get(userId).mobile(), loginMethod);
         }
