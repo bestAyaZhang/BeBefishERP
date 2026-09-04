@@ -144,44 +144,46 @@ git commit -m "docs: track warehouse canvas Figma task 1"
 - Consumes: Task 1's confirmed design-system IDs and existing field/button/icon components
 - Produces: stable component IDs and property names consumed by all six MVP frames
 
-- [ ] **Step 1: Load the component-library instructions**
+- [x] **Step 1: Load the component-library instructions**
 
 Read `figma:figma-use` and `figma:figma-generate-library` completely. Use `figma-use,figma-generate-library` in every Task 2 `use_figma` call and keep all calls sequential.
 
-- [ ] **Step 2: Define the Area component set**
+- [x] **Step 2: Define the Area component set**
 
 Create `Warehouse/Area` with variants `State=Default|Selected|Locked|Warning`. Include editable area name, subtle grid-safe fill, border, selection handles, a compact summary slot, and lock/visibility cues using existing icon instances. Keep the area body visually quiet so multiple SKU blocks remain readable.
 
-- [ ] **Step 3: Define the SKU Block component set**
+- [x] **Step 3: Define the SKU Block component set**
 
 Create `Warehouse/SKU Block` with variants `State=Default|Selected|Warning`. Expose text properties for product name, SKU code, authoritative units, derived case copy, and optional area code. Include resize handles only in `Selected`; `Warning` must show an icon and explicit text rather than color alone.
 
-- [ ] **Step 4: Define the Canvas Toolbar component set**
+- [x] **Step 4: Define the Canvas Toolbar component set**
 
 Create `Warehouse/Canvas Toolbar` with `Tool=Select|Draw Area|Pan` and `State=Default|Hover|Active|Disabled`. Reuse existing icon/button patterns and expose zoom text plus undo/redo enabled properties.
 
-- [ ] **Step 5: Define the Object Properties component set**
+- [x] **Step 5: Define the Object Properties component set**
 
 Create `Warehouse/Object Properties` with `Context=Area|SKU`. Compose it entirely from real existing field/select/button instances. Area context exposes name, x, y, width, height, lock, and delete. SKU context exposes SKU identity, units, read-only package conversion, x, y, width, height, whole move, partial move, and delete.
 
-- [ ] **Step 6: Bind existing variables and component properties**
+- [x] **Step 6: Bind existing variables and component properties**
 
 Bind color, spacing, radius, and typography to the current BeBeFish variables/styles wherever the Plugin API permits. Keep real nested instance links intact and do not add new global styles, effects, or variables.
 
-- [ ] **Step 7: Build the compact documentation frame**
+- [x] **Step 7: Build the compact documentation frame**
 
 Show every variant at readable size, including `250 个 → 10 件 + 10 个` for an SKU with `24 个/件`. Label the rule `库存只记录个；件数自动换算`.
 
-- [ ] **Step 8: Validate and record the checkpoint**
+- [x] **Step 8: Validate and record the checkpoint**
 
 Check component names, variant axes, exposed properties, nested instance links, text contrast, resize-handle visibility, and lack of overflow. Record component-set IDs and all property IDs in the task report.
 
-- [ ] **Step 9: Commit the checkpoint**
+- [x] **Step 9: Commit the checkpoint**
 
 ```bash
 git add docs/superpowers/plans/2026-09-05-warehouse-canvas-figma-design.md
 git commit -m "docs: track warehouse canvas Figma task 2"
 ```
+
+**Execution notes (2026-09-05):** Added exactly four public component sets on `02 Components`: `Warehouse/Area` (`1166:38305`), `Warehouse/SKU Block` (`1168:38293`), `Warehouse/Canvas Toolbar` (`1169:38576`), and `Warehouse/Object Properties` (`1171:3600`). Created documentation frame `1165:3215` with readable sections `1165:3216`–`1165:3219`, all 21 variants, the example `250 个 → 10 件 + 10 个（24 个/件）`, and the rule `库存只记录个；件数自动换算`. The object-properties variants retain 17 exposed real field/select/button instances from existing masters; all new solid paints and rounded corners audited as bound to existing variables, with no new variables or styles. Final structural and screenshot checks passed: exact variant axes and public names, warning icon plus explicit text, selected-only resize handles, intact nested masters, zero direct-child overflow, readable contrast, and unchanged Task 1 artifacts. Counts moved from 341 to 362 components and 36 to 40 component sets while remaining at 4 variable collections, 33 variables, 8 text styles, and zero paint/effect/grid styles. Full evidence: `.superpowers/sdd/2026-09-05-warehouse-canvas-figma-design/task-2-report.md`.
 
 ---
 
