@@ -151,6 +151,13 @@ A-07 stack ledger:
 - Data parity remains exact at 12 fixed plus 2 temporary locations per plan. Search remains 5 highlighted/9 dimmed with A-01 focused and `2,592` base units across 5 locations. Risk remains A-03 over-capacity, TMP-002 aisle intrusion, and A-11 frozen with three icon-plus-text badges. Selected remains A-07 with two adjacent Stack Marker instances and the live Inspector instance.
 - Collateral audit found no detachments, rack/shelf terms, new pages, component masters, variables, styles, or effects.
 
+## Task 5 integration enrichment — authoritative A-03 projection input
+
+- Added compact in-plan card `Projection Input / A-03` (`1133:6964`) to existing Task 3 Risk plan `1055:32433`. This intentionally establishes the Task 5 projection input that the original Task 3 risk state did not need to expose: `STK-A03-01`, `SKU-CUP-12OZ`, `672个（基础单位）`, `整箱24个/箱`, package `40×30×28cm`, horizontal `3行×2列×5层`, partial top `4/6`, height `1.40m`, and capacity `112%`.
+- The card reuses the existing rule-card surface, border, typography, and variable bindings. It occupies previously unused B-zone detail space and does not overlap `TMP-20260904-001` or `TMP-20260904-002`.
+- All 12 fixed-location instances `1055:32453`–`1055:32464`, both temporary-location instances `1055:32465`/`1055:32466`, and the three existing risk badges `1055:33235`/`1055:33251`/`1055:33260` remain live, unchanged, and direct children of their original plan/overlay.
+- Refreshed Task 3 Risk full and plan-close screenshots confirm the authoritative input is readable without obscuring the risk map or issue overlay. The integration audit found one exact-name card, all 14 location instances, all three badges, zero new pages/tokens/styles/effects, and no geometry changes to the prior Task 3 frames.
+
 ## Concerns
 
 None. The live-review findings—temporary-code clipping and masked generic inspector rows—were fixed in place and rechecked, along with the earlier aisle-label contrast, compact-result wrapping, sidebar overflow, and A-05 parity corrections.

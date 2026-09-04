@@ -34,8 +34,8 @@ The existing section remains at `(0,1600)` and was widened only to `11200×1280`
 ## Risk-selected state
 
 - A-03 is the selected Task 3 over-capacity location at 112%. The full red box stack has a continuous outline and height marker; all nonmatching stacks remain visible but dimmed.
-- The scene identifies `STK-A03-01`, `SKU-CUP-12OZ`, `672个`, `整箱 · 24个/箱`, `40×30×28cm`, horizontal `3×2×5`, and partial top layer `4/6`. Task 3 provided the authoritative A-03 location and 112% risk state but did not define these inspector-only stack-detail fields; Task 5 uses one internally consistent derived projection in both the scene and inspector without changing any Task 3-provided value.
-- Inspector `1119:7355` is a live `Spatial/Location Inspector` instance in `View=Stacks`, with A-03 identity, `2.0×2.0×2.4m`, `112% · 超限`, quantity and rule rows, recent risk ledger, `超容量 112% · 承重规则阻断`, and the required `修正规则` / `查看二维位置` actions.
+- The scene identifies `STK-A03-01`, `SKU-CUP-12OZ`, `672个`, `整箱 · 24个/箱`, `40×30×28cm`, horizontal `3×2×5`, partial top layer `4/6`, height `1.40m`, and capacity `112%`. Existing Task 3 Risk card `1133:6964` now authoritatively establishes this same projection input, eliminating the former provenance gap.
+- Inspector `1119:7355` is a live `Spatial/Location Inspector` instance in `View=Stacks`, with A-03 identity, `2.0×2.0×2.4m`, `112% · 超限`, quantity and rule rows, explicit `顶层4/6`, validation including `堆高1.40m`, recent risk ledger, and the required `修正规则` / `查看二维位置` actions.
 
 ## Unavailable fallback
 
@@ -47,12 +47,20 @@ The existing section remains at `(0,1600)` and was widened only to `11200×1280`
 - Geometry: PASS. Section `999:4` is `11200×1280`; all seven direct frames are contained; pairwise frame overlap count is zero. Browse scene, risk scene, inspector, and fallback are each contained by their intended viewport/workspace.
 - Exact-name audit: PASS. Each of the three required frame names and the reusable scene name occurs exactly once.
 - Data audit: PASS. The normalized Browse parity ledger matched 48/48 expected Task 3 location, utilization, quantity, stack, SKU, package, orientation, row/column/layer, partial-layer, height, legend, and edit-rule tokens. A-04 and A-10 each explicitly show `0%`.
-- Risk/fallback audit: PASS. A-03, 112%, stack/SKU/package/quantity/rule, and both required actions are present. Fallback warehouse, search, risk-filter context, technical disclosure, and direct 2D route are present.
+- Risk/fallback audit: PASS. A-03, 112%, stack/SKU/package/quantity/rule/partial-layer/height, and both required actions are present and match the Task 3 authoritative card. Fallback warehouse, search, risk-filter context, technical disclosure, and direct 2D route are present.
 - Component audit: PASS. The three frames contain 325 live component instances with zero missing main components; the real inspector stays attached. No component master was changed or created.
 - Foundation audit: PASS. The file still has four pages, 33 local variables, eight local text styles, and zero local paint/effect/grid styles. Task 5 nodes have zero effects. Typography is limited to Noto Sans SC and Inter, and `figma.hasMissingFont` is false.
 - Semantic audit: PASS. Zero `货架`, `rack`, or `shelf` references and zero placeholder strings.
-- Visual audit: PASS. Final full screenshots were inspected for Browse, Risk Selected, and Unavailable; close crops were inspected for reusable scene `1117:7582`, risk scene `1119:7354`, live inspector `1119:7355`, and fallback card `1121:7216`. The final section overview shows all seven states in one row with no collision. Labels, depth order, partial layers, controls, actions, and fallback copy remain readable.
+- Visual audit: PASS. Final full screenshots were inspected for Browse, Task 3 Risk, Risk Selected, and Unavailable; close crops were inspected for Task 3 Risk plan `1055:32433`, reusable scene `1117:7582`, risk scene `1119:7354`, live inspector `1119:7355`, and fallback card `1121:7216`. The final section overview shows all seven states in one row with no collision. Labels, depth order, partial layers, controls, actions, and fallback copy remain readable.
+
+## Fix round 1 — review findings
+
+- Authoritative parity: added Task 3 projection-input card `1133:6964` and synchronized the same eight A-03 values across Task 3, 3D risk scene, and the live inspector. Final token audit passes for stack ID, SKU, 672 units, package dimensions, 3×2×5 rule, top 4/6, 1.40m height, and 112% risk.
+- Risk typography: repaired all 19 zero-size imported texts `1120:7198`–`1120:7292` in place. Zone headings are 12px; dimmed fixed labels are 8px; full temporary codes are 7px; height is 8px; the selected pill is 10px and now visibly reads `A-03 · 112%`; stack/aisle labels are 8/9px. Final audit reports zero zero-size text and zero critical-label collision.
+- Rule-derived geometry: A-07 BLUE stack `1117:7682` contains top `3×2` cue `1135:6964` and four-layer side seams `1135:6965`/`1135:6966`; A-07 PINK stack `1117:7686` contains top `2×2` cue `1135:6967` and four-layer seams `1135:6968`/`1135:6969`. A-03 lower stack `1120:7266` contains top `3×2` cue `1135:6970` and five-layer seams `1135:6971`/`1135:6972`; partial top boxes `1120:7270`/`1120:7274`/`1120:7278`/`1120:7282` remain visible and unchanged.
+- Readability: A-07 rule texts `1118:7375`/`1118:7376` are now 9px in a wider 222px text measure; temporary codes `1117:7672`/`1117:7679` are 8px. Full and close screenshots confirm the seams, top grids, exact codes, rule data, red selection pill, and live inspector remain readable.
+- Collateral audit: section `999:4` remains `11200×1280` with the same seven contained, nonoverlapping frames; page count remains four; local foundations remain 33 variables, eight text styles, and zero paint/effect/grid styles; Task 5 nodes have zero effects and no missing fonts.
 
 ## Concerns
 
-None. The final audit caught and corrected the initial page-root parenting of the three Task 5 frames, restored the full authoritative temporary-location codes, added explicit empty utilization and known quantities, and then revalidated the finished section.
+None. The three review findings and the earlier parenting/data-label corrections are fixed in place and revalidated without new roots, pages, tokens, styles, or effects.
