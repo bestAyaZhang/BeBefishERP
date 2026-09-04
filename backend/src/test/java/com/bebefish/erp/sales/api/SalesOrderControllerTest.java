@@ -7,7 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bebefish.erp.auth.domain.TokenIssuer;
-import com.bebefish.erp.auth.domain.UserAccount;
+import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.List;
@@ -177,8 +177,8 @@ class SalesOrderControllerTest {
     }
 
     private String bearerToken() {
-        return "Bearer " + tokenIssuer.issue(new UserAccount(
-                "13800138000", "unused", true, true, List.of("SALES"), List.of("sales:view", "sales:create")
+        return "Bearer " + tokenIssuer.issue(new AuthenticatedUser(
+                "13800138000", List.of("SALES"), List.of("sales:view", "sales:create")
         ), "sales-order-controller-test").accessToken();
     }
 }

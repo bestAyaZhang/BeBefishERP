@@ -3,70 +3,63 @@ package com.bebefish.erp.auth.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.bebefish.erp.auth.domain.PasswordHasher;
 import com.bebefish.erp.auth.domain.SmsCodeStore;
 import com.bebefish.erp.auth.domain.TokenIssuer;
 import com.bebefish.erp.auth.domain.UserAccount;
 import com.bebefish.erp.auth.domain.UserAccountRepository;
-import com.bebefish.erp.auth.infrastructure.InMemoryUserAccountRepository;
-import java.time.Clock;
+import com.bebefish.erp.authorization.application.AuthorizationResolver;
+import com.bebefish.erp.authorization.domain.DataScope;
+import com.bebefish.erp.authorization.domain.Role;
+import com.bebefish.erp.authorization.domain.RoleRepository;
+import com.bebefish.erp.authorization.infrastructure.InMemoryRoleRepository;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 class AuthServiceTest {
     private FakeUserAccountRepository users;
+    private FakeRoleRepository roles;
     private FakeSmsCodeStore smsCodes;
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
         users = new FakeUserAccountRepository();
+        roles = new FakeRoleRepository();
         smsCodes = new FakeSmsCodeStore();
         PasswordHasher passwordHasher = (rawPassword, passwordHash) -> ("hash:" + rawPassword).equals(passwordHash);
         TokenIssuer tokenIssuer = new FakeTokenIssuer();
-        authService = new AuthService(users, passwordHasher, smsCodes, tokenIssuer);
+        authService = new AuthService(users, passwordHasher, smsCodes, tokenIssuer, new AuthorizationResolver(roles));
     }
 
     @Test
-    void passwordLoginReturnsTokenRolesAndPermissions() {
+    void passwordLoginReturnsClaimsResolvedFromActiveRoles() {
         users.save(activeUser("13800138000"));
+        roles.save(role("ORG_ADMIN", Set.of("organization:view", "organization:manage"), "13800138000"));
 
         var result = authService.loginWithPassword(new PasswordLoginCommand(" 13800138000 ", "secret"));
 
         assertThat(result.accessToken()).isEqualTo("token-13800138000-password");
         assertThat(result.mobile()).isEqualTo("13800138000");
-        assertThat(result.roles()).containsExactly("ADMIN");
-        assertThat(result.permissions()).containsExactly(
-                "system:user:view",
-                "system:role:view",
-                "organization:view",
-                "organization:manage"
-        );
+        assertThat(result.roles()).containsExactly("ORG_ADMIN");
+        assertThat(result.permissions()).containsExactly("organization:manage", "organization:view");
         assertThat(users.lastLoginMethod("13800138000")).isEqualTo("password");
     }
 
     @Test
-    void demoAdministratorIncludesOrganizationPermissions() {
-        PasswordEncoder passwordEncoder = new PasswordEncoder() {
-            @Override
-            public String encode(CharSequence rawPassword) {
-                return rawPassword.toString();
-            }
+    void developmentAdministratorResolvesSuperAdministratorPermissions() {
+        var authorization = new AuthorizationResolver(new InMemoryRoleRepository()).resolve("13800138000");
 
-            @Override
-            public boolean matches(CharSequence rawPassword, String encodedPassword) {
-                return rawPassword.toString().equals(encodedPassword);
-            }
-        };
-        var repository = new InMemoryUserAccountRepository(Clock.systemUTC(), passwordEncoder);
-
-        assertThat(repository.findByMobile("13800138000").orElseThrow().permissions())
-                .contains("organization:view", "organization:manage");
+        assertThat(authorization.roles()).containsExactly("SUPER_ADMIN");
+        assertThat(authorization.permissions())
+                .contains("system:role:view", "system:role:manage", "organization:view", "organization:manage");
     }
 
     @Test
@@ -80,7 +73,7 @@ class AuthServiceTest {
 
     @Test
     void disabledUserCannotLogin() {
-        users.save(new UserAccount("13800138000", "hash:secret", false, true, List.of("ADMIN"), List.of()));
+        users.save(new UserAccount("13800138000", "hash:secret", false, true));
 
         assertThatThrownBy(() -> authService.loginWithPassword(new PasswordLoginCommand("13800138000", "secret")))
                 .isInstanceOf(AuthException.class)
@@ -101,7 +94,7 @@ class AuthServiceTest {
 
     @Test
     void sendingSmsCodeRequiresActiveUser() {
-        users.save(new UserAccount("13800138000", "hash:secret", true, false, List.of("ADMIN"), List.of()));
+        users.save(new UserAccount("13800138000", "hash:secret", true, false));
 
         assertThatThrownBy(() -> authService.sendSmsCode(new SendSmsCodeCommand("13800138000")))
                 .isInstanceOf(AuthException.class)
@@ -109,13 +102,19 @@ class AuthServiceTest {
     }
 
     private UserAccount activeUser(String mobile) {
-        return new UserAccount(
-                mobile,
-                "hash:secret",
+        return new UserAccount(mobile, "hash:secret", true, true);
+    }
+
+    private static Role role(String code, Set<String> permissions, String memberKey) {
+        return new Role(
+                code,
+                code,
+                false,
+                false,
                 true,
-                true,
-                List.of("ADMIN"),
-                List.of("system:user:view", "system:role:view", "organization:view", "organization:manage")
+                DataScope.COMPANY,
+                permissions,
+                Set.of(memberKey)
         );
     }
 
@@ -164,9 +163,33 @@ class AuthServiceTest {
         }
     }
 
+    private static class FakeRoleRepository implements RoleRepository {
+        private final List<Role> roles = new ArrayList<>();
+
+        void save(Role role) {
+            roles.add(role);
+        }
+
+        @Override
+        public List<Role> findEnabledByMemberKey(String memberKey) {
+            return roles.stream()
+                    .filter(Role::enabled)
+                    .filter(role -> role.memberKeys().contains(memberKey))
+                    .toList();
+        }
+
+        @Override
+        public Set<String> findAllPermissionCodes() {
+            return roles.stream()
+                    .map(Role::permissionCodes)
+                    .flatMap(Set::stream)
+                    .collect(java.util.stream.Collectors.toSet());
+        }
+    }
+
     private static class FakeTokenIssuer implements TokenIssuer {
         @Override
-        public LoginResult issue(UserAccount user, String loginMethod) {
+        public LoginResult issue(AuthenticatedUser user, String loginMethod) {
             return new LoginResult(
                     "token-" + user.mobile() + "-" + loginMethod,
                     user.mobile(),

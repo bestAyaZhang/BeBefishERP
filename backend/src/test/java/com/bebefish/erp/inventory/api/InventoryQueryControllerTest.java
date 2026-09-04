@@ -6,7 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bebefish.erp.auth.domain.TokenIssuer;
-import com.bebefish.erp.auth.domain.UserAccount;
+import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.bebefish.erp.inventory.application.InventoryChange;
 import com.bebefish.erp.inventory.application.InventoryService;
 import com.bebefish.erp.inventory.application.InventorySource;
@@ -42,8 +42,8 @@ class InventoryQueryControllerTest {
                 new InventorySource("purchase", warehouseId, "PI-QUERY-" + warehouseId),
                 "13800138000"
         );
-        var token = "Bearer " + tokenIssuer.issue(new UserAccount(
-                "13900000003", "unused", true, true, List.of("TESTER"), List.of("inventory:view")
+        var token = "Bearer " + tokenIssuer.issue(new AuthenticatedUser(
+                "13900000003", List.of("TESTER"), List.of("inventory:view")
         ), "inventory-query-test").accessToken();
 
         mvc.perform(get("/api/inventory/balances")

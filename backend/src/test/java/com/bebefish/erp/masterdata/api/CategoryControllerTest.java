@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bebefish.erp.auth.domain.TokenIssuer;
-import com.bebefish.erp.auth.domain.UserAccount;
+import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -157,9 +157,8 @@ class CategoryControllerTest {
     }
 
     private String issueToken(String... permissions) {
-        var user = new UserAccount(
-                "13900000001", "unused", true, true,
-                List.of("TESTER"), List.of(permissions)
+        var user = new AuthenticatedUser(
+                "13900000001", List.of("TESTER"), List.of(permissions)
         );
         return tokenIssuer.issue(user, "test").accessToken();
     }

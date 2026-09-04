@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bebefish.erp.auth.domain.TokenIssuer;
-import com.bebefish.erp.auth.domain.UserAccount;
+import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.bebefish.erp.common.api.ApiResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -102,9 +102,8 @@ class BearerTokenAuthenticationFilterTest {
     }
 
     private String issueToken(List<String> permissions) {
-        var user = new UserAccount(
-                "13900000000", "unused", true, true,
-                List.of("TESTER"), permissions
+        var user = new AuthenticatedUser(
+                "13900000000", List.of("TESTER"), permissions
         );
         return tokenIssuer.issue(user, "test").accessToken();
     }

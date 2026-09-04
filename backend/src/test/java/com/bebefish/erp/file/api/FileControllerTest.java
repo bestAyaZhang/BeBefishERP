@@ -7,7 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bebefish.erp.auth.domain.TokenIssuer;
-import com.bebefish.erp.auth.domain.UserAccount;
+import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.util.List;
@@ -98,7 +98,7 @@ class FileControllerTest {
     }
 
     private String token(String... permissions) {
-        return tokenIssuer.issue(new UserAccount("13900000006", "unused", true, true,
+        return tokenIssuer.issue(new AuthenticatedUser("13900000006",
                 List.of("TESTER"), List.of(permissions)), "test").accessToken();
     }
 

@@ -4,7 +4,6 @@ import com.bebefish.erp.auth.domain.UserAccount;
 import com.bebefish.erp.auth.domain.UserAccountRepository;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,28 +21,7 @@ public class InMemoryUserAccountRepository implements UserAccountRepository {
                 "13800138000",
                 passwordEncoder.encode("Admin@123456"),
                 true,
-                true,
-                List.of("ADMIN"),
-                List.of(
-                        "system:user:view",
-                        "system:role:view",
-                        "dashboard:view",
-                        "masterdata:view",
-                        "masterdata:edit",
-                        "product:view",
-                        "product:edit",
-                        "organization:view",
-                        "organization:manage",
-                        "inventory:view",
-                        "inventory:adjust",
-                        "sales:view",
-                        "sales:create",
-                        "sales:confirm",
-                        "sales:void",
-                        "sales:print",
-                        "finance:view",
-                        "finance:receipt"
-                )
+                true
         );
         accounts.put(admin.mobile(), new StoredAccount(admin, null, null));
     }

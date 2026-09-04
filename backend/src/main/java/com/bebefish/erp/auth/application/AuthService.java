@@ -1,11 +1,12 @@
 package com.bebefish.erp.auth.application;
 
+import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.bebefish.erp.auth.domain.PasswordHasher;
 import com.bebefish.erp.auth.domain.SmsCodeStore;
 import com.bebefish.erp.auth.domain.TokenIssuer;
 import com.bebefish.erp.auth.domain.UserAccount;
 import com.bebefish.erp.auth.domain.UserAccountRepository;
-import java.util.Objects;
+import com.bebefish.erp.authorization.application.AuthorizationResolver;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -14,17 +15,20 @@ public class AuthService {
     private final PasswordHasher passwordHasher;
     private final SmsCodeStore smsCodeStore;
     private final TokenIssuer tokenIssuer;
+    private final AuthorizationResolver authorizationResolver;
 
     public AuthService(
             UserAccountRepository userAccounts,
             PasswordHasher passwordHasher,
             SmsCodeStore smsCodeStore,
-            TokenIssuer tokenIssuer
+            TokenIssuer tokenIssuer,
+            AuthorizationResolver authorizationResolver
     ) {
         this.userAccounts = userAccounts;
         this.passwordHasher = passwordHasher;
         this.smsCodeStore = smsCodeStore;
         this.tokenIssuer = tokenIssuer;
+        this.authorizationResolver = authorizationResolver;
     }
 
     public void sendSmsCode(SendSmsCodeCommand command) {
@@ -71,8 +75,14 @@ public class AuthService {
     }
 
     private LoginResult issueLogin(UserAccount user, String method) {
+        var authorization = authorizationResolver.resolve(user.mobile());
+        var authenticatedUser = new AuthenticatedUser(
+                user.mobile(),
+                authorization.roles(),
+                authorization.permissions()
+        );
         userAccounts.recordLogin(user.mobile(), method);
-        return tokenIssuer.issue(user, method);
+        return tokenIssuer.issue(authenticatedUser, method);
     }
 
     private String extractToken(String authorization) {
