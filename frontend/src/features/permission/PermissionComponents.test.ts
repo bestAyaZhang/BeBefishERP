@@ -54,6 +54,10 @@ describe('PermissionMatrix', () => {
 describe('DataScopePanel and RoleMembersPanel', () => {
   it('emits the selected data scope and member page changes', async () => {
     const scope = mount(DataScopePanel, { props: { modelValue: 'self', readonly: false, organizationSummary: '产品中心及 3 个下级组织' } });
+    expect(scope.text()).toContain('全公司：可访问公司内所有部门和员工数据；示例：总部管理角色。');
+    expect(scope.text()).toContain('本部门及下级：可访问所在部门及全部下级部门；示例：业务中心负责人。');
+    expect(scope.text()).toContain('本部门：仅可访问所在部门；示例：部门主管。');
+    expect(scope.text()).toContain('仅本人：仅可访问本人创建或负责的数据；示例：一线业务员工。');
     await scope.get('[data-testid="scope-department-and-descendants"]').setValue(true);
     expect(scope.emitted('update:modelValue')?.[0]).toEqual(['department-and-descendants']);
 
@@ -72,6 +76,10 @@ describe('DataScopePanel and RoleMembersPanel', () => {
     };
     const wrapper = mount(RoleMembersPanel, { props: { page, canManage: true, selectedIds: [] } });
     expect(wrapper.get('[data-testid="member-select-9"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="member-keyword"]').attributes('aria-label')).toBe('搜索成员');
+    expect(wrapper.get('[data-testid="member-department"]').attributes('aria-label')).toBe('筛选部门');
+    expect(wrapper.get('[data-testid="member-select-9"]').attributes('aria-label')).toBe('选择成员 张瑜');
+    expect(wrapper.get('[data-testid="member-scope-help"]').attributes('aria-label')).toBe('最终数据范围按最宽的启用角色范围生效。');
   });
 });
 
@@ -103,6 +111,9 @@ describe('MemberSelectionDrawer', () => {
       total: 1
     };
     const wrapper = mount(MemberSelectionDrawer, { props: { open: true, page, selectedIds: [], saving: false } });
+    expect(wrapper.get('[data-testid="candidate-keyword"]').attributes('aria-label')).toBe('搜索可添加成员');
+    expect(wrapper.get('[data-testid="candidate-department"]').attributes('aria-label')).toBe('筛选候选成员部门');
+    expect(wrapper.get('[data-testid="candidate-select-7"]').attributes('aria-label')).toBe('选择成员 陈雯');
     await wrapper.get('[data-testid="candidate-select-7"]').setValue(true);
     await wrapper.get('[data-testid="member-selection-submit"]').trigger('click');
     expect(wrapper.emitted('submit')).toEqual([[[7]]]);
