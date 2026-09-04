@@ -20,7 +20,6 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(prefix = "erp.feishu", name = "mock-enabled", havingValue = "true")
 public class MockFeishuClient implements FeishuOAuthClient, FeishuDirectoryClient {
     private final FeishuProperties properties;
-    private String scenario = "mock-user";
 
     public MockFeishuClient(FeishuProperties properties) {
         this.properties = properties;
@@ -34,7 +33,6 @@ public class MockFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
 
     @Override
     public FeishuOAuthIdentity exchangeCode(String code) {
-        scenario = code;
         String mobile = mobileFor(code);
         return new FeishuOAuthIdentity(
                 "mock-other-tenant".equals(code) ? "tenant-other" : properties.getAllowedTenantKey(),
@@ -53,13 +51,13 @@ public class MockFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
 
     @Override
     public FeishuEmployeeProfile employeeProfile(String openId) {
-        String mobile = mobileFor(scenario);
+        String mobile = mobileFor(scenarioFrom(openId));
         return new FeishuEmployeeProfile(openId, null, mobile, null, "模拟飞书员工");
     }
 
     @Override
     public List<FeishuBusinessRole> businessRoles(String openId) {
-        if ("mock-role-degraded".equals(scenario)) {
+        if ("mock-role-degraded".equals(scenarioFrom(openId))) {
             throw new FeishuClientException("模拟业务角色接口不可用");
         }
         return List.of(new FeishuBusinessRole("mock-role-warehouse", "模拟仓库主管"));
@@ -81,5 +79,9 @@ public class MockFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
             case "mock-other-tenant" -> "13900000003";
             default -> "13900000001";
         };
+    }
+
+    private String scenarioFrom(String openId) {
+        return openId != null && openId.startsWith("ou_") ? openId.substring(3) : openId;
     }
 }

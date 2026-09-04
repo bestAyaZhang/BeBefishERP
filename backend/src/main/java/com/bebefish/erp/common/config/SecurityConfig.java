@@ -47,7 +47,10 @@ public class SecurityConfig {
                                 "/api/auth/login/sms",
                                 "/api/auth/sms-code",
                                 "/api/auth/feishu/exchange").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/auth/feishu/**").permitAll()
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/auth/feishu/status",
+                                "/api/auth/feishu/authorize",
+                                "/api/auth/feishu/callback").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )

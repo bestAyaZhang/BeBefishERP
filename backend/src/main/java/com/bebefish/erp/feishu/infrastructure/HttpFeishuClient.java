@@ -18,8 +18,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -56,13 +58,18 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
 
     @Override
     public FeishuOAuthIdentity exchangeCode(String code) {
-        JsonNode data = data(post("/open-apis/authen/v2/oauth/token", Map.of(
+        JsonNode tokenData = data(post("/open-apis/authen/v2/oauth/token", Map.of(
                 "grant_type", "authorization_code",
                 "client_id", properties.getAppId(),
                 "client_secret", properties.getAppSecret(),
                 "code", code,
                 "redirect_uri", properties.getRedirectUri()
         ), null));
+        String userAccessToken = text(tokenData, "access_token");
+        if (userAccessToken == null || userAccessToken.isBlank()) {
+            throw new FeishuClientException("飞书接口未返回用户访问凭据");
+        }
+        JsonNode data = data(get("/open-apis/authen/v1/user_info", userAccessToken));
         return new FeishuOAuthIdentity(
                 text(data, "tenant_key"),
                 text(data, "open_id"),
@@ -90,51 +97,93 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
         if (user.isMissingNode()) {
             user = data;
         }
-        JsonNode departments = user.path("department_ids");
-        String primaryDepartment = departments.isArray() && !departments.isEmpty()
-                ? departments.get(0).asText(null)
-                : null;
         return new FeishuEmployeeProfile(
                 firstText(user, "open_id", "user_id"),
                 firstText(user, "employee_no", "employee_number"),
                 text(user, "mobile"),
-                primaryDepartment,
+                null,
                 firstText(user, "name", "display_name")
         );
     }
 
     @Override
     public List<FeishuBusinessRole> businessRoles(String openId) {
-        JsonNode data = data(get(
-                "/open-apis/contact/v3/users/" + encodePath(openId)
-                        + "/functional_roles?user_id_type=open_id",
-                tenantAccessToken()
-        ));
-        JsonNode items = data.path("items");
         List<FeishuBusinessRole> result = new ArrayList<>();
-        if (items.isArray()) {
-            items.forEach(item -> result.add(new FeishuBusinessRole(
-                    firstText(item, "role_id", "id"),
-                    firstText(item, "role_name", "name"),
-                    firstInt(item, "member_count", "user_count")
-            )));
+        List<ConfiguredBusinessRole> configuredRoles = configuredBusinessRoles();
+        if (configuredRoles.isEmpty()) {
+            return List.of();
+        }
+        String accessToken = tenantAccessToken();
+        for (ConfiguredBusinessRole role : configuredRoles) {
+            Set<String> members = functionalRoleMembers(role.id(), accessToken);
+            if (members.contains(openId)) {
+                result.add(new FeishuBusinessRole(role.id(), role.name(), members.size()));
+            }
         }
         return List.copyOf(result);
     }
 
     @Override
     public List<FeishuBusinessRole> allBusinessRoles() {
-        JsonNode data = data(get("/open-apis/contact/v3/functional_roles?page_size=100", tenantAccessToken()));
-        JsonNode items = data.path("items");
         List<FeishuBusinessRole> result = new ArrayList<>();
-        if (items.isArray()) {
-            items.forEach(item -> result.add(new FeishuBusinessRole(
-                    firstText(item, "role_id", "id"),
-                    firstText(item, "role_name", "name"),
-                    firstInt(item, "member_count", "user_count")
-            )));
+        List<ConfiguredBusinessRole> configuredRoles = configuredBusinessRoles();
+        if (configuredRoles.isEmpty()) {
+            return List.of();
+        }
+        String accessToken = tenantAccessToken();
+        for (ConfiguredBusinessRole role : configuredRoles) {
+            result.add(new FeishuBusinessRole(
+                    role.id(), role.name(), functionalRoleMembers(role.id(), accessToken).size()
+            ));
         }
         return List.copyOf(result);
+    }
+
+    private List<ConfiguredBusinessRole> configuredBusinessRoles() {
+        if (properties.getBusinessRoles() == null || properties.getBusinessRoles().isBlank()) {
+            return List.of();
+        }
+        List<ConfiguredBusinessRole> roles = new ArrayList<>();
+        for (String value : properties.getBusinessRoles().split(",")) {
+            String[] parts = value.trim().split("\\|", 2);
+            if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
+                throw new FeishuClientException("飞书业务角色配置无效");
+            }
+            roles.add(new ConfiguredBusinessRole(parts[0].trim(), parts[1].trim()));
+        }
+        return List.copyOf(roles);
+    }
+
+    private Set<String> functionalRoleMembers(String roleId, String accessToken) {
+        Set<String> members = new HashSet<>();
+        Set<String> visitedPageTokens = new HashSet<>();
+        String pageToken = null;
+        do {
+            String path = "/open-apis/contact/v3/functional_roles/" + encodePath(roleId)
+                    + "/members?page_size=100&user_id_type=open_id";
+            if (pageToken != null) {
+                path += "&page_token=" + encode(pageToken);
+            }
+            JsonNode page = data(get(path, accessToken));
+            JsonNode items = page.path("members");
+            if (items.isArray()) {
+                items.forEach(item -> {
+                    String userId = text(item, "user_id");
+                    if (userId != null && !userId.isBlank()) {
+                        members.add(userId);
+                    }
+                });
+            }
+            if (!page.path("has_more").asBoolean(false)) {
+                pageToken = null;
+            } else {
+                pageToken = text(page, "page_token");
+                if (pageToken == null || pageToken.isBlank() || !visitedPageTokens.add(pageToken)) {
+                    throw new FeishuClientException("飞书业务角色分页响应无效");
+                }
+            }
+        } while (pageToken != null);
+        return Set.copyOf(members);
     }
 
     private String tenantAccessToken() {
@@ -214,19 +263,14 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
         return value == null || value.isBlank() ? text(node, second) : value;
     }
 
-    private int firstInt(JsonNode node, String first, String second) {
-        JsonNode value = node == null ? null : node.get(first);
-        if (value == null || value.isNull()) {
-            value = node == null ? null : node.get(second);
-        }
-        return value == null || value.isNull() ? 0 : Math.max(0, value.asInt());
-    }
-
     private String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     private String encodePath(String value) {
         return encode(value).replace("+", "%20");
+    }
+
+    private record ConfiguredBusinessRole(String id, String name) {
     }
 }

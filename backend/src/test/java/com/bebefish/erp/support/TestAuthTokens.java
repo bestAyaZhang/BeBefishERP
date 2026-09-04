@@ -67,4 +67,52 @@ public final class TestAuthTokens {
         }
         return token;
     }
+
+    public static String issueWithoutMobile(
+            JdbcTemplate jdbc,
+            TokenIssuer tokens,
+            String... permissions
+    ) {
+        String suffix = "NO_MOBILE_" + System.nanoTime() + "_" + SEQUENCE.incrementAndGet();
+        String employeeNo = "AUTH-" + suffix;
+        String roleCode = "TEST_AUTH_" + suffix;
+        jdbc.update("""
+                insert into employee
+                    (employee_no, name, mobile, employment_type, status, source,
+                     profile_complete, created_at, updated_at)
+                values (?, '无手机号接口测试用户', null, 'formal', 'active', 'feishu',
+                        false, now(3), now(3))
+                """, employeeNo);
+        long employeeId = jdbc.queryForObject(
+                "select id from employee where employee_no = ?", Long.class, employeeNo);
+        jdbc.update("""
+                insert into sys_user
+                    (employee_id, mobile, password_hash, status, created_at, updated_at)
+                values (?, null, null, 'enabled', now(3), now(3))
+                """, employeeId);
+        long userId = jdbc.queryForObject(
+                "select id from sys_user where employee_id = ?", Long.class, employeeId);
+        jdbc.update("""
+                insert into sys_role
+                    (code, name, description, kind, immutable, is_sensitive, status,
+                     data_scope, updated_by, created_at, updated_at)
+                values (?, '无手机号接口测试角色', '', 'custom', false, false, 'enabled',
+                        'COMPANY', 'test', now(3), now(3))
+                """, roleCode);
+        long roleId = jdbc.queryForObject("select id from sys_role where code = ?", Long.class, roleCode);
+        for (String permission : permissions) {
+            jdbc.update("""
+                    insert into sys_role_permission (role_id, permission_id, assigned_at)
+                    select ?, id, now(3) from sys_permission where code = ?
+                    """, roleId, permission);
+        }
+        jdbc.update("""
+                insert into sys_user_role (user_id, role_id, assignment_source, assigned_at)
+                values (?, ?, 'FEISHU', now(3))
+                """, userId, roleId);
+        return tokens.issue(new AuthenticatedUser(
+                userId, employeeId, null, "无手机号接口测试用户", null,
+                List.of(roleCode), List.of(permissions)
+        ), "feishu").accessToken();
+    }
 }

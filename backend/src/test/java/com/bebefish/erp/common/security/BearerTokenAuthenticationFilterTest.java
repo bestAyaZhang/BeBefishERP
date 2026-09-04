@@ -61,6 +61,12 @@ class BearerTokenAuthenticationFilterTest {
     }
 
     @Test
+    void rejectsUnknownFeishuAuthPathWithoutToken() throws Exception {
+        mvc.perform(get("/api/auth/feishu/unexpected"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void rejectsAuthenticatedUserWithoutRequiredPermission() throws Exception {
         resolveToken("missing-product", List.of("masterdata:view"));
 

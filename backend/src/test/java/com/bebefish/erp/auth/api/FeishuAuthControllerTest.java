@@ -23,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -44,6 +45,9 @@ import org.springframework.mock.web.MockHttpServletResponse;
 class FeishuAuthControllerTest {
     @Autowired
     private MockMvc mvc;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     @Test
     void authorizeCallbackAndExchangeCompleteWithoutPuttingSessionInUrl() throws Exception {
@@ -77,6 +81,10 @@ class FeishuAuthControllerTest {
 
     @Test
     void stateIsRequiredAndCanOnlyBeConsumedOnce() throws Exception {
+        int failuresBefore = jdbc.queryForObject(
+                "select count(*) from sys_login_audit where error_code = 'FEISHU_STATE_INVALID'",
+                Integer.class
+        );
         var authorization = mvc.perform(get("/api/auth/feishu/authorize")).andReturn();
         Cookie cookie = authorization.getResponse().getCookie("erp_feishu_state");
         String state = query(authorization.getResponse().getHeader("Location"), "state");
@@ -87,6 +95,10 @@ class FeishuAuthControllerTest {
                         .cookie(cookie))
                 .andExpect(status().isFound())
                 .andExpect(header().string("Location", containsString("error=FEISHU_STATE_INVALID")));
+        assertThat(jdbc.queryForObject(
+                "select count(*) from sys_login_audit where error_code = 'FEISHU_STATE_INVALID'",
+                Integer.class
+        )).isEqualTo(failuresBefore + 1);
 
         mvc.perform(get("/api/auth/feishu/callback")
                         .param("code", "mock-no-mobile")
@@ -120,7 +132,8 @@ class FeishuAuthControllerTest {
         when(states.issue()).thenReturn("secure-state");
         when(oauth.authorizationUri("secure-state")).thenReturn(URI.create("https://accounts.feishu.cn/auth"));
         var controller = new FeishuAuthController(
-                FeishuAvailability.ready(), oauth, states, mock(FeishuLoginService.class), properties
+                FeishuAvailability.ready(), oauth, states, mock(FeishuLoginService.class), properties,
+                mock(com.bebefish.erp.auth.domain.LoginAuditRepository.class), java.time.Clock.systemUTC()
         );
         var response = new MockHttpServletResponse();
 

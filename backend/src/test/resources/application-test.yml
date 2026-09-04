@@ -9,3 +9,9 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+erp:
+  auth:
+    local-admin:
+      enabled: true
+      mobile: 13800138000
+      password: Admin@123456

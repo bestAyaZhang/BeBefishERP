@@ -55,7 +55,7 @@ $env:SPRING_PROFILES_ACTIVE = 'local'
 $env:ERP_FEISHU_ENABLED = 'true'
 $env:ERP_FEISHU_APP_ID = 'mock-app'
 $env:ERP_FEISHU_APP_SECRET = 'mock-secret'
-$env:ERP_FEISHU_REDIRECT_URI = 'http://127.0.0.1:8080/api/auth/feishu/callback'
+$env:ERP_FEISHU_REDIRECT_URI = 'http://127.0.0.1:5173/api/auth/feishu/callback'
 $env:ERP_FEISHU_ALLOWED_TENANT_KEY = 'tenant-a'
 $env:ERP_FEISHU_MOCK_ENABLED = 'true'
 mvn spring-boot:run
@@ -130,7 +130,9 @@ QINIU_REGION=z0
 - ERP 权限始终由 ERP 角色定义。飞书映射角色与本地附加角色取并集，敏感角色禁止自动映射。
 - 会话、OAuth state、一次性登录票据和登录审计均保存在 MySQL；数据库只保存令牌哈希。
 
-开发迁移会初始化一个临时管理员账号，登录页会显示本地演示信息。它只用于开发联调，生产部署必须禁用或替换。
+通用数据库迁移不会创建默认管理员。`local` Profile 会显式初始化本地临时管理员（默认仅供联调，可通过 `ERP_LOCAL_ADMIN_MOBILE` 和 `ERP_LOCAL_ADMIN_PASSWORD` 覆盖），登录页不展示凭据；生产环境不得启用 `local` 或 `test` Profile。
+
+飞书 Contact v3 不提供业务角色列表查询。真实环境需要把管理员确认的不可变角色 ID 和显示名配置为 `ERP_FEISHU_BUSINESS_ROLES`，格式为逗号分隔的 `role_id|显示名`；系统通过官方角色成员分页接口计算成员数并判断登录员工的角色。
 
 ## 配置
 

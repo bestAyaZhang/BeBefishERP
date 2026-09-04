@@ -11,6 +11,7 @@ public class FeishuProperties {
     private String appSecret = "";
     private String redirectUri = "";
     private String allowedTenantKey = "";
+    private String businessRoles = "";
     private boolean mockEnabled;
     private URI apiBaseUri = URI.create("https://open.feishu.cn");
     private URI authorizationUri = URI.create("https://accounts.feishu.cn/open-apis/authen/v1/authorize");
@@ -55,6 +56,14 @@ public class FeishuProperties {
 
     public void setAllowedTenantKey(String allowedTenantKey) {
         this.allowedTenantKey = allowedTenantKey;
+    }
+
+    public String getBusinessRoles() {
+        return businessRoles;
+    }
+
+    public void setBusinessRoles(String businessRoles) {
+        this.businessRoles = businessRoles;
     }
 
     public boolean isMockEnabled() {

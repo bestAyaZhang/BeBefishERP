@@ -303,20 +303,3 @@ select r.id, p.id, now(3)
 from sys_role r
 join sys_permission p on p.code = 'dashboard:view'
 where r.code = 'BASIC_EMPLOYEE';
-
-insert into employee
-    (employee_no, name, mobile, employment_type, status, source, profile_complete, created_at, updated_at)
-values
-    ('SYS-ADMIN', '本地系统管理员', '13800138000', 'temporary', 'active', 'manual', true, now(3), now(3));
-
-insert into sys_user
-    (employee_id, mobile, password_hash, status, created_at, updated_at)
-select id, mobile, '$2a$10$BtngUzsp679G6U0KoHyg1.Q6hB0yM54Y3YDyRy/YfZGCeXrP4v8XG', 'enabled', now(3), now(3)
-from employee
-where employee_no = 'SYS-ADMIN';
-
-insert into sys_user_role (user_id, role_id, assignment_source, assigned_at)
-select u.id, r.id, 'LOCAL', now(3)
-from sys_user u
-join sys_role r on r.code = 'SUPER_ADMIN'
-where u.mobile = '13800138000';

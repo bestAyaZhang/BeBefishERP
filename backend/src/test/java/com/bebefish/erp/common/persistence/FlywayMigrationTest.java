@@ -20,7 +20,8 @@ import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest(properties = {
         "spring.flyway.enabled=false",
-        "spring.jpa.hibernate.ddl-auto=none"
+        "spring.jpa.hibernate.ddl-auto=none",
+        "erp.auth.local-admin.enabled=false"
 })
 @ActiveProfiles("test")
 class FlywayMigrationTest {
@@ -81,7 +82,7 @@ class FlywayMigrationTest {
     }
 
     @Test
-    void seedsAuthenticationRolesPermissionsAndTemporaryAdministrator() {
+    void seedsAuthenticationRolesAndPermissionsWithoutAUniversalAdministrator() {
         assertThat(jdbc.queryForObject(
                 "select count(*) from sys_permission where code = 'system:role:manage'",
                 Integer.class
@@ -95,16 +96,10 @@ class FlywayMigrationTest {
                 "select is_sensitive as sensitive_value, data_scope from sys_role where code = 'BASIC_EMPLOYEE'"
         )).containsEntry("sensitive_value", false)
                 .containsEntry("data_scope", "SELF");
-        assertThat(jdbc.queryForMap("""
-                select e.employment_type, e.status as employee_status, u.status as user_status,
-                       u.password_hash is not null as has_password
-                from sys_user u
-                join employee e on e.id = u.employee_id
-                where u.mobile = '13800138000'
-                """)).containsEntry("employment_type", "temporary")
-                .containsEntry("employee_status", "active")
-                .containsEntry("user_status", "enabled")
-                .containsEntry("has_password", 1L);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from sys_user where mobile = '13800138000'",
+                Integer.class
+        )).isZero();
     }
 
     @Test

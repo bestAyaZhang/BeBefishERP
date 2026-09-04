@@ -1,0 +1,6 @@
+erp:
+  auth:
+    local-admin:
+      enabled: true
+      mobile: ${ERP_LOCAL_ADMIN_MOBILE:13800138000}
+      password: ${ERP_LOCAL_ADMIN_PASSWORD:Admin@123456}

@@ -20,6 +20,7 @@ const title = computed(() => state.value === 'failure' ? '飞书登录未完成'
 onMounted(async () => {
   const callbackError = typeof route.query.error === 'string' ? route.query.error : '';
   const ticket = typeof route.query.ticket === 'string' ? route.query.ticket : '';
+  window.history.replaceState(window.history.state, '', route.path);
   if (callbackError || !ticket) {
     state.value = 'failure';
     errorMessage.value = messageFor(callbackError || 'FEISHU_CALLBACK_EXPIRED');

@@ -4,6 +4,8 @@ import com.bebefish.erp.auth.application.AuthException;
 import com.bebefish.erp.auth.application.FeishuLoginService;
 import com.bebefish.erp.auth.application.LoginResult;
 import com.bebefish.erp.auth.application.OAuthStateService;
+import com.bebefish.erp.auth.domain.LoginAuditEvent;
+import com.bebefish.erp.auth.domain.LoginAuditRepository;
 import com.bebefish.erp.common.api.ApiResponse;
 import com.bebefish.erp.feishu.FeishuAvailability;
 import com.bebefish.erp.feishu.FeishuOAuthClient;
@@ -14,7 +16,9 @@ import jakarta.validation.Valid;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.web.bind.annotation.CookieValue;
@@ -36,13 +40,17 @@ public class FeishuAuthController {
     private final OAuthStateService states;
     private final FeishuLoginService loginService;
     private final boolean secureStateCookie;
+    private final LoginAuditRepository audits;
+    private final Clock clock;
 
     public FeishuAuthController(
             FeishuAvailability availability,
             FeishuOAuthClient oauth,
             OAuthStateService states,
             FeishuLoginService loginService,
-            FeishuProperties properties
+            FeishuProperties properties,
+            LoginAuditRepository audits,
+            Clock clock
     ) {
         this.availability = availability;
         this.oauth = oauth;
@@ -51,6 +59,8 @@ public class FeishuAuthController {
         this.secureStateCookie = "https".equalsIgnoreCase(
                 java.net.URI.create(properties.getRedirectUri()).getScheme()
         );
+        this.audits = audits;
+        this.clock = clock;
     }
 
     @GetMapping("/status")
@@ -76,18 +86,30 @@ public class FeishuAuthController {
             HttpServletRequest request,
             HttpServletResponse response
     ) throws IOException {
+        boolean delegatedToLoginService = false;
+        String redirectName;
+        String redirectValue;
         try {
             states.consume(state, cookieState);
             if (code == null || code.isBlank()) {
                 throw new AuthException("FEISHU_CALLBACK_EXPIRED", "飞书回调缺少授权码");
             }
+            delegatedToLoginService = true;
             String ticket = loginService.login(code, request.getRemoteAddr(), request.getHeader("User-Agent"));
-            redirect(response, "ticket", ticket);
+            redirectName = "ticket";
+            redirectValue = ticket;
         } catch (AuthException exception) {
-            redirect(response, "error", exception.code());
-        } finally {
-            response.addHeader(HttpHeaders.SET_COOKIE, stateCookie("", Duration.ZERO).toString());
+            if (!delegatedToLoginService) {
+                audits.record(new LoginAuditEvent(
+                        null, "feishu", "failure", exception.code(), null,
+                        request.getRemoteAddr(), truncate(request.getHeader("User-Agent")), Instant.now(clock)
+                ));
+            }
+            redirectName = "error";
+            redirectValue = exception.code();
         }
+        response.addHeader(HttpHeaders.SET_COOKIE, stateCookie("", Duration.ZERO).toString());
+        redirect(response, redirectName, redirectValue);
     }
 
     @PostMapping("/exchange")
@@ -108,5 +130,9 @@ public class FeishuAuthController {
                 .path("/api/auth/feishu")
                 .maxAge(maxAge)
                 .build();
+    }
+
+    private String truncate(String value) {
+        return value == null ? null : value.substring(0, Math.min(value.length(), 500));
     }
 }

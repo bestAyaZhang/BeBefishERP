@@ -1,5 +1,7 @@
 package com.bebefish.erp.authorization.api;
 
+import static org.hamcrest.Matchers.hasItem;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -29,7 +31,10 @@ import org.springframework.transaction.annotation.Transactional;
         "erp.feishu.app-secret=mock-secret",
         "erp.feishu.redirect-uri=http://127.0.0.1:5173/api/auth/feishu/callback",
         "erp.feishu.allowed-tenant-key=tenant-a",
-        "erp.feishu.mock-enabled=true"
+        "erp.feishu.mock-enabled=true",
+        "erp.auth.local-admin.enabled=true",
+        "erp.auth.local-admin.mobile=13800138000",
+        "erp.auth.local-admin.password=Admin@123456"
 })
 @Transactional
 class FeishuRoleMappingControllerTest {
@@ -64,7 +69,8 @@ class FeishuRoleMappingControllerTest {
         mvc.perform(get("/api/permissions/feishu-role-mappings")
                         .header(HttpHeaders.AUTHORIZATION, authorization))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].erpRoleName").value("基础员工"));
+                .andExpect(jsonPath("$.data[?(@.feishuRoleId == 'fs-basic')].erpRoleName")
+                        .value(hasItem("基础员工")));
         mvc.perform(delete("/api/permissions/feishu-role-mappings/fs-basic")
                         .header(HttpHeaders.AUTHORIZATION, authorization))
                 .andExpect(status().isOk());
@@ -83,8 +89,10 @@ class FeishuRoleMappingControllerTest {
         mvc.perform(post("/api/permissions/feishu-role-mappings/sync")
                         .header(HttpHeaders.AUTHORIZATION, authorization))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].feishuRoleName").value("模拟仓库主管"))
-                .andExpect(jsonPath("$.data[0].memberCount").value(4));
+                .andExpect(jsonPath("$.data[?(@.feishuRoleId == 'mock-role-warehouse')].feishuRoleName")
+                        .value(hasItem("模拟仓库主管")))
+                .andExpect(jsonPath("$.data[?(@.feishuRoleId == 'mock-role-warehouse')].memberCount")
+                        .value(hasItem(4)));
     }
 
     private String bearerToken() throws Exception {

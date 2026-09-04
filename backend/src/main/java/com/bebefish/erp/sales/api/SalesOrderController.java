@@ -61,7 +61,9 @@ public class SalesOrderController {
             @Valid @RequestBody SaveSalesOrderRequest request,
             @AuthenticationPrincipal ErpPrincipal principal
     ) {
-        return ApiResponse.success(SalesOrderResponse.from(service.create(request.toCommand(), principal.mobile())));
+        return ApiResponse.success(SalesOrderResponse.from(
+                service.create(request.toCommand(), principal.operatorIdentifier())
+        ));
     }
 
     @PutMapping("/{id}")
@@ -72,7 +74,7 @@ public class SalesOrderController {
             @AuthenticationPrincipal ErpPrincipal principal
     ) {
         return ApiResponse.success(SalesOrderResponse.from(
-                service.update(id, request.toCommand(), principal.mobile())
+                service.update(id, request.toCommand(), principal.operatorIdentifier())
         ));
     }
 
@@ -89,7 +91,7 @@ public class SalesOrderController {
             @PathVariable long id,
             @AuthenticationPrincipal ErpPrincipal principal
     ) {
-        return ApiResponse.success(SalesOrderResponse.from(service.confirm(id, principal.mobile())));
+        return ApiResponse.success(SalesOrderResponse.from(service.confirm(id, principal.operatorIdentifier())));
     }
 
     @PostMapping("/{id}/void")
@@ -100,7 +102,7 @@ public class SalesOrderController {
             @AuthenticationPrincipal ErpPrincipal principal
     ) {
         return ApiResponse.success(SalesOrderResponse.from(
-                service.voidOrder(id, request == null ? null : request.reason(), principal.mobile())
+                service.voidOrder(id, request == null ? null : request.reason(), principal.operatorIdentifier())
         ));
     }
 

@@ -42,6 +42,18 @@ describe('FeishuLoginResultView', () => {
     expect(wrapper.text()).toContain('登录成功');
   });
 
+  it('removes the one-time ticket from browser history before exchange completes', async () => {
+    vi.mocked(exchangeFeishuTicket).mockReturnValue(new Promise(() => undefined));
+    const replaceState = vi.spyOn(window.history, 'replaceState');
+    const router = await testRouter('?ticket=single-use-secret');
+
+    mount(FeishuLoginResultView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(exchangeFeishuTicket).toHaveBeenCalledWith('single-use-secret');
+    expect(replaceState).toHaveBeenCalledWith(window.history.state, '', '/auth/feishu/result');
+  });
+
   it('shows an actionable error when ticket is missing', async () => {
     const router = await testRouter('');
     const wrapper = mount(FeishuLoginResultView, { global: { plugins: [router] } });

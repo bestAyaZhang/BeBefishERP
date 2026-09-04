@@ -90,6 +90,40 @@ class EmployeeProvisioningServiceTest {
         )).isZero();
     }
 
+    @Test
+    void refreshesAccountMobileAndRecomputesProfileCompleteness() {
+        var oauth = identity("tenant-a", "open-refresh", "union-refresh", null);
+        var first = service.provision(oauth, profile("open-refresh", null));
+        jdbc.update("""
+                insert into department
+                    (department_code, department_name, feishu_department_id, sort_order, status, created_at, updated_at)
+                values ('D-REFRESH', '资料补全部门', 'od-refresh', 0, 'enabled', now(3), now(3))
+                """);
+        long departmentId = jdbc.queryForObject(
+                "select id from department where department_code = 'D-REFRESH'", Long.class);
+        jdbc.update("""
+                insert into position
+                    (position_code, position_name, department_id, sort_order, status, created_at, updated_at)
+                values ('P-REFRESH', '资料补全岗位', ?, 0, 'enabled', now(3), now(3))
+                """, departmentId);
+        long positionId = jdbc.queryForObject(
+                "select id from position where position_code = 'P-REFRESH'", Long.class);
+        jdbc.update("update employee set position_id = ? where id = ?", positionId, first.employee().id());
+
+        var refreshed = service.provision(
+                identity("tenant-a", "open-refresh", "union-refresh", "13900000008"),
+                new FeishuEmployeeProfile(
+                        "open-refresh", "E-REFRESH", "13900000008", "od-refresh", "已补全员工"
+                )
+        );
+
+        assertThat(refreshed.employee().profileComplete()).isTrue();
+        assertThat(refreshed.account().mobile()).isEqualTo("13900000008");
+        assertThat(jdbc.queryForObject(
+                "select mobile from sys_user where id = ?", String.class, refreshed.account().id()
+        )).isEqualTo("13900000008");
+    }
+
     private FeishuOAuthIdentity identity(String tenant, String open, String union, String mobile) {
         return new FeishuOAuthIdentity(tenant, open, union, "飞书员工", null, mobile);
     }

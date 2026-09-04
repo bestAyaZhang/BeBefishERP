@@ -91,13 +91,14 @@ public class EmployeeProvisioningService {
         var employee = employees.findById(account.employeeId()).orElseThrow(this::identityConflict);
         validateLoginPolicy(account, employee);
         var updatedEmployee = refresh(employee, oauth, profile);
+        var updatedAccount = synchronizeAccountMobile(account, updatedEmployee.mobile());
         var now = Instant.now(clock);
         var updatedIdentity = identities.save(new FeishuIdentity(
                 identity.id(), identity.userId(), identity.tenantKey(), oauth.openId(), oauth.unionId(),
                 displayName(oauth, profile), oauth.avatarUrl(), identity.boundAt(), now
         ));
         roleSync.sync(account.id(), oauth.tenantKey(), java.util.List.of());
-        return new ProvisionedUser(account, updatedEmployee, updatedIdentity);
+        return new ProvisionedUser(updatedAccount, updatedEmployee, updatedIdentity);
     }
 
     private ProvisionedUser mergeUniqueMobileOrCreate(
@@ -128,9 +129,10 @@ public class EmployeeProvisioningService {
             throw identityConflict();
         }
         var updatedEmployee = refresh(employee, oauth, profile);
+        var updatedAccount = synchronizeAccountMobile(account, updatedEmployee.mobile());
         var identity = bind(account.id(), oauth, profile);
         roleSync.sync(account.id(), oauth.tenantKey(), java.util.List.of());
-        return new ProvisionedUser(account, updatedEmployee, identity);
+        return new ProvisionedUser(updatedAccount, updatedEmployee, identity);
     }
 
     private ProvisionedUser createNew(
@@ -139,9 +141,7 @@ public class EmployeeProvisioningService {
             String mobile
     ) {
         Long departmentId = employees.findDepartmentIdByFeishuId(profile.primaryDepartmentId()).orElse(null);
-        boolean complete = mobile != null
-                && profile.employeeNo() != null && !profile.employeeNo().isBlank()
-                && departmentId != null;
+        boolean complete = profileComplete(mobile, profile.employeeNo(), departmentId, null);
         var employee = employees.save(new Employee(
                 0,
                 firstNonBlank(profile.employeeNo(), generatedEmployeeNo()),
@@ -174,20 +174,39 @@ public class EmployeeProvisioningService {
 
     private Employee refresh(Employee employee, FeishuOAuthIdentity oauth, FeishuEmployeeProfile profile) {
         String mobile = firstNonBlank(normalizeMobile(profile.mobile()), employee.mobile());
+        String employeeNo = firstNonBlank(profile.employeeNo(), employee.employeeNo());
+        Long departmentId = employees.findDepartmentIdByFeishuId(profile.primaryDepartmentId())
+                .orElse(employee.departmentId());
         var updated = new Employee(
                 employee.id(),
-                firstNonBlank(profile.employeeNo(), employee.employeeNo()),
+                employeeNo,
                 displayName(oauth, profile),
                 mobile,
                 firstNonBlank(oauth.avatarUrl(), employee.avatarUrl()),
-                employees.findDepartmentIdByFeishuId(profile.primaryDepartmentId()).orElse(employee.departmentId()),
+                departmentId,
                 employee.positionId(),
                 employee.employmentType(),
                 employee.status(),
                 employee.source(),
-                employee.profileComplete()
+                profileComplete(mobile, employeeNo, departmentId, employee.positionId())
         );
         return employees.save(updated);
+    }
+
+    private UserAccount synchronizeAccountMobile(UserAccount account, String employeeMobile) {
+        if (java.util.Objects.equals(account.mobile(), employeeMobile)) {
+            return account;
+        }
+        return users.save(new UserAccount(
+                account.id(), account.employeeId(), employeeMobile, account.passwordHash(),
+                account.employmentType(), account.userStatus(), account.employeeStatus(),
+                account.displayName(), account.avatarUrl()
+        ));
+    }
+
+    private boolean profileComplete(String mobile, String employeeNo, Long departmentId, Long positionId) {
+        return mobile != null && employeeNo != null && !employeeNo.isBlank()
+                && departmentId != null && positionId != null;
     }
 
     private void validateLoginPolicy(UserAccount account, Employee employee) {

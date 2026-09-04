@@ -457,9 +457,6 @@ async function handleLogout() {
             </div>
           </div>
 
-          <p class="mt-8 text-center text-xs text-slate-500">
-            本地演示临时账号：13800138000 / Admin@123456
-          </p>
         </div>
       </section>
     </div>

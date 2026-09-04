@@ -14,6 +14,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,10 +46,17 @@ class HttpFeishuClientTest {
 
     @Test
     void createsAuthorizationUriAndMapsOAuthIdentity() {
+        var userInfoAuthorization = new AtomicReference<String>();
         server.createContext("/open-apis/authen/v2/oauth/token", exchange -> json(exchange, """
-                {"code":0,"data":{"access_token":"u-token","tenant_key":"tenant-a",
-                "open_id":"ou_1","union_id":"on_1","name":"张三","avatar_url":"https://avatar/a.png"}}
+                {"code":0,"data":{"access_token":"u-token","refresh_token":"r-token","expires_in":7200}}
                 """));
+        server.createContext("/open-apis/authen/v1/user_info", exchange -> {
+            userInfoAuthorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            json(exchange, """
+                {"code":0,"data":{"tenant_key":"tenant-a","open_id":"ou_1","union_id":"on_1",
+                "name":"张三","avatar_url":"https://avatar/a.png","mobile":"13800000001"}}
+                """);
+        });
         var client = client();
 
         assertThat(client.authorizationUri("state value").toString())
@@ -58,10 +66,12 @@ class HttpFeishuClientTest {
         assertThat(identity.openId()).isEqualTo("ou_1");
         assertThat(identity.unionId()).isEqualTo("on_1");
         assertThat(identity.displayName()).isEqualTo("张三");
+        assertThat(identity.mobile()).isEqualTo("13800000001");
+        assertThat(userInfoAuthorization).hasValue("Bearer u-token");
     }
 
     @Test
-    void mapsTenantEmployeeAndBusinessRoles() {
+    void mapsTenantAndEmployeeProfile() {
         server.createContext("/open-apis/auth/v3/tenant_access_token/internal", exchange -> json(exchange,
                 "{\"code\":0,\"tenant_access_token\":\"t-token\",\"expire\":7200}"));
         server.createContext("/open-apis/tenant/v2/tenant/query", exchange -> json(exchange,
@@ -70,17 +80,47 @@ class HttpFeishuClientTest {
                 {"code":0,"data":{"user":{"open_id":"ou_1","employee_no":"E001",
                 "mobile":"13800000001","department_ids":["od_1"],"name":"张三"}}}
                 """));
-        server.createContext("/open-apis/contact/v3/users/ou_1/functional_roles", exchange -> json(exchange, """
-                {"code":0,"data":{"items":[{"role_id":"role-1","role_name":"仓库主管"}]}}
-                """));
-        server.createContext("/open-apis/contact/v3/functional_roles", exchange -> json(exchange, """
-                {"code":0,"data":{"items":[{"role_id":"role-1","role_name":"仓库主管","member_count":7}]}}
-                """));
         var client = client();
 
         assertThat(client.currentTenantKey()).isEqualTo("tenant-a");
         assertThat(client.employeeProfile("ou_1").employeeNo()).isEqualTo("E001");
-        assertThat(client.employeeProfile("ou_1").primaryDepartmentId()).isEqualTo("od_1");
+        assertThat(client.employeeProfile("ou_1").primaryDepartmentId()).isNull();
+    }
+
+    @Test
+    void leavesPrimaryDepartmentUnsetWhenFeishuReturnsMultipleDepartments() {
+        server.createContext("/open-apis/auth/v3/tenant_access_token/internal", exchange -> json(exchange,
+                "{\"code\":0,\"tenant_access_token\":\"t-token\",\"expire\":7200}"));
+        server.createContext("/open-apis/contact/v3/users/ou_1", exchange -> json(exchange, """
+                {"code":0,"data":{"user":{"open_id":"ou_1","employee_no":"E001",
+                "department_ids":["od_1","od_2"],"name":"张三"}}}
+                """));
+
+        assertThat(client().employeeProfile("ou_1").primaryDepartmentId()).isNull();
+    }
+
+    @Test
+    void usesConfiguredRoleIdsAndPaginatesOfficialMemberLists() {
+        properties.setBusinessRoles("role-1|仓库主管,role-2|财务");
+        server.createContext("/open-apis/auth/v3/tenant_access_token/internal", exchange -> json(exchange,
+                "{\"code\":0,\"tenant_access_token\":\"t-token\",\"expire\":7200}"));
+        server.createContext("/open-apis/contact/v3/functional_roles/role-1/members", exchange -> {
+            if (exchange.getRequestURI().getRawQuery().contains("page_token=next-1")) {
+                json(exchange, """
+                        {"code":0,"data":{"members":[{"user_id":"ou_3"}],"has_more":false}}
+                        """);
+                return;
+            }
+            json(exchange, """
+                    {"code":0,"data":{"members":[{"user_id":"ou_1"},{"user_id":"ou_2"}],
+                    "has_more":true,"page_token":"next-1"}}
+                    """);
+        });
+        server.createContext("/open-apis/contact/v3/functional_roles/role-2/members", exchange -> json(exchange, """
+                {"code":0,"data":{"members":[{"user_id":"ou_9"}],"has_more":false}}
+                """));
+        var client = client();
+
         assertThat(client.businessRoles("ou_1"))
                 .singleElement()
                 .satisfies(role -> {
@@ -88,8 +128,16 @@ class HttpFeishuClientTest {
                     assertThat(role.name()).isEqualTo("仓库主管");
                 });
         assertThat(client.allBusinessRoles())
-                .singleElement()
-                .satisfies(role -> assertThat(role.memberCount()).isEqualTo(7));
+                .satisfiesExactly(
+                        role -> {
+                            assertThat(role.id()).isEqualTo("role-1");
+                            assertThat(role.memberCount()).isEqualTo(3);
+                        },
+                        role -> {
+                            assertThat(role.id()).isEqualTo("role-2");
+                            assertThat(role.memberCount()).isEqualTo(1);
+                        }
+                );
     }
 
     @Test

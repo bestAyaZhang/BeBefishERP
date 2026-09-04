@@ -119,6 +119,28 @@ class SalesOrderControllerTest {
     }
 
     @Test
+    void savesDraftForAuthorizedEmployeeWithoutMobile() throws Exception {
+        var body = objectMapper.writeValueAsString(Map.of(
+                "customerId", customerId,
+                "warehouseId", warehouseId,
+                "orderDate", java.time.LocalDate.now().plusDays(3).toString(),
+                "transportMethod", "delivery",
+                "settlementCycle", "monthly",
+                "lines", List.of(Map.of("skuId", skuId, "quantity", 1, "unitPrice", 12))
+        ));
+        String token = com.bebefish.erp.support.TestAuthTokens.issueWithoutMobile(
+                jdbc, tokenIssuer, "sales:create"
+        );
+
+        mvc.perform(post("/api/sales-orders")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.salespersonMobile", startsWith("employee:")));
+    }
+
+    @Test
     void listsDraftsByStatus() throws Exception {
         mvc.perform(get("/api/sales-orders")
                         .header("Authorization", bearerToken())

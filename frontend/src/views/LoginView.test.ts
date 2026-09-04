@@ -68,6 +68,7 @@ describe('LoginView', () => {
     const wrapper = mountLoginView();
     await flushPromises();
 
+    expect(wrapper.text()).not.toContain('Admin@123456');
     expect(wrapper.get('[data-testid="feishu-login"]').text()).toContain('飞书扫码登录');
     expect(wrapper.find('[data-testid="sms-code-input"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="send-code-button"]').exists()).toBe(false);

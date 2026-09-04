@@ -19,15 +19,18 @@ public class FeishuRoleMappingService {
     private final JdbcTemplate jdbc;
     private final FeishuDirectoryClient directory;
     private final FeishuProperties properties;
+    private final FeishuRoleMappingSyncStatusWriter syncStatusWriter;
 
     public FeishuRoleMappingService(
             JdbcTemplate jdbc,
             FeishuDirectoryClient directory,
-            FeishuProperties properties
+            FeishuProperties properties,
+            FeishuRoleMappingSyncStatusWriter syncStatusWriter
     ) {
         this.jdbc = jdbc;
         this.directory = directory;
         this.properties = properties;
+        this.syncStatusWriter = syncStatusWriter;
     }
 
     public List<FeishuBusinessRole> listFeishuRoles() {
@@ -105,27 +108,15 @@ public class FeishuRoleMappingService {
                 """, properties.getAllowedTenantKey(), feishuRoleId);
     }
 
-    @Transactional
     public List<PermissionDtos.FeishuRoleMappingResponse> sync() {
         try {
             var roles = listFeishuRoles();
-            Instant now = Instant.now();
-            for (FeishuBusinessRole role : roles) {
-                jdbc.update("""
-                        update sys_feishu_role_mapping
-                        set feishu_role_name = ?, member_count = ?, last_synced_at = ?,
-                            last_error = null, updated_at = now(3)
-                        where tenant_key = ? and feishu_role_id = ?
-                        """, role.name(), role.memberCount(), Timestamp.from(now),
-                        properties.getAllowedTenantKey(), role.id());
-            }
+            syncStatusWriter.markSuccessful(properties.getAllowedTenantKey(), roles, Instant.now());
             return listMappings();
         } catch (BusinessException exception) {
-            jdbc.update("""
-                    update sys_feishu_role_mapping
-                    set last_error = 'FEISHU_ROLE_DIRECTORY_UNAVAILABLE', updated_at = now(3)
-                    where tenant_key = ?
-                    """, properties.getAllowedTenantKey());
+            syncStatusWriter.markFailed(
+                    properties.getAllowedTenantKey(), "FEISHU_ROLE_DIRECTORY_UNAVAILABLE"
+            );
             throw exception;
         }
     }
