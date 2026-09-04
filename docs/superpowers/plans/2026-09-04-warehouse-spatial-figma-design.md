@@ -163,17 +163,17 @@ Update this task's checkboxes and record the confirmed page, variable, style, an
 - Consumes: existing variables, text styles, fields, buttons, tags, drawers, table primitives, and Lucide icon components
 - Produces: stable component IDs and documented properties used by every screen in Tasks 3–8
 
-- [ ] **Step 1: Create the canvas toolbar component**
+- [x] **Step 1: Create the canvas toolbar component**
 
 Create `Spatial/Canvas Toolbar` with tool properties `Pan`, `Select`, `Draw Zone`, `Draw Location`, `Draw Aisle`, `Draw Obstacle`, and `Measure`; state properties `Default`, `Hover`, `Active`, and `Disabled`; plus zoom-out, zoom percentage, zoom-in, fit-to-screen, undo, and redo controls.
 
 Expected: icon buttons are `36px` or `40px` high, active state includes both a filled treatment and a visible label/indicator, and the toolbar works on both monitor and editor frames.
 
-- [ ] **Step 2: Create the layer-tree row component**
+- [x] **Step 2: Create the layer-tree row component**
 
 Create `Spatial/Layer Tree Row` with type properties `Warehouse`, `Fixed Zone`, `Free Zone`, `Aisle`, `Obstacle`, and `Location`; state properties `Default`, `Selected`, `Hidden`, `Locked`, and `Warning`; indentation properties for at least three hierarchy levels; and text, visibility, lock, disclosure, and item-count properties.
 
-- [ ] **Step 3: Create zone and location shapes**
+- [x] **Step 3: Create zone and location shapes**
 
 Create:
 
@@ -185,35 +185,35 @@ Spatial/Temporary Location Shape   State=Occupied|Selected|Warning|Danger|Frozen
 
 Each shape must expose label, dimensions, utilization, and status text where appropriate. Fixed and temporary locations must remain distinguishable in grayscale through line style and icon/label, not color alone.
 
-- [ ] **Step 4: Create the stack marker component**
+- [x] **Step 4: Create the stack marker component**
 
 Create `Spatial/Stack Marker` with state properties `Default`, `Highlighted`, `Selected`, `Partial`, `Capacity Warning`, and `Frozen`. Expose SKU, package level, quantity, rows, columns, layers, orientation, and inbound-age text. Use a compact top/plan marker for 2D and a reusable label chip for 3D selection.
 
-- [ ] **Step 5: Create capacity and risk components**
+- [x] **Step 5: Create capacity and risk components**
 
 Create `Spatial/Capacity Legend` for utilization bands `Empty`, `<50%`, `50–80%`, `80–100%`, and `Over Capacity`. Create `Spatial/Risk Badge` variants `Capacity`, `Overlap`, `Outside Boundary`, `Aisle Intrusion`, `Frozen`, and `Unpublished`. Every variant includes an icon and explicit text label.
 
-- [ ] **Step 6: Create the location inspector**
+- [x] **Step 6: Create the location inspector**
 
 Create `Spatial/Location Inspector` as a `360px`-wide right-side panel with variants `Summary`, `Stacks`, and `Validation`. Include location identity, location type, zone, dimensions, used/available volume, SKU count, mixing policy, frozen state, stack rows, three recent ledger entries, and primary actions `移库`, `盘点`, and `查看流水`.
 
-- [ ] **Step 7: Create source/target and allocation components**
+- [x] **Step 7: Create source/target and allocation components**
 
 Create `Inventory/Source Target Selector` with source and target variants, warehouse/location search, selected location summary, capacity preview, and warning state. Create `Inventory/Stack Allocation Row` with recommendation rank, location, stack ID, SKU, package level, available quantity, suggested quantity, editable allocated quantity, inbound time, partial-stack indicator, and validation state.
 
-- [ ] **Step 8: Create stocktake and publish-validation rows**
+- [x] **Step 8: Create stocktake and publish-validation rows**
 
 Create `Inventory/Stocktake Count Row` with states `Blind Uncounted`, `Blind Counted`, `Matched`, `Difference`, `Recount Required`, and `Approved`. Hide the book quantity in blind-count variants. Create `Inventory/Publish Validation Item` with severity, rule, affected object, readable description, locate-on-canvas action, and resolved state.
 
-- [ ] **Step 9: Build the component documentation frame**
+- [x] **Step 9: Build the component documentation frame**
 
 Place every new component set and its meaningful variants in `Spatial & Inventory / Component Extensions`. Add concise Chinese usage notes explaining fixed versus free zones, permanent versus temporary locations, one-stack-one-SKU/package rule, warning semantics, and blind-count behavior.
 
-- [ ] **Step 10: Validate the extensions**
+- [x] **Step 10: Validate the extensions**
 
 Screenshot each component family at readable scale. Inspect text clipping, icon consistency, property naming, variable binding, contrast, hit-area size, and behavior in grayscale. Fix the smallest component-level defect and recheck all affected variants.
 
-- [ ] **Step 11: Record the checkpoint**
+- [x] **Step 11: Record the checkpoint**
 
 Record every component or component-set ID and property name. Later tasks must use these instances; raw duplication of component internals is a failure.
 
