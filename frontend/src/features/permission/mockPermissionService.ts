@@ -7,6 +7,7 @@ import type {
   CreateRolePayload,
   MemberMutationResult,
   MemberRemovalResult,
+  PermissionDataScope,
   PermissionRole,
   PermissionRoleStatus,
   PermissionRoleSummary,
@@ -21,6 +22,11 @@ import type { PermissionService } from './permissionService';
 const ALL_PERMISSION_CODES = PERMISSION_MODULES.flatMap((module) =>
   module.supportedActions.map((action) => `${module.key}:${action}`)
 );
+const PERMISSION_CODE_SET = new Set(ALL_PERMISSION_CODES);
+const DATA_SCOPES: PermissionDataScope[] = [
+  'company', 'department-and-descendants', 'department', 'self'
+];
+const ROLE_STATUSES: PermissionRoleStatus[] = ['enabled', 'disabled'];
 
 const SEED_ROLES: Array<Omit<PermissionRole, 'memberIds'> & { memberIds: number[] }> = [
   {
@@ -156,6 +162,18 @@ function cloneEmployee(employee: Employee): Employee {
 
 function normalizeKeyword(keyword?: string): string {
   return keyword?.trim().toLowerCase() ?? '';
+}
+
+function validateConfiguration(payload: SaveRoleConfigurationPayload): void {
+  if (!Array.isArray(payload.permissionCodes)
+    || payload.permissionCodes.some((code) => typeof code !== 'string' || !PERMISSION_CODE_SET.has(code))) {
+    throw new Error('权限编码无效');
+  }
+  if (!DATA_SCOPES.includes(payload.dataScope)) throw new Error('数据范围无效');
+}
+
+function validateRoleStatus(status: PermissionRoleStatus): void {
+  if (!ROLE_STATUSES.includes(status)) throw new Error('角色状态无效');
 }
 
 function page(records: RoleMember[], query: RoleMemberQuery): RoleMemberPage {
@@ -314,6 +332,7 @@ export function createMockPermissionService(organization: OrganizationService): 
       await ensureInitialized();
       const role = findRole(id);
       assertMutable(role);
+      validateConfiguration(payload);
       const updated = {
         ...role,
         permissionCodes: [...new Set(payload.permissionCodes)],
@@ -327,6 +346,7 @@ export function createMockPermissionService(organization: OrganizationService): 
     async changeRoleStatus(id: number, status: PermissionRoleStatus) {
       await ensureInitialized();
       const role = findRole(id);
+      validateRoleStatus(status);
       if (role.code === 'SUPER_ADMIN' && status === 'disabled') throw new Error('超级管理员不可停用');
       if (role.immutable) throw new Error('系统角色不可停用');
       const updated = { ...role, status, updatedBy: '当前用户' };

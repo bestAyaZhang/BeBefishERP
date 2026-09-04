@@ -47,4 +47,21 @@ describe('mockPermissionService', () => {
     const productOnlyMember = page.records.find((member) => member.otherRoleNames.length === 0)!;
     expect(productOnlyMember.finalDataScope).toBeNull();
   });
+
+  it('rejects invalid runtime configuration and status values without mutating the role', async () => {
+    const service = createMockPermissionService(organizationService);
+    const before = await service.getRole(4);
+
+    await expect(service.saveConfiguration(4, {
+      permissionCodes: ['product:view', 'unknown:grant'],
+      dataScope: 'department'
+    })).rejects.toThrow('权限编码无效');
+    await expect(service.saveConfiguration(4, {
+      permissionCodes: ['product:view'],
+      dataScope: 'region-wide'
+    } as never)).rejects.toThrow('数据范围无效');
+    await expect(service.changeRoleStatus(4, 'archived' as never)).rejects.toThrow('角色状态无效');
+
+    await expect(service.getRole(4)).resolves.toEqual(before);
+  });
 });
