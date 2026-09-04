@@ -66,9 +66,9 @@ Base-plan population and all three derived state frames are complete.
 - Frame `1056:2650`, cloned from the validated base at section-local `(4880,128)` without detaching instances; state plan `1056:2698`.
 - Workspace `1056:2676`; layer panel `1056:2677`; narrowed dominant canvas `1056:2695`; Canvas Toolbar `1056:2696` at `115%`; plan is panned within viewport `1056:2697` to make room for the inspector.
 - Real `Spatial/Location Inspector` instance `1056:3506`, set to `View=Stacks`, configured for selected fixed location A-07. The workspace is `248 + 16 + 492 + 16 + 360 = 1132px`, so the right inspector is exactly `360px` and the canvas remains usable.
-- Exact two-stack annotation overlay `1057:3451`; blue row `1057:3453` with text nodes `1057:3454`/`1057:3455`; pink row `1057:3456` with text nodes `1057:3457`/`1057:3458`.
+- The real inspector's six unmanaged row descendants were directly overridden without detaching the instance: `I1056:3506;1020:2361`/`2362`/`2363` show `STK-A07-01`, blue SKU/package-layout-age data, and `576瓶`; `I1056:3506;1020:2365`/`2366`/`2367` show `STK-A07-02`, pink SKU/package-layout-age data, and `384瓶`. `Show Stack Rows#1020:53=true`.
 - Inspector exposes type, zone, `2.0 × 2.0 × 2.4 m`, used `6.9 m³ · 72%`, available `2.7 m³ · 28%`, SKU count `2`, mixing policy, unfrozen state, recent ledger, validation, and actions `移库`/`盘点`/`查看流水`.
-- Full-frame screenshot: PASS. A close crop initially showed the screen-specific exact stack annotation crowding the recent-ledger heading; overlay `1057:3451` was moved to `y=350` and fixed to `328×138`. Refreshed frame, real-inspector, and stack-detail crops all pass.
+- Full-frame screenshot: PASS. The refreshed real-inspector close crop confirms the two true instance rows, recent-ledger spacing, and all three actions are readable with no masking composition.
 
 ## Reused components and property overrides
 
@@ -97,9 +97,9 @@ Base-plan population and all three derived state frames are complete.
 - Each plan has exactly 12 direct fixed locations plus 2 direct temporary locations. All four plans have identical location labels, fixed/temporary kind, and plan-relative geometry. The reusable base plan is `Demo Data / Shanghai Main Warehouse 2D` `1051:31340`, exactly `820×640`.
 - SKU Search audit: 5 highlighted locations (`1054:1148`, `1054:1152`, `1054:1154`, `1054:1156`, `1054:1160`) and 9 dimmed locations at opacity `0.22`; A-01 is focused. Result panel `1055:1895` reports `5 个库位 · 2,592 瓶（基础单位）`, and previous/next controls are visible.
 - Risk audit: A-03 `Danger`, TMP-20260904-002 `Danger` and physically intruding into the protected aisle, A-11 `Frozen`. All three Risk Badge instances have `Show Icon=true` and explicit text (`超容量 112%`, `侵占主通道`, `盘点冻结`). Capacity legend and issue count remain visible.
-- Selected audit: A-07 is Selected; inspector `1056:3506` is a live `Spatial/Location Inspector` instance; all three actions and recent ledger are visible. The two Stack Marker instances share one row, are adjacent with a 10.4px gap, and each describes exactly one SKU/package level.
+- Selected audit: A-07 is Selected; inspector `1056:3506` is a live `Spatial/Location Inspector` instance; its six row descendants contain the two A-07 stacks, the ledger now references `STK-A07-01`, and no generic `ST-001`/`ST-002` row content remains. All three actions and recent ledger are visible. The two Stack Marker instances share one row, are adjacent with a 10.4px gap, and each describes exactly one SKU/package level.
 - Typography audit: only Noto Sans SC and Inter are present; zero missing-font nodes. Semantic scan found zero `货架`/`rack`/`shelf` references. No rack or shelf imagery appears in any full frame or close crop.
-- Screenshot inspection: final full crops for Monitor, SKU Search, Risk, and Location Selected all pass; close crops of base canvas `1051:31340`, search results `1055:1895`, risk overlay `1055:33230`, inspector `1056:3506`, and exact stack annotation `1057:3451` all pass. The final section overview also shows the four screens in one row with no collision.
+- Screenshot inspection: final full crops for Monitor, SKU Search, Risk, and Location Selected all pass; close crops of base canvas `1051:31340`, search plan `1054:1128`, risk plan `1055:32433`, and real inspector `1056:3506` all pass. The final section overview also shows the four screens in one row with no collision.
 
 ## Sample-data ledger for Task 5
 
@@ -129,6 +129,28 @@ A-07 stack ledger:
 - Blue-SKU search total: A-01 576 + A-05 720 + A-07 576 + A-09 240 + TMP-20260904-001 480 = **2,592 base units across 5 locations**.
 - Operational geometry shared by all four states: A fixed zone `24.0×18.0m`; B free zone `10.0×18.0m`; protected main aisle `32.0m` long and `4.0m` clear width; receiving/shipping staging; fire-hydrant no-stacking footprint; 1m grid and 0/5/10m scale.
 
+## Fix round 1 (live-Figma review)
+
+### Temporary-location code readability
+
+- Updated the existing `Label#1010:36` property only, preserving all eight `Spatial/Temporary Location Shape` instances and their plan-relative geometry: base `1052:31393`/`1052:31405`, Search `1054:1160`/`1054:1161`, Risk `1055:32465`/`1055:32466`, and Selected `1056:2730`/`1056:2731` now show the exact distinguishable codes `TMP-20260904-001`/`TMP-20260904-002`.
+- Each code measures `71px` wide at local `x=13.44` inside the `87.36px` Identity frame (`84.44px` right edge), so the complete suffix fits without clipping. Every instance remains `100.8×67.2`; 001 stays at plan `(552,112)` and 002 at `(674,330)` in all four states. No Task 2 master was changed.
+
+### Real A-07 inspector data
+
+- Preserved live Inspector instance `1056:3506`, with `Show Stack Rows#1020:53=true`, and loaded Noto Sans SC Regular before overriding its unmanaged text descendants:
+  - `I1056:3506;1020:2361` = `STK-A07-01` / `3×2×4 横12d`; `I1056:3506;1020:2362` = `SKU-FISH-500ML-蓝` / `整箱 · 24瓶/箱`; `I1056:3506;1020:2363` = `576瓶`.
+  - `I1056:3506;1020:2365` = `STK-A07-02` / `2×2×4 纵5d`; `I1056:3506;1020:2366` = `SKU-FISH-350ML-粉` / `整箱 · 24瓶/箱`; `I1056:3506;1020:2367` = `384瓶`.
+- Updated recent-ledger descendant `I1056:3506;1020:2370` to `09:42 入库 +24 · STK-A07-01`. The visible actions remain `I1056:3506;1020:2376;56:218` (Move), `I1056:3506;1020:2382;56:299` (Stocktake), and `I1056:3506;1020:2388;56:299` (View Ledger).
+- Removed obsolete masking frame `1057:3451` and raw children `1057:3452`, `1057:3453`, `1057:3454`, `1057:3455`, `1057:3456`, `1057:3457`, and `1057:3458`. A final lookup returns no overlay node, and the real inspector contains no contradictory generic row text.
+
+### Fix-round validation
+
+- Refreshed full-frame screenshots for `1051:2`, `1054:1080`, `1055:32385`, and `1056:2650` all pass. Refreshed close crops of base plan `1051:31340`, Search plan `1054:1128`, Risk plan `1055:32433`, and Inspector `1056:3506` pass for readable codes/data, clipping, overlap, and action/ledger spacing. Selected TMP-002 is outside the intentionally panned A-07 viewport, but its exact value, fit, instance type, and cross-state geometry were programmatically verified.
+- Geometry is unchanged: section `999:4` remains `(0,1600)`, `6400×1280`, with the same four contained `1440×1024` frames; every shell remains `244px` sidebar plus `1196×64` top bar; recursive frame overflow remains zero.
+- Data parity remains exact at 12 fixed plus 2 temporary locations per plan. Search remains 5 highlighted/9 dimmed with A-01 focused and `2,592` base units across 5 locations. Risk remains A-03 over-capacity, TMP-002 aisle intrusion, and A-11 frozen with three icon-plus-text badges. Selected remains A-07 with two adjacent Stack Marker instances and the live Inspector instance.
+- Collateral audit found no detachments, rack/shelf terms, new pages, component masters, variables, styles, or effects.
+
 ## Concerns
 
-None. The two screenshot defects (aisle-label contrast and compact-result wrapping), inspector-ledger crowding, sidebar 2px overflow, and the A-05 ledger label mismatch were all fixed and rechecked before completion.
+None. The live-review findings—temporary-code clipping and masked generic inspector rows—were fixed in place and rechecked, along with the earlier aisle-label contrast, compact-result wrapping, sidebar overflow, and A-05 parity corrections.
