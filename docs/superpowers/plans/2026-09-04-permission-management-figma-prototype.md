@@ -61,7 +61,7 @@
 
 Read `figma:figma-use` in full immediately before each `use_figma` call. Also read `figma:figma-generate-design` before the first design-writing call. Discover the schemas for `use_figma`, metadata inspection, screenshots, and design-system search before invoking them.
 
-- [ ] **Step 2: Resolve the existing file without guessing**
+- [x] **Step 2: Resolve the existing file without guessing**
 
 Use the authenticated Figma workspace or an existing file URL from the current task context to locate the file whose exact name is `BeBefish ERP — Master Data UI`. Confirm that the editor type is Figma Design and that `04 Organization` exists.
 
