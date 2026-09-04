@@ -107,8 +107,16 @@ public class FeishuAuthController {
             }
             redirectName = "error";
             redirectValue = exception.code();
+        } catch (RuntimeException exception) {
+            audits.record(new LoginAuditEvent(
+                    null, "feishu", "failure", "LOGIN_FAILED", null,
+                    request.getRemoteAddr(), truncate(request.getHeader("User-Agent")), Instant.now(clock)
+            ));
+            redirectName = "error";
+            redirectValue = "LOGIN_FAILED";
+        } finally {
+            response.addHeader(HttpHeaders.SET_COOKIE, stateCookie("", Duration.ZERO).toString());
         }
-        response.addHeader(HttpHeaders.SET_COOKIE, stateCookie("", Duration.ZERO).toString());
         redirect(response, redirectName, redirectValue);
     }
 

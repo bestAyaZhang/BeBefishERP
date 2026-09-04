@@ -30,7 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("local")
+@ActiveProfiles("test")
 @TestPropertySource(properties = {
         "erp.feishu.enabled=true",
         "erp.feishu.app-id=mock-app",

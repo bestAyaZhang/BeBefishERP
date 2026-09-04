@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
-@Profile({"local", "test"})
+@Profile("!prod & (local | test)")
 @ConditionalOnProperty(prefix = "erp.auth.local-admin", name = "enabled", havingValue = "true")
 public class LocalAdminInitializer implements ApplicationRunner {
     private final JdbcTemplate jdbc;

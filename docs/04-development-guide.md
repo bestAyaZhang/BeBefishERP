@@ -12,33 +12,30 @@
 
 - 后端 Spring Boot 项目初始化。
 - 前端 Vue 3 + TypeScript + Tailwind CSS 后台框架初始化。
-- 手机号密码登录、手机号验证码登录、用户、角色、权限、菜单。
+- 临时员工手机号密码登录、正式员工飞书 OAuth 登录、用户、角色、权限、菜单。
 - 通用响应、异常处理、审计字段、日志。
 - MySQL 初始化脚本和基础字典数据。
 
 验收：
 
 - 管理员可用手机号 + 密码登录。
-- 管理员可用手机号 + 短信验证码登录。
+- 正式员工可通过允许的飞书企业扫码登录。
 - 不同角色看到不同菜单。
 - 未登录访问 API 被拒绝。
 - 禁用员工或禁用用户不能登录。
 
-当前 `main` 已落地的阶段 1 基础：
+当前代码已落地的阶段 1 基础：
 
-- 后端已实现 `/api/auth` 下的发送验证码、密码登录、验证码登录、退出登录、当前用户接口。
+- 后端已实现 `/api/auth` 下的密码登录、飞书 OAuth、退出登录和当前用户接口；旧短信接口固定返回 404。
 - 后端已提供统一响应、认证异常和登录相关单元测试。
 - 前端已实现登录页、认证接口封装、空响应兼容处理和登录页交互测试。
-- 本地临时管理员只在 `local/test` Profile 初始化，短信登录已移除；登录页不展示开发凭据。
-- 当前用户、短信验证码和访问令牌为内存实现，仅用于阶段 1 联调。
+- 本地临时管理员只在 `local/test` Profile 且显式开启时初始化，短信登录已移除；登录页不展示开发凭据。
+- 用户、员工、角色权限、会话、OAuth state、一次性票据和登录审计均已持久化到 MySQL。
 
 阶段 1 仍待完成：
 
-- MySQL 用户、员工、角色、权限、菜单表落库。
-- Redis 验证码、发送频率限制、令牌或短期会话存储。
-- 后台主布局、路由守卫、登录过期统一处理。
-- 角色权限管理页面、菜单加载和按钮级操作权限。
-- 飞书 OAuth 登录不启用，只保留后续扩展边界和禁用态入口。
+- 在目标企业完成真实飞书应用授权与扫码验收。
+- 根据上线风险评估是否将浏览器令牌从 `localStorage` 升级为更强的安全方案。
 
 ### 迭代 2：基础资料
 
@@ -188,7 +185,7 @@ POST   /api/sales-orders/{id}/void
 - 会话、OAuth state、一次性票据和登录审计持久化到 MySQL，令牌只保存 SHA-256 哈希。
 - 飞书角色只映射到非敏感 ERP 角色；ERP 权限定义仍是唯一权限来源。
 - 前端登录令牌当前保存在 `localStorage`，key 为 `bebefish_access_token`，后续如改为更安全方案需同步更新认证封装和文档。
-- `local` Profile 可初始化本地临时管理员，凭据不在登录页展示；生产不得启用 `local/test` Profile。
+- `local/test` Profile 仅在显式设置 `ERP_LOCAL_ADMIN_ENABLED=true` 并提供凭据时初始化本地临时管理员；凭据不在登录页展示，`prod` 不得与 `local/test` 同时启用。
 
 ### 4.3 统一响应
 
@@ -236,10 +233,10 @@ POST   /api/sales-orders/{id}/void
 | --- | --- |
 | UNAUTHORIZED | 未登录 |
 | FORBIDDEN | 无权限 |
-| LOGIN_FAILED | 手机号、密码或验证码错误 |
+| LOGIN_FAILED | 登录凭据或飞书 OAuth 回调处理失败 |
 | USER_DISABLED | 用户或员工已禁用 |
-| SMS_CODE_EXPIRED | 短信验证码不存在或已过期 |
-| SMS_CODE_RATE_LIMITED | 验证码发送过于频繁 |
+| FEISHU_TENANT_NOT_ALLOWED | 飞书用户不属于允许的企业 |
+| FEISHU_ROLE_SYNC_DEGRADED | 飞书角色暂时无法同步，本次登录仅保留基础/本地角色 |
 | VALIDATION_ERROR | 参数校验失败 |
 | DATA_NOT_FOUND | 数据不存在 |
 | DUPLICATE_CODE | 编码重复 |

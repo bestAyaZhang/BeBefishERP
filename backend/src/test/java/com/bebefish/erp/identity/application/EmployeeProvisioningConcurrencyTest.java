@@ -13,9 +13,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 @SpringBootTest
+@ActiveProfiles("test")
 @TestPropertySource(properties = "erp.feishu.allowed-tenant-key=tenant-a")
 class EmployeeProvisioningConcurrencyTest {
     private static final String OPEN_ID = "open-concurrent";

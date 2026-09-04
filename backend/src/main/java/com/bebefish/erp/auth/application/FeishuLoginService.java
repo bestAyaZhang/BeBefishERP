@@ -73,7 +73,10 @@ public class FeishuLoginService {
                 warnings = roleSync.syncDegraded(userId);
             }
             users.recordLogin(userId, "feishu");
-            audits.record(audit(userId, "success", null, tenantKey, ipAddress, userAgent));
+            String warningCode = warnings.contains(FeishuRoleSyncService.DEGRADED_WARNING)
+                    ? FeishuRoleSyncService.DEGRADED_WARNING
+                    : null;
+            audits.record(audit(userId, "success", warningCode, tenantKey, ipAddress, userAgent));
             return tickets.issue(userId, warnings);
         } catch (AuthException exception) {
             audits.record(audit(userId, "failure", exception.code(), tenantKey, ipAddress, userAgent));

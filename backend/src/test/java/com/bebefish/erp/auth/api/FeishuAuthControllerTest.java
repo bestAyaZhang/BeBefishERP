@@ -3,6 +3,7 @@ package com.bebefish.erp.auth.api;
 import static org.hamcrest.Matchers.containsString;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -21,6 +22,7 @@ import java.net.URI;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,7 +34,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("local")
+@ActiveProfiles("test")
 @TestPropertySource(properties = {
         "erp.feishu.enabled=true",
         "erp.feishu.app-id=mock-app",
@@ -48,6 +50,9 @@ class FeishuAuthControllerTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @SpyBean
+    private FeishuOAuthClient oauthClient;
 
     @Test
     void authorizeCallbackAndExchangeCompleteWithoutPuttingSessionInUrl() throws Exception {
@@ -121,6 +126,32 @@ class FeishuAuthControllerTest {
                 .andExpect(status().isNotFound());
         mvc.perform(post("/api/auth/login/sms").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void unexpectedCallbackFailureRedirectsAuditsAndClearsStateCookie() throws Exception {
+        int failuresBefore = jdbc.queryForObject(
+                "select count(*) from sys_login_audit where error_code = 'LOGIN_FAILED'",
+                Integer.class
+        );
+        var authorization = mvc.perform(get("/api/auth/feishu/authorize")).andReturn();
+        Cookie stateCookie = authorization.getResponse().getCookie("erp_feishu_state");
+        String state = query(authorization.getResponse().getHeader("Location"), "state");
+        doThrow(new IllegalStateException("unexpected failure"))
+                .when(oauthClient).exchangeCode("mock-unexpected");
+
+        mvc.perform(get("/api/auth/feishu/callback")
+                        .param("code", "mock-unexpected")
+                        .param("state", state)
+                        .cookie(stateCookie))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", containsString("error=LOGIN_FAILED")))
+                .andExpect(cookie().maxAge("erp_feishu_state", 0));
+
+        assertThat(jdbc.queryForObject(
+                "select count(*) from sys_login_audit where error_code = 'LOGIN_FAILED'",
+                Integer.class
+        )).isEqualTo(failuresBefore + 1);
     }
 
     @Test

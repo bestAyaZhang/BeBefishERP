@@ -14,6 +14,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -72,19 +73,26 @@ class HttpFeishuClientTest {
 
     @Test
     void mapsTenantAndEmployeeProfile() {
+        var userQuery = new AtomicReference<String>();
         server.createContext("/open-apis/auth/v3/tenant_access_token/internal", exchange -> json(exchange,
                 "{\"code\":0,\"tenant_access_token\":\"t-token\",\"expire\":7200}"));
         server.createContext("/open-apis/tenant/v2/tenant/query", exchange -> json(exchange,
                 "{\"code\":0,\"data\":{\"tenant\":{\"tenant_key\":\"tenant-a\"}}}"));
-        server.createContext("/open-apis/contact/v3/users/ou_1", exchange -> json(exchange, """
-                {"code":0,"data":{"user":{"open_id":"ou_1","employee_no":"E001",
-                "mobile":"13800000001","department_ids":["od_1"],"name":"张三"}}}
-                """));
+        server.createContext("/open-apis/contact/v3/users/ou_1", exchange -> {
+            userQuery.set(exchange.getRequestURI().getRawQuery());
+            json(exchange, """
+                    {"code":0,"data":{"user":{"open_id":"ou_1","employee_no":"E001",
+                    "mobile":"13800000001","department_ids":["od_1","od_2"],
+                    "orders":[{"department_id":"od_2","is_primary_dept":false},
+                    {"department_id":"od_1","is_primary_dept":true}],"name":"张三"}}}
+                    """);
+        });
         var client = client();
 
         assertThat(client.currentTenantKey()).isEqualTo("tenant-a");
         assertThat(client.employeeProfile("ou_1").employeeNo()).isEqualTo("E001");
-        assertThat(client.employeeProfile("ou_1").primaryDepartmentId()).isNull();
+        assertThat(client.employeeProfile("ou_1").primaryDepartmentId()).isEqualTo("od_1");
+        assertThat(userQuery.get()).contains("department_id_type=open_department_id");
     }
 
     @Test
@@ -93,18 +101,29 @@ class HttpFeishuClientTest {
                 "{\"code\":0,\"tenant_access_token\":\"t-token\",\"expire\":7200}"));
         server.createContext("/open-apis/contact/v3/users/ou_1", exchange -> json(exchange, """
                 {"code":0,"data":{"user":{"open_id":"ou_1","employee_no":"E001",
-                "department_ids":["od_1","od_2"],"name":"张三"}}}
+                "department_ids":["od_1","od_2"],
+                "orders":[{"department_id":"od_1","is_primary_dept":false},
+                {"department_id":"od_2","is_primary_dept":false}],"name":"张三"}}}
                 """));
 
         assertThat(client().employeeProfile("ou_1").primaryDepartmentId()).isNull();
     }
 
     @Test
-    void usesConfiguredRoleIdsAndPaginatesOfficialMemberLists() {
+    void usesSingleMemberLookupForLoginAndPaginatesMemberListsForManagement() {
         properties.setBusinessRoles("role-1|仓库主管,role-2|财务");
+        var listCalls = new AtomicInteger();
         server.createContext("/open-apis/auth/v3/tenant_access_token/internal", exchange -> json(exchange,
                 "{\"code\":0,\"tenant_access_token\":\"t-token\",\"expire\":7200}"));
+        server.createContext("/open-apis/contact/v3/functional_roles/role-1/members/ou_1", exchange -> {
+            assertThat(exchange.getRequestURI().getRawQuery())
+                    .contains("user_id_type=open_id", "department_id_type=open_department_id");
+            json(exchange, "{\"code\":0,\"data\":{\"member\":{\"user_id\":\"ou_1\"}}}");
+        });
+        server.createContext("/open-apis/contact/v3/functional_roles/role-2/members/ou_1", exchange ->
+                json(exchange, 404, "{\"code\":404,\"msg\":\"member not found\"}"));
         server.createContext("/open-apis/contact/v3/functional_roles/role-1/members", exchange -> {
+            listCalls.incrementAndGet();
             if (exchange.getRequestURI().getRawQuery().contains("page_token=next-1")) {
                 json(exchange, """
                         {"code":0,"data":{"members":[{"user_id":"ou_3"}],"has_more":false}}
@@ -116,9 +135,12 @@ class HttpFeishuClientTest {
                     "has_more":true,"page_token":"next-1"}}
                     """);
         });
-        server.createContext("/open-apis/contact/v3/functional_roles/role-2/members", exchange -> json(exchange, """
-                {"code":0,"data":{"members":[{"user_id":"ou_9"}],"has_more":false}}
-                """));
+        server.createContext("/open-apis/contact/v3/functional_roles/role-2/members", exchange -> {
+            listCalls.incrementAndGet();
+            json(exchange, """
+                    {"code":0,"data":{"members":[{"user_id":"ou_9"}],"has_more":false}}
+                    """);
+        });
         var client = client();
 
         assertThat(client.businessRoles("ou_1"))
@@ -127,6 +149,7 @@ class HttpFeishuClientTest {
                     assertThat(role.id()).isEqualTo("role-1");
                     assertThat(role.name()).isEqualTo("仓库主管");
                 });
+        assertThat(listCalls).hasValue(0);
         assertThat(client.allBusinessRoles())
                 .satisfiesExactly(
                         role -> {
@@ -138,6 +161,27 @@ class HttpFeishuClientTest {
                             assertThat(role.memberCount()).isEqualTo(1);
                         }
                 );
+        assertThat(listCalls).hasValue(3);
+    }
+
+    @Test
+    void rejectsOAuthIdentityWithoutTenantOrOpenId() {
+        var requests = new AtomicInteger();
+        server.createContext("/open-apis/authen/v2/oauth/token", exchange -> json(exchange, """
+                {"code":0,"data":{"access_token":"u-token","expires_in":7200}}
+                """));
+        server.createContext("/open-apis/authen/v1/user_info", exchange -> {
+            if (requests.getAndIncrement() == 0) {
+                json(exchange, "{\"code\":0,\"data\":{\"open_id\":\"ou_1\"}}");
+            } else {
+                json(exchange, "{\"code\":0,\"data\":{\"tenant_key\":\"tenant-a\"}}");
+            }
+        });
+
+        assertThatThrownBy(() -> client().exchangeCode("missing-tenant"))
+                .isInstanceOf(FeishuClientException.class);
+        assertThatThrownBy(() -> client().exchangeCode("missing-open-id"))
+                .isInstanceOf(FeishuClientException.class);
     }
 
     @Test
@@ -167,9 +211,13 @@ class HttpFeishuClientTest {
     }
 
     private void json(HttpExchange exchange, String body) throws IOException {
+        json(exchange, 200, body);
+    }
+
+    private void json(HttpExchange exchange, int status, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(200, bytes.length);
+        exchange.sendResponseHeaders(status, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.close();
     }

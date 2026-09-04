@@ -11,7 +11,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
-@ActiveProfiles("local")
+@ActiveProfiles("test")
 @TestPropertySource(properties = {
         "erp.feishu.enabled=true",
         "erp.feishu.app-id=mock-app",
@@ -51,5 +51,10 @@ class FeishuLoginServiceTest {
 
         assertThat(service.exchange(ticket).warnings())
                 .containsExactly("FEISHU_ROLE_SYNC_DEGRADED");
+        assertThat(jdbc.queryForObject("""
+                select error_code from sys_login_audit
+                where identity_method = 'feishu' and result = 'success'
+                order by id desc limit 1
+                """, String.class)).isEqualTo("FEISHU_ROLE_SYNC_DEGRADED");
     }
 }

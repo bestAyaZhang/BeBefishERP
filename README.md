@@ -58,6 +58,9 @@ $env:ERP_FEISHU_APP_SECRET = 'mock-secret'
 $env:ERP_FEISHU_REDIRECT_URI = 'http://127.0.0.1:5173/api/auth/feishu/callback'
 $env:ERP_FEISHU_ALLOWED_TENANT_KEY = 'tenant-a'
 $env:ERP_FEISHU_MOCK_ENABLED = 'true'
+$env:ERP_LOCAL_ADMIN_ENABLED = 'true'
+$env:ERP_LOCAL_ADMIN_MOBILE = '13800138000'
+$env:ERP_LOCAL_ADMIN_PASSWORD = 'Admin@123456'
 mvn spring-boot:run
 ```
 
@@ -73,11 +76,13 @@ java -jar target/bebefish-erp-0.1.0-SNAPSHOT.jar
 后端测试需要独立 MySQL 测试库：
 
 ```powershell
-$env:ERP_TEST_DB_URL = 'jdbc:mysql://127.0.0.1:3306/<test-database>?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai'
+$env:ERP_TEST_DB_URL = 'jdbc:mysql://127.0.0.1:3306/bebefish_test?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai'
 $env:ERP_TEST_DB_USERNAME = '<test-username>'
 $env:ERP_TEST_DB_PASSWORD = '<test-password>'
 mvn test
 ```
+
+测试启动器会拒绝数据库名不含 `test` 的 JDBC URL，避免集成测试误连开发或生产库。
 
 后端默认地址：
 
@@ -130,9 +135,9 @@ QINIU_REGION=z0
 - ERP 权限始终由 ERP 角色定义。飞书映射角色与本地附加角色取并集，敏感角色禁止自动映射。
 - 会话、OAuth state、一次性登录票据和登录审计均保存在 MySQL；数据库只保存令牌哈希。
 
-通用数据库迁移不会创建默认管理员。`local` Profile 会显式初始化本地临时管理员（默认仅供联调，可通过 `ERP_LOCAL_ADMIN_MOBILE` 和 `ERP_LOCAL_ADMIN_PASSWORD` 覆盖），登录页不展示凭据；生产环境不得启用 `local` 或 `test` Profile。
+通用数据库迁移不会创建默认管理员。`local` / `test` Profile 只有在显式设置 `ERP_LOCAL_ADMIN_ENABLED=true` 并提供手机号、密码时才初始化本地临时管理员，登录页不展示凭据；`prod` 与 `local` / `test` 同时启用会直接拒绝启动。
 
-飞书 Contact v3 不提供业务角色列表查询。真实环境需要把管理员确认的不可变角色 ID 和显示名配置为 `ERP_FEISHU_BUSINESS_ROLES`，格式为逗号分隔的 `role_id|显示名`；系统通过官方角色成员分页接口计算成员数并判断登录员工的角色。
+飞书 Contact v3 不提供业务角色列表查询。真实环境需要把管理员确认的不可变角色 ID 和显示名配置为 `ERP_FEISHU_BUSINESS_ROLES`，格式为逗号分隔的 `role_id|显示名`；系统用单成员查询判断登录员工的角色，仅在管理页同步统计时分页读取角色成员。
 
 ## 配置
 

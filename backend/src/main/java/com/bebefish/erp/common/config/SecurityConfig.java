@@ -3,6 +3,7 @@ package com.bebefish.erp.common.config;
 import com.bebefish.erp.auth.domain.TokenIssuer;
 import com.bebefish.erp.common.api.ApiResponse;
 import com.bebefish.erp.common.security.BearerTokenAuthenticationFilter;
+import com.bebefish.erp.common.security.RetiredAuthenticationEndpointFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -31,9 +32,15 @@ public class SecurityConfig {
     }
 
     @Bean
+    public RetiredAuthenticationEndpointFilter retiredAuthenticationEndpointFilter(ObjectMapper objectMapper) {
+        return new RetiredAuthenticationEndpointFilter(objectMapper);
+    }
+
+    @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             BearerTokenAuthenticationFilter bearerTokenAuthenticationFilter,
+            RetiredAuthenticationEndpointFilter retiredAuthenticationEndpointFilter,
             ObjectMapper objectMapper
     ) throws Exception {
         return http
@@ -44,8 +51,6 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST,
                                 "/api/auth/login/password",
-                                "/api/auth/login/sms",
-                                "/api/auth/sms-code",
                                 "/api/auth/feishu/exchange").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/auth/feishu/status",
@@ -66,6 +71,7 @@ public class SecurityConfig {
                         bearerTokenAuthenticationFilter,
                         org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class
                 )
+                .addFilterBefore(retiredAuthenticationEndpointFilter, BearerTokenAuthenticationFilter.class)
                 .build();
     }
 
