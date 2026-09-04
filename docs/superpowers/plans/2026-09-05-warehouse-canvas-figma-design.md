@@ -197,15 +197,15 @@ git commit -m "docs: track warehouse canvas Figma task 2"
 - Consumes: Task 2 component IDs and existing application-shell instances
 - Produces: the base canvas, area geometry, demo inventory data, and drawing interaction used by Tasks 4–5
 
-- [ ] **Step 1: Build the Overview shell**
+- [x] **Step 1: Build the Overview shell**
 
 Create `Warehouse Canvas / Overview` at `1440×1024` inside `01 Core Canvas`. Use the existing sidebar and top bar. The content header must show warehouse selection, SKU search, undo, redo, save status, and a primary `添加产品` action.
 
-- [ ] **Step 2: Compose the three-panel workspace**
+- [x] **Step 2: Compose the three-panel workspace**
 
 Use a compact left panel for areas/layers, a dominant central canvas, and a right product library. The central canvas must retain at least half of the content width and must not be visually compressed by the side panels.
 
-- [ ] **Step 3: Build authoritative demo data**
+- [x] **Step 3: Build authoritative demo data**
 
 Create at least three area instances named `A-01`, `B-01`, and `C-01`. Populate at least five SKU-block instances, including two different SKUs in `A-01` and one SKU split across two areas. Use these exact examples where shown:
 
@@ -217,23 +217,23 @@ SKU-FISH-350ML-粉 · 576 个 · 24 个/件 · 24 件
 
 Ensure every area total and SKU total equals the sum of its visible blocks.
 
-- [ ] **Step 4: Add summary and search behavior**
+- [x] **Step 4: Add summary and search behavior**
 
 Show area count, SKU count, and total individual units as derived read-only summary values. Demonstrate a SKU search that highlights matching blocks and dims nonmatches without hiding area boundaries.
 
-- [ ] **Step 5: Create the Draw Area frame**
+- [x] **Step 5: Create the Draw Area frame**
 
 Duplicate the validated Overview into `Warehouse Canvas / Draw Area`. Set `Draw Area` active, show crosshair guidance and a new dashed rectangle inside the canvas, and open a compact naming popover with `区域名称: D-01`, `取消`, and `创建区域`.
 
-- [ ] **Step 6: Show manual area geometry controls**
+- [x] **Step 6: Show manual area geometry controls**
 
 Select the new area and show real fields for x, y, width, and height in meters or canvas units. State explicitly that area size is for layout only and does not calculate capacity or inventory.
 
-- [ ] **Step 7: Validate both frames**
+- [x] **Step 7: Validate both frames**
 
 Capture full and close screenshots. Check `1440×1024` geometry, side-panel containment, area/SKU text readability, exact derived summaries, real component linkage, no overlap, no missing fonts, and no excluded concepts.
 
-- [ ] **Step 8: Record and commit the checkpoint**
+- [x] **Step 8: Record and commit the checkpoint**
 
 Record both frame IDs, demo-group ID, demo-data ledger, and screenshot evidence. Check only Task 3 boxes, then commit:
 
@@ -241,6 +241,8 @@ Record both frame IDs, demo-group ID, demo-data ledger, and screenshot evidence.
 git add docs/superpowers/plans/2026-09-05-warehouse-canvas-figma-design.md
 git commit -m "docs: track warehouse canvas Figma task 3"
 ```
+
+**Execution notes (2026-09-05):** Created exactly two `1440×1024` roots inside `01 Core Canvas`: `Warehouse Canvas / Overview` (`1187:2`) at `(80, 128)` and `Warehouse Canvas / Draw Area` (`1190:516`) at `(1680, 128)`, plus reusable demo group `Demo Data / Warehouse Canvas MVP` (`1188:38761`). Reused the live sidebar, top bar, page header, select/search, status, buttons, and Task 2 Warehouse component sets. The Overview workspace uses `196 / 760 / 240` px panels, keeping the canvas at 63.5% of content width. Demo data reconciles to A-01 `270`, B-01 `656`, C-01 `100`, four unique SKUs, and `1,026` authoritative units; `SKU-FISH-500ML-蓝` is split `150 + 100 = 250`, while all package copies are derived and read-only. Search highlights the two blue-SKU blocks, dims three nonmatches, and leaves all area boundaries at full opacity. Draw Area uses the active toolbar variant, real selected Area instance `1190:996` with `[8,6]` dashed D-01 boundary, popover `1190:1024`, real name field/buttons, and real Area Object Properties instance `1190:904` with `18 m / 11 m / 12 m / 7 m` x/y/width/height fields plus explicit layout-only/no-capacity copy. Full and close screenshot reviews passed; structural audits confirmed live master links, exact totals/examples, contained side panels, no root overlap, Noto Sans SC/Inter only, no missing fonts, no prohibited positive concepts, no new variables/styles/effects/masters, and zero components/component sets added to the MVP page. Full evidence: `.superpowers/sdd/2026-09-05-warehouse-canvas-figma-design/task-3-report.md`.
 
 ---
 
