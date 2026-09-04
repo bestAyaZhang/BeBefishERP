@@ -2,8 +2,6 @@ package com.bebefish.erp.auth.api;
 
 import com.bebefish.erp.auth.application.AuthService;
 import com.bebefish.erp.auth.application.LoginResult;
-import com.bebefish.erp.auth.application.SendSmsCodeCommand;
-import com.bebefish.erp.auth.application.SmsLoginCommand;
 import com.bebefish.erp.auth.application.PasswordLoginCommand;
 import com.bebefish.erp.common.api.ApiResponse;
 import jakarta.validation.Valid;
@@ -23,20 +21,9 @@ public class AuthController {
         this.authService = authService;
     }
 
-    @PostMapping("/sms-code")
-    public ApiResponse<Void> sendSmsCode(@Valid @RequestBody SendSmsCodeCommand command) {
-        authService.sendSmsCode(command);
-        return ApiResponse.success(null);
-    }
-
     @PostMapping("/login/password")
     public ApiResponse<LoginResult> loginWithPassword(@Valid @RequestBody PasswordLoginCommand command) {
         return ApiResponse.success(authService.loginWithPassword(command));
-    }
-
-    @PostMapping("/login/sms")
-    public ApiResponse<LoginResult> loginWithSms(@Valid @RequestBody SmsLoginCommand command) {
-        return ApiResponse.success(authService.loginWithSms(command));
     }
 
     @PostMapping("/logout")

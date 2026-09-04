@@ -1,8 +1,8 @@
 package com.bebefish.erp.auth.application;
 
 import com.bebefish.erp.auth.domain.AuthenticatedUser;
+import com.bebefish.erp.auth.domain.EmploymentType;
 import com.bebefish.erp.auth.domain.PasswordHasher;
-import com.bebefish.erp.auth.domain.SmsCodeStore;
 import com.bebefish.erp.auth.domain.TokenIssuer;
 import com.bebefish.erp.auth.domain.UserAccount;
 import com.bebefish.erp.auth.domain.UserAccountRepository;
@@ -13,46 +13,31 @@ import org.springframework.stereotype.Service;
 public class AuthService {
     private final UserAccountRepository userAccounts;
     private final PasswordHasher passwordHasher;
-    private final SmsCodeStore smsCodeStore;
     private final TokenIssuer tokenIssuer;
     private final AuthorizationResolver authorizationResolver;
 
     public AuthService(
             UserAccountRepository userAccounts,
             PasswordHasher passwordHasher,
-            SmsCodeStore smsCodeStore,
             TokenIssuer tokenIssuer,
             AuthorizationResolver authorizationResolver
     ) {
         this.userAccounts = userAccounts;
         this.passwordHasher = passwordHasher;
-        this.smsCodeStore = smsCodeStore;
         this.tokenIssuer = tokenIssuer;
         this.authorizationResolver = authorizationResolver;
-    }
-
-    public void sendSmsCode(SendSmsCodeCommand command) {
-        var mobile = command.normalizedMobile();
-        ensureUserCanLogin(findUser(mobile));
-        smsCodeStore.issueCode(mobile);
     }
 
     public LoginResult loginWithPassword(PasswordLoginCommand command) {
         var user = findUser(command.normalizedMobile());
         ensureUserCanLogin(user);
+        if (user.employmentType() != EmploymentType.TEMPORARY || user.passwordHash() == null) {
+            throw new AuthException("LOGIN_FAILED", "手机号或密码错误");
+        }
         if (!passwordHasher.matches(command.password(), user.passwordHash())) {
-            throw new AuthException("LOGIN_FAILED", "手机号、密码或验证码错误");
+            throw new AuthException("LOGIN_FAILED", "手机号或密码错误");
         }
         return issueLogin(user, "password");
-    }
-
-    public LoginResult loginWithSms(SmsLoginCommand command) {
-        var user = findUser(command.normalizedMobile());
-        ensureUserCanLogin(user);
-        if (!smsCodeStore.verifyAndConsume(command.normalizedMobile(), command.smsCode())) {
-            throw new AuthException("SMS_CODE_EXPIRED", "短信验证码不存在或已过期");
-        }
-        return issueLogin(user, "sms");
     }
 
     public void logout(String authorization) {
@@ -65,7 +50,7 @@ public class AuthService {
 
     private UserAccount findUser(String mobile) {
         return userAccounts.findByMobile(mobile)
-                .orElseThrow(() -> new AuthException("LOGIN_FAILED", "手机号、密码或验证码错误"));
+                .orElseThrow(() -> new AuthException("LOGIN_FAILED", "手机号或密码错误"));
     }
 
     private void ensureUserCanLogin(UserAccount user) {

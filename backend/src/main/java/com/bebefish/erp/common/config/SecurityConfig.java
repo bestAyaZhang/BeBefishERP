@@ -42,7 +42,12 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/api/auth/sms-code", "/api/auth/login/**").permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/auth/login/password",
+                                "/api/auth/login/sms",
+                                "/api/auth/sms-code",
+                                "/api/auth/feishu/exchange").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/auth/feishu/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )

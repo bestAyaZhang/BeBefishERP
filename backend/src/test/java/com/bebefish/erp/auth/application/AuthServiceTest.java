@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.bebefish.erp.auth.domain.PasswordHasher;
-import com.bebefish.erp.auth.domain.SmsCodeStore;
+import com.bebefish.erp.auth.domain.EmployeeStatus;
+import com.bebefish.erp.auth.domain.EmploymentType;
 import com.bebefish.erp.auth.domain.TokenIssuer;
 import com.bebefish.erp.auth.domain.UserAccount;
 import com.bebefish.erp.auth.domain.UserAccountRepository;
+import com.bebefish.erp.auth.domain.UserStatus;
 import com.bebefish.erp.authorization.application.AuthorizationResolver;
 import com.bebefish.erp.authorization.domain.DataScope;
 import com.bebefish.erp.authorization.domain.PermissionDefinition;
@@ -26,17 +28,15 @@ import org.junit.jupiter.api.Test;
 class AuthServiceTest {
     private FakeUserAccountRepository users;
     private FakeRoleRepository roles;
-    private FakeSmsCodeStore smsCodes;
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
         users = new FakeUserAccountRepository();
         roles = new FakeRoleRepository();
-        smsCodes = new FakeSmsCodeStore();
         PasswordHasher passwordHasher = (rawPassword, passwordHash) -> ("hash:" + rawPassword).equals(passwordHash);
         TokenIssuer tokenIssuer = new FakeTokenIssuer();
-        authService = new AuthService(users, passwordHasher, smsCodes, tokenIssuer, new AuthorizationResolver(roles));
+        authService = new AuthService(users, passwordHasher, tokenIssuer, new AuthorizationResolver(roles));
     }
 
     @Test
@@ -69,7 +69,8 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.loginWithPassword(new PasswordLoginCommand("13800138000", "wrong")))
                 .isInstanceOf(AuthException.class)
-                .hasMessage("手机号、密码或验证码错误");
+                .extracting("code")
+                .isEqualTo("LOGIN_FAILED");
     }
 
     @Test
@@ -82,24 +83,16 @@ class AuthServiceTest {
     }
 
     @Test
-    void smsLoginConsumesCodeAndRecordsLoginMethod() {
-        users.save(activeUser("13800138000"));
-        smsCodes.put("13800138000", "123456");
+    void formalEmployeeCannotUsePasswordLogin() {
+        users.save(new UserAccount(
+                0, 9, "13800138000", null, EmploymentType.FORMAL,
+                UserStatus.ENABLED, EmployeeStatus.ACTIVE, "正式员工", null
+        ));
 
-        var result = authService.loginWithSms(new SmsLoginCommand("13800138000", "123456"));
-
-        assertThat(result.accessToken()).isEqualTo("token-13800138000-sms");
-        assertThat(smsCodes.verifyAndConsume("13800138000", "123456")).isFalse();
-        assertThat(users.lastLoginMethod("13800138000")).isEqualTo("sms");
-    }
-
-    @Test
-    void sendingSmsCodeRequiresActiveUser() {
-        users.save(new UserAccount("13800138000", "hash:secret", true, false));
-
-        assertThatThrownBy(() -> authService.sendSmsCode(new SendSmsCodeCommand("13800138000")))
+        assertThatThrownBy(() -> authService.loginWithPassword(new PasswordLoginCommand("13800138000", "secret")))
                 .isInstanceOf(AuthException.class)
-                .hasMessage("用户或员工已禁用");
+                .extracting("code")
+                .isEqualTo("LOGIN_FAILED");
     }
 
     private UserAccount activeUser(String mobile) {
@@ -159,28 +152,6 @@ class AuthServiceTest {
         @Override
         public void recordLogin(long userId, String loginMethod) {
             loginMethods.put(usersById.get(userId).mobile(), loginMethod);
-        }
-    }
-
-    private static class FakeSmsCodeStore implements SmsCodeStore {
-        private final Map<String, String> codes = new HashMap<>();
-
-        void put(String mobile, String code) {
-            codes.put(mobile, code);
-        }
-
-        @Override
-        public void issueCode(String mobile) {
-            codes.put(mobile, "123456");
-        }
-
-        @Override
-        public boolean verifyAndConsume(String mobile, String smsCode) {
-            if (!smsCode.equals(codes.get(mobile))) {
-                return false;
-            }
-            codes.remove(mobile);
-            return true;
         }
     }
 

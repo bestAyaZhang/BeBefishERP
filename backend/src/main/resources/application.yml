@@ -17,6 +17,7 @@ erp:
   auth:
     session-ttl: ${ERP_AUTH_SESSION_TTL:PT12H}
     ticket-ttl: ${ERP_AUTH_TICKET_TTL:PT60S}
+    oauth-state-ttl: ${ERP_AUTH_OAUTH_STATE_TTL:PT5M}
   feishu:
     enabled: ${ERP_FEISHU_ENABLED:false}
     app-id: ${ERP_FEISHU_APP_ID:}
