@@ -229,15 +229,15 @@ Record every component or component-set ID and property name. Later tasks must u
 - Consumes: existing application shell and all spatial components from Task 2
 - Produces: the primary operational overview and the four state frames used by prototype flows
 
-- [ ] **Step 1: Create the base 1440px wrapper**
+- [x] **Step 1: Create the base 1440px wrapper**
 
 Create `Warehouse Spatial / 2D Monitor` at `1440x1024`. Place the sidebar at `x=0` with width `244`, top toolbar at `x=244`, and page content below the toolbar. Use page title `仓库空间`, warehouse selector `上海主仓`, a `2D/3D` segmented switch, SKU/location search, risk filter, and `编辑布局` action.
 
-- [ ] **Step 2: Build the monitoring workspace shell**
+- [x] **Step 2: Build the monitoring workspace shell**
 
 Within the content area, create a left layer panel of approximately `248px`, a central canvas that receives all remaining flexible width, and a collapsible right inspector region of `360px`. Keep the canvas visually dominant and avoid wrapping it in nested decorative cards.
 
-- [ ] **Step 3: Draw a measurable box-stacking floor plan**
+- [x] **Step 3: Draw a measurable box-stacking floor plan**
 
 Using component instances, compose a warehouse boundary with:
 
@@ -251,27 +251,27 @@ B 自由堆放区 — temporary locations TMP-20260904-001 and TMP-20260904-002
 
 Show a scale indicator, measurements in meters, grid visibility control, and several occupied locations with different utilization levels. Keep every stack on the floor; do not use rack elevation or shelf cells.
 
-- [ ] **Step 4: Populate the default monitoring state**
+- [x] **Step 4: Populate the default monitoring state**
 
 Use realistic samples such as `SKU-FISH-500ML-蓝`, `SKU-FISH-350ML-粉`, and `SKU-CUP-12OZ`. Show at least one mixed-SKU location represented by two adjacent stack markers, one nearly full location, one free-zone temporary location, and one empty fixed location.
 
-- [ ] **Step 5: Create the SKU-search state**
+- [x] **Step 5: Create the SKU-search state**
 
 Duplicate the base frame as `Warehouse Spatial / 2D SKU Search`. Search for `SKU-FISH-500ML-蓝`, dim unrelated locations, highlight every matching stack, automatically focus the first result, show a result summary with total base units and location count, and open a compact result list with previous/next controls connected to the canvas selections.
 
-- [ ] **Step 6: Create the risk-filter state**
+- [x] **Step 6: Create the risk-filter state**
 
 Duplicate the base frame as `Warehouse Spatial / 2D Risk`. Activate the capacity/risk filter and show at least one over-capacity stack, one aisle-intrusion layout issue, and one frozen stocktake location. Include a visible legend and an issue count; do not rely on red alone.
 
-- [ ] **Step 7: Create the selected-location state**
+- [x] **Step 7: Create the selected-location state**
 
 Duplicate the base frame as `Warehouse Spatial / 2D Location Selected`. Select `A-07`, open the `Spatial/Location Inspector`, and show two adjacent vertical stacks with SKU, package level, base-unit quantity, row/column/layer rule, used volume, inbound age, and actions.
 
-- [ ] **Step 8: Validate the four 2D frames**
+- [x] **Step 8: Validate the four 2D frames**
 
 Screenshot the full frames plus close crops of the canvas, legend, search result, and inspector. Verify location labels remain readable, fixed and temporary locations are unmistakable, selected/dimmed states are clear, warnings include text/icon cues, and the canvas does not clip at `1440x1024`.
 
-- [ ] **Step 9: Record the checkpoint**
+- [x] **Step 9: Record the checkpoint**
 
 Record the four frame IDs and the reusable 2D demo-plan group ID for prototype wiring and 3D consistency checks.
 
