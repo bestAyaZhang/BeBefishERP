@@ -255,23 +255,23 @@ git commit -m "docs: track warehouse canvas Figma task 3"
 - Consumes: Task 3 base canvas, demo data, areas, and Task 2 components
 - Produces: the complete add/edit/move workflow and quantity-conservation evidence
 
-- [ ] **Step 1: Create the Add SKU state**
+- [x] **Step 1: Create the Add SKU state**
 
 Duplicate the base canvas into `Warehouse Canvas / Add SKU` inside `02 Product Placement`. Show an SKU card being dragged from the product library over `B-01`, with a valid drop target and the rest of the canvas unchanged.
 
-- [ ] **Step 2: Add the quantity-entry state**
+- [x] **Step 2: Add the quantity-entry state**
 
 After the visual drop, show a compact popover or drawer with real SKU identity, read-only `24 个/件`, editable `库存个数: 250`, and derived `10 件 + 10 个`. The primary action is `放入 B-01`.
 
-- [ ] **Step 3: Create the SKU Selected state**
+- [x] **Step 3: Create the SKU Selected state**
 
 Create `Warehouse Canvas / SKU Selected` with one real `Warehouse/SKU Block` in `Selected`. Show manual resize handles and a live `Warehouse/Object Properties` SKU instance. Make the copy explicit: `调整大小只改变画布占地，不改变库存`.
 
-- [ ] **Step 4: Show whole-block movement**
+- [x] **Step 4: Show whole-block movement**
 
 Within the selected state or a clearly labeled local state group, show the SKU block moving from `A-01` to `B-01`. Preserve its exact unit count and derived package copy while changing only its area code.
 
-- [ ] **Step 5: Create the Partial Move frame**
+- [x] **Step 5: Create the Partial Move frame**
 
 Create `Warehouse Canvas / Partial Move`. Use this exact quantity example:
 
@@ -285,15 +285,15 @@ Conservation: 190 + 60 = 250 个
 
 Show target-area selection, a real number field, before/after preview, and confirmation dialog or drawer.
 
-- [ ] **Step 6: Make invalid partial quantities explicit**
+- [x] **Step 6: Make invalid partial quantities explicit**
 
 In a compact local validation state, show that `0`, negative numbers, decimals, and values greater than or equal to the source quantity are invalid. Keep the final action disabled until the move quantity is a valid positive integer smaller than the source.
 
-- [ ] **Step 7: Validate all three frames**
+- [x] **Step 7: Validate all three frames**
 
 Capture full and close screenshots. Verify drop target, unit-to-case calculation, selected handles, whole-move invariants, partial-move conservation, button enabled states, text overflow, and real field/component instances.
 
-- [ ] **Step 8: Record and commit the checkpoint**
+- [x] **Step 8: Record and commit the checkpoint**
 
 Record the three frame IDs and every key overlay/state ID. Check only Task 4 boxes, then commit:
 
@@ -301,6 +301,8 @@ Record the three frame IDs and every key overlay/state ID. Check only Task 4 box
 git add docs/superpowers/plans/2026-09-05-warehouse-canvas-figma-design.md
 git commit -m "docs: track warehouse canvas Figma task 4"
 ```
+
+**Execution notes (2026-09-05):** Created exactly three `1440×1024` roots inside `02 Product Placement`: `Warehouse Canvas / Add SKU` (`1193:39676`) at `(80, 128)`, `Warehouse Canvas / SKU Selected` (`1193:40024`) at `(1680, 128)`, and `Warehouse Canvas / Partial Move` (`1193:40372`) at `(3280, 128)`. Add SKU uses real dragged SKU Block `1193:40750`, valid B-01 target `1193:40747`, and native drawer `1193:40767` with linked SKU, disabled `24 个/件`, editable `250`, disabled `10 件 + 10 个`, and enabled `放入 B-01`. Selected state uses real selected block `1193:40054`, live SKU Object Properties `1194:1883`, explicit visual-size independence rule `1195:1991`, and after-move preview `1195:1994` preserving `150 个 / 6 件 + 6 个` while changing only A-01 to B-01. Partial Move uses real post-split blocks `1193:40402` and `1196:2003`, native drawer `1196:40438`, real target select/number field, exact ledger `250 - 60 = 190` and `190 + 60 = 250`, compact invalid examples for `0`, negative, decimal, and `≥ 250`, enabled valid action `I1196:40438;67:467;1196:40489`, and disabled invalid action `I1196:40438;67:466;1196:40525`. Full and close screenshots plus structural audits passed: exact geometry, no root overlaps, correct calculations, linked instances with zero missing masters, Noto Sans SC/Inter only, no missing fonts, no new variables/styles/effects/masters, and no prohibited positive concepts. Full evidence: `.superpowers/sdd/2026-09-05-warehouse-canvas-figma-design/task-4-report.md`.
 
 ---
 
