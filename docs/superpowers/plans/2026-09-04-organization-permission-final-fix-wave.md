@@ -144,22 +144,31 @@ Export nodes `572:11100`, `600:11953`, `622:12746`, and `626:13258` at 1x to the
 - Consumes: the complete bounded fix-wave diff and live Figma readback.
 - Produces: severity-counted review verdict plus clean test/build evidence.
 
-- [ ] **Step 1: Commit only intended fix-wave files**
+- [x] **Step 1: Commit only intended fix-wave files**
 
 Stage the two unprotected Vue files, `OrganizationComponents.test.ts`, the final-fix plan/evidence, and only byte-changed permission PNGs. Confirm none of the five protected paths is staged.
 
-- [ ] **Step 2: Request an independent read-only review**
+- [x] **Step 2: Request an independent read-only review**
 
 Give the reviewer the handoff, plan, commit range, Figma IDs, and explicit instruction to report Critical/Important/Minor findings without mutating the checkout.
 
-- [ ] **Step 3: Address all Critical and Important review findings**
+- [x] **Step 3: Address all Critical and Important review findings**
 
 Use a new RED/GREEN cycle for code changes and revalidate targeted Figma geometry for design changes. Re-request review until Critical and Important counts are zero.
 
-- [ ] **Step 4: Verify from a clean archive/worktree**
+- [x] **Step 4: Verify from a clean archive/worktree**
 
 Run full frontend `npm run test:run` and `npm run build` against the committed tree in a disposable clean directory. Run `mvn -Dtest=AuthServiceTest test`; run full `mvn test` only when all three required DB environment variables are set, otherwise report the known environment limitation.
 
-- [ ] **Step 5: Run final Git scope checks**
+- [x] **Step 5: Run final Git scope checks**
 
 Confirm the working tree is clean, the commit contains only intended paths, all four PNGs are `1440x1024`, no fifth permission deliverable exists, and no merge/push occurred.
+
+## Completion Evidence
+
+- Independent review: `PASS`, Critical `0`, Important `0`, Minor `1` (non-blocking test-strengthening suggestion).
+- Clean detached worktree at `f04e4ee`: frontend `37` files / `433` tests passed.
+- Clean detached worktree at `f04e4ee`: `npm run build` passed; `vue-tsc` completed and Vite transformed `1749` modules.
+- Clean detached worktree at `f04e4ee`: `AuthServiceTest` passed `6/6` with no failures or errors.
+- Full backend tests were not run because `ERP_TEST_DB_URL`, `ERP_TEST_DB_USERNAME`, and `ERP_TEST_DB_PASSWORD` were all unset.
+- Live Figma gate: `PASS`, exactly four deliverables, both repaired role panels at frame-relative `x=276`, member paginator/action clearance `12px`, protected organization section unchanged.
