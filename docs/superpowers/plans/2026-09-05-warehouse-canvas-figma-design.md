@@ -80,29 +80,29 @@ Warehouse Canvas / Boundary And Overlap Warning
 - Consumes: the approved MVP specification and existing Figma variables/components
 - Produces: verified reusable node IDs, the MVP page ID, and empty section IDs for Tasks 2–5
 
-- [ ] **Step 1: Load the required Figma skills**
+- [x] **Step 1: Load the required Figma skills**
 
 Read `figma:figma-use` and `figma:figma-generate-design` completely, including every routed reference required for writing into an existing Figma Design file. Use `figma-use,figma-generate-design` in every `use_figma` call.
 
-- [ ] **Step 2: Inspect the live file before any write**
+- [x] **Step 2: Inspect the live file before any write**
 
 Read the page tree, local variables, text styles, component sets, current selection, and current page count. Confirm the exact IDs of `01 Foundations`, `02 Components`, `03 Master Data`, and the current `04 Inventory & Warehouse` page.
 
 Expected: the inspection records the existing page and design-system IDs before the first mutation.
 
-- [ ] **Step 3: Reconfirm reusable shell and form components**
+- [x] **Step 3: Reconfirm reusable shell and form components**
 
 Record the current node IDs and exposed properties for the sidebar, top bar, page header, primary/secondary/danger buttons, search field, number field, select, tag, drawer, confirm dialog, and empty/error states.
 
 Expected: later tasks can create real instances without detaching or rebuilding controls.
 
-- [ ] **Step 4: Mark the previous exploration as archived**
+- [x] **Step 4: Mark the previous exploration as archived**
 
 Rename the existing page to `Archive — 04 Inventory & Warehouse (Superseded)` or add an equally explicit archive prefix if Figma prevents that exact punctuation. Do not delete, flatten, detach, or mutate its contained designs.
 
 Expected: the previous complex work remains recoverable but is unambiguously outside the MVP.
 
-- [ ] **Step 5: Create the MVP page and sections**
+- [x] **Step 5: Create the MVP page and sections**
 
 Create exactly one page named `05 Warehouse Canvas MVP`. Add four top-level sections:
 
@@ -115,20 +115,22 @@ Create exactly one page named `05 Warehouse Canvas MVP`. Add four top-level sect
 
 Place sections vertically with at least `320px` separation. Size `01 Core Canvas` for two `1440×1024` frames, `02 Product Placement` for three, and `03 State & QA` for the warning frame plus QA evidence.
 
-- [ ] **Step 6: Add a concise scope cover**
+- [x] **Step 6: Add a concise scope cover**
 
 Inside `00 Scope`, add a title, one-sentence core flow, and explicit exclusions: `无 3D · 无堆码规则 · 无容量计算 · 无货架`. Reuse existing text styles and semantic colors.
 
-- [ ] **Step 7: Validate and record the checkpoint**
+- [x] **Step 7: Validate and record the checkpoint**
 
 Verify the file has one new page only, the old page remains intact under its archive name, the four sections are contained and nonoverlapping, and variables/styles/component counts are unchanged. Record page/section IDs in the plan-specific task report and check only Task 1 boxes.
 
-- [ ] **Step 8: Commit the checkpoint**
+- [x] **Step 8: Commit the checkpoint**
 
 ```bash
 git add docs/superpowers/plans/2026-09-05-warehouse-canvas-figma-design.md
 git commit -m "docs: track warehouse canvas Figma task 1"
 ```
+
+**Execution notes (2026-09-05):** Live preflight confirmed pages `0:1`, `1:2`, `1:3`, and `999:2`; 33 local variables; 8 text styles; and the reusable shell, control, overlay, and feedback components required by later tasks. Renamed page `999:2` to `Archive — 04 Inventory & Warehouse (Superseded)` without changing its six top-level nodes or 8,314 descendants. Created page `1154:38239` with sections `1154:38240`–`1154:38243`, a token-bound scope cover `1159:2`, and text nodes `1159:3`–`1159:5`. Structural and screenshot audits passed: exact 320 px vertical gaps, zero section overlaps, cover contained, Noto Sans SC styles applied, and variable/style/component counts unchanged. Full evidence: `.superpowers/sdd/2026-09-05-warehouse-canvas-figma-design/task-1-report.md`.
 
 ---
 
