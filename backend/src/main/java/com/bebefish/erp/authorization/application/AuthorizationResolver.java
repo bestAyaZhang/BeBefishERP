@@ -32,6 +32,18 @@ public class AuthorizationResolver {
         return new ResolvedAuthorization(roleCodes, permissionCodes, dataScope);
     }
 
+    public ResolvedAuthorization resolve(long userId) {
+        return resolveRoles(roles.findEnabledByUserId(userId));
+    }
+
+    private ResolvedAuthorization resolveRoles(List<Role> assignedRoles) {
+        var enabledRoles = assignedRoles.stream().filter(Role::enabled).toList();
+        var roleCodes = enabledRoles.stream().map(Role::code).distinct().sorted().toList();
+        var permissionCodes = permissionCodesFor(enabledRoles);
+        var dataScope = DataScope.widest(enabledRoles.stream().map(Role::dataScope).toList());
+        return new ResolvedAuthorization(roleCodes, permissionCodes, dataScope);
+    }
+
     private List<String> permissionCodesFor(List<Role> assignedRoles) {
         if (assignedRoles.stream().anyMatch(Role::superAdministrator)) {
             return roles.findAllPermissions().stream()

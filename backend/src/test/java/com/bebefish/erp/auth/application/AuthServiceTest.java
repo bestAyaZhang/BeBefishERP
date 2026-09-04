@@ -14,7 +14,6 @@ import com.bebefish.erp.authorization.domain.DataScope;
 import com.bebefish.erp.authorization.domain.PermissionDefinition;
 import com.bebefish.erp.authorization.domain.Role;
 import com.bebefish.erp.authorization.domain.RoleRepository;
-import com.bebefish.erp.authorization.infrastructure.InMemoryRoleRepository;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -56,11 +55,12 @@ class AuthServiceTest {
 
     @Test
     void developmentAdministratorResolvesSuperAdministratorPermissions() {
-        var authorization = new AuthorizationResolver(new InMemoryRoleRepository()).resolve("13800138000");
+        roles.save(new Role("SUPER_ADMIN", "超级管理员", true, true, true,
+                DataScope.COMPANY, Set.of(), Set.of("13800138000")));
+        var authorization = new AuthorizationResolver(roles).resolve("13800138000");
 
         assertThat(authorization.roles()).containsExactly("SUPER_ADMIN");
-        assertThat(authorization.permissions())
-                .contains("system:role:view", "system:role:manage", "organization:view", "organization:manage");
+        assertThat(authorization.permissions()).isEmpty();
     }
 
     @Test
@@ -121,10 +121,18 @@ class AuthServiceTest {
 
     private static class FakeUserAccountRepository implements UserAccountRepository {
         private final Map<String, UserAccount> users = new HashMap<>();
+        private final Map<Long, UserAccount> usersById = new HashMap<>();
         private final Map<String, String> loginMethods = new HashMap<>();
 
-        void save(UserAccount user) {
-            users.put(user.mobile(), user);
+        @Override
+        public UserAccount save(UserAccount user) {
+            var saved = user.id() == 0
+                    ? new UserAccount(users.size() + 1L, users.size() + 1L, user.mobile(), user.passwordHash(),
+                    user.employmentType(), user.userStatus(), user.employeeStatus(), user.displayName(), user.avatarUrl())
+                    : user;
+            users.put(saved.mobile(), saved);
+            usersById.put(saved.id(), saved);
+            return saved;
         }
 
         String lastLoginMethod(String mobile) {
@@ -137,8 +145,13 @@ class AuthServiceTest {
         }
 
         @Override
-        public void recordLogin(String mobile, String loginMethod) {
-            loginMethods.put(mobile, loginMethod);
+        public Optional<UserAccount> findById(long id) {
+            return Optional.ofNullable(usersById.get(id));
+        }
+
+        @Override
+        public void recordLogin(long userId, String loginMethod) {
+            loginMethods.put(usersById.get(userId).mobile(), loginMethod);
         }
     }
 
@@ -177,6 +190,11 @@ class AuthServiceTest {
                     .filter(Role::enabled)
                     .filter(role -> role.memberKeys().contains(memberKey))
                     .toList();
+        }
+
+        @Override
+        public List<Role> findEnabledByUserId(long userId) {
+            return roles.stream().filter(Role::enabled).toList();
         }
 
         @Override

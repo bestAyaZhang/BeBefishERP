@@ -75,13 +75,13 @@ public class AuthService {
     }
 
     private LoginResult issueLogin(UserAccount user, String method) {
-        var authorization = authorizationResolver.resolve(user.mobile());
+        var authorization = authorizationResolver.resolve(user.id());
         var authenticatedUser = new AuthenticatedUser(
                 user.mobile(),
                 authorization.roles(),
                 authorization.permissions()
         );
-        userAccounts.recordLogin(user.mobile(), method);
+        userAccounts.recordLogin(user.id(), method);
         return tokenIssuer.issue(authenticatedUser, method);
     }
 
