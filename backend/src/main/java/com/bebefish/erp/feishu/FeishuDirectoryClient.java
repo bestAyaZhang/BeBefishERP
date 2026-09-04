@@ -8,4 +8,8 @@ public interface FeishuDirectoryClient {
     FeishuEmployeeProfile employeeProfile(String openId);
 
     List<FeishuBusinessRole> businessRoles(String openId);
+
+    default List<FeishuBusinessRole> allBusinessRoles() {
+        return businessRoles("");
+    }
 }

@@ -68,4 +68,12 @@ public class MockFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
         }
         return List.of(new FeishuBusinessRole("mock-role-warehouse", "模拟仓库主管"));
     }
+
+    @Override
+    public List<FeishuBusinessRole> allBusinessRoles() {
+        return List.of(
+                new FeishuBusinessRole("mock-role-warehouse", "模拟仓库主管"),
+                new FeishuBusinessRole("mock-role-finance", "模拟财务")
+        );
+    }
 }

@@ -121,6 +121,20 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
         return List.copyOf(result);
     }
 
+    @Override
+    public List<FeishuBusinessRole> allBusinessRoles() {
+        JsonNode data = data(get("/open-apis/contact/v3/functional_roles?page_size=100", tenantAccessToken()));
+        JsonNode items = data.path("items");
+        List<FeishuBusinessRole> result = new ArrayList<>();
+        if (items.isArray()) {
+            items.forEach(item -> result.add(new FeishuBusinessRole(
+                    firstText(item, "role_id", "id"),
+                    firstText(item, "role_name", "name")
+            )));
+        }
+        return List.copyOf(result);
+    }
+
     private String tenantAccessToken() {
         JsonNode root = post("/open-apis/auth/v3/tenant_access_token/internal", Map.of(
                 "app_id", properties.getAppId(),
