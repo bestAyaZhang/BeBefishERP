@@ -105,29 +105,29 @@ Inventory / Stocktake Review
 - Consumes: the approved specification, existing Figma variables/components, and current source screenshots
 - Produces: confirmed reusable node IDs, the new page ID, and empty section IDs for all later tasks
 
-- [ ] **Step 1: Load the required Figma skills and tool schema**
+- [x] **Step 1: Load the required Figma skills and tool schema**
 
 Read the complete instructions for `figma:figma-use` and `figma:figma-generate-design`. Load the schema for `use_figma` and the screenshot/metadata capabilities required by those skills. Do not load `figma-create-new-file` because this plan modifies an existing file.
 
-- [ ] **Step 2: Inspect the existing file before any write**
+- [x] **Step 2: Inspect the existing file before any write**
 
 Read the page tree, local variables, text styles, components, component sets, and current selection. Confirm the file is a Figma Design file and confirm the exact IDs of `01 Foundations`, `02 Components`, and `03 Master Data`.
 
 Expected: all three existing pages remain available, and their names and IDs are recorded in execution notes.
 
-- [ ] **Step 3: Inventory reusable design-system assets**
+- [x] **Step 3: Inventory reusable design-system assets**
 
 Record the node IDs and property names for the existing sidebar, top toolbar, page header, primary/secondary/danger buttons, search field, select, status tag, table cells/rows/container, pagination, drawer, confirm dialog, and loading/empty/error states.
 
 Expected: later screens can use component instances rather than copied raw groups.
 
-- [ ] **Step 4: Inspect the existing warehouse and inventory references**
+- [x] **Step 4: Inspect the existing warehouse and inventory references**
 
 Capture a screenshot of the warehouse list in `03 Master Data` and inspect the current inventory pages or their stored reference frames if present. Compare the shell, density, padding, controls, and table treatment with `frontend/prototype-screenshots/products/product-catalog-figma-reference.png`.
 
 Expected: the new work uses the same shell and visual density and does not invent a second design system.
 
-- [ ] **Step 5: Create and structure the new page**
+- [x] **Step 5: Create and structure the new page**
 
 Create page `04 Inventory & Warehouse`, then create labeled top-level section frames in this order:
 
@@ -142,11 +142,11 @@ Create page `04 Inventory & Warehouse`, then create labeled top-level section fr
 
 Keep at least `160px` between top-level screen frames and at least `320px` between section groups so prototype links and review annotations remain readable.
 
-- [ ] **Step 6: Validate the page setup**
+- [x] **Step 6: Validate the page setup**
 
 Read the updated page list and screenshot the new page overview. Verify there is exactly one new page, no existing node was renamed or deleted, and each section label is visible at page overview scale.
 
-- [ ] **Step 7: Record the checkpoint**
+- [x] **Step 7: Record the checkpoint**
 
 Update this task's checkboxes and record the confirmed page, variable, style, and component IDs. Do not proceed if a required existing component is missing; instead, list it as an explicit component addition in Task 2.
 
