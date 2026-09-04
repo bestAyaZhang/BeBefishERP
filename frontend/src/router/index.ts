@@ -6,6 +6,7 @@ import InventoryBalanceView from '../features/inventory/views/InventoryBalanceVi
 import InventoryLedgerView from '../features/inventory/views/InventoryLedgerView.vue';
 import StockAdjustmentView from '../features/inventory/views/StockAdjustmentView.vue';
 import LoginView from '../views/LoginView.vue';
+import { restoreCurrentUser } from '../services/authSession';
 
 const placeholderPages: RouteRecordRaw[] = [
   {
@@ -45,6 +46,12 @@ const placeholderPages: RouteRecordRaw[] = [
   { path: 'organization/employees', name: 'organization-employees', component: () => import('../features/organization/views/EmployeeManagementView.vue') },
   { path: 'organization/departments', name: 'organization-departments', component: () => import('../features/organization/views/DepartmentManagementView.vue') },
   { path: 'organization/positions', name: 'organization-positions', component: () => import('../features/organization/views/PositionManagementView.vue') },
+  {
+    path: 'organization/permissions',
+    name: 'organization-permissions',
+    component: () => import('../features/permission/views/PermissionManagementView.vue'),
+    meta: { requiredPermission: 'system:role:view' }
+  },
   { path: 'sales/create', name: 'sales-create', component: () => import('../features/sales/SalesCreateView.vue') },
   { path: 'sales/orders/:id', name: 'sales-order-detail', component: () => import('../features/sales/SalesOrderDetailView.vue'), props: (route) => ({ orderId: Number(route.params.id) }) },
   { path: 'sales/orders', name: 'sales-orders', component: () => import('../features/sales/SalesOrdersView.vue') },
@@ -74,6 +81,10 @@ router.beforeEach((to) => {
   }
   if (to.name === 'login' && accessToken) {
     return { name: 'workbench' };
+  }
+  if (typeof to.meta.requiredPermission === 'string') {
+    const user = restoreCurrentUser();
+    if (!user?.permissions.includes(to.meta.requiredPermission)) return { name: 'workbench' };
   }
   return true;
 });

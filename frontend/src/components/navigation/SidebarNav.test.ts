@@ -57,13 +57,14 @@ describe('SidebarNav', () => {
   });
 
   it('shows organization children only with organization permission', () => {
-    storeCurrentUser(['organization:view']);
+    storeCurrentUser(['organization:view', 'system:role:view']);
     const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
 
     expect(wrapper.text()).toContain('组织架构');
     expect(wrapper.text()).toContain('员工管理');
     expect(wrapper.text()).toContain('部门管理');
     expect(wrapper.text()).toContain('岗位管理');
+    expect(wrapper.text()).toContain('权限管理');
 
     wrapper.unmount();
     storeCurrentUser(['product:view']);

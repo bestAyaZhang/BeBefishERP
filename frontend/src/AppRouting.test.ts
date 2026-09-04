@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import router from './router';
 import { getCurrentUser } from './services/auth';
+import { clearCurrentUser, saveCurrentUser } from './services/authSession';
 import { ACCESS_TOKEN_STORAGE_KEY } from './types/auth';
 
 const dashboardMocks = vi.hoisted(() => ({
@@ -24,6 +25,7 @@ describe('application routes', () => {
 
   beforeEach(() => {
     localStorage.clear();
+    clearCurrentUser();
     localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, 'test-token');
     dashboardMocks.getOverview.mockReset();
     dashboardMocks.getOverview.mockResolvedValue({
@@ -90,8 +92,14 @@ describe('application routes', () => {
   it.each([
     ['/organization/employees', '员工管理', 'employee-workspace'],
     ['/organization/departments', '部门管理', 'department-workspace'],
-    ['/organization/positions', '岗位管理', 'position-workspace']
+    ['/organization/positions', '岗位管理', 'position-workspace'],
+    ['/organization/permissions', '权限管理', 'permission-workspace']
   ])('renders the organization route %s inside the shared ERP layout', async (path, title, testId) => {
+    if (path === '/organization/permissions') {
+      saveCurrentUser({
+        accessToken: 'test-token', mobile: '13800138000', roles: ['ADMIN'], permissions: ['system:role:view'], loginMethod: 'password'
+      });
+    }
     await router.push(path);
     await router.isReady();
     wrapper = mount(App, { global: { plugins: [router] } });

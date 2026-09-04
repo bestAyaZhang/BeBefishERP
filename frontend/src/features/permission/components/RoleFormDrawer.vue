@@ -4,7 +4,9 @@ import AccessibleDialog from '../../../components/AccessibleDialog.vue';
 import type { CreateRolePayload, PermissionRole, PermissionRoleSummary, UpdateRolePayload } from '../types';
 
 type Mode = 'create' | 'edit';
-const props = defineProps<{ open: boolean; mode: Mode; role: PermissionRole | null; copySources: PermissionRoleSummary[]; existingCodes: string[]; saving: boolean; error: string }>();
+const props = withDefaults(defineProps<{ open: boolean; mode: Mode; role: PermissionRole | null; copySources: PermissionRoleSummary[]; existingCodes: string[]; saving: boolean; error: string; initialCopyFromRoleId?: number | null }>(), {
+  initialCopyFromRoleId: null
+});
 const emit = defineEmits<{ close: []; submit: [payload: CreateRolePayload | UpdateRolePayload] }>();
 const form = ref({ name: '', code: '', description: '', copyFromRoleId: null as number | null });
 const validationError = ref('');
@@ -13,10 +15,10 @@ const normalizedCode = computed(() => form.value.code.trim().toUpperCase());
 const codePattern = /^[A-Z0-9_]+$/;
 
 function reset() {
-  form.value = { name: props.role?.name ?? '', code: props.role?.code ?? '', description: props.role?.description ?? '', copyFromRoleId: null };
+  form.value = { name: props.role?.name ?? '', code: props.role?.code ?? '', description: props.role?.description ?? '', copyFromRoleId: props.mode === 'create' ? props.initialCopyFromRoleId : null };
   validationError.value = '';
 }
-watch(() => [props.open, props.mode, props.role?.id] as const, reset, { immediate: true });
+watch(() => [props.open, props.mode, props.role?.id, props.initialCopyFromRoleId] as const, reset, { immediate: true });
 function validate() {
   if (!form.value.name.trim()) return '请输入角色名称';
   if (props.mode === 'create') {

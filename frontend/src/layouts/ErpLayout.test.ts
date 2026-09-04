@@ -58,7 +58,8 @@ function createTestRouter() {
       { path: '/products/:id', name: 'product-detail', component: TestPage },
       { path: '/organization/employees', name: 'organization-employees', component: TestPage },
       { path: '/organization/departments', name: 'organization-departments', component: TestPage },
-      { path: '/organization/positions', name: 'organization-positions', component: TestPage }
+      { path: '/organization/positions', name: 'organization-positions', component: TestPage },
+      { path: '/organization/permissions', name: 'organization-permissions', component: TestPage }
     ]
   });
 }
@@ -169,7 +170,8 @@ describe('ErpLayout', () => {
   it.each([
     ['/organization/employees', '员工管理'],
     ['/organization/departments', '部门管理'],
-    ['/organization/positions', '岗位管理']
+    ['/organization/positions', '岗位管理'],
+    ['/organization/permissions', '权限管理']
   ])('matches the organization breadcrumb and search copy for %s', async (path, title) => {
     ({ router, wrapper } = await mountLayout(path));
 
