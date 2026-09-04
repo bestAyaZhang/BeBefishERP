@@ -8,6 +8,7 @@ const props = defineProps<{
   page: number;
   pageSize: number;
   total: number;
+  testIdPrefix?: string;
 }>();
 
 const emit = defineEmits<{
@@ -55,7 +56,7 @@ function changePageSize(event: Event) {
 
     <nav class="flex items-center gap-2" aria-label="组织数据分页">
       <button
-        data-testid="previous-page"
+        :data-testid="`${testIdPrefix ?? ''}previous-page`"
         type="button"
         class="flex h-8 w-8 items-center justify-center rounded-[6px] border border-slate-200 text-slate-600 transition enabled:hover:border-[#536dff] enabled:hover:text-[#536dff] disabled:cursor-not-allowed disabled:text-slate-300"
         :disabled="currentPage <= 1"
@@ -88,7 +89,7 @@ function changePageSize(event: Event) {
       </template>
 
       <button
-        data-testid="next-page"
+        :data-testid="`${testIdPrefix ?? ''}next-page`"
         type="button"
         class="flex h-8 w-8 items-center justify-center rounded-[6px] border border-slate-200 text-slate-600 transition enabled:hover:border-[#536dff] enabled:hover:text-[#536dff] disabled:cursor-not-allowed disabled:text-slate-300"
         :disabled="currentPage >= pageCount"
