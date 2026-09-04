@@ -287,35 +287,35 @@ Record the four frame IDs and the reusable 2D demo-plan group ID for prototype w
 - Consumes: the 2D plan, canvas toolbar, layer tree, zone/location shapes, fields, buttons, dialog, and validation rows
 - Produces: a complete draft-edit-validate-publish flow without CAD import
 
-- [ ] **Step 1: Create the draft editor shell**
+- [x] **Step 1: Create the draft editor shell**
 
 Duplicate the 2D workspace geometry into `Warehouse Layout / Draft Editor`. Replace monitoring filters with draft status `草稿 v3`, saved-at text, undo/redo, `放弃更改`, `校验并发布`, and the full editing toolbar.
 
-- [ ] **Step 2: Expose editable layers and drawing modes**
+- [x] **Step 2: Expose editable layers and drawing modes**
 
 Use the layer tree to show warehouse boundary, fixed zone A, free zone B, main aisle, fire-hydrant obstacle, and fixed locations. Show lock/visibility controls and an active `Draw Location` tool. Add visible rulers, snap-grid state, and a small instruction strip describing click-drag drawing and metric dimensions. Include discoverable controls for select/multi-select, move, resize, rotate, align, duplicate, and undo/redo.
 
-- [ ] **Step 3: Design the object-properties panel**
+- [x] **Step 3: Design the object-properties panel**
 
 Create the `Layout Editor / Object Properties` strip and use it in the right inspector area. Provide contextual variants for warehouse boundary, fixed zone, free zone, aisle, obstacle, and fixed location. Fields include name/code, x/y, width/depth, rotation, maximum height, maximum weight, maximum volume, maximum SKU count, and single-SKU policy where applicable.
 
-- [ ] **Step 4: Show a realistic in-progress draft**
+- [x] **Step 4: Show a realistic in-progress draft**
 
 Select a newly drawn fixed location `A-13`, show its dimension handles and measurements, and display one unresolved overlap with the main aisle plus one out-of-bound corner. The canvas must make clear that draft changes have not affected the published operational map.
 
-- [ ] **Step 5: Create the publish-validation frame**
+- [x] **Step 5: Create the publish-validation frame**
 
 Duplicate the editor as `Warehouse Layout / Publish Validation`. Open a right-side validation drawer or panel listing blocking errors and warnings with `Inventory/Publish Validation Item` instances. Include summary counts, `在画布中定位`, `返回修改`, and a disabled `发布布局` action while blocking errors remain.
 
-- [ ] **Step 6: Add the resolved publish state within the frame**
+- [x] **Step 6: Add the resolved publish state within the frame**
 
 Below or beside the blocking state, create a named state group showing all blocking errors resolved, warnings acknowledged, `发布布局` enabled, and a confirmation dialog explaining that existing inventory keeps stable location IDs and only the new published geometry becomes operational.
 
-- [ ] **Step 7: Validate authoring behavior**
+- [x] **Step 7: Validate authoring behavior**
 
 Screenshot the editor, selected-object properties, validation list, and confirmation dialog. Verify metric fields are aligned, canvas selection handles do not obscure measurements, unpublished state is visible, and the publish action cannot be mistaken as available when errors exist.
 
-- [ ] **Step 8: Record the checkpoint**
+- [x] **Step 8: Record the checkpoint**
 
 Record both frame IDs, the object-property state IDs, and the publish-confirmation overlay ID.
 
