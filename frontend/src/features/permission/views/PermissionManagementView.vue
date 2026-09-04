@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { currentUser } from '../../../services/authSession';
 import DataScopePanel from '../components/DataScopePanel.vue';
+import FeishuRoleMappingPanel from '../components/FeishuRoleMappingPanel.vue';
 import MemberSelectionDrawer from '../components/MemberSelectionDrawer.vue';
 import PermissionMatrix from '../components/PermissionMatrix.vue';
 import RoleFormDrawer from '../components/RoleFormDrawer.vue';
@@ -9,23 +10,25 @@ import RoleListPanel from '../components/RoleListPanel.vue';
 import RoleMembersPanel from '../components/RoleMembersPanel.vue';
 import { PERMISSION_MODULES } from '../permissionCatalog';
 import { permissionService, type PermissionService } from '../permissionService';
-import type { CreateRolePayload, PermissionDataScope, PermissionRole, PermissionRoleSummary, RoleMemberPage, RoleMemberQuery, UpdateRolePayload } from '../types';
+import type { CreateRolePayload, FeishuRoleMapping, FeishuRoleMappingCandidate, FeishuRoleOption, PermissionDataScope, PermissionRole, PermissionRoleSummary, RoleMemberPage, RoleMemberQuery, SaveFeishuRoleMappingPayload, UpdateRolePayload } from '../types';
 
-type Tab = 'permissions' | 'scope' | 'members';
+type Tab = 'permissions' | 'scope' | 'members' | 'feishu-mappings';
 type FormMode = 'create' | 'edit';
 type State = 'loading' | 'error' | 'ready';
 type Configuration = { permissionCodes: string[]; dataScope: PermissionDataScope };
 type Query = Required<Pick<RoleMemberQuery, 'page' | 'size'>> & Pick<RoleMemberQuery, 'keyword' | 'departmentId'>;
-const TAB_ORDER: Tab[] = ['permissions', 'scope', 'members'];
+const TAB_ORDER: Tab[] = ['permissions', 'scope', 'members', 'feishu-mappings'];
 const TAB_IDS: Record<Tab, string> = {
   permissions: 'role-permissions-tab',
   scope: 'role-scope-tab',
-  members: 'role-members-tab'
+  members: 'role-members-tab',
+  'feishu-mappings': 'role-feishu-mappings-tab'
 };
 const TAB_PANEL_IDS: Record<Tab, string> = {
   permissions: 'role-permissions-panel',
   scope: 'role-scope-panel',
-  members: 'role-members-panel'
+  members: 'role-members-panel',
+  'feishu-mappings': 'role-feishu-mappings-panel'
 };
 const props = withDefaults(defineProps<{ service?: PermissionService }>(), { service: () => permissionService });
 const EMPTY_PAGE: RoleMemberPage = { records: [], page: 1, pageSize: 20, total: 0 };
@@ -60,6 +63,12 @@ const memberQuery = ref<Query>({ page: 1, size: 20, keyword: '', departmentId: n
 const candidateQuery = ref<Query>({ page: 1, size: 20, keyword: '', departmentId: null });
 const departments = ref<Array<{ id: number; name: string }>>([]);
 const organizationSummary = ref('');
+const feishuMappings = ref<FeishuRoleMapping[]>([]);
+const feishuRoles = ref<FeishuRoleOption[]>([]);
+const feishuCandidateRoles = ref<FeishuRoleMappingCandidate[]>([]);
+const feishuMappingLoading = ref(false);
+const feishuMappingSaving = ref(false);
+const feishuMappingError = ref('');
 let loadEpoch = 0;
 let roleEpoch = 0;
 let memberEpoch = 0;
@@ -189,6 +198,7 @@ async function selectTab(tab: Tab) {
   if (isBusy.value || activeTab.value === tab) return;
   activeTab.value = tab;
   if (tab === 'members') await refreshMembers();
+  if (tab === 'feishu-mappings') await loadFeishuMappings();
 }
 function handleTabKeydown(event: KeyboardEvent, currentTab: Tab) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -319,6 +329,50 @@ async function removeMembers(employeeIds: number[]) {
 function updateMemberQuery(next: Partial<Query>) { memberQuery.value = { ...memberQuery.value, ...next }; void refreshMembers(); }
 function updateCandidateQuery(next: Partial<Query>) { candidateQuery.value = { ...candidateQuery.value, ...next }; void refreshCandidates(); }
 function clearMemberFilters() { updateMemberQuery({ page: 1, keyword: '', departmentId: null }); }
+async function loadFeishuMappings() {
+  feishuMappingLoading.value = true; feishuMappingError.value = '';
+  try {
+    const [loadedMappings, loadedRoles, loadedCandidates] = await Promise.all([
+      props.service.listFeishuRoleMappings(),
+      props.service.listFeishuRoles(),
+      props.service.listFeishuRoleMappingCandidates()
+    ]);
+    feishuMappings.value = loadedMappings;
+    feishuRoles.value = loadedRoles;
+    feishuCandidateRoles.value = loadedCandidates.filter((role) => !role.sensitive);
+  } catch (error) {
+    feishuMappingError.value = messageFrom(error);
+  } finally { feishuMappingLoading.value = false; }
+}
+async function saveFeishuMapping(feishuRoleId: string, payload: SaveFeishuRoleMappingPayload) {
+  if (!canCreate.value || feishuMappingSaving.value) return;
+  feishuMappingSaving.value = true; feishuMappingError.value = '';
+  try {
+    const saved = await props.service.saveFeishuRoleMapping(feishuRoleId, payload);
+    feishuMappings.value = [...feishuMappings.value.filter((mapping) => mapping.feishuRoleId !== feishuRoleId), saved];
+    feedback.value = '飞书角色映射已保存';
+  } catch (error) { feishuMappingError.value = messageFrom(error); }
+  finally { feishuMappingSaving.value = false; }
+}
+async function deleteFeishuMapping(feishuRoleId: string) {
+  if (!canCreate.value || feishuMappingSaving.value) return;
+  feishuMappingSaving.value = true; feishuMappingError.value = '';
+  try {
+    await props.service.deleteFeishuRoleMapping(feishuRoleId);
+    feishuMappings.value = feishuMappings.value.filter((mapping) => mapping.feishuRoleId !== feishuRoleId);
+    feedback.value = '飞书角色映射已删除';
+  } catch (error) { feishuMappingError.value = messageFrom(error); }
+  finally { feishuMappingSaving.value = false; }
+}
+async function syncFeishuMappings() {
+  if (!canCreate.value || feishuMappingSaving.value) return;
+  feishuMappingSaving.value = true; feishuMappingError.value = '';
+  try {
+    feishuMappings.value = await props.service.syncFeishuRoleMappings();
+    feedback.value = '飞书角色映射已同步';
+  } catch (error) { feishuMappingError.value = messageFrom(error); }
+  finally { feishuMappingSaving.value = false; }
+}
 async function loadPage() {
   const request = ++loadEpoch; loadState.value = 'loading'; loadError.value = ''; feedback.value = '';
   try {
@@ -365,6 +419,7 @@ onMounted(loadPage);
             <button :id="TAB_IDS.permissions" type="button" role="tab" :aria-selected="activeTab === 'permissions'" :aria-controls="TAB_PANEL_IDS.permissions" :tabindex="activeTab === 'permissions' ? 0 : -1" class="px-4 py-3 text-sm font-medium" :class="activeTab === 'permissions' ? 'border-b-2 border-[#536dff] text-[#536dff]' : 'text-slate-500'" :disabled="isBusy" @click="selectTab('permissions')" @keydown="handleTabKeydown($event, 'permissions')">权限配置</button>
             <button :id="TAB_IDS.scope" type="button" role="tab" :aria-selected="activeTab === 'scope'" :aria-controls="TAB_PANEL_IDS.scope" :tabindex="activeTab === 'scope' ? 0 : -1" class="px-4 py-3 text-sm font-medium" :class="activeTab === 'scope' ? 'border-b-2 border-[#536dff] text-[#536dff]' : 'text-slate-500'" :disabled="isBusy" @click="selectTab('scope')" @keydown="handleTabKeydown($event, 'scope')">数据范围</button>
             <button :id="TAB_IDS.members" data-testid="tab-members" type="button" role="tab" :aria-selected="activeTab === 'members'" :aria-controls="TAB_PANEL_IDS.members" :tabindex="activeTab === 'members' ? 0 : -1" class="px-4 py-3 text-sm font-medium" :class="activeTab === 'members' ? 'border-b-2 border-[#536dff] text-[#536dff]' : 'text-slate-500'" :disabled="isBusy" @click="selectTab('members')" @keydown="handleTabKeydown($event, 'members')">成员管理</button>
+            <button :id="TAB_IDS['feishu-mappings']" data-testid="tab-feishu-mappings" type="button" role="tab" :aria-selected="activeTab === 'feishu-mappings'" :aria-controls="TAB_PANEL_IDS['feishu-mappings']" :tabindex="activeTab === 'feishu-mappings' ? 0 : -1" class="px-4 py-3 text-sm font-medium" :class="activeTab === 'feishu-mappings' ? 'border-b-2 border-[#536dff] text-[#536dff]' : 'text-slate-500'" :disabled="isBusy" @click="selectTab('feishu-mappings')" @keydown="handleTabKeydown($event, 'feishu-mappings')">飞书角色映射</button>
           </div>
           <div v-if="configurationDraft" class="min-h-0 flex-1 py-5">
             <div :id="TAB_PANEL_IDS.permissions" role="tabpanel" :aria-labelledby="TAB_IDS.permissions" :hidden="activeTab !== 'permissions'">
@@ -379,8 +434,24 @@ onMounted(loadPage);
                 <RoleMembersPanel :page="memberPage" :can-manage="canEdit && !isBusy" :selected-ids="memberSelectedIds" :keyword="memberQuery.keyword" :department-id="memberQuery.departmentId" :departments="departments" @page="updateMemberQuery({ page: $event })" @page-size="updateMemberQuery({ size: $event, page: 1 })" @keyword="updateMemberQuery({ keyword: $event, page: 1 })" @department="updateMemberQuery({ departmentId: $event, page: 1 })" @update:selected-ids="memberSelectedIds = $event" @add="openMemberDrawer" @remove="removeMembers" @clear="clearMemberFilters" />
               </template>
             </div>
+            <div :id="TAB_PANEL_IDS['feishu-mappings']" role="tabpanel" :aria-labelledby="TAB_IDS['feishu-mappings']" :hidden="activeTab !== 'feishu-mappings'">
+              <FeishuRoleMappingPanel
+                v-if="activeTab === 'feishu-mappings'"
+                :mappings="feishuMappings"
+                :feishu-roles="feishuRoles"
+                :candidate-roles="feishuCandidateRoles"
+                :can-manage="canCreate"
+                :loading="feishuMappingLoading"
+                :saving="feishuMappingSaving"
+                :error="feishuMappingError"
+                @retry="loadFeishuMappings"
+                @sync="syncFeishuMappings"
+                @save="saveFeishuMapping"
+                @delete="deleteFeishuMapping"
+              />
+            </div>
           </div>
-          <div v-if="configurationDraft" data-testid="configuration-footer" class="sticky bottom-0 z-10 flex items-center gap-3 border-t border-slate-200 bg-white py-4"><button data-testid="cancel-role-configuration" type="button" class="rounded-[6px] border border-slate-200 px-4 py-2 text-sm text-slate-600 disabled:opacity-50" :disabled="!configurationDirty || isBusy" @click="cancelConfiguration">取消修改</button><button data-testid="save-role-configuration" type="button" class="rounded-[6px] bg-[#536dff] px-4 py-2 text-sm text-white disabled:opacity-50" :disabled="!canEdit || !configurationDirty || isBusy" @click="saveConfiguration">{{ configurationSaving ? '保存中...' : '保存配置' }}</button><p v-if="saveError" data-testid="permission-save-error" class="text-sm text-rose-600">{{ saveError }}</p></div>
+          <div v-if="configurationDraft && activeTab !== 'feishu-mappings'" data-testid="configuration-footer" class="sticky bottom-0 z-10 flex items-center gap-3 border-t border-slate-200 bg-white py-4"><button data-testid="cancel-role-configuration" type="button" class="rounded-[6px] border border-slate-200 px-4 py-2 text-sm text-slate-600 disabled:opacity-50" :disabled="!configurationDirty || isBusy" @click="cancelConfiguration">取消修改</button><button data-testid="save-role-configuration" type="button" class="rounded-[6px] bg-[#536dff] px-4 py-2 text-sm text-white disabled:opacity-50" :disabled="!canEdit || !configurationDirty || isBusy" @click="saveConfiguration">{{ configurationSaving ? '保存中...' : '保存配置' }}</button><p v-if="saveError" data-testid="permission-save-error" class="text-sm text-rose-600">{{ saveError }}</p></div>
         </template>
         <p v-else-if="roleLoading" data-testid="permission-role-loading" class="p-8 text-sm text-slate-400">正在加载角色…</p>
         <p v-else-if="roleLoadError" data-testid="permission-role-load-error" class="p-8 text-sm text-rose-600">{{ roleLoadError }} <button type="button" class="ml-2 text-[#536dff] underline" @click="pendingRoleId !== null && selectRole(pendingRoleId, true)">重试</button></p>

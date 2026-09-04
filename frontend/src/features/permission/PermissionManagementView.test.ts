@@ -47,7 +47,26 @@ describe('PermissionManagementView', () => {
 
     expect(wrapper.get('[data-testid="selected-role-name"]').text()).toBe('超级管理员');
     expect(wrapper.get('[data-testid="permission-workspace"]').attributes('data-readonly')).toBe('true');
-    expect(wrapper.findAll('[role="tab"]')).toHaveLength(3);
+    expect(wrapper.findAll('[role="tab"]')).toHaveLength(4);
+  });
+
+  it('loads and manages Feishu mappings in an independent fourth tab', async () => {
+    const base = createMockPermissionService(organizationService);
+    const service: PermissionService = {
+      ...base,
+      listFeishuRoleMappings: vi.fn(base.listFeishuRoleMappings),
+      syncFeishuRoleMappings: vi.fn(base.syncFeishuRoleMappings)
+    };
+    const wrapper = mountPermissionView(service, ['system:role:view', 'system:role:manage']);
+    await flushPromises();
+
+    await wrapper.get('[data-testid="tab-feishu-mappings"]').trigger('click');
+    await flushPromises();
+    expect(service.listFeishuRoleMappings).toHaveBeenCalled();
+    expect(wrapper.text()).toContain('模拟仓库主管');
+    await wrapper.get('[data-testid="sync-feishu-mappings"]').trigger('click');
+    await flushPromises();
+    expect(service.syncFeishuRoleMappings).toHaveBeenCalledTimes(1);
   });
 
   it('links tabs to panels and supports Left, Right, Home, and End roving focus', async () => {
@@ -65,17 +84,17 @@ describe('PermissionManagementView', () => {
       const tabs = wrapper.findAll('[role="tab"]');
       const panels = wrapper.findAll('[role="tabpanel"]');
       expect(tabs.map((tab) => tab.attributes('id'))).toEqual([
-        'role-permissions-tab', 'role-scope-tab', 'role-members-tab'
+        'role-permissions-tab', 'role-scope-tab', 'role-members-tab', 'role-feishu-mappings-tab'
       ]);
       expect(tabs.map((tab) => tab.attributes('aria-controls'))).toEqual([
-        'role-permissions-panel', 'role-scope-panel', 'role-members-panel'
+        'role-permissions-panel', 'role-scope-panel', 'role-members-panel', 'role-feishu-mappings-panel'
       ]);
-      expect(tabs.map((tab) => tab.attributes('tabindex'))).toEqual(['0', '-1', '-1']);
+      expect(tabs.map((tab) => tab.attributes('tabindex'))).toEqual(['0', '-1', '-1', '-1']);
       expect(panels.map((panel) => panel.attributes('id'))).toEqual([
-        'role-permissions-panel', 'role-scope-panel', 'role-members-panel'
+        'role-permissions-panel', 'role-scope-panel', 'role-members-panel', 'role-feishu-mappings-panel'
       ]);
       expect(panels.map((panel) => panel.attributes('aria-labelledby'))).toEqual([
-        'role-permissions-tab', 'role-scope-tab', 'role-members-tab'
+        'role-permissions-tab', 'role-scope-tab', 'role-members-tab', 'role-feishu-mappings-tab'
       ]);
 
       await tabs[0].trigger('keydown', { key: 'ArrowRight' });
@@ -87,10 +106,10 @@ describe('PermissionManagementView', () => {
       expect(document.activeElement).toBe(tabs[0].element);
 
       await tabs[0].trigger('keydown', { key: 'End' });
-      expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe('成员管理');
-      expect(document.activeElement).toBe(tabs[2].element);
+      expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe('飞书角色映射');
+      expect(document.activeElement).toBe(tabs[3].element);
 
-      await tabs[2].trigger('keydown', { key: 'Home' });
+      await tabs[3].trigger('keydown', { key: 'Home' });
       expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe('权限配置');
       expect(document.activeElement).toBe(tabs[0].element);
     } finally {

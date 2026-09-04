@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import DataScopePanel from './components/DataScopePanel.vue';
+import FeishuRoleMappingPanel from './components/FeishuRoleMappingPanel.vue';
 import MemberSelectionDrawer from './components/MemberSelectionDrawer.vue';
 import PermissionMatrix from './components/PermissionMatrix.vue';
 import RoleFormDrawer from './components/RoleFormDrawer.vue';
@@ -8,6 +9,47 @@ import RoleListPanel from './components/RoleListPanel.vue';
 import RoleMembersPanel from './components/RoleMembersPanel.vue';
 import { PERMISSION_MODULES } from './permissionCatalog';
 import type { PermissionRoleSummary, RoleMemberPage } from './types';
+
+describe('FeishuRoleMappingPanel', () => {
+  it('never presents sensitive roles as mapping targets and emits a save payload', async () => {
+    const wrapper = mount(FeishuRoleMappingPanel, {
+      props: {
+        mappings: [{ feishuRoleId: 'fs-product', feishuRoleName: '飞书商品运营', erpRoleId: 4, erpRoleName: '商品运营', enabled: true, memberCount: 8, lastSyncedAt: '2026-09-04T09:00:00Z', lastError: null }],
+        feishuRoles: [{ id: 'fs-product', name: '飞书商品运营' }],
+        candidateRoles: [
+          { id: 1, code: 'SUPER_ADMIN', name: '超级管理员', sensitive: true },
+          { id: 4, code: 'PRODUCT_OPERATOR', name: '商品运营', sensitive: false }
+        ],
+        canManage: true,
+        loading: false,
+        saving: false,
+        error: ''
+      }
+    });
+
+    await wrapper.get('[data-testid="edit-feishu-mapping-fs-product"]').trigger('click');
+    expect(wrapper.text()).toContain('商品运营');
+    expect(wrapper.text()).not.toContain('超级管理员');
+    await wrapper.get('[data-testid="save-feishu-mapping-fs-product"]').trigger('click');
+    expect(wrapper.emitted('save')?.[0]).toEqual(['fs-product', {
+      feishuRoleName: '飞书商品运营', erpRoleId: 4, enabled: true
+    }]);
+  });
+
+  it('shows empty, degraded, and read-only states', () => {
+    const wrapper = mount(FeishuRoleMappingPanel, {
+      props: {
+        mappings: [{ feishuRoleId: 'fs-warehouse', feishuRoleName: '仓库主管', erpRoleId: 5, erpRoleName: '仓库管理员', enabled: false, memberCount: 3, lastSyncedAt: null, lastError: 'FEISHU_ROLE_DIRECTORY_UNAVAILABLE' }],
+        feishuRoles: [], candidateRoles: [], canManage: false, loading: false, saving: false, error: ''
+      }
+    });
+
+    expect(wrapper.text()).toContain('已停用');
+    expect(wrapper.text()).toContain('3 名成员');
+    expect(wrapper.text()).toContain('FEISHU_ROLE_DIRECTORY_UNAVAILABLE');
+    expect(wrapper.find('[data-testid="edit-feishu-mapping-fs-warehouse"]').exists()).toBe(false);
+  });
+});
 
 const roles: PermissionRoleSummary[] = [
   { id: 1, code: 'SUPER_ADMIN', name: '超级管理员', kind: 'system', immutable: true, status: 'enabled', memberCount: 2, updatedBy: '系统内置', updatedAt: '' },

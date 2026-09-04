@@ -17,6 +17,7 @@ export interface PermissionRole {
   description: string;
   kind: PermissionRoleKind;
   immutable: boolean;
+  sensitive?: boolean;
   status: PermissionRoleStatus;
   dataScope: PermissionDataScope;
   permissionCodes: string[];
@@ -91,4 +92,34 @@ export interface MemberRemovalResult {
   removed: number;
   skippedLocked: number;
   role: PermissionRole;
+}
+
+export interface FeishuRoleOption {
+  id: string;
+  name: string;
+}
+
+export interface FeishuRoleMapping {
+  feishuRoleId: string;
+  feishuRoleName: string;
+  erpRoleId: number;
+  erpRoleName: string;
+  enabled: boolean;
+  memberCount: number;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+}
+
+export interface FeishuRoleMappingCandidate {
+  id: number;
+  code: string;
+  name: string;
+  /** Defensive client-side guard; the server also excludes sensitive roles. */
+  sensitive?: boolean;
+}
+
+export interface SaveFeishuRoleMappingPayload {
+  feishuRoleName: string;
+  erpRoleId: number;
+  enabled: boolean;
 }

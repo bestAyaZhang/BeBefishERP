@@ -1,7 +1,12 @@
 import { organizationService, type OrganizationService } from '../organization/organizationService';
+import { createService } from '../../services/serviceFactory';
+import { httpPermissionService } from './httpPermissionService';
 import { createMockPermissionService } from './mockPermissionService';
 import type {
   CreateRolePayload,
+  FeishuRoleMapping,
+  FeishuRoleMappingCandidate,
+  FeishuRoleOption,
   MemberMutationResult,
   MemberRemovalResult,
   PermissionRole,
@@ -11,6 +16,7 @@ import type {
   RoleMemberPage,
   RoleMemberQuery,
   SaveRoleConfigurationPayload,
+  SaveFeishuRoleMappingPayload,
   UpdateRolePayload
 } from './types';
 
@@ -26,8 +32,17 @@ export interface PermissionService {
   listCandidates(roleId: number, query: RoleMemberQuery): Promise<RoleMemberPage>;
   addMembers(roleId: number, employeeIds: number[]): Promise<MemberMutationResult>;
   removeMembers(roleId: number, employeeIds: number[]): Promise<MemberRemovalResult>;
+  listFeishuRoles(): Promise<FeishuRoleOption[]>;
+  listFeishuRoleMappings(): Promise<FeishuRoleMapping[]>;
+  listFeishuRoleMappingCandidates(): Promise<FeishuRoleMappingCandidate[]>;
+  saveFeishuRoleMapping(feishuRoleId: string, payload: SaveFeishuRoleMappingPayload): Promise<FeishuRoleMapping>;
+  deleteFeishuRoleMapping(feishuRoleId: string): Promise<void>;
+  syncFeishuRoleMappings(): Promise<FeishuRoleMapping[]>;
 }
 
-export const permissionService: PermissionService = createMockPermissionService(organizationService);
+export const permissionService: PermissionService = createService(
+  () => createMockPermissionService(organizationService),
+  () => httpPermissionService
+);
 
 export type { OrganizationService };

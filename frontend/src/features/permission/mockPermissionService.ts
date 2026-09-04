@@ -5,6 +5,7 @@ import type { Department, Employee, Position } from '../organization/types';
 import { collectDepartmentSubtreeIds } from '../organization/organizationTree';
 import type {
   CreateRolePayload,
+  FeishuRoleMapping,
   MemberMutationResult,
   MemberRemovalResult,
   PermissionDataScope,
@@ -211,6 +212,15 @@ export function createMockPermissionService(organization: OrganizationService): 
   let positions: Position[] = [];
   let nextRoleId = Math.max(...roles.map((role) => role.id)) + 1;
   let initialization: Promise<void> | null = null;
+  const feishuRoles = [
+    { id: 'mock-role-warehouse', name: '模拟仓库主管' },
+    { id: 'mock-role-finance', name: '模拟财务' }
+  ];
+  let feishuMappings: FeishuRoleMapping[] = [{
+    feishuRoleId: 'mock-role-warehouse', feishuRoleName: '模拟仓库主管',
+    erpRoleId: 5, erpRoleName: '仓库管理员', enabled: true, memberCount: 2,
+    lastSyncedAt: '2026-09-04T09:00:00Z', lastError: null
+  }];
 
   const ensureInitialized = async () => {
     if (!initialization) {
@@ -430,6 +440,45 @@ export function createMockPermissionService(organization: OrganizationService): 
       const updated = { ...role, memberIds: [...members], updatedBy: '当前用户' };
       roles = roles.map((item) => item.id === roleId ? updated : item);
       return { removed, skippedLocked, role: cloneRole(updated) };
+    },
+
+    async listFeishuRoles() {
+      return feishuRoles.map((role) => ({ ...role }));
+    },
+
+    async listFeishuRoleMappings() {
+      return feishuMappings.map((mapping) => ({ ...mapping }));
+    },
+
+    async listFeishuRoleMappingCandidates() {
+      await ensureInitialized();
+      return roles
+        .filter((role) => role.status === 'enabled' && role.code !== 'SUPER_ADMIN' && role.code !== 'ORG_ADMIN')
+        .map((role) => ({ id: role.id, code: role.code, name: role.name, sensitive: false }));
+    },
+
+    async saveFeishuRoleMapping(feishuRoleId, payload) {
+      const target = findRole(payload.erpRoleId);
+      if (target.status !== 'enabled' || ['SUPER_ADMIN', 'ORG_ADMIN'].includes(target.code)) {
+        throw new Error('敏感或停用角色不能作为飞书映射目标');
+      }
+      const mapping: FeishuRoleMapping = {
+        feishuRoleId, feishuRoleName: payload.feishuRoleName, erpRoleId: target.id,
+        erpRoleName: target.name, enabled: payload.enabled, memberCount: 0,
+        lastSyncedAt: null, lastError: null
+      };
+      feishuMappings = [...feishuMappings.filter((item) => item.feishuRoleId !== feishuRoleId), mapping];
+      return { ...mapping };
+    },
+
+    async deleteFeishuRoleMapping(feishuRoleId) {
+      feishuMappings = feishuMappings.filter((mapping) => mapping.feishuRoleId !== feishuRoleId);
+    },
+
+    async syncFeishuRoleMappings() {
+      const syncedAt = new Date().toISOString();
+      feishuMappings = feishuMappings.map((mapping) => ({ ...mapping, lastSyncedAt: syncedAt, lastError: null }));
+      return feishuMappings.map((mapping) => ({ ...mapping }));
     }
   };
 }
