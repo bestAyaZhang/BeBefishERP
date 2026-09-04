@@ -42,7 +42,7 @@
 - Produces: `PermissionAction`, `PermissionDataScope`, `PermissionModule`, `PermissionRole`, `PermissionRoleSummary`, `RoleMember`, `RoleMemberPage`, `RoleMemberQuery`, `CreateRolePayload`, `UpdateRolePayload`, `SaveRoleConfigurationPayload`, `MemberMutationResult`, and `MemberRemovalResult`.
 - Produces: `PERMISSION_MODULES`, `toggleModulePermission()`, `moduleSelectionState()`, and `widestDataScope()`.
 
-- [ ] **Step 1: Write failing rule tests**
+- [x] **Step 1: Write failing rule tests**
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -73,13 +73,13 @@ describe('permissionRules', () => {
 });
 ```
 
-- [ ] **Step 2: Verify the tests fail because the permission domain does not exist**
+- [x] **Step 2: Verify the tests fail because the permission domain does not exist**
 
 Run: `cd frontend && npm run test:run -- src/features/permission/permissionRules.test.ts`
 
 Expected: FAIL with unresolved `permissionCatalog` or `permissionRules` modules.
 
-- [ ] **Step 3: Define immutable UI contracts and the exact catalog**
+- [x] **Step 3: Define immutable UI contracts and the exact catalog**
 
 ```ts
 export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export';
@@ -171,7 +171,7 @@ Create `PERMISSION_MODULES` with these exact keys, labels, and action sets from 
 - `finance/财务`: `view,create,edit,approve,export`.
 - `organization/组织架构`: `view,create,edit,delete,export`.
 
-- [ ] **Step 4: Implement the minimal pure rules**
+- [x] **Step 4: Implement the minimal pure rules**
 
 ```ts
 const SCOPE_RANK: Record<PermissionDataScope, number> = {
@@ -202,7 +202,7 @@ export function toggleModulePermission(
 }
 ```
 
-- [ ] **Step 5: Verify rule tests pass and commit**
+- [x] **Step 5: Verify rule tests pass and commit**
 
 Run: `cd frontend && npm run test:run -- src/features/permission/permissionRules.test.ts`
 
@@ -226,7 +226,7 @@ git commit -m "feat: add permission domain rules"
 - Consumes: organization methods `listAllEmployees()`, `listAllDepartments()`, and `listAllPositions()`.
 - Produces: `PermissionService` with `listRoles`, `getRole`, `createRole`, `updateRole`, `saveConfiguration`, `changeRoleStatus`, `listMembers`, `listCandidates`, `addMembers`, and `removeMembers`.
 
-- [ ] **Step 1: Write failing service tests for role rules**
+- [x] **Step 1: Write failing service tests for role rules**
 
 ```ts
 it('creates an uppercase unique custom role and copies configuration without members', async () => {
@@ -250,7 +250,7 @@ it('protects system roles and rejects disabling the super administrator', async 
 });
 ```
 
-- [ ] **Step 2: Write failing member tests**
+- [x] **Step 2: Write failing member tests**
 
 ```ts
 it('skips duplicate and locked members, computes widest scope and reconciles pagination', async () => {
@@ -273,13 +273,13 @@ it('removes a disabled role from each member effective data scope', async () => 
 });
 ```
 
-- [ ] **Step 3: Verify the service tests fail**
+- [x] **Step 3: Verify the service tests fail**
 
 Run: `cd frontend && npm run test:run -- src/features/permission/mockPermissionService.test.ts`
 
 Expected: FAIL because `createMockPermissionService` and `PermissionService` do not exist.
 
-- [ ] **Step 4: Implement the service contract and seeded roles**
+- [x] **Step 4: Implement the service contract and seeded roles**
 
 ```ts
 export interface PermissionService {
@@ -302,7 +302,7 @@ Export `permissionService = createMockPermissionService(organizationService)` fr
 
 Implement role-code normalization with `/^[A-Z0-9_]+$/`, reject empty names, preserve immutable system roles, skip duplicate member IDs, skip employees holding `SUPER_ADMIN` during removal, calculate other enabled roles, and resolve `finalDataScope` with `widestDataScope`. Clamp requested member pages to the last valid page before slicing.
 
-- [ ] **Step 5: Verify service tests and commit**
+- [x] **Step 5: Verify service tests and commit**
 
 Run: `cd frontend && npm run test:run -- src/features/permission/mockPermissionService.test.ts src/features/permission/permissionRules.test.ts`
 
@@ -330,7 +330,7 @@ git commit -m "feat: add permission management service"
 - Consumes: Task 1 types and pure rules plus the existing `OrganizationPagination` and `AccessibleDialog` components.
 - Produces: controlled presentational components with typed props and emits; no component imports the permission service singleton.
 
-- [ ] **Step 1: Write failing role-list and matrix tests**
+- [x] **Step 1: Write failing role-list and matrix tests**
 
 ```ts
 const roles: PermissionRoleSummary[] = [
@@ -355,7 +355,7 @@ it('enforces view dependency and stays read-only for immutable roles', async () 
 });
 ```
 
-- [ ] **Step 2: Write failing data, member and drawer tests**
+- [x] **Step 2: Write failing data, member and drawer tests**
 
 ```ts
 it('emits the selected data scope and member page changes', async () => {
@@ -378,13 +378,13 @@ it('normalizes role codes and validates uniqueness before submit', async () => {
 });
 ```
 
-- [ ] **Step 3: Verify component tests fail**
+- [x] **Step 3: Verify component tests fail**
 
 Run: `cd frontend && npm run test:run -- src/features/permission/PermissionComponents.test.ts`
 
 Expected: FAIL because the six components do not exist.
 
-- [ ] **Step 4: Implement the approved component contracts**
+- [x] **Step 4: Implement the approved component contracts**
 
 Use the Figma dimensions and behavior directly:
 
@@ -397,7 +397,7 @@ Use the Figma dimensions and behavior directly:
 
 Every user action must emit a domain value; components must not mutate prop arrays in place.
 
-- [ ] **Step 5: Verify component tests and commit**
+- [x] **Step 5: Verify component tests and commit**
 
 Run: `cd frontend && npm run test:run -- src/features/permission/PermissionComponents.test.ts`
 
@@ -427,7 +427,7 @@ git commit -m "feat: add permission management components"
 - Consumes: `PermissionService`, six controlled components, `currentUser`, and the approved route permission codes.
 - Produces: `/organization/permissions`, route name `organization-permissions`, breadcrumb `组织架构 / 权限管理`, and a lazy-loaded production page.
 
-- [ ] **Step 1: Write failing page orchestration tests**
+- [x] **Step 1: Write failing page orchestration tests**
 
 ```ts
 function mountPermissionView(service: PermissionService, permissions: string[]) {
@@ -477,7 +477,7 @@ it('selects a created role and refreshes its member count after member changes',
 });
 ```
 
-- [ ] **Step 2: Write failing route and navigation tests**
+- [x] **Step 2: Write failing route and navigation tests**
 
 ```ts
 expect(router.resolve('/organization/permissions').name).toBe('organization-permissions');
@@ -489,13 +489,13 @@ expect(mount(SidebarNav, { global: { plugins: [router] } }).text()).toContain('�
 
 Add a router test that stores an authenticated current user without `system:role:view`, navigates to `/organization/permissions`, and expects a redirect to `workbench`. Add the positive case with the permission present.
 
-- [ ] **Step 3: Verify page, router and navigation tests fail**
+- [x] **Step 3: Verify page, router and navigation tests fail**
 
 Run: `cd frontend && npm run test:run -- src/features/permission/PermissionManagementView.test.ts src/router/index.test.ts src/components/navigation/SidebarNav.test.ts src/layouts/ErpLayout.test.ts src/AppRouting.test.ts`
 
 Expected: FAIL because the page and route are absent.
 
-- [ ] **Step 4: Implement the page state machine**
+- [x] **Step 4: Implement the page state machine**
 
 On mount, load roles and select `SUPER_ADMIN`. Keep a saved role snapshot and editable draft. Derive `dirty` from the snapshot and draft, and derive `canManage` from `system:role:manage` plus role mutability. Disable role switching and tabs while saving. On failed save, retain the draft and show the exact service message. On successful create, refresh roles, select the created role, and activate `permissions`.
 
@@ -503,7 +503,7 @@ Use one `confirmDiscardChanges()` function for role changes, tab changes that di
 
 Wire every approved mutation through the service: edit updates role name/description, copy opens the create drawer with `copyFromRoleId`, deactivate confirms the affected member count before calling `changeRoleStatus`, add members reports added/skipped counts, and remove/batch-remove excludes rows with `lockedReason`. Refresh the selected role summary and current member page after every successful mutation.
 
-- [ ] **Step 5: Register route, permission guard, navigation and breadcrumb**
+- [x] **Step 5: Register route, permission guard, navigation and breadcrumb**
 
 ```ts
 {
@@ -516,7 +516,7 @@ Wire every approved mutation through the service: edit updates role name/descrip
 
 In `router.beforeEach`, call `restoreCurrentUser()` only when `to.meta.requiredPermission` is a string; redirect authenticated users missing it to `{ name: 'workbench' }`. Add `{ label: '权限管理', routeName: 'organization-permissions', permission: 'system:role:view' }` under the organization navigation group. Add the permission page to the existing breadcrumb and organization-search mappings.
 
-- [ ] **Step 6: Verify the focused frontend slice and commit**
+- [x] **Step 6: Verify the focused frontend slice and commit**
 
 Run: `cd frontend && npm run test:run -- src/features/permission src/router/index.test.ts src/components/navigation/SidebarNav.test.ts src/layouts/ErpLayout.test.ts src/AppRouting.test.ts`
 
@@ -545,7 +545,7 @@ git commit -m "feat: add permission management page"
 - Produces: `ResolvedAuthorization(List<String> roles, List<String> permissions, Optional<DataScope> dataScope)`.
 - Produces: `AuthorizationResolver.resolve(String memberKey)` for Task 6 login integration.
 
-- [ ] **Step 1: Write failing resolver tests**
+- [x] **Step 1: Write failing resolver tests**
 
 ```java
 private final FakeRoleRepository repository = new FakeRoleRepository(
@@ -624,13 +624,13 @@ void superAdministratorReceivesTheCompleteCatalog() {
 }
 ```
 
-- [ ] **Step 2: Verify resolver tests fail**
+- [x] **Step 2: Verify resolver tests fail**
 
 Run: `cd backend && mvn -Dtest=AuthorizationResolverTest test`
 
 Expected: FAIL because the authorization package does not exist.
 
-- [ ] **Step 3: Implement immutable role and scope types**
+- [x] **Step 3: Implement immutable role and scope types**
 
 ```java
 public enum DataScope {
@@ -660,11 +660,11 @@ public record Role(
 
 `RoleRepository` must expose `List<Role> findEnabledByMemberKey(String memberKey)` and `Set<String> findAllPermissionCodes()`. `AuthorizationResolver` sorts role codes and permission codes for deterministic token claims, replaces a super administrator's permissions with the complete catalog, and calculates scope from enabled roles only.
 
-- [ ] **Step 4: Seed the in-memory repository**
+- [x] **Step 4: Seed the in-memory repository**
 
 Seed `SUPER_ADMIN` with member key `13800138000`, `COMPANY`, and the complete catalog. The catalog must contain all currently enforced application permissions plus `system:role:manage`: `system:user:view`, `system:role:view`, `system:role:manage`, dashboard, masterdata, product, organization, inventory, sales, and finance permissions already listed in the existing demo account.
 
-- [ ] **Step 5: Verify resolver tests and commit**
+- [x] **Step 5: Verify resolver tests and commit**
 
 Run: `cd backend && mvn -Dtest=AuthorizationResolverTest test`
 
@@ -694,7 +694,7 @@ git commit -m "feat: add RBAC authorization resolver"
 - Consumes: `AuthorizationResolver.resolve(mobile)`.
 - Produces: `AuthenticatedUser(String mobile, List<String> roles, List<String> permissions)` and `TokenIssuer.issue(AuthenticatedUser, String)`.
 
-- [ ] **Step 1: Change the auth service test first**
+- [x] **Step 1: Change the auth service test first**
 
 Update the test fixture so `UserAccount` contains only `mobile`, `passwordHash`, `enabled`, and `employeeActive`. Back it with a fake `RoleRepository` containing an enabled role for the test mobile.
 
@@ -722,13 +722,13 @@ assertThat(authorization.permissions())
         .contains("system:role:view", "system:role:manage", "organization:view", "organization:manage");
 ```
 
-- [ ] **Step 2: Verify the auth test fails for the expected constructor and resolver gap**
+- [x] **Step 2: Verify the auth test fails for the expected constructor and resolver gap**
 
 Run: `cd backend && mvn -Dtest=AuthServiceTest test`
 
 Expected: FAIL because `AuthService` does not accept `AuthorizationResolver` and `UserAccount` still owns claims.
 
-- [ ] **Step 3: Separate credentials from authenticated claims**
+- [x] **Step 3: Separate credentials from authenticated claims**
 
 ```java
 public record UserAccount(
@@ -752,11 +752,11 @@ public record AuthenticatedUser(
 
 Inject `AuthorizationResolver` into `AuthService`. After credential validation, resolve the user's mobile, construct `AuthenticatedUser`, and call `tokenIssuer.issue(authenticatedUser, loginMethod)`. Keep `LoginResult` and `ErpPrincipal` wire contracts unchanged.
 
-- [ ] **Step 4: Update token issuers and test token helpers**
+- [x] **Step 4: Update token issuers and test token helpers**
 
 Change `TokenIssuer.issue` and `InMemoryTokenIssuer.issue` to accept `AuthenticatedUser`. Mechanically update controller/security test helpers to construct `AuthenticatedUser` with their existing explicit roles and permissions; do not change their authorization assertions.
 
-- [ ] **Step 5: Add a focused token-claim test and verify database-independent auth tests**
+- [x] **Step 5: Add a focused token-claim test and verify database-independent auth tests**
 
 ```java
 @Test
@@ -779,7 +779,7 @@ Expected: PASS without database variables. `AuthServiceTest` proves the developm
 
 When all three test-database variables are configured, also run the controller/security test list from the existing suite to prove protected endpoints retain their previous pass/forbid behavior.
 
-- [ ] **Step 6: Commit auth integration**
+- [x] **Step 6: Commit auth integration**
 
 ```powershell
 git add -- backend/src/main/java/com/bebefish/erp/auth backend/src/test/java/com/bebefish/erp/auth backend/src/test/java/com/bebefish/erp/common/security backend/src/test/java/com/bebefish/erp/dashboard backend/src/test/java/com/bebefish/erp/file backend/src/test/java/com/bebefish/erp/inventory backend/src/test/java/com/bebefish/erp/masterdata backend/src/test/java/com/bebefish/erp/product backend/src/test/java/com/bebefish/erp/sales
@@ -870,8 +870,8 @@ git commit -m "docs: record permission management verification"
 - Protected-file overlap was 0/5; `git diff --check c7a98a3..HEAD` exited 0. No protected file was edited.
 - Reviewed commits: `fb104fc4c6fa31e5f727ed66887a38a453ba1b5e`, `544ebac93358f73bb4d7a495814843c15b8a1ed0`, `964952ed089d61e8e7d44d4aa1e484e17d801f45`, `21c77d282c45e68dc15edda92a501947afa714f4`, `fa17796d3b7108bf7b813696cc4dee0922f37021`, `033770ffa430426d099b5b676fa8f1ab2428a725`, `ddf691549345af6aa65afc02ffa5bd2bde35119b`, `50cfd8027dbe40122e342a57c0235e84b4a78ec4`, `000ea7cfd660a5f60b49f99e26ff9246c1f6d880`, `513b9545de4ad2062dcf99b86006f9a83561bf44`, `9e4ce9ade93723c2daee61b6988e0080cc71772e`, `ff4513de9db9ded5a4f28895be156e1f063be943`, `61d678653ee517d6acd6adfa39fd4ce762add6f1`, `d2749a0380829053df56b3f47ee96fd17ea314aa`, and `fe5564a6a4824896c601c85ea0986a1ff1696886`.
 
-- [x] **Step 8: Present integration choices without acting automatically**
+- [ ] **Step 8: Present integration choices without acting automatically**
 
 Report the detached HEAD, implementation commits, review verdict, tests, build, backend limitation, and protected-file audit. Do not merge or push. Follow `superpowers:finishing-a-development-branch` for the integration menu appropriate to the current Codex-managed detached worktree.
 
-Completion evidence: the detached-HEAD reduced two-option integration menu is prepared for the main agent's immediate user handoff. No merge, push, or branch-pointer move occurred.
+Completion evidence: the detached-HEAD reduced two-option integration menu is intentionally pending the main agent's final user-facing handoff. No merge, push, or branch-pointer move occurred.
