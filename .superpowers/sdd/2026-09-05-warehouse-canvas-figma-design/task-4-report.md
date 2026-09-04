@@ -48,10 +48,10 @@ All three roots clone the validated Task 3 Overview shell and demo data. No Task
 - Exact visible ledger:
 
 ```text
-Source block: A-01 / 250 个
+Source block: 深海矿物水 500ml 蓝 · A-01 / 250 个
 Move: 60 个
-Source after move: A-01 / 190 个
-New target block: B-01 / 60 个
+Source after move: 深海矿物水 500ml 蓝 · A-01 / 190 个
+New target block: 深海矿物水 500ml 蓝 · B-01 / 60 个
 190 + 60 = 250 个
 ```
 
@@ -125,3 +125,48 @@ Transient local renders used for inspection are under `C:\Users\张振亚\AppDat
 ## Concerns
 
 None blocking. The first connector call failed at transport before execution and caused no mutation. One attempted native-drawer internal resize fix failed atomically because nested instance transforms cannot be overridden; the drawer was restored to its native `720×760` geometry, and final screenshots show all content and actions intact. A first custom-text pass resolved the wrong fallback style; it was corrected to the exact existing `Typography/Body Strong` and `Typography/Caption` styles before final screenshots and audits.
+
+## Fix Round 1 — Canonical SKU Identity
+
+The Important review finding is resolved. Every Task 4 representation of `SKU-FISH-500ML-蓝` now uses the existing authoritative product name `深海矿物水 500ml 蓝`; the obsolete Task 4 name `蓝莓气泡饮 500ml` has been removed.
+
+### Mutated nodes
+
+- Dragged SKU Block `1193:40750`: product name changed only; code `SKU-FISH-500ML-蓝`, `250 个`, `10 件 + 10 个`, target `B-01`, `State=Selected`, and the `Warehouse/SKU Block` link are unchanged.
+- Add identity select `I1193:40767;67:466;1193:40787`: value is now `SKU-FISH-500ML-蓝 · 深海矿物水 500ml 蓝`.
+- Add drawer `1193:40767`: description now exposes the full canonical code/name pair and target B-01; root geometry remains `720×760` at `(720,264)`.
+- Partial source `1193:40402`: product name changed only; `A-01 / 190 个 / 7 件 + 22 个`, `State=Selected`, and its live component link are unchanged.
+- Partial target `1196:2003`: product name changed only; `B-01 / 60 个 / 2 件 + 12 个`, `State=Default`, and its live component link are unchanged.
+- Partial drawer `1196:40438`: description now exposes the full canonical code/name pair and source A-01; root geometry remains `720×760` at `(720,264)`.
+- Partial ledger lines `I1196:40438;67:466;1196:40493`, `I1196:40438;67:466;1196:40497`, and `I1196:40438;67:466;1196:40499` now include `深海矿物水 500ml 蓝` while preserving `250`, `190`, `60`, A-01, and B-01.
+
+### Fresh scan and invariant evidence
+
+- `蓝莓气泡饮` visible-text occurrences across all three Task 4 roots: 0.
+- `蓝莓气泡饮` instance-property occurrences across all three Task 4 roots: 0.
+- `Warehouse/SKU Block` instances carrying `SKU-FISH-500ML-蓝`: 9; canonical-name matches: 9/9.
+- Canonical visible identity surfaces include the Add drawer description, Add identity select, and Partial drawer description.
+- Partial ledger remains `250 - 60 = 190` and `190 + 60 = 250 个`.
+- Derived copies remain correct: `250 / 24 = 10 件 + 10 个`; `190 / 24 = 7 件 + 22 个`; `60 / 24 = 2 件 + 12 个`.
+- Three root IDs, names, parents, positions, and `1440×1024` sizes are unchanged.
+- Live instances: 209; missing component masters: 0.
+- Fonts remain exactly `Noto Sans SC` and `Inter`; offenders: 0; `figma.hasMissingFont=false`.
+
+### Fresh screenshots inspected
+
+| Evidence | Node | Render / natural size | Result |
+| --- | --- | --- | --- |
+| Add SKU full, fix round 1 | `1193:39676` | `1440×1024` / `1440×1024` | Canonical name visible in dragged block and drawer header; no geometry or quantity regression |
+| Add drawer close, fix round 1 | `1193:40767` | `760×788` / `760×788` including effects | Full code/name pair visible in header; field, package, derived copy, and actions remain intact |
+| SKU Selected full, fix round 1 | `1193:40024` | `1440×1024` / `1440×1024` | Existing canonical selected/whole-move identities remain unchanged and readable |
+| SKU inspector close, fix round 1 | `1194:1883` | `360×856` / `360×856` | Canonical helper, units, package copy, geometry fields, and actions remain intact |
+| Partial Move full, fix round 1 | `1193:40372` | `1440×1024` / `1440×1024` | Canonical source/target identities and ledger fit without clipping |
+| Partial drawer close, fix round 1 | `1196:40438` | `760×788` / `760×788` including effects | Header and before/after ledger show one canonical identity; validation and action states remain intact |
+
+### Fix self-review
+
+- Scope was limited to identity text/properties on the specified Task 4 instances and ledger lines.
+- SKU code, units, units per case, derived calculations, areas, visual geometry, state variants, real instance links, and root IDs were not changed.
+- No hidden or visible `蓝莓气泡饮` occurrence remains in the three Task 4 roots.
+- No new nodes, variables, styles, effects, components, or component sets were created.
+- Fix commit message: `docs: fix warehouse canvas SKU identity`.
