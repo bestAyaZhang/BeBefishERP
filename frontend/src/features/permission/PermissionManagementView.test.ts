@@ -474,4 +474,66 @@ describe('PermissionManagementView', () => {
     pending.resolve(await base.getRole(5));
     await flushPromises();
   });
+
+  it('locks configuration mutations while a role selection is pending but permits a newer role selection', async () => {
+    const base = createMockPermissionService(organizationService);
+    const pending = deferred<PermissionRole>();
+    const service: PermissionService = {
+      ...base,
+      getRole: vi.fn((id) => id === 5 ? pending.promise : base.getRole(id)),
+      saveConfiguration: vi.fn(base.saveConfiguration)
+    };
+    const wrapper = mountPermissionView(service, ['system:role:view', 'system:role:manage']);
+    await flushPromises();
+    await wrapper.get('[data-testid="role-item-4"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="permission-customer-create"]').setValue(true);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await wrapper.get('[data-testid="role-item-5"]').trigger('click');
+    expect(wrapper.get('[data-testid="permission-customer-create"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="cancel-role-configuration"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="save-role-configuration"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="save-role-configuration"]').trigger('click');
+    expect(service.saveConfiguration).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-testid="role-item-6"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="selected-role-code"]').text()).toBe('PURCHASE_SPECIALIST');
+    pending.resolve(await base.getRole(5));
+    await flushPromises();
+    expect(wrapper.get('[data-testid="selected-role-code"]').text()).toBe('PURCHASE_SPECIALIST');
+  });
+
+  it('locks member mutations while status or a member removal is pending', async () => {
+    const base = createMockPermissionService(organizationService);
+    const pendingStatus = deferred<PermissionRole>();
+    const pendingRemoval = deferred<Awaited<ReturnType<PermissionService['removeMembers']>>>();
+    const service: PermissionService = {
+      ...base,
+      changeRoleStatus: vi.fn(() => pendingStatus.promise),
+      removeMembers: vi.fn(() => pendingRemoval.promise)
+    };
+    const wrapper = mountPermissionView(service, ['system:role:view', 'system:role:manage']);
+    await flushPromises();
+    await wrapper.get('[data-testid="role-item-4"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="tab-members"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('tbody input[type="checkbox"]:not([disabled])').setValue(true);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await wrapper.get('[data-testid="role-status"]').trigger('click');
+    expect(wrapper.get('[data-testid="member-remove-selected"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="member-remove-selected"]').trigger('click');
+    expect(service.removeMembers).not.toHaveBeenCalled();
+    pendingStatus.resolve(await base.getRole(4));
+    await flushPromises();
+
+    await wrapper.get('[data-testid="member-remove-selected"]').trigger('click');
+    expect(service.removeMembers).toHaveBeenCalledTimes(1);
+    expect(wrapper.get('[data-testid="member-remove-selected"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="member-remove-selected"]').trigger('click');
+    expect(service.removeMembers).toHaveBeenCalledTimes(1);
+    pendingRemoval.resolve(await base.removeMembers(4, [3]));
+    await flushPromises();
+  });
 });
