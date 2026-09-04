@@ -276,15 +276,13 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
             JsonNode businessCode = root == null ? null : root.get("code");
             if (response.statusCode() == 404
                     && absentBusinessCode != null
-                    && businessCode != null
-                    && businessCode.isIntegralNumber()
-                    && businessCode.intValue() == absentBusinessCode) {
+                    && hasBusinessCode(businessCode, absentBusinessCode)) {
                 return null;
             }
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new FeishuClientException("飞书接口返回非成功状态");
             }
-            if (businessCode == null || !businessCode.isIntegralNumber() || businessCode.intValue() != 0) {
+            if (!hasBusinessCode(businessCode, 0)) {
                 throw new FeishuClientException("飞书接口返回业务错误");
             }
             return root;
@@ -294,6 +292,13 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
         } catch (IOException exception) {
             throw new FeishuClientException("飞书接口请求失败", exception);
         }
+    }
+
+    private boolean hasBusinessCode(JsonNode businessCode, int expectedCode) {
+        return businessCode != null
+                && businessCode.isIntegralNumber()
+                && businessCode.canConvertToInt()
+                && businessCode.intValue() == expectedCode;
     }
 
     private JsonNode data(JsonNode root) {

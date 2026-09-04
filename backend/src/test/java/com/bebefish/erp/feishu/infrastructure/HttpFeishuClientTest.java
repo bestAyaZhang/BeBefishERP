@@ -201,6 +201,16 @@ class HttpFeishuClientTest {
     }
 
     @Test
+    void rejectsOutOfRangeNonZeroBusinessCode() {
+        configureRoleMemberResponse(
+                "{\"code\":4294967296,\"data\":{\"member\":{\"user_id\":\"ou_1\"}}}"
+        );
+
+        assertThatThrownBy(() -> client().businessRoles("ou_1"))
+                .isInstanceOf(FeishuClientException.class);
+    }
+
+    @Test
     void rejectsOAuthIdentityWithoutTenantOrOpenId() {
         var requests = new AtomicInteger();
         server.createContext("/open-apis/authen/v2/oauth/token", exchange -> json(exchange, """
