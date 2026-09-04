@@ -317,19 +317,19 @@ git commit -m "docs: track warehouse canvas Figma task 4"
 - Consumes: all Task 2 components and Task 3–4 frames
 - Produces: the final reviewable Figma MVP and verification record
 
-- [ ] **Step 1: Create the warning frame**
+- [x] **Step 1: Create the warning frame**
 
 Duplicate the selected-SKU state into `Warehouse Canvas / Boundary And Overlap Warning`. Show one SKU block crossing its area boundary and one pair of overlapping SKU blocks. Use warning outlines, icons, and explicit Chinese messages; do not rely on color alone.
 
-- [ ] **Step 2: Show inline correction behavior**
+- [x] **Step 2: Show inline correction behavior**
 
 In the property panel, list both issues with `定位问题`. Keep `保存布局` disabled while issues remain. Add a small corrected-state group where both blocks are valid and the save action is enabled; do not create a separate publish or validation page.
 
-- [ ] **Step 3: Add destructive-action safeguards**
+- [x] **Step 3: Add destructive-action safeguards**
 
 Show one real confirm dialog for deleting a non-empty area. The dialog must explain that the user must first move its SKU blocks or explicitly choose to delete them together. Destructive action uses the existing danger-button treatment.
 
-- [ ] **Step 4: Wire the primary prototype path**
+- [x] **Step 4: Wire the primary prototype path**
 
 Create prototype interactions for:
 
@@ -340,15 +340,15 @@ SKU Selected → Boundary And Overlap Warning → corrected state → Overview
 
 Use short dissolve or smart-animate transitions consistent with the current file. Set `Warehouse Canvas / Overview` as the only MVP prototype start.
 
-- [ ] **Step 5: Audit functional semantics**
+- [x] **Step 5: Audit functional semantics**
 
 Verify through visible data and node properties that units are authoritative, case copy is derived, manual resize does not change units, whole moves change only area, partial moves conserve units, and warning states block save.
 
-- [ ] **Step 6: Audit visual quality**
+- [x] **Step 6: Audit visual quality**
 
 Capture all six full frames at the same scale plus close crops for the canvas, SKU block, property panel, partial-move math, warning messages, and delete dialog. Check padding, alignment, typography, borders, radii, contrast, clipping, and overlap like a senior product designer.
 
-- [ ] **Step 7: Audit file hygiene**
+- [x] **Step 7: Audit file hygiene**
 
 Confirm:
 
@@ -363,11 +363,11 @@ No 3D, stack-rule, capacity, rack, shelf, CAD, outbound, or stocktake concepts o
 The archived exploration is not a prototype start or interaction destination
 ```
 
-- [ ] **Step 8: Build the QA evidence board**
+- [x] **Step 8: Build the QA evidence board**
 
 Inside `03 State & QA`, add a compact checklist with pass/fail evidence for package conversion, whole-move invariance, partial-move conservation, boundary blocking, overlap blocking, prototype starts, component links, and scope exclusions.
 
-- [ ] **Step 9: Record final evidence and commit**
+- [x] **Step 9: Record final evidence and commit**
 
 Record all six frame IDs, four component-set IDs, prototype start ID, key interaction destination IDs, screenshot evidence, and final audit counts. Check Task 5 boxes, then commit:
 
@@ -375,3 +375,5 @@ Record all six frame IDs, four component-set IDs, prototype start ID, key intera
 git add docs/superpowers/plans/2026-09-05-warehouse-canvas-figma-design.md
 git commit -m "docs: complete warehouse canvas Figma design"
 ```
+
+**Execution notes (2026-09-05):** Created the sixth exact `1440×1024` root `Warehouse Canvas / Boundary And Overlap Warning` (`1210:2466`) inside `03 State & QA` at `(80, 128)`. Real linked Warehouse SKU instances show an A-01 boundary crossing (`1210:2496`, unchanged `150 个 / 6 件 + 6 个`) and a separate B-01 overlap pair (`1210:2498`, unchanged `576 个 / 24 件`; `1210:2499`, unchanged `80 个 / 4 件`). Added property issue panel `1211:40892` with two icon-plus-Chinese issue cards, two `定位问题` actions, and disabled `保存布局` `1211:40897`; local corrected group `1211:40933` uses real non-overlapping SKU instances `1211:40946` / `1211:40961` and enabled Brand-Hover save `1211:40937`; real danger dialog `1211:40976` offers `先移动产品` and `一并删除`. Grouped non-screen QA artifact `1211:41010` contains board `1211:41009` with 8/8 PASS evidence rows. Wired short-dissolve prototype paths `1187:2 → 1190:516 → 1193:39676 → 1193:40024`, selected trigger `1193:40054 → 1210:2466`, partial action `I1194:1883;1171:3585 → 1193:40372`, and corrected save `1211:40937 → 1187:2`; `1187:2` is the sole MVP start. Deferred accessibility fixes were applied only to visible MVP instances: all 12 enabled primary actions use existing Brand Hover `VariableID:6:6` at `5.19:1` white-text contrast (vs inherited Brand Primary `4.20:1`), and all visible conversion fields are explicitly automatic/read-only and Disabled. Six equal-scale full renders plus seven close crops passed visual review. Final audits report six exact screen roots, four exact public Warehouse sets, 430 linked MVP instances / 0 missing masters, Noto Sans SC and Inter only / no missing fonts, one MVP page, archive with no starts or reactions, 4 collections / 33 variables / 8 text styles / 0 paint, effect, or grid styles, 362 components / 40 sets unchanged, and 0 components on the MVP page. Full evidence: `.superpowers/sdd/2026-09-05-warehouse-canvas-figma-design/task-5-report.md`.
