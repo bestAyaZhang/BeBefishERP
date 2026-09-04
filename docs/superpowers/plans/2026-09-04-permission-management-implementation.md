@@ -799,13 +799,13 @@ git commit -m "feat: resolve login claims from RBAC"
 - Consumes: completed frontend and backend tasks.
 - Produces: independent review verdict, clean test/build evidence, protected-file audit, and an integration choice without merge or push.
 
-- [ ] **Step 1: Run focused frontend verification**
+- [x] **Step 1: Run focused frontend verification**
 
 Run: `cd frontend && npm run test:run -- src/features/permission src/router/index.test.ts src/components/navigation/SidebarNav.test.ts src/layouts/ErpLayout.test.ts src/AppRouting.test.ts`
 
 Expected: PASS with no warnings or unhandled errors.
 
-- [ ] **Step 2: Run complete frontend verification**
+- [x] **Step 2: Run complete frontend verification**
 
 Run: `cd frontend && npm run test:run`
 
@@ -815,7 +815,7 @@ Run: `cd frontend && npm run build`
 
 Expected: `vue-tsc --noEmit` and `vite build` both exit 0.
 
-- [ ] **Step 3: Run backend verification allowed by the environment**
+- [x] **Step 3: Run backend verification allowed by the environment**
 
 Run: `cd backend && mvn -Dtest=AuthorizationResolverTest,AuthServiceTest,BearerTokenAuthenticationFilterTest test`
 
@@ -823,7 +823,7 @@ Expected: PASS without database variables.
 
 If `ERP_TEST_DB_URL`, `ERP_TEST_DB_USERNAME`, and `ERP_TEST_DB_PASSWORD` are all non-empty, also run `cd backend && mvn test`. If any is empty, record that the complete backend suite remains blocked by the documented test-database requirement.
 
-- [ ] **Step 4: Request an independent review**
+- [x] **Step 4: Request an independent review**
 
 Use `superpowers:requesting-code-review` against the merge base for this implementation. The reviewer must check spec coverage, system-role protection, permission dependency, dirty-state safety, member locking, router access, backend claim resolution, protected-file scope, and test quality. Fix every Critical or Important finding with a new failing regression test before implementation changes; record Minor findings that remain outside the bounded scope.
 
@@ -831,7 +831,7 @@ Use `superpowers:requesting-code-review` against the merge base for this impleme
 
 Create a disposable worktree at the implementation HEAD without moving `codex/organization-management`. Install or attach dependencies safely, then rerun the complete frontend suite, frontend build, and database-independent backend focused tests. Remove only the resolved disposable path after verifying it lies under the current Codex worktree directory.
 
-- [ ] **Step 6: Audit repository boundaries**
+- [x] **Step 6: Audit repository boundaries**
 
 ```powershell
 $protected = @(
@@ -849,7 +849,7 @@ git diff --check c7a98a3..HEAD
 
 Expected: the protected-file overlap prints nothing, diff check is clean, and only intended implementation-plan evidence remains before the final documentation commit.
 
-- [ ] **Step 7: Record evidence and commit the completed plan**
+- [x] **Step 7: Record evidence and commit the completed plan**
 
 Check each completed step and append exact test counts, build output summary, reviewer verdict, environmental limitations, commit IDs, and protected-file result.
 
@@ -858,6 +858,17 @@ git add -- docs/superpowers/plans/2026-09-04-permission-management-implementatio
 git diff --cached --check
 git commit -m "docs: record permission management verification"
 ```
+
+#### Completion evidence — 2026-09-04
+
+- The current checkout began clean and detached at `fe5564a6a4824896c601c85ea0986a1ff1696886`; `git symbolic-ref --quiet HEAD` exited `1` and `git status --short --branch` reported `## HEAD (no branch)`.
+- Focused frontend verification passed: 8 test files / 92 tests. Complete frontend verification passed: 41 test files / 483 tests. The frontend build passed `vue-tsc --noEmit`; Vite transformed 1,767 modules and built successfully.
+- The database-independent backend command passed 18 tests: `AuthorizationResolverTest` 7, `AuthServiceTest` 6, and `BearerTokenAuthenticationFilterTest` 5. `InMemoryTokenIssuerTest` passed 1 test.
+- The final independent review of `c7a98a3eb6c025138a2dd6134ad2767ddc2b3c54..fe5564a6a4824896c601c85ea0986a1ff1696886` returned 0 Critical / 0 Important / 0 Minor findings.
+- All three `ERP_TEST_DB_*` values were empty (0/3); the complete backend suite was not run because it requires the documented test database.
+- A detached clean worktree at `fe5564a6a4824896c601c85ea0986a1ff1696886` was created under `.superpowers/sdd/2026-09-04-permission-management-implementation/clean-verification-fe5564a6` after resolving and confirming the path was inside that directory. Its frontend dependencies were attached through a verified `node_modules` junction. There, the complete frontend suite passed 41 files / 483 tests, the build passed with 1,767 transformed modules, the three-class backend command passed 18 tests, and `InMemoryTokenIssuerTest` passed 1 test. `git worktree remove` unregistered it, but Windows then reported `Filename too long` while deleting its filesystem path; the Git worktree metadata is gone, while the verified residual directory remains. Step 5 stays unchecked pending removal of that exact disposable directory.
+- Protected-file overlap was 0/5; `git diff --check c7a98a3..HEAD` exited 0. No protected file was edited.
+- Reviewed commits: `fb104fc4c6fa31e5f727ed66887a38a453ba1b5e`, `544ebac93358f73bb4d7a495814843c15b8a1ed0`, `964952ed089d61e8e7d44d4aa1e484e17d801f45`, `21c77d282c45e68dc15edda92a501947afa714f4`, `fa17796d3b7108bf7b813696cc4dee0922f37021`, `033770ffa430426d099b5b676fa8f1ab2428a725`, `ddf691549345af6aa65afc02ffa5bd2bde35119b`, `50cfd8027dbe40122e342a57c0235e84b4a78ec4`, `000ea7cfd660a5f60b49f99e26ff9246c1f6d880`, `513b9545de4ad2062dcf99b86006f9a83561bf44`, `9e4ce9ade93723c2daee61b6988e0080cc71772e`, `ff4513de9db9ded5a4f28895be156e1f063be943`, `61d678653ee517d6acd6adfa39fd4ce762add6f1`, `d2749a0380829053df56b3f47ee96fd17ea314aa`, and `fe5564a6a4824896c601c85ea0986a1ff1696886`.
 
 - [ ] **Step 8: Present integration choices without acting automatically**
 
