@@ -177,6 +177,30 @@ class HttpFeishuClientTest {
     }
 
     @Test
+    void rejectsRoleMemberResponseWithoutBusinessCode() {
+        configureRoleMemberResponse("{}");
+
+        assertThatThrownBy(() -> client().businessRoles("ou_1"))
+                .isInstanceOf(FeishuClientException.class);
+    }
+
+    @Test
+    void rejectsRoleMemberResponseWithoutMember() {
+        configureRoleMemberResponse("{\"code\":0,\"data\":{}}");
+
+        assertThatThrownBy(() -> client().businessRoles("ou_1"))
+                .isInstanceOf(FeishuClientException.class);
+    }
+
+    @Test
+    void rejectsRoleMemberResponseForAnotherUser() {
+        configureRoleMemberResponse("{\"code\":0,\"data\":{\"member\":{\"user_id\":\"ou_2\"}}}");
+
+        assertThatThrownBy(() -> client().businessRoles("ou_1"))
+                .isInstanceOf(FeishuClientException.class);
+    }
+
+    @Test
     void rejectsOAuthIdentityWithoutTenantOrOpenId() {
         var requests = new AtomicInteger();
         server.createContext("/open-apis/authen/v2/oauth/token", exchange -> json(exchange, """
@@ -220,6 +244,14 @@ class HttpFeishuClientTest {
                 new ObjectMapper(),
                 HttpClient.newBuilder().connectTimeout(properties.getConnectTimeout()).build()
         );
+    }
+
+    private void configureRoleMemberResponse(String responseBody) {
+        properties.setBusinessRoles("role-1|仓库主管");
+        server.createContext("/open-apis/auth/v3/tenant_access_token/internal", exchange -> json(exchange,
+                "{\"code\":0,\"tenant_access_token\":\"t-token\",\"expire\":7200}"));
+        server.createContext("/open-apis/contact/v3/functional_roles/role-1/members/ou_1", exchange ->
+                json(exchange, responseBody));
     }
 
     private void json(HttpExchange exchange, String body) throws IOException {

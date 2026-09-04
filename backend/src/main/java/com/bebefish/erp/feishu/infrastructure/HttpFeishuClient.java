@@ -198,7 +198,15 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
                 .header("Authorization", "Bearer " + accessToken)
                 .GET()
                 .build();
-        return send(request, FUNCTIONAL_ROLE_MEMBER_NOT_FOUND_CODE) != null;
+        JsonNode root = send(request, FUNCTIONAL_ROLE_MEMBER_NOT_FOUND_CODE);
+        if (root == null) {
+            return false;
+        }
+        String returnedUserId = text(data(root).path("member"), "user_id");
+        if (!openId.equals(returnedUserId)) {
+            throw new FeishuClientException("飞书业务角色成员响应无效");
+        }
+        return true;
     }
 
     private String primaryDepartmentId(JsonNode user) {
@@ -265,16 +273,18 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
         try {
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             JsonNode root = objectMapper.readTree(response.body());
+            JsonNode businessCode = root == null ? null : root.get("code");
             if (response.statusCode() == 404
                     && absentBusinessCode != null
-                    && root != null
-                    && root.path("code").asInt(Integer.MIN_VALUE) == absentBusinessCode) {
+                    && businessCode != null
+                    && businessCode.isIntegralNumber()
+                    && businessCode.intValue() == absentBusinessCode) {
                 return null;
             }
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new FeishuClientException("飞书接口返回非成功状态");
             }
-            if (root == null || root.path("code").asInt(0) != 0) {
+            if (businessCode == null || !businessCode.isIntegralNumber() || businessCode.intValue() != 0) {
                 throw new FeishuClientException("飞书接口返回业务错误");
             }
             return root;
