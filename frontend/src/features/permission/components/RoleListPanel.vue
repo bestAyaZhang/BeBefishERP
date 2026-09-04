@@ -40,7 +40,7 @@ function select(roleId: number) {
           <span v-if="dirtyRoleIds.includes(role.id)" class="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-label="有未保存修改" />
           <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">{{ role.name }}</span><span class="mt-0.5 block truncate text-xs text-slate-400">{{ role.memberCount }} 名成员 · {{ role.code }}</span></span>
           <span v-if="role.immutable" class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">系统</span>
-          <span v-if="role.status === 'disabled'" class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">停用</span>
+          <span v-if="role.status === 'disabled'" class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">已停用</span>
         </button>
       </section>
     </div>

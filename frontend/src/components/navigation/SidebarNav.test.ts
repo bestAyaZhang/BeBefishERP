@@ -85,6 +85,15 @@ describe('SidebarNav', () => {
     expect(wrapper.text()).not.toContain('权限管理');
   });
 
+  it('shows the permission entry when system role viewing is the only granted navigation permission', () => {
+    storeCurrentUser(['system:role:view']);
+    const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
+
+    expect(wrapper.text()).toContain('组织架构');
+    expect(wrapper.text()).toContain('权限管理');
+    expect(wrapper.text()).not.toContain('员工管理');
+  });
+
   it('uses the full-height ERP navigation structure without a card shell', () => {
     const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
 

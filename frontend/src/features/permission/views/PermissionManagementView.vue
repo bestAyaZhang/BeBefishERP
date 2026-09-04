@@ -29,6 +29,9 @@ const feedback = ref('');
 const configurationSaving = ref(false);
 const roleSaving = ref(false);
 const memberSaving = ref(false);
+const roleLoading = ref(false);
+const roleLoadError = ref('');
+const pendingRoleId = ref<number | null>(null);
 const saveError = ref('');
 const roleFormOpen = ref(false);
 const roleFormMode = ref<FormMode>('create');
@@ -51,7 +54,7 @@ let roleEpoch = 0;
 let memberEpoch = 0;
 let candidateEpoch = 0;
 
-const isBusy = computed(() => configurationSaving.value || roleSaving.value || memberSaving.value);
+const isBusy = computed(() => configurationSaving.value || roleSaving.value || memberSaving.value || roleLoading.value);
 const canCreate = computed(() => currentUser.value?.permissions.includes('system:role:manage') ?? false);
 const isCustom = computed(() => Boolean(selectedRole.value && !selectedRole.value.immutable));
 const canEdit = computed(() => canCreate.value && isCustom.value && selectedRole.value?.status === 'enabled');
@@ -74,13 +77,38 @@ function resetConfiguration() {
   configurationDraft.value = { permissionCodes: [...savedConfiguration.value.permissionCodes], dataScope: savedConfiguration.value.dataScope };
   saveError.value = '';
 }
-function confirmDiscard(kind: 'configuration' | 'role-form' | 'member-selection'): boolean {
-  const dirty = kind === 'configuration' ? configurationDirty.value : kind === 'role-form' ? roleFormDirty.value : candidateSelectedIds.value.length > 0 || memberSelectedIds.value.length > 0;
+function confirmDiscard(kind: 'configuration' | 'role-form' | 'member-selection' | 'candidate-selection'): boolean {
+  const dirty = kind === 'configuration' ? configurationDirty.value : kind === 'role-form' ? roleFormDirty.value : kind === 'candidate-selection' ? candidateSelectedIds.value.length > 0 : candidateSelectedIds.value.length > 0 || memberSelectedIds.value.length > 0;
   if (!dirty) return true;
   return window.confirm(kind === 'configuration' ? '当前角色存在未保存修改，是否放弃？' : kind === 'role-form' ? '当前角色资料存在未保存修改，是否放弃？' : '当前成员选择尚未提交，是否放弃？');
 }
 async function refreshRoles() { roles.value = await props.service.listRoles(); }
-function updateSelectedMetadata(role: PermissionRole) { if (selectedRole.value?.id === role.id) selectedRole.value = role; }
+function toSummary(role: PermissionRole): PermissionRoleSummary {
+  return { id: role.id, code: role.code, name: role.name, kind: role.kind, immutable: role.immutable, status: role.status, updatedBy: role.updatedBy, updatedAt: role.updatedAt, memberCount: role.memberIds.length };
+}
+function patchRoleSummary(role: PermissionRole) {
+  const summary = toSummary(role);
+  roles.value = roles.value.some((item) => item.id === role.id)
+    ? roles.value.map((item) => item.id === role.id ? summary : item)
+    : [...roles.value, summary];
+}
+function invalidateRoleSelection() {
+  roleEpoch += 1;
+  roleLoading.value = false;
+  roleLoadError.value = '';
+  pendingRoleId.value = null;
+}
+function updateSelectedMetadata(role: PermissionRole) {
+  if (selectedRole.value?.id === role.id) {
+    selectedRole.value = {
+      ...selectedRole.value,
+      ...role,
+      permissionCodes: [...selectedRole.value.permissionCodes],
+      dataScope: selectedRole.value.dataScope
+    };
+  }
+  patchRoleSummary(role);
+}
 function clearMemberContext(resetQueries: boolean) {
   memberEpoch += 1; candidateEpoch += 1;
   memberSelectedIds.value = []; candidateSelectedIds.value = [];
@@ -93,6 +121,7 @@ function clearMemberContext(resetQueries: boolean) {
 }
 function commitSelectedRole(role: PermissionRole, resetMemberContext = true) {
   selectedRole.value = role;
+  patchRoleSummary(role);
   savedConfiguration.value = cloneConfiguration(role);
   configurationDraft.value = cloneConfiguration(role);
   saveError.value = '';
@@ -123,18 +152,26 @@ async function refreshCandidates() {
   }
 }
 async function selectRole(roleId: number, discardConfiguration = false) {
-  if (isBusy.value || selectedRole.value?.id === roleId) return;
+  if (configurationSaving.value || roleSaving.value || memberSaving.value || selectedRole.value?.id === roleId) return;
   if (!discardConfiguration && !confirmDiscard('configuration')) return;
   if (!confirmDiscard('member-selection')) return;
   const request = ++roleEpoch;
+  roleLoading.value = true; roleLoadError.value = ''; pendingRoleId.value = roleId;
   try {
     const role = await props.service.getRole(roleId);
     if (request !== roleEpoch) return;
     commitSelectedRole(role);
+    pendingRoleId.value = null;
     void refreshMembers();
     void refreshCandidates();
   } catch (error) {
-    if (request === roleEpoch) feedback.value = messageFrom(error);
+    if (request === roleEpoch) {
+      const message = messageFrom(error);
+      if (selectedRole.value) feedback.value = message;
+      else roleLoadError.value = message;
+    }
+  } finally {
+    if (request === roleEpoch) roleLoading.value = false;
   }
 }
 async function selectTab(tab: Tab) {
@@ -150,10 +187,12 @@ async function saveConfiguration() {
   try {
     const updated = await props.service.saveConfiguration(roleId, payload);
     if (selectedRole.value?.id !== roleId) return;
+    invalidateRoleSelection();
     updateSelectedMetadata(updated);
     savedConfiguration.value = cloneConfiguration(updated);
     configurationDraft.value = cloneConfiguration(updated);
     feedback.value = '权限配置已保存';
+    void refreshMembers();
     try { await refreshRoles(); } catch (error) { feedback.value = '权限配置已保存，但角色列表刷新失败：' + messageFrom(error); }
   } catch (error) {
     saveError.value = messageFrom(error);
@@ -181,14 +220,22 @@ function closeRoleForm() {
 }
 async function submitRole(payload: CreateRolePayload | UpdateRolePayload) {
   if (roleSaving.value) return;
+  const creating = roleFormMode.value === 'create';
+  if (creating && !confirmDiscard('configuration')) return;
   roleSaving.value = true; roleFormError.value = ''; feedback.value = '';
   try {
-    const role = roleFormMode.value === 'create' ? await props.service.createRole(payload as CreateRolePayload) : await props.service.updateRole(selectedRole.value!.id, payload as UpdateRolePayload);
-    await refreshRoles();
-    commitSelectedRole(role); activeTab.value = 'permissions'; roleFormOpen.value = false; roleFormDirty.value = false;
-    feedback.value = roleFormMode.value === 'create' ? '角色已创建' : '角色资料已更新';
+    const role = creating ? await props.service.createRole(payload as CreateRolePayload) : await props.service.updateRole(selectedRole.value!.id, payload as UpdateRolePayload);
+    invalidateRoleSelection();
+    if (creating) {
+      commitSelectedRole(role); activeTab.value = 'permissions';
+    } else {
+      updateSelectedMetadata(role);
+    }
+    roleFormOpen.value = false; roleFormDirty.value = false;
+    feedback.value = creating ? '角色已创建' : '角色资料已更新';
     void refreshMembers();
-    void refreshCandidates();
+    if (creating) void refreshCandidates();
+    try { await refreshRoles(); } catch (error) { feedback.value += '，但角色列表刷新失败：' + messageFrom(error); }
   } catch (error) { roleFormError.value = messageFrom(error); } finally { roleSaving.value = false; }
 }
 async function toggleRoleStatus() {
@@ -199,8 +246,10 @@ async function toggleRoleStatus() {
   roleSaving.value = true; feedback.value = '';
   try {
     const updated = await props.service.changeRoleStatus(roleId, next);
+    invalidateRoleSelection();
     if (selectedRole.value?.id === roleId) updateSelectedMetadata(updated);
     feedback.value = next === 'disabled' ? '角色已停用' : '角色已启用';
+    void refreshMembers();
     try { await refreshRoles(); } catch (error) { feedback.value += '，但角色列表刷新失败：' + messageFrom(error); }
   } catch (error) { feedback.value = messageFrom(error); } finally { roleSaving.value = false; }
 }
@@ -211,7 +260,7 @@ function openMemberDrawer() {
   void refreshCandidates();
 }
 function closeMemberDrawer() {
-  if (memberSaving.value || !confirmDiscard('member-selection')) return;
+  if (memberSaving.value || !confirmDiscard('candidate-selection')) return;
   memberDrawerOpen.value = false; candidateSelectedIds.value = []; candidateError.value = '';
 }
 async function addMembers(employeeIds: number[]) {
@@ -220,6 +269,7 @@ async function addMembers(employeeIds: number[]) {
   memberSaving.value = true; candidateError.value = '';
   try {
     const result = await props.service.addMembers(roleId, [...employeeIds]);
+    invalidateRoleSelection();
     if (selectedRole.value?.id === roleId) updateSelectedMetadata(result.role);
     memberDrawerOpen.value = false; candidateSelectedIds.value = []; feedback.value = '已添加 ' + result.added + ' 人，跳过 ' + result.skipped + ' 人';
     try { await refreshRoles(); } catch (error) { feedback.value += '，但角色列表刷新失败：' + messageFrom(error); }
@@ -234,6 +284,7 @@ async function removeMembers(employeeIds: number[]) {
   memberSaving.value = true; memberError.value = '';
   try {
     const result = await props.service.removeMembers(roleId, [...removable]);
+    invalidateRoleSelection();
     if (selectedRole.value?.id === roleId) updateSelectedMetadata(result.role);
     memberSelectedIds.value = memberSelectedIds.value.filter((id) => !removable.includes(id));
     feedback.value = '已移除 ' + result.removed + ' 人' + (result.skippedLocked ? '，跳过 ' + result.skippedLocked + ' 名锁定成员' : '');
@@ -263,19 +314,19 @@ onMounted(loadPage);
 <template>
   <section class="flex min-h-[620px] flex-col gap-4" data-testid="permission-page">
     <header class="flex flex-wrap items-end justify-between gap-4">
-      <div><h1 data-testid="permission-page-title" class="text-2xl font-bold text-[#25314d]">权限管理</h1><p data-testid="permission-page-subtitle" class="mt-1 text-sm text-slate-500">按角色维护功能权限、数据范围与授权成员</p><p data-testid="permission-role-count" class="mt-2 text-sm text-slate-500">{{ roles.length }} 个角色</p></div>
+      <div><h1 data-testid="permission-page-title" class="text-2xl font-bold text-[#25314d]">权限管理</h1><p data-testid="permission-page-subtitle" class="mt-1 text-sm text-slate-500">按角色维护功能权限、数据范围与授权成员</p><p data-testid="permission-role-count" class="mt-2 inline-flex rounded bg-slate-100 px-2 py-1 text-sm text-slate-500">{{ roles.length }} 个角色</p></div>
       <button v-if="loadState === 'ready' && roles.length" data-testid="create-role" type="button" class="rounded-[6px] bg-[#536dff] px-3 py-2 text-sm text-white disabled:opacity-50" :disabled="!canCreate || isBusy" @click="openCreateRole">新增角色</button>
     </header>
     <div v-if="loadState === 'loading'" data-testid="permission-loading" class="rounded-[8px] border border-slate-200 bg-white p-8 text-sm text-slate-400">正在加载角色…</div>
     <div v-else-if="loadState === 'error'" data-testid="permission-load-error" class="rounded-[8px] border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">{{ loadError }} <button data-testid="retry-permission-load" type="button" class="ml-2 text-[#536dff] underline" @click="loadPage">重试</button></div>
     <div v-else-if="roles.length === 0" data-testid="permission-empty" class="rounded-[8px] border border-slate-200 bg-white p-8 text-center text-sm text-slate-500"><p>暂无角色</p><button data-testid="empty-create-role" type="button" class="mt-3 rounded-[6px] bg-[#536dff] px-3 py-2 text-sm text-white disabled:opacity-50" :disabled="!canCreate" @click="openCreateRole">新增角色</button></div>
     <section v-else class="flex min-h-[620px] overflow-hidden rounded-[8px] border border-slate-200 bg-white" data-testid="permission-workspace" :data-readonly="readonly ? 'true' : 'false'" :data-disabled="selectedRole?.status === 'disabled' ? 'true' : 'false'">
-      <RoleListPanel :roles="roles" :selected-role-id="selectedRole?.id ?? null" :disabled="isBusy" :dirty-role-ids="dirtyRoleIds" @select="selectRole" />
+      <RoleListPanel :roles="roles" :selected-role-id="selectedRole?.id ?? null" :disabled="configurationSaving || roleSaving || memberSaving" :dirty-role-ids="dirtyRoleIds" @select="selectRole" />
       <div class="flex min-w-0 flex-1 flex-col p-6">
         <template v-if="selectedRole">
           <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
             <div>
-              <div class="flex flex-wrap items-center gap-2"><h2 data-testid="selected-role-name" class="text-xl font-bold text-[#25314d]">{{ selectedRole.name }}</h2><span data-testid="selected-role-code" class="rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-500">{{ selectedRole.code }}</span><span data-testid="selected-role-status" class="rounded px-2 py-1 text-xs" :class="selectedRole.status === 'enabled' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'">{{ selectedRole.status === 'enabled' ? '已启用' : '已停用' }}</span></div>
+              <div class="flex flex-wrap items-center gap-2"><h2 data-testid="selected-role-name" class="text-xl font-bold text-[#25314d]">{{ selectedRole.name }}</h2><span data-testid="selected-role-code" class="rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-500">{{ selectedRole.code }}</span><span data-testid="selected-role-status" class="rounded px-2 py-1 text-xs" :class="selectedRole.status === 'enabled' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'">{{ selectedRole.status === 'enabled' ? '启用' : '停用' }}</span></div>
               <p class="mt-2 text-sm text-slate-500">{{ selectedRole.description || '暂无角色说明' }} · <span data-testid="selected-role-member-count">{{ selectedRoleSummary?.memberCount ?? selectedRole.memberIds.length }} 名成员</span></p>
               <p data-testid="role-updated-at" class="mt-2 text-xs text-slate-400">最近更新：{{ selectedRole.updatedBy }} · {{ selectedRole.updatedAt }}</p>
               <p v-if="selectedRole.immutable" data-testid="system-role-readonly-notice" class="mt-2 text-xs text-slate-500">系统角色不可编辑</p>
@@ -301,7 +352,9 @@ onMounted(loadPage);
           </div>
           <div v-if="configurationDraft" data-testid="configuration-footer" class="sticky bottom-0 z-10 flex items-center gap-3 border-t border-slate-200 bg-white py-4"><button data-testid="cancel-role-configuration" type="button" class="rounded-[6px] border border-slate-200 px-4 py-2 text-sm text-slate-600 disabled:opacity-50" :disabled="!configurationDirty || configurationSaving" @click="cancelConfiguration">取消修改</button><button data-testid="save-role-configuration" type="button" class="rounded-[6px] bg-[#536dff] px-4 py-2 text-sm text-white disabled:opacity-50" :disabled="!canEdit || !configurationDirty || configurationSaving" @click="saveConfiguration">{{ configurationSaving ? '保存中...' : '保存配置' }}</button><p v-if="saveError" data-testid="permission-save-error" class="text-sm text-rose-600">{{ saveError }}</p></div>
         </template>
-        <p v-else data-testid="permission-role-loading" class="p-8 text-sm text-slate-400">正在加载角色…</p>
+        <p v-else-if="roleLoading" data-testid="permission-role-loading" class="p-8 text-sm text-slate-400">正在加载角色…</p>
+        <p v-else-if="roleLoadError" data-testid="permission-role-load-error" class="p-8 text-sm text-rose-600">{{ roleLoadError }} <button type="button" class="ml-2 text-[#536dff] underline" @click="pendingRoleId !== null && selectRole(pendingRoleId, true)">重试</button></p>
+        <p v-else data-testid="permission-role-empty" class="p-8 text-sm text-slate-400">请选择角色</p>
         <p v-if="feedback" data-testid="permission-feedback" class="mt-3 text-sm text-slate-600" role="status">{{ feedback }}</p>
       </div>
     </section>

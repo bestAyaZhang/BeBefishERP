@@ -117,7 +117,7 @@ describe('PermissionManagementView', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     await wrapper.get('[data-testid="role-status"]').trigger('click');
     await flushPromises();
-    expect(wrapper.get('[data-testid="selected-role-status"]').text()).toContain('已停用');
+    expect(wrapper.get('[data-testid="selected-role-status"]').text()).toContain('停用');
     expect(wrapper.get('[data-testid="role-status"]').text()).toContain('启用');
   });
 
@@ -362,5 +362,116 @@ describe('PermissionManagementView', () => {
     await flushPromises();
     expect(wrapper.get('[data-testid="candidate-error"]').text()).toContain('添加失败');
     expect(wrapper.find('[data-testid="member-selection-drawer"]').exists()).toBe(true);
+  });
+
+  it('confirms dirty configuration before a create or copy can replace the selected role, while edit keeps all local context', async () => {
+    const base = createMockPermissionService(organizationService);
+    const service: PermissionService = { ...base, createRole: vi.fn(base.createRole), updateRole: vi.fn(base.updateRole) };
+    const wrapper = mountPermissionView(service, ['system:role:view', 'system:role:manage']);
+    await flushPromises();
+    await wrapper.get('[data-testid="role-item-4"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="permission-customer-create"]').setValue(true);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await wrapper.get('[data-testid="create-role"]').trigger('click');
+    await wrapper.get('[data-testid="role-name"]').setValue('不应创建');
+    await wrapper.get('[data-testid="role-code"]').setValue('DECLINED_CREATE');
+    await wrapper.get('[data-testid="role-submit"]').trigger('click');
+    expect(confirm).toHaveBeenCalledWith('当前角色存在未保存修改，是否放弃？');
+    expect(service.createRole).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="role-form-drawer"]').exists()).toBe(true);
+
+    confirm.mockReturnValue(true);
+    await wrapper.get('[data-testid="role-cancel"]').trigger('click');
+    await wrapper.get('[data-testid="copy-role"]').trigger('click');
+    await wrapper.get('[data-testid="role-name"]').setValue('不应复制');
+    await wrapper.get('[data-testid="role-code"]').setValue('DECLINED_COPY');
+    confirm.mockReturnValue(false);
+    await wrapper.get('[data-testid="role-submit"]').trigger('click');
+    expect(service.createRole).not.toHaveBeenCalled();
+
+    confirm.mockReturnValue(true);
+    await wrapper.get('[data-testid="role-cancel"]').trigger('click');
+    await wrapper.get('[data-testid="tab-members"]').trigger('click');
+    await wrapper.get('[data-testid="member-keyword"]').setValue('张');
+    await flushPromises();
+    await wrapper.get('[data-testid="edit-role"]').trigger('click');
+    await wrapper.get('[data-testid="role-name"]').setValue('商品运营新版');
+    await wrapper.get('[data-testid="role-submit"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe('成员管理');
+    expect((wrapper.get('[data-testid="member-keyword"]').element as HTMLInputElement).value).toBe('张');
+    await wrapper.get('[role="tab"][aria-selected="false"]').trigger('click');
+    expect(wrapper.get('[data-testid="selected-role-name"]').text()).toBe('商品运营新版');
+    expect(wrapper.get('[data-testid="permission-customer-create"]').element).toHaveProperty('checked', true);
+  });
+
+  it('commits a created role before a refresh failure and never reports the committed create as failed', async () => {
+    const base = createMockPermissionService(organizationService);
+    const service: PermissionService = {
+      ...base,
+      listRoles: vi.fn().mockResolvedValueOnce(await base.listRoles()).mockRejectedValue(new Error('刷新失败'))
+    };
+    const wrapper = mountPermissionView(service, ['system:role:view', 'system:role:manage']);
+    await flushPromises();
+    await wrapper.get('[data-testid="create-role"]').trigger('click');
+    await wrapper.get('[data-testid="role-name"]').setValue('刷新失败后仍创建');
+    await wrapper.get('[data-testid="role-code"]').setValue('REFRESH_FAILURE');
+    await wrapper.get('[data-testid="role-submit"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="role-form-drawer"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="selected-role-code"]').text()).toBe('REFRESH_FAILURE');
+    expect(wrapper.get('[data-testid="permission-feedback"]').text()).toContain('角色已创建');
+    expect(wrapper.get('[data-testid="permission-feedback"]').text()).toContain('角色列表刷新失败');
+    expect(wrapper.find('[data-testid="role-form-error"]').exists()).toBe(false);
+  });
+
+  it('refreshes the preserved member query after configuration and status mutations, and reports initial selection failure', async () => {
+    const base = createMockPermissionService(organizationService);
+    const service: PermissionService = { ...base, listMembers: vi.fn(base.listMembers) };
+    const wrapper = mountPermissionView(service, ['system:role:view', 'system:role:manage']);
+    await flushPromises();
+    await wrapper.get('[data-testid="role-item-4"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="tab-members"]').trigger('click');
+    await wrapper.get('[data-testid="member-keyword"]').setValue('张');
+    await flushPromises();
+    const beforeConfiguration = vi.mocked(service.listMembers).mock.calls.length;
+    await wrapper.get('[role="tab"][aria-selected="false"]').trigger('click');
+    await wrapper.get('[data-testid="permission-customer-create"]').setValue(true);
+    await wrapper.get('[data-testid="save-role-configuration"]').trigger('click');
+    await flushPromises();
+    expect(vi.mocked(service.listMembers).mock.calls.length).toBeGreaterThan(beforeConfiguration);
+    expect(vi.mocked(service.listMembers).mock.calls.at(-1)?.[1]).toMatchObject({ keyword: '张' });
+    const beforeStatus = vi.mocked(service.listMembers).mock.calls.length;
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await wrapper.get('[data-testid="role-status"]').trigger('click');
+    await flushPromises();
+    expect(vi.mocked(service.listMembers).mock.calls.length).toBeGreaterThan(beforeStatus);
+
+    const rejected: PermissionService = { ...base, getRole: vi.fn().mockRejectedValue(new Error('默认角色加载失败')) };
+    const rejectedWrapper = mountPermissionView(rejected, ['system:role:view', 'system:role:manage']);
+    await flushPromises();
+    expect(rejectedWrapper.get('[data-testid="permission-role-load-error"]').text()).toContain('默认角色加载失败');
+  });
+
+  it('uses the remaining approved role visuals and keeps action controls disabled during selection loading', async () => {
+    const base = createMockPermissionService(organizationService);
+    const pending = deferred<PermissionRole>();
+    const service: PermissionService = { ...base, getRole: vi.fn((id) => id === 5 ? pending.promise : base.getRole(id)) };
+    const wrapper = mountPermissionView(service, ['system:role:view', 'system:role:manage']);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="permission-role-count"]').classes()).toContain('rounded');
+    expect(wrapper.get('[data-testid="role-item-8"]').text()).toContain('已停用');
+    await wrapper.get('[data-testid="role-item-4"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="selected-role-status"]').text()).toBe('启用');
+    await wrapper.get('[data-testid="edit-role"]').trigger('click');
+    expect(wrapper.get('[data-testid="role-form-drawer"]').text()).not.toContain('创建角色后继续配置权限和成员');
+    await wrapper.get('[data-testid="role-cancel"]').trigger('click');
+    await wrapper.get('[data-testid="role-item-5"]').trigger('click');
+    expect(wrapper.get('[data-testid="create-role"]').attributes('disabled')).toBeDefined();
+    pending.resolve(await base.getRole(5));
+    await flushPromises();
   });
 });

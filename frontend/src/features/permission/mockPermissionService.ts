@@ -139,7 +139,7 @@ const SEED_ROLES: Array<Omit<PermissionRole, 'memberIds'> & { memberIds: number[
     description: '仅可查看工作台',
     kind: 'custom',
     immutable: false,
-    status: 'enabled',
+    status: 'disabled',
     dataScope: 'self',
     permissionCodes: ['dashboard:view'],
     memberIds: [13],

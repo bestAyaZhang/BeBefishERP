@@ -12,6 +12,7 @@ const form = ref({ name: '', code: '', description: '', copyFromRoleId: null as 
 const initialForm = ref('');
 const validationError = ref('');
 const title = computed(() => props.mode === 'create' ? '新增角色' : '编辑角色');
+const description = computed(() => props.mode === 'create' ? '创建角色后继续配置权限和成员' : '更新角色基础资料，权限和成员保持不变');
 const normalizedCode = computed(() => form.value.code.trim().toUpperCase());
 const codePattern = /^[A-Z0-9_]+$/;
 
@@ -42,7 +43,7 @@ function submit() {
 </script>
 
 <template>
-  <AccessibleDialog :open="open" :title="title" description="创建角色后继续配置权限和成员" test-id="role-form-drawer" body-test-id="role-form-drawer-body" footer-test-id="role-form-drawer-footer" close-test-id="close-role-form-drawer" overlay-class="items-stretch justify-end" panel-class="h-full w-[min(720px,100vw)] rounded-none border-y-0 border-r-0" body-class="min-h-0 flex-1 overflow-y-auto px-6 py-5" footer-class="px-6 py-4" @cancel="emit('close')">
+  <AccessibleDialog :open="open" :title="title" :description="description" test-id="role-form-drawer" body-test-id="role-form-drawer-body" footer-test-id="role-form-drawer-footer" close-test-id="close-role-form-drawer" overlay-class="items-stretch justify-end" panel-class="h-full w-[min(720px,100vw)] rounded-none border-y-0 border-r-0" body-class="min-h-0 flex-1 overflow-y-auto px-6 py-5" footer-class="px-6 py-4" @cancel="emit('close')">
     <div v-if="error || validationError" data-testid="role-form-error" class="mb-4 rounded-[6px] border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600">{{ validationError || error }}</div>
     <div class="grid gap-4"><label class="text-sm text-slate-600">角色名称 <span class="text-rose-500">*</span><input v-model="form.name" data-testid="role-name" data-dialog-initial-focus type="text" class="mt-1.5 h-10 w-full rounded-[6px] border border-slate-200 px-3 text-[#25314d] outline-none focus:border-[#536dff]" /></label>
       <label class="text-sm text-slate-600">角色编码 <span v-if="mode === 'create'" class="text-rose-500">*</span><input v-model="form.code" data-testid="role-code" type="text" :disabled="mode === 'edit'" class="mt-1.5 h-10 w-full rounded-[6px] border border-slate-200 px-3 font-mono uppercase text-[#25314d] outline-none focus:border-[#536dff] disabled:bg-slate-50" @blur="form.code = normalizedCode" /><span v-if="validationError.includes('编码')" data-testid="role-code-error" class="mt-1 block text-xs text-rose-600">{{ validationError }}</span></label>
