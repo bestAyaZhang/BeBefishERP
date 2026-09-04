@@ -1,11 +1,14 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
+import { nextTick } from 'vue';
+import DepartmentFormDrawer from './components/DepartmentFormDrawer.vue';
 import DepartmentTree from './components/DepartmentTree.vue';
 import OrganizationPagination from './components/OrganizationPagination.vue';
 import OrganizationStatusBadge from './components/OrganizationStatusBadge.vue';
 import { buildDepartmentTree } from './organizationTree';
 import type {
   Department,
+  Employee,
   EmployeeStatus,
   FeishuBindingStatus,
   OrganizationRecordStatus
@@ -137,6 +140,63 @@ describe('OrganizationPagination', () => {
     expect(next.attributes('disabled')).toBeDefined();
     await next.trigger('click');
     expect(wrapper.emitted('page')).toBeUndefined();
+  });
+
+  it('reconciles a parent page after the result shrinks to an earlier last page', async () => {
+    const wrapper = mount(OrganizationPagination, { props: { page: 2, pageSize: 10, total: 9 } });
+    await nextTick();
+
+    expect(wrapper.emitted('page')).toEqual([[1]]);
+  });
+});
+
+describe('DepartmentFormDrawer', () => {
+  it('keeps saved disabled relationships visible as read-only options', async () => {
+    const department: Department = {
+      id: 5,
+      departmentCode: 'ARCHIVE-CHILD',
+      departmentName: '归档子部门',
+      parentId: 4,
+      managerEmployeeId: 9,
+      managerName: '离职负责人',
+      sortOrder: 10,
+      status: 'disabled'
+    };
+    const inactiveManager: Employee = {
+      id: 9,
+      employeeNo: 'E009',
+      employeeName: '离职负责人',
+      mobile: '13800000009',
+      departmentId: 5,
+      positionId: 1,
+      employmentType: 'formal',
+      status: 'resigned',
+      hireDate: '2025-01-01',
+      feishuBindingStatus: 'unbound',
+      feishuDisplayName: '',
+      passwordLoginEnabled: false
+    };
+    const wrapper = mount(DepartmentFormDrawer, {
+      props: {
+        mode: 'edit',
+        department,
+        parentId: null,
+        departments: [...departments, department],
+        employees: [inactiveManager],
+        saving: false,
+        error: ''
+      }
+    });
+    await nextTick();
+
+    const parent = wrapper.get('[data-testid="department-parent"]');
+    const manager = wrapper.get('[data-testid="department-manager"]');
+    expect((parent.element as HTMLSelectElement).value).toBe('4');
+    expect(parent.get('option[value="4"]').attributes('disabled')).toBeDefined();
+    expect(parent.text()).toContain('财务部');
+    expect((manager.element as HTMLSelectElement).value).toBe('9');
+    expect(manager.get('option[value="9"]').attributes('disabled')).toBeDefined();
+    expect(manager.text()).toContain('离职负责人');
   });
 });
 

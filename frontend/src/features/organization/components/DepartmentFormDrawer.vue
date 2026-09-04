@@ -57,10 +57,12 @@ const excludedParentIds = computed(() => props.department
   ? collectDepartmentSubtreeIds(props.departments, props.department.id)
   : new Set<number>());
 const parentOptions = computed(() => props.departments.filter((department) => (
-  department.status === 'enabled'
+  (department.status === 'enabled' || department.id === form.value.parentId)
   && !excludedParentIds.value.has(department.id)
 )));
-const managerOptions = computed(() => props.employees.filter((employee) => employee.status === 'active'));
+const managerOptions = computed(() => props.employees.filter((employee) => (
+  employee.status === 'active' || employee.id === form.value.managerEmployeeId
+)));
 
 watch(() => [props.mode, props.department?.id, props.parentId] as const, () => {
   form.value = initialForm();
@@ -169,14 +171,18 @@ onBeforeUnmount(() => {
               上级部门
               <select v-model.number="form.parentId" data-testid="department-parent" class="mt-1.5 h-10 w-full rounded-[6px] border border-slate-200 bg-white px-3 text-sm font-normal text-[#25314d] outline-none focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/10">
                 <option :value="null">全公司</option>
-                <option v-for="item in parentOptions" :key="item.id" :value="item.id">{{ item.departmentName }}</option>
+                <option v-for="item in parentOptions" :key="item.id" :value="item.id" :disabled="item.status !== 'enabled'">
+                  {{ item.departmentName }}{{ item.status === 'disabled' ? '（已停用）' : '' }}
+                </option>
               </select>
             </label>
             <label class="block text-xs font-medium text-slate-500">
               部门负责人
               <select v-model.number="form.managerEmployeeId" data-testid="department-manager" class="mt-1.5 h-10 w-full rounded-[6px] border border-slate-200 bg-white px-3 text-sm font-normal text-[#25314d] outline-none focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/10">
                 <option :value="null">暂不设置</option>
-                <option v-for="employee in managerOptions" :key="employee.id" :value="employee.id">{{ employee.employeeName }} · {{ employee.employeeNo }}</option>
+                <option v-for="employee in managerOptions" :key="employee.id" :value="employee.id" :disabled="employee.status !== 'active'">
+                  {{ employee.employeeName }} · {{ employee.employeeNo }}{{ employee.status !== 'active' ? '（非在职）' : '' }}
+                </option>
               </select>
             </label>
             <label class="block text-xs font-medium text-slate-500">

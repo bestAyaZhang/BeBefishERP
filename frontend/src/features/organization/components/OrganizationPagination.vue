@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next';
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 
 type PageItem = number | 'ellipsis-left' | 'ellipsis-right';
 
@@ -18,6 +18,11 @@ const emit = defineEmits<{
 const pageCount = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)));
 const currentPage = computed(() => Math.min(Math.max(props.page, 1), pageCount.value));
 
+watch([() => props.page, pageCount], ([requestedPage, validPageCount]) => {
+  const validPage = Math.min(Math.max(requestedPage, 1), validPageCount);
+  if (validPage !== requestedPage) emit('page', validPage);
+}, { immediate: true });
+
 const pageItems = computed<PageItem[]>(() => {
   const totalPages = pageCount.value;
   if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1);
@@ -29,7 +34,7 @@ const pageItems = computed<PageItem[]>(() => {
 });
 
 function changePage(page: number) {
-  if (!Number.isInteger(page) || page < 1 || page > pageCount.value || page === currentPage.value) return;
+  if (!Number.isInteger(page) || page < 1 || page > pageCount.value || page === props.page) return;
   emit('page', page);
 }
 
