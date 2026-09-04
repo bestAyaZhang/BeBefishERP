@@ -61,7 +61,9 @@ describe('permissionRules', () => {
   it('reports checked, mixed and unchecked module states', () => {
     expect(moduleSelectionState(product, [])).toBe('unchecked');
     expect(moduleSelectionState(product, ['product:view'])).toBe('mixed');
-    expect(moduleSelectionState(product, product.supportedActions.map((action) => `product:${action}`))).toBe('checked');
+    expect(moduleSelectionState(product, [
+      'product:view', 'product:create', 'product:edit', 'product:delete', 'product:export'
+    ])).toBe('checked');
   });
 
   it('uses the widest active data scope', () => {
@@ -160,7 +162,14 @@ export interface MemberMutationResult { added: number; skipped: number; role: Pe
 export interface MemberRemovalResult { removed: number; skippedLocked: number; role: PermissionRole }
 ```
 
-Create `PERMISSION_MODULES` with these exact keys and labels: `dashboard/工作台`, `product/商品`, `category/分类`, `customer/客户`, `supplier/供应商`, `warehouse/仓库`, `inventory/库存`, `sales/销售`, `finance/财务`, `organization/组织架构`. Give dashboard only `view`; give inventory `view,edit,export`; give the other business modules the actions shown in the approved matrix, including `approve` only where the matrix supports it.
+Create `PERMISSION_MODULES` with these exact keys, labels, and action sets from the approved matrix:
+
+- `dashboard/工作台`: `view`.
+- `product/商品`, `category/分类`, `customer/客户`, `supplier/供应商`, `warehouse/仓库`: `view,create,edit,delete,export`.
+- `inventory/库存`: `view,create,edit,approve,export`.
+- `sales/销售`: `view,create,edit,delete,approve,export`.
+- `finance/财务`: `view,create,edit,approve,export`.
+- `organization/组织架构`: `view,create,edit,delete,export`.
 
 - [ ] **Step 4: Implement the minimal pure rules**
 
@@ -287,7 +296,7 @@ export interface PermissionService {
 }
 ```
 
-Seed roles in the Figma order: `SUPER_ADMIN`, `ORG_ADMIN`, `FINANCE_ADMIN`, `PRODUCT_OPERATOR`, `WAREHOUSE_MANAGER`, `PURCHASE_SPECIALIST`, `SALES_SPECIALIST`, `TEMP_VISITOR`. Seed role member IDs only from employees returned by the injected organization dependency. Clone every returned array and object so tests cannot mutate service state without a service call.
+Seed roles in the Figma order: `SUPER_ADMIN`, `ORG_ADMIN`, `FINANCE_ADMIN`, `PRODUCT_OPERATOR`, `WAREHOUSE_MANAGER`, `PURCHASE_SPECIALIST`, `SALES_SPECIALIST`, `TEMP_VISITOR`. Seed role member IDs only from employees returned by the injected organization dependency. `SUPER_ADMIN` contains employee `1`; `PRODUCT_OPERATOR` contains employees `1,3,4,5,6,19`, so its initial count is six, employee `1` is both duplicate and locked, and employee `2` is an available candidate. Give employee `3` no other enabled role so disabling `PRODUCT_OPERATOR` produces a visible `null` final scope in its member test. Clone every returned array and object so tests cannot mutate service state without a service call.
 
 Export `permissionService = createMockPermissionService(organizationService)` from `permissionService.ts`. The page accepts a service prop for tests and defaults to this singleton in the application.
 
