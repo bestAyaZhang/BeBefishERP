@@ -10,6 +10,15 @@ import {
 import { seedWarehouseCanvas } from './mockWarehouseCanvasData'
 
 describe('warehouse canvas model', () => {
+  it('keeps every seed area inside the 728 by 672 logical floor', () => {
+    expect(seedWarehouseCanvas.areas.every((area) => (
+      area.x >= 0
+      && area.y >= 0
+      && area.x + area.width <= 728
+      && area.y + area.height <= 672
+    ))).toBe(true)
+  })
+
   it('formats complete cases and remaining units from the authoritative unit count', () => {
     expect(formatCaseBreakdown(250, 24)).toBe('10 件 + 10 个')
     expect(formatCaseBreakdown(576, 24)).toBe('24 件')
@@ -42,7 +51,7 @@ describe('warehouse canvas model', () => {
     const overlapState = {
       ...seedWarehouseCanvas,
       blocks: seedWarehouseCanvas.blocks.map((block) =>
-        block.id === 'block-tea-b' ? { ...block, x: 260, y: 476 } : block,
+        block.id === 'block-tea-b' ? { ...block, x: 260, y: 390 } : block,
       ),
     }
 
@@ -50,6 +59,20 @@ describe('warehouse canvas model', () => {
       type: 'overlap',
       blockIds: ['block-pink-b', 'block-tea-b'],
     })
+  })
+
+  it('ignores invalid blocks in hidden areas during layout validation', () => {
+    const hiddenOverlapState = {
+      ...seedWarehouseCanvas,
+      areas: seedWarehouseCanvas.areas.map((area) => (
+        area.id === 'area-b' ? { ...area, visible: false } : area
+      )),
+      blocks: seedWarehouseCanvas.blocks.map((block) => (
+        block.id === 'block-tea-b' ? { ...block, x: 260, y: 390 } : block
+      )),
+    }
+
+    expect(validateCanvasLayout(hiddenOverlapState)).toEqual([])
   })
 
   it('moves a complete block to a target area without changing its units', () => {
@@ -81,6 +104,19 @@ describe('warehouse canvas model', () => {
       movedUnits: 150,
       target: { x: 76, y: 500 },
     })).toThrow('移动个数必须大于 0 且小于来源库存')
+  })
+
+  it('normalizes whole and partial move targets to integer logical coordinates', () => {
+    const whole = moveWholeBlock(seedWarehouseCanvas, 'block-blue-a', 'area-b', { x: 76.4, y: 500.6 })
+    const partial = splitBlock(seedWarehouseCanvas, {
+      blockId: 'block-blue-a',
+      targetAreaId: 'area-b',
+      movedUnits: 60,
+      target: { x: 76.6, y: 500.2 },
+    })
+
+    expect(whole.blocks.find((block) => block.id === 'block-blue-a')).toMatchObject({ x: 76, y: 501 })
+    expect(partial.blocks.find((block) => block.id === 'block-blue-a-split-1')).toMatchObject({ x: 77, y: 500 })
   })
 
   it('finds the first in-area position that does not overlap another block', () => {

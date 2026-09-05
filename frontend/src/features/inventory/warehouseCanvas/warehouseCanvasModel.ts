@@ -29,8 +29,9 @@ export function summarizeCanvas(state: WarehouseCanvasState): {
 export function validateCanvasLayout(state: WarehouseCanvasState): LayoutIssue[] {
   const issues: LayoutIssue[] = []
   const areasById = new Map(state.areas.map((area) => [area.id, area]))
+  const visibleBlocks = state.blocks.filter((block) => areasById.get(block.areaId)?.visible)
 
-  for (const block of state.blocks) {
+  for (const block of visibleBlocks) {
     const area = areasById.get(block.areaId)
     if (!area || !isInside(block, area)) {
       issues.push({
@@ -42,10 +43,10 @@ export function validateCanvasLayout(state: WarehouseCanvasState): LayoutIssue[]
     }
   }
 
-  for (let leftIndex = 0; leftIndex < state.blocks.length; leftIndex += 1) {
-    const left = state.blocks[leftIndex]
-    for (let rightIndex = leftIndex + 1; rightIndex < state.blocks.length; rightIndex += 1) {
-      const right = state.blocks[rightIndex]
+  for (let leftIndex = 0; leftIndex < visibleBlocks.length; leftIndex += 1) {
+    const left = visibleBlocks[leftIndex]
+    for (let rightIndex = leftIndex + 1; rightIndex < visibleBlocks.length; rightIndex += 1) {
+      const right = visibleBlocks[rightIndex]
       if (left.areaId !== right.areaId || !rectanglesOverlap(left, right)) continue
 
       issues.push({
@@ -68,11 +69,12 @@ export function moveWholeBlock(
 ): WarehouseCanvasState {
   getBlock(state, blockId)
   getArea(state, targetAreaId)
+  const normalizedTarget = normalizeTarget(target)
 
   return {
     ...state,
     blocks: state.blocks.map((block) => (
-      block.id === blockId ? { ...block, areaId: targetAreaId, ...target } : block
+      block.id === blockId ? { ...block, areaId: targetAreaId, ...normalizedTarget } : block
     )),
   }
 }
@@ -88,6 +90,7 @@ export function splitBlock(
 ): WarehouseCanvasState {
   const sourceBlock = getBlock(state, command.blockId)
   getArea(state, command.targetAreaId)
+  const normalizedTarget = normalizeTarget(command.target)
 
   if (
     !Number.isInteger(command.movedUnits)
@@ -102,7 +105,7 @@ export function splitBlock(
     id: getSplitBlockId(state, sourceBlock.id),
     areaId: command.targetAreaId,
     units: command.movedUnits,
-    ...command.target,
+    ...normalizedTarget,
   }
 
   return {
@@ -182,4 +185,12 @@ function getSplitBlockId(state: WarehouseCanvasState, sourceBlockId: string): st
   }
 
   return id
+}
+
+function normalizeTarget(target: Pick<CanvasRect, 'x' | 'y'>): Pick<CanvasRect, 'x' | 'y'> {
+  if (!Number.isFinite(target.x) || !Number.isFinite(target.y)) {
+    throw new Error('坐标必须是有限数字')
+  }
+
+  return { x: Math.round(target.x), y: Math.round(target.y) }
 }
