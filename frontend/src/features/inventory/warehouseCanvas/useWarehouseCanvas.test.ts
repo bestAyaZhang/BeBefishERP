@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createMemoryWarehouseCanvasRepository, seedWarehouseCanvas } from './mockWarehouseCanvasData'
 import { useWarehouseCanvas } from './useWarehouseCanvas'
+import type { WarehouseCanvasState } from './types'
 
 function createCanvas() {
   return useWarehouseCanvas({
@@ -119,5 +120,88 @@ describe('warehouse canvas controller', () => {
     canvas.searchQuery.value = '蓝色'
 
     expect(canvas.matchedBlockIds.value).toEqual(['block-blue-a', 'block-blue-c'])
+  })
+
+  it('keeps edits made while a save is pending and leaves them dirty', async () => {
+    let resolveSave: ((state: WarehouseCanvasState) => void) | undefined
+    let pendingState: WarehouseCanvasState | undefined
+    const canvas = useWarehouseCanvas({
+      repository: {
+        load: async () => seedWarehouseCanvas,
+        save: async (state) => new Promise<WarehouseCanvasState>((resolve) => {
+          pendingState = state
+          resolveSave = resolve
+        }),
+      },
+    })
+    await canvas.load(8)
+    canvas.renameArea('area-a', 'A-已保存')
+
+    const pendingSave = canvas.save()
+    canvas.renameArea('area-b', 'B-保存期间编辑')
+    if (!resolveSave || !pendingState) throw new Error('Expected save to be pending')
+    resolveSave(pendingState)
+
+    await expect(pendingSave).resolves.toBe(true)
+    expect(canvas.state.value.areas.find((area) => area.id === 'area-b')?.name).toBe('B-保存期间编辑')
+    expect(canvas.dirty.value).toBe(true)
+  })
+
+  it('derives dirty from the loaded and saved history baselines', async () => {
+    const canvas = createCanvas()
+    await canvas.load(8)
+    canvas.renameArea('area-a', 'A-成品')
+    canvas.undo()
+    expect(canvas.dirty.value).toBe(false)
+
+    canvas.redo()
+    await canvas.save()
+    canvas.undo()
+    expect(canvas.dirty.value).toBe(true)
+
+    canvas.redo()
+    expect(canvas.dirty.value).toBe(false)
+  })
+
+  it('does not create history for rejected commands or missing targets', async () => {
+    const canvas = createCanvas()
+    await canvas.load(8)
+
+    expect(() => canvas.updateBlockRect('block-blue-a', { x: 76, y: 96, width: 0, height: 80 })).toThrow()
+    expect(() => canvas.moveWholeBlock('missing', 'area-b', { x: 76, y: 500 })).toThrow()
+    expect(() => canvas.splitBlock({
+      blockId: 'block-blue-a', targetAreaId: 'area-b', movedUnits: 150, target: { x: 76, y: 500 },
+    })).toThrow()
+    expect(() => canvas.updateAreaRect('missing', { x: 0, y: 0, width: 20, height: 20 })).toThrow()
+    expect(() => canvas.deleteBlock('missing')).toThrow()
+
+    expect(canvas.canUndo.value).toBe(false)
+    expect(canvas.dirty.value).toBe(false)
+  })
+
+  it('rejects non-positive rectangles and areas outside the logical floor', async () => {
+    const canvas = createCanvas()
+    await canvas.load(8)
+
+    expect(() => canvas.createArea({ id: 'area-d', name: 'D-01', x: 40, y: 60, width: 0, height: 80 })).toThrow()
+    expect(() => canvas.createArea({ id: 'area-d', name: 'D-01', x: 700, y: 60, width: 40, height: 80 })).toThrow()
+    expect(() => canvas.updateBlockRect('block-blue-a', { x: 76, y: 96, width: 120, height: -1 })).toThrow()
+    expect(canvas.canUndo.value).toBe(false)
+  })
+
+  it('rejects invalid repository geometry without replacing controller state', async () => {
+    const canvas = useWarehouseCanvas({
+      repository: {
+        load: async () => ({
+          ...seedWarehouseCanvas,
+          areas: seedWarehouseCanvas.areas.map((area) => area.id === 'area-a' ? { ...area, x: -1 } : area),
+        }),
+        save: async (state) => state,
+      },
+    })
+
+    await expect(canvas.load(8)).rejects.toThrow('区域必须位于逻辑画布范围内')
+    expect(canvas.state.value.areas).toEqual([])
+    expect(canvas.dirty.value).toBe(false)
   })
 })
