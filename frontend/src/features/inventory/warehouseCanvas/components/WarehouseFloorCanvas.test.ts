@@ -59,8 +59,8 @@ describe('WarehouseFloorCanvas rendering and selection', () => {
     expect(wrapper.findAll('[data-testid^="warehouse-area-"]')).toHaveLength(3)
     expect(wrapper.findAll('[data-testid^="warehouse-sku-block-"]')).toHaveLength(5)
     const blueBlock = wrapper.get('[data-testid="warehouse-sku-block-block-blue-a"]')
-    expect(blueBlock.text()).toContain('蓝色储物箱')
-    expect(blueBlock.text()).toContain('BBF-BLUE-101')
+    expect(blueBlock.text()).toContain('深海矿物水 500ml 蓝')
+    expect(blueBlock.text()).toContain('SKU-FISH-500ML-蓝')
     expect(blueBlock.text()).toContain('150 个')
     expect(blueBlock.text()).toContain('6 件 + 6 个')
   })
@@ -112,7 +112,7 @@ describe('WarehouseFloorCanvas rendering and selection', () => {
       blockIds: ['block-blue-a'],
       message: '产品块 block-blue-a 超出所属区域边界',
     }]
-    const wrapper = mountFloor({ issues, searchQuery: '蓝色' })
+    const wrapper = mountFloor({ issues, searchQuery: '蓝' })
 
     const warningBlock = wrapper.get('[data-testid="warehouse-sku-block-block-blue-a"]')
     expect(warningBlock.attributes('data-warning')).toBe('true')
@@ -168,6 +168,60 @@ describe('WarehouseFloorCanvas rendering and selection', () => {
 })
 
 describe('WarehouseFloorCanvas pointer and keyboard interactions', () => {
+  it('draws on unused space inside an existing area without selecting that area', async () => {
+    const wrapper = mountFloor({ tool: 'draw' })
+    const floor = setScaledFloorBounds(wrapper)
+    await wrapper.get('[data-testid="warehouse-area-area-a"]').trigger('pointerdown', { clientX: 250, clientY: 40, pointerId: 30 })
+    await floor.trigger('pointermove', { clientX: 350, clientY: 100, pointerId: 30 })
+    expect(wrapper.find('[data-testid="warehouse-area-draw-preview"]').exists()).toBe(true)
+    await floor.trigger('pointerup', { clientX: 350, clientY: 100, pointerId: 30 })
+    expect(wrapper.emitted('create-area')?.[0]).toEqual([{ x: 480, y: 40, width: 200, height: 120 }])
+    expect(wrapper.emitted('select-area')).toBeUndefined()
+  })
+
+  it('does not preview moving a product in a locked area', async () => {
+    const state = { ...seedWarehouseCanvas, areas: seedWarehouseCanvas.areas.map((area) => ({ ...area, locked: true })) }
+    const wrapper = mountFloor({ state })
+    const floor = setScaledFloorBounds(wrapper)
+    const block = wrapper.get('[data-testid="warehouse-sku-block-block-blue-a"]')
+    const before = block.attributes('style')
+    await block.trigger('pointerdown', { clientX: 58, clientY: 68, pointerId: 34 })
+    await floor.trigger('pointermove', { clientX: 83, clientY: 93, pointerId: 34 })
+    expect(block.attributes('style')).toBe(before)
+  })
+  it('previews movement before release without mutating inventory, and cancels cleanly', async () => {
+    const wrapper = mountFloor()
+    const floor = setScaledFloorBounds(wrapper)
+    const block = wrapper.get('[data-testid="warehouse-sku-block-block-blue-a"]')
+    const originalStyle = block.attributes('style')
+    await block.trigger('pointerdown', { clientX: 58, clientY: 68, pointerId: 31 })
+    await floor.trigger('pointermove', { clientX: 83, clientY: 93, pointerId: 31 })
+    expect(block.attributes('style')).not.toBe(originalStyle)
+    expect(wrapper.emitted('update-block-rect')).toBeUndefined()
+    expect(block.text()).toContain('150 个')
+    await floor.trigger('pointercancel', { pointerId: 31 })
+    expect(block.attributes('style')).toBe(originalStyle)
+  })
+
+  it('does not commit click jitter as a geometry edit', async () => {
+    const wrapper = mountFloor()
+    const floor = setScaledFloorBounds(wrapper)
+    await wrapper.get('[data-testid="warehouse-sku-block-block-blue-a"]').trigger('pointerdown', { clientX: 58, clientY: 68, pointerId: 32 })
+    await floor.trigger('pointerup', { clientX: 59, clientY: 69, pointerId: 32 })
+    expect(wrapper.emitted('update-block-rect')).toBeUndefined()
+  })
+
+  it('previews resize before release without changing authoritative stock', async () => {
+    const wrapper = mountFloor({ selectedBlockId: 'block-blue-a' })
+    const floor = setScaledFloorBounds(wrapper)
+    const block = wrapper.get('[data-testid="warehouse-sku-block-block-blue-a"]')
+    const originalStyle = block.attributes('style')
+    await wrapper.get('[data-testid="warehouse-resize-handle-block-block-blue-a"]').trigger('pointerdown', { clientX: 100, clientY: 100, pointerId: 33 })
+    await floor.trigger('pointermove', { clientX: 120, clientY: 110, pointerId: 33 })
+    expect(block.attributes('style')).not.toBe(originalStyle)
+    expect(block.text()).toContain('150 个')
+    expect(wrapper.emitted('update-block-rect')).toBeUndefined()
+  })
   it('draws a normalized area rectangle using scaled logical coordinates', async () => {
     const wrapper = mountFloor({ tool: 'draw' })
     const floor = setScaledFloorBounds(wrapper)
@@ -202,7 +256,7 @@ describe('WarehouseFloorCanvas pointer and keyboard interactions', () => {
     await floor.trigger('pointerup', { clientX: 83, clientY: 93, pointerId: 3 })
 
     expect(wrapper.emitted('update-block-rect')?.[0]).toEqual([{
-      id: 'block-blue-a', x: 126, y: 146, width: 120, height: 80,
+      id: 'block-blue-a', x: 98, y: 114, width: 210, height: 135,
     }])
   })
 
@@ -217,7 +271,7 @@ describe('WarehouseFloorCanvas pointer and keyboard interactions', () => {
     await floor.trigger('pointerup', { clientX: 40, clientY: 210, pointerId: 4 })
 
     expect(wrapper.emitted('update-area-rect')?.[0]).toEqual([{
-      id: 'area-b', x: 60, y: 372, width: 360, height: 300,
+      id: 'area-b', x: 36, y: 272, width: 340, height: 400,
     }])
 
     const lockedState: WarehouseCanvasState = {
@@ -241,12 +295,12 @@ describe('WarehouseFloorCanvas pointer and keyboard interactions', () => {
     const floor = setScaledFloorBounds(wrapper)
 
     await wrapper.get('[data-testid="warehouse-resize-handle-area-area-a"]').trigger('pointerdown', {
-      clientX: 210, clientY: 180, pointerId: 6,
+      clientX: 360, clientY: 180, pointerId: 6,
     })
     await floor.trigger('pointermove', { clientX: 40, clientY: 50, pointerId: 6 })
     await floor.trigger('pointerup', { clientX: 40, clientY: 50, pointerId: 6 })
     expect(wrapper.emitted('update-area-rect')?.[0]).toEqual([{
-      id: 'area-a', x: 40, y: 60, width: 80, height: 60,
+      id: 'area-a', x: 16, y: 16, width: 80, height: 60,
     }])
 
     await wrapper.get('[data-testid="warehouse-resize-handle-block-block-blue-a"]').trigger('pointerdown', {
@@ -255,7 +309,7 @@ describe('WarehouseFloorCanvas pointer and keyboard interactions', () => {
     await floor.trigger('pointermove', { clientX: 30, clientY: 40, pointerId: 7 })
     await floor.trigger('pointerup', { clientX: 30, clientY: 40, pointerId: 7 })
     expect(wrapper.emitted('update-block-rect')?.[0]).toEqual([{
-      id: 'block-blue-a', x: 76, y: 96, width: 96, height: 72,
+      id: 'block-blue-a', x: 48, y: 64, width: 96, height: 72,
     }])
   })
 
@@ -267,8 +321,8 @@ describe('WarehouseFloorCanvas pointer and keyboard interactions', () => {
     await block.trigger('keydown', { key: 'ArrowDown', shiftKey: true })
 
     expect(wrapper.emitted('update-block-rect')).toEqual([
-      [{ id: 'block-blue-a', x: 77, y: 96, width: 120, height: 80 }],
-      [{ id: 'block-blue-a', x: 76, y: 106, width: 120, height: 80 }],
+      [{ id: 'block-blue-a', x: 49, y: 64, width: 210, height: 135 }],
+      [{ id: 'block-blue-a', x: 48, y: 74, width: 210, height: 135 }],
     ])
   })
 })

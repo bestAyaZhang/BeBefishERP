@@ -29,9 +29,9 @@ function editRect(field: keyof CanvasRect, event: Event) {
   <aside class="object-panel" :data-testid="block ? 'warehouse-block-properties' : 'warehouse-area-properties'">
     <header><h2>{{ block ? '产品块属性' : '区域属性' }}</h2><button aria-label="返回产品库" @click="emit('close')"><X :size="16" /></button></header>
     <template v-if="block && sku">
-      <strong>{{ sku.productName }}</strong><small>{{ sku.skuCode }}</small>
+      <label>SKU<input readonly :value="sku.skuCode" /></label><small>{{ sku.productName }}</small>
       <label>库存个数<input data-testid="sku-units-input" type="number" min="0" step="1" :value="block.units" :disabled="locked" @change="emit('units', numberValue($event))" /></label>
-      <label>每件个数<input readonly :value="`${sku.unitsPerCase} 个/件`" /></label>
+      <small>权威库存单位：个 · {{ sku.unitsPerCase }} 个/件</small>
       <label>件数换算（只读）<input data-testid="sku-case-readonly" readonly :value="caseCopy" /></label>
       <output data-testid="sku-case-copy">{{ caseCopy }}</output>
     </template>
@@ -46,7 +46,7 @@ function editRect(field: keyof CanvasRect, event: Event) {
       <h3><ArrowRightLeft :size="14" />跨区域移动</h3>
       <label>目标区域<select v-model="targetAreaId" data-testid="move-whole-area" :disabled="locked"><option value="" disabled>选择目标区域</option><option v-for="target in targets" :key="target.id" :value="target.id">{{ target.name }}</option></select></label>
       <button data-testid="move-whole-confirm" :disabled="locked || !targetAreaId" @click="emit('move-whole', targetAreaId)">整块移动</button>
-      <button data-testid="open-partial-move" :disabled="locked || !targets.length || block.units < 2" @click="emit('partial-move')">移动部分库存</button>
+      <button data-testid="open-partial-move" class="primary" :disabled="locked || !targets.length || block.units < 2" @click="emit('partial-move')">移动部分库存</button>
       <button data-testid="delete-warehouse-block" class="danger" :disabled="locked" @click="emit('delete-block')"><Trash2 :size="14" />删除产品块</button>
     </template>
     <button v-else data-testid="delete-warehouse-area" class="danger" :disabled="locked" @click="emit('delete-area')"><Trash2 :size="14" />删除区域</button>
@@ -55,9 +55,20 @@ function editRect(field: keyof CanvasRect, event: Event) {
 </template>
 
 <style scoped>
-.object-panel { display:grid; gap:12px; padding:16px; border:1px solid #E2E8F0; border-radius:8px; background:#FFF; min-width:0; font-size:12px; }
+.object-panel { display:grid; align-content:start; gap:8px; padding:20px; border:1px solid #E2E8F0; border-radius:8px; background:#FFF; min-width:0; font-size:12px; }
+.object-panel[data-testid="warehouse-block-properties"] { position:fixed; z-index:30; top:168px; right:0; bottom:0; width:360px; overflow:auto; }
+.object-panel[data-testid="warehouse-area-properties"] { height:743px; overflow:auto; padding:16px; }
+.object-panel[data-testid="warehouse-block-properties"] header { position:absolute; right:8px; top:8px; }
+.object-panel[data-testid="warehouse-block-properties"] header h2 { display:none; }
+.object-panel[data-testid="warehouse-block-properties"] header button { width:24px; min-height:24px; padding:2px; border:0; }
+.object-panel[data-testid="warehouse-block-properties"] label:first-of-type { padding-right:0; }
 header,h3 { display:flex; align-items:center; justify-content:space-between; gap:6px; } h2,h3 { font-weight:700; } h2 { font-size:13px; }
 small,p { color:#64748B; } p { line-height:1.7; } label { display:grid; gap:6px; } input,select,button { width:100%; min-height:40px; border:1px solid #E2E8F0; border-radius:8px; padding:8px; background:white; }
+input,select { font-size:14px; line-height:22px; }
 button { display:flex; align-items:center; justify-content:center; gap:6px; } header button { width:40px; } input[readonly],input:disabled { background:#F8FAFC; color:#64748B; } button:disabled,select:disabled { opacity:.45; cursor:not-allowed; }
-.rect-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; } .rect-grid input { min-width:0; } .danger { color:#EF476F; } output { color:#536DFF; }
+.rect-grid { display:grid; grid-template-columns:1fr; gap:8px; } .rect-grid input { min-width:0; } .danger { color:#EF476F; } output { color:#64748b; font-size:12px; }
+.primary { background:#536dff; color:#fff; border-color:#536dff; }
+button.danger { background:#ef476f; color:#fff; border-color:#ef476f; }
+[data-testid="sku-case-copy"] { position:absolute; width:1px; height:1px; overflow:hidden; }
+@media (max-width:1023px) { .object-panel[data-testid="warehouse-block-properties"] { width:320px; top:100px; } }
 </style>

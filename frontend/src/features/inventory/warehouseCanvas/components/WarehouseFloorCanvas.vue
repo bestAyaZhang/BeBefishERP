@@ -67,6 +67,18 @@ const drawPreview = computed(() => {
   return createDrawRect(interaction.value.start, interaction.value.current)
 })
 
+function previewRect(object: WarehouseArea | WarehouseSkuBlock): CanvasRect {
+  const active = interaction.value
+  if (!active || active.kind === 'draw') return object
+  if ('area' in active && active.area.id === object.id) return active.kind === 'move-area' ? moveAreaRect(active) : resizeAreaRect(active)
+  if ('block' in active && active.block.id === object.id) return active.kind === 'move-block' ? moveBlockRect(active) : resizeBlockRect(active)
+  return object
+}
+function areaSummary(areaId: string) {
+  const blocks = props.state.blocks.filter((block) => block.areaId === areaId)
+  return `${new Set(blocks.map((block) => block.skuId)).size} SKU · ${blocks.reduce((sum, block) => sum + block.units, 0)} 个`
+}
+
 function rectangleStyle(rectangle: CanvasRect): CSSProperties {
   return {
     left: `${rectangle.x / FLOOR_WIDTH * 100}%`,
@@ -156,6 +168,7 @@ function onFloorPointerDown(event: PointerEvent): void {
 }
 
 function onAreaPointerDown(event: PointerEvent, area: WarehouseArea): void {
+  if (props.tool === 'draw') { onFloorPointerDown(event); return }
   if (props.tool !== 'select' || !isPrimaryButton(event)) return
   emit('select-area', area.id)
   if (area.locked) return
@@ -165,8 +178,10 @@ function onAreaPointerDown(event: PointerEvent, area: WarehouseArea): void {
 }
 
 function onBlockPointerDown(event: PointerEvent, block: WarehouseSkuBlock): void {
+  if (props.tool === 'draw') { onFloorPointerDown(event); return }
   if (props.tool !== 'select' || !isPrimaryButton(event)) return
   emit('select-block', block.id)
+  if (props.state.areas.find((area) => area.id === block.areaId)?.locked) return
   const start = logicalPoint(event)
   interaction.value = { kind: 'move-block', pointerId: event.pointerId, start, current: start, block: { ...block } }
   capturePointer(event.pointerId)
@@ -181,6 +196,7 @@ function onAreaResizePointerDown(event: PointerEvent, area: WarehouseArea): void
 
 function onBlockResizePointerDown(event: PointerEvent, block: WarehouseSkuBlock): void {
   if (props.tool !== 'select' || !isPrimaryButton(event)) return
+  if (props.state.areas.find((area) => area.id === block.areaId)?.locked) return
   const start = logicalPoint(event)
   interaction.value = { kind: 'resize-block', pointerId: event.pointerId, start, current: start, block: { ...block } }
   capturePointer(event.pointerId)
@@ -195,6 +211,13 @@ function onPointerUp(event: PointerEvent): void {
   const activeInteraction = interaction.value
   if (!activeInteraction || activeInteraction.pointerId !== event.pointerId) return
   activeInteraction.current = logicalPoint(event)
+
+  const delta = pointerDelta(activeInteraction)
+  if (activeInteraction.kind !== 'draw' && Math.abs(delta.x) < 4 && Math.abs(delta.y) < 4) {
+    interaction.value = null
+    releasePointer(event.pointerId)
+    return
+  }
 
   if (activeInteraction.kind === 'draw') {
     emit('create-area', createDrawRect(activeInteraction.start, activeInteraction.current))
@@ -342,7 +365,7 @@ function isPrimaryButton(event: PointerEvent): boolean {
       :key="area.id"
       :data-testid="`warehouse-area-${area.id}`"
       :data-selected="selectedAreaId === area.id ? 'true' : 'false'"
-      :style="rectangleStyle(area)"
+      :style="rectangleStyle(previewRect(area))"
       class="absolute rounded-lg border-2 bg-white/55 text-left outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-blue-500"
       :class="selectedAreaId === area.id
         ? 'border-solid border-blue-600 ring-2 ring-blue-200'
@@ -350,14 +373,14 @@ function isPrimaryButton(event: PointerEvent): boolean {
       role="button"
       tabindex="0"
       :aria-label="`选择仓库区域 ${area.name}${area.locked ? '，已锁定' : ''}`"
-      @click="emit('select-area', area.id)"
+      @click="tool === 'select' && emit('select-area', area.id)"
       @pointerdown.stop="onAreaPointerDown($event, area)"
       @keydown.enter.prevent="emit('select-area', area.id)"
       @keydown.space.prevent="emit('select-area', area.id)"
       @keydown="onAreaKeydown($event, area)"
     >
       <div class="pointer-events-none flex items-center gap-1.5 px-2 py-1 text-xs font-semibold text-slate-700">
-        <Check v-if="selectedAreaId === area.id" :size="14" aria-hidden="true" />
+        <Check v-if="area.visible" class="area-visible" :size="16" aria-hidden="true" />
         <span>{{ area.name }}</span>
         <span
           v-if="area.locked"
@@ -369,6 +392,7 @@ function isPrimaryButton(event: PointerEvent): boolean {
           <span class="sr-only">已锁定</span>
         </span>
       </div>
+      <div class="area-summary pointer-events-none">{{ areaSummary(area.id) }}</div>
 
       <button
         v-if="selectedAreaId === area.id"
@@ -388,8 +412,8 @@ function isPrimaryButton(event: PointerEvent): boolean {
       :data-selected="selectedBlockId === block.id ? 'true' : 'false'"
       :data-warning="issuesFor(block.id).length > 0 ? 'true' : 'false'"
       :data-search-match="matchesSearch(block) ? 'true' : 'false'"
-      :style="rectangleStyle(block)"
-      class="absolute z-10 flex min-h-0 flex-col overflow-visible rounded-md p-2 text-left outline-none transition-[opacity,box-shadow] focus-visible:ring-2 focus-visible:ring-blue-500"
+      :style="rectangleStyle(previewRect(block))"
+      class="absolute z-10 flex min-h-0 flex-col overflow-visible rounded-md p-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       :class="[
         accentClasses(skuFor(block)),
         issuesFor(block.id).length > 0 ? 'border-2 border-amber-500' : accentBorderClass(skuFor(block)),
@@ -399,7 +423,7 @@ function isPrimaryButton(event: PointerEvent): boolean {
       role="button"
       tabindex="0"
       :aria-label="`选择产品块 ${skuFor(block)?.productName ?? block.id}，${block.units} 个`"
-      @click.stop="emit('select-block', block.id)"
+      @click.stop="tool === 'select' && emit('select-block', block.id)"
       @pointerdown.stop="onBlockPointerDown($event, block)"
       @keydown.enter.prevent="emit('select-block', block.id)"
       @keydown.space.prevent="emit('select-block', block.id)"
@@ -408,6 +432,7 @@ function isPrimaryButton(event: PointerEvent): boolean {
       <div class="pointer-events-none min-w-0">
         <div class="truncate text-xs font-semibold">{{ skuFor(block)?.productName ?? '未知 SKU' }}</div>
         <div class="truncate text-[10px] opacity-70">{{ skuFor(block)?.skuCode ?? `SKU ${block.skuId}` }}</div>
+        <span class="block-area-name">{{ state.areas.find((area) => area.id === block.areaId)?.name }}</span>
         <div class="mt-1 text-sm font-bold leading-none">{{ block.units }} 个</div>
         <div class="mt-1 truncate text-[10px] font-medium opacity-75">
           {{ formatCaseBreakdown(block.units, skuFor(block)?.unitsPerCase ?? 1) }}
@@ -442,10 +467,21 @@ function isPrimaryButton(event: PointerEvent): boolean {
 </template>
 
 <style scoped>
-.warehouse-floor {
-  background-image:
-    linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px);
-  background-size: 24px 24px;
-}
+.warehouse-floor { background:#fff; }
+.area-visible { position:absolute; right:15px; top:15px; color:#64748b; }
+.warehouse-floor:has([data-search-match="false"]) [data-search-match="true"] { border:2px solid #536dff; }
+[data-testid^="warehouse-area-area"] { background:#f8fafc; border-width:1px; border-style:solid; border-color:#e2e8f0; }
+[data-testid^="warehouse-area-area"][data-selected="true"] { border-color:#536dff; }
+[data-testid^="warehouse-area-area"] > div:first-child { padding:13px 15px; font-size:15px; font-weight:500; line-height:22px; color:#25314d; }
+.area-summary { position:absolute; left:15px; top:min(180px, calc(100% - 32px)); color:#64748b; font-size:12px; line-height:18px; }
+[data-testid^="warehouse-sku-block-"] { padding:10px 11px; border-radius:5px; background:#fff; color:#25314d; border-color:#e2e8f0; container-type:size; }
+[data-testid^="warehouse-sku-block-"] .text-xs { font-size:11.25px; line-height:16.5px; font-weight:500; }
+[data-testid^="warehouse-sku-block-"] .text-\[10px\] { font-size:9px; line-height:13.5px; }
+[data-testid^="warehouse-sku-block-"] .text-sm { margin-top:22px; font-family:Inter,sans-serif; font-size:10.5px; line-height:15px; font-weight:600; }
+[data-testid^="warehouse-sku-block-"] .font-medium { font-size:10.5px; line-height:16.5px; color:#64748b; margin-top:6px; }
+.block-area-name { position:absolute; right:12px; top:30px; color:#94a3b8; font-size:9px; }
+[data-testid^="warehouse-sku-block-"][data-selected="true"] { border-color:#536dff; }
+[data-testid^="warehouse-sku-block-"][data-warning="true"] { border-color:#f59e0b; }
+/* Compact blocks retain every quantity line after manual shrinking. */
+@container (max-height:100px) { .block-area-name { display:none; } [data-testid^="warehouse-sku-block-"] .text-sm { margin-top:4px; } [data-testid^="warehouse-sku-block-"] .font-medium { margin-top:3px; } }
 </style>

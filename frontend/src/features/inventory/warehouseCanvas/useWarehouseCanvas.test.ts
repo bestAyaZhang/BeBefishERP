@@ -98,7 +98,7 @@ describe('warehouse canvas controller', () => {
     await expect(canvas.save()).resolves.toBe(false)
     expect(canvas.issues.value).toHaveLength(1)
     expect(canvas.dirty.value).toBe(true)
-    expect((await repository.load(8)).blocks.find((block) => block.id === 'block-blue-a')?.x).toBe(76)
+    expect((await repository.load(8)).blocks.find((block) => block.id === 'block-blue-a')?.x).toBe(48)
   })
 
   it('saves a valid layout and clears its dirty state', async () => {
@@ -117,7 +117,7 @@ describe('warehouse canvas controller', () => {
     const canvas = createCanvas()
     await canvas.load(8)
 
-    canvas.searchQuery.value = '蓝色'
+    canvas.searchQuery.value = '蓝'
 
     expect(canvas.matchedBlockIds.value).toEqual(['block-blue-a', 'block-blue-c'])
   })

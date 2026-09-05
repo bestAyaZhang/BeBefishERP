@@ -30,6 +30,7 @@ export function validateCanvasLayout(state: WarehouseCanvasState): LayoutIssue[]
   const issues: LayoutIssue[] = []
   const areasById = new Map(state.areas.map((area) => [area.id, area]))
   const visibleBlocks = state.blocks.filter((block) => areasById.get(block.areaId)?.visible)
+  const blockName = (block: WarehouseSkuBlock) => state.catalog.find((sku) => sku.skuId === block.skuId)?.productName ?? '未知产品'
 
   for (const block of visibleBlocks) {
     const area = areasById.get(block.areaId)
@@ -38,7 +39,7 @@ export function validateCanvasLayout(state: WarehouseCanvasState): LayoutIssue[]
         id: `outside-area:${block.id}`,
         type: 'outside-area',
         blockIds: [block.id],
-        message: `产品块 ${block.id} 超出所属区域边界`,
+        message: `${blockName(block)} 超出所属区域边界（${area?.name ?? '未知区域'}）；${block.units} 个保持不变。`,
       })
     }
   }
@@ -53,7 +54,7 @@ export function validateCanvasLayout(state: WarehouseCanvasState): LayoutIssue[]
         id: `overlap:${left.id}:${right.id}`,
         type: 'overlap',
         blockIds: [left.id, right.id],
-        message: `产品块 ${left.id} 与 ${right.id} 重叠`,
+        message: `${areasById.get(left.areaId)?.name} 内 ${blockName(left)} 与 ${blockName(right)} 重叠；库存未改变。`,
       })
     }
   }

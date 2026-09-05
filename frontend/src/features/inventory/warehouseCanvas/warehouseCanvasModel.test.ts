@@ -56,7 +56,7 @@ describe('warehouse canvas model', () => {
     const outsideState = {
       ...seedWarehouseCanvas,
       blocks: seedWarehouseCanvas.blocks.map((block) =>
-        block.id === 'block-blue-a' ? { ...block, x: 20 } : block,
+        block.id === 'block-blue-a' ? { ...block, x: 0 } : block,
       ),
     }
 
@@ -70,7 +70,7 @@ describe('warehouse canvas model', () => {
     const overlapState = {
       ...seedWarehouseCanvas,
       blocks: seedWarehouseCanvas.blocks.map((block) =>
-        block.id === 'block-tea-b' ? { ...block, x: 260, y: 390 } : block,
+        block.id === 'block-tea-b' ? { ...block, x: 80, y: 390 } : block,
       ),
     }
 

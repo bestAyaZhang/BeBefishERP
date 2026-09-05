@@ -7,24 +7,24 @@ export interface WarehouseCanvasRepository {
 
 export const seedWarehouseCanvas: WarehouseCanvasState = {
   warehouseId: 1,
-  warehouseName: 'BeBeFish 主仓',
+  warehouseName: '华东一号仓',
   areas: [
-    { id: 'area-a', name: 'A-01', x: 40, y: 60, width: 360, height: 300, visible: true, locked: false },
-    { id: 'area-b', name: 'B-01', x: 40, y: 360, width: 360, height: 300, visible: true, locked: false },
-    { id: 'area-c', name: 'C-01', x: 440, y: 60, width: 240, height: 300, visible: true, locked: false },
+    { id: 'area-a', name: 'A-01', x: 16, y: 16, width: 696, height: 220, visible: true, locked: false },
+    { id: 'area-b', name: 'B-01', x: 16, y: 252, width: 340, height: 400, visible: true, locked: false },
+    { id: 'area-c', name: 'C-01', x: 372, y: 252, width: 340, height: 400, visible: true, locked: false },
   ],
   catalog: [
-    { id: 'sku-blue', skuId: 101, skuCode: 'BBF-BLUE-101', productName: '蓝色储物箱', unitsPerCase: 24, accent: 'blue' },
-    { id: 'sku-pink', skuId: 102, skuCode: 'BBF-PINK-102', productName: '粉色收纳盒', unitsPerCase: 24, accent: 'pink' },
-    { id: 'sku-tea', skuId: 103, skuCode: 'BBF-TEA-103', productName: '茶具套装', unitsPerCase: 12, accent: 'green' },
-    { id: 'sku-cyan', skuId: 104, skuCode: 'BBF-CYAN-104', productName: '青色水杯', unitsPerCase: 6, accent: 'cyan' },
+    { id: 'sku-blue', skuId: 101, skuCode: 'SKU-FISH-500ML-蓝', productName: '深海矿物水 500ml 蓝', unitsPerCase: 24, accent: 'blue' },
+    { id: 'sku-cyan', skuId: 104, skuCode: 'SKU-CUP-12OZ', productName: '12oz 冷饮杯', unitsPerCase: 50, accent: 'cyan' },
+    { id: 'sku-pink', skuId: 102, skuCode: 'SKU-FISH-350ML-粉', productName: '深海矿物水 350ml 粉', unitsPerCase: 24, accent: 'pink' },
+    { id: 'sku-tea', skuId: 103, skuCode: 'SKU-TEA-1L-绿', productName: '茉莉绿茶 1L', unitsPerCase: 20, accent: 'green' },
   ],
   blocks: [
-    { id: 'block-blue-a', skuId: 101, areaId: 'area-a', units: 150, x: 76, y: 96, width: 120, height: 80 },
-    { id: 'block-cyan-a', skuId: 104, areaId: 'area-a', units: 120, x: 220, y: 96, width: 120, height: 80 },
-    { id: 'block-pink-b', skuId: 102, areaId: 'area-b', units: 420, x: 220, y: 376, width: 120, height: 80 },
-    { id: 'block-tea-b', skuId: 103, areaId: 'area-b', units: 236, x: 220, y: 540, width: 120, height: 80 },
-    { id: 'block-blue-c', skuId: 101, areaId: 'area-c', units: 100, x: 476, y: 96, width: 120, height: 80 },
+    { id: 'block-blue-a', skuId: 101, areaId: 'area-a', units: 150, x: 48, y: 64, width: 210, height: 135 },
+    { id: 'block-cyan-a', skuId: 104, areaId: 'area-a', units: 120, x: 276, y: 64, width: 210, height: 135 },
+    { id: 'block-pink-b', skuId: 102, areaId: 'area-b', units: 576, x: 48, y: 304, width: 210, height: 135 },
+    { id: 'block-tea-b', skuId: 103, areaId: 'area-b', units: 80, x: 48, y: 456, width: 210, height: 135 },
+    { id: 'block-blue-c', skuId: 101, areaId: 'area-c', units: 100, x: 404, y: 304, width: 210, height: 135 },
   ],
 }
 
