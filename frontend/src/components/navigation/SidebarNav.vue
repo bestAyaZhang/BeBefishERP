@@ -109,7 +109,6 @@ function toggleGroup(item: SidebarNavigationItem) {
       </template>
       </div>
     </div>
-    <div class="px-5 pb-5"><p class="mb-4 mt-2 px-2 text-xs font-semibold text-slate-400">Topics</p><div class="space-y-2"><button type="button" class="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold text-slate-400 hover:bg-slate-50"><span class="flex h-5 w-5 items-center justify-center rounded-md bg-amber-50 text-amber-500">•</span>商品管理</button><button type="button" class="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold text-slate-400 hover:bg-slate-50"><span class="flex h-5 w-5 items-center justify-center rounded-md bg-sky-50 text-sky-500">•</span>库存协同</button></div></div>
     <div data-testid="erp-sidebar-user" class="mx-5 mb-5 flex items-center gap-3 border-t border-slate-100 pt-5"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-600">{{ currentUserInitials }}</span><div class="min-w-0"><p class="truncate text-sm font-bold">当前登录用户</p><p class="truncate text-xs text-slate-400">{{ currentUserMobile }}</p></div><ChevronRight class="ml-auto h-4 w-4 text-slate-400" aria-hidden="true" /></div>
   </nav>
 </template>

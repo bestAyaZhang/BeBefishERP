@@ -37,7 +37,7 @@ function changeSize(event: Event) {
 <template>
   <footer
     data-testid="product-pagination"
-    class="flex min-w-0 flex-col items-stretch gap-3 border-t border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 lg:h-16 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2 lg:py-0"
+    class="flex min-w-0 flex-col items-stretch gap-3 border-t border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 lg:h-14 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2 lg:py-0"
   >
     <div
       data-testid="product-pagination-summary"

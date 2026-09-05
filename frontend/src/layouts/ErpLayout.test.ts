@@ -125,6 +125,32 @@ describe('ErpLayout', () => {
     ]));
   });
 
+  it('keeps the topbar fixed while the page content owns vertical scrolling', async () => {
+    ({ router, wrapper } = await mountLayout('/products'));
+
+    expect(wrapper.get('[data-testid="erp-shell"]').classes()).toEqual(expect.arrayContaining([
+      'h-dvh',
+      'overflow-hidden'
+    ]));
+    expect(wrapper.get('[data-testid="erp-layout-grid"]').classes()).toEqual(expect.arrayContaining([
+      'h-full',
+      'min-h-0'
+    ]));
+    expect(wrapper.get('[data-testid="erp-main"]').classes()).toEqual(expect.arrayContaining([
+      'flex',
+      'h-full',
+      'min-h-0',
+      'flex-col',
+      'overflow-hidden'
+    ]));
+    expect(wrapper.get('[data-testid="erp-topbar"]').classes()).toContain('shrink-0');
+    expect(wrapper.get('[data-testid="erp-page-content"]').classes()).toEqual(expect.arrayContaining([
+      'min-h-0',
+      'flex-1',
+      'overflow-y-auto'
+    ]));
+  });
+
   it('keeps the 320px topbar shrink-safe while preserving full desktop actions', async () => {
     ({ router, wrapper } = await mountLayout('/products/42/edit'));
 

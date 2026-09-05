@@ -82,6 +82,10 @@ describe('application routes', () => {
 
     expect(wrapper.find('[data-testid="erp-shell"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="product-list-page"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="product-list-page"]').classes()).toEqual(expect.arrayContaining([
+      'h-full',
+      'min-h-0'
+    ]));
     expect(wrapper.find('[data-testid="product-keyword"]').exists()).toBe(true);
     expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('主数据');
     expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('商品资料');

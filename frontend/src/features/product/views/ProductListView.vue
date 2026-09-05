@@ -124,7 +124,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section data-testid="product-list-page" class="min-w-0">
+  <section data-testid="product-list-page" class="h-full min-h-0 min-w-0">
     <ProductList
       :service="productService"
       :categories="categories"
