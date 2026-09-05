@@ -61,7 +61,7 @@ function initialForm(): EmployeeFormState {
     employmentType: item?.employmentType ?? 'formal',
     status: item?.status ?? 'active',
     hireDate: item ? item.hireDate ?? '' : today(),
-    passwordLoginEnabled: item?.employmentType === 'temporary' ? true : item?.passwordLoginEnabled ?? false,
+    passwordLoginEnabled: item?.passwordLoginEnabled ?? false,
     password: '',
     passwordConfirm: ''
   };
@@ -131,7 +131,7 @@ watch(() => form.value.passwordLoginEnabled, (enabled) => {
 
 function validate(): string {
   const value = form.value;
-  if (value.employmentType === 'temporary' && !value.passwordLoginEnabled) return '临时员工必须启用手机号和密码登录';
+  if (value.employmentType === 'temporary' && !value.passwordLoginEnabled && (isCreate.value || props.employee?.employmentType !== 'temporary')) return '临时员工必须启用手机号和密码登录';
   if (passwordRequired.value && !value.password.trim()) {
     return value.employmentType === 'temporary'
       ? '临时员工必须启用手机号和密码登录'
@@ -344,9 +344,9 @@ onBeforeUnmount(() => {
           <label class="mt-3 flex min-h-[52px] items-center justify-between gap-4 rounded-[6px] bg-slate-50 px-3.5 py-2">
             <span>
               <span class="block text-sm font-medium text-[#25314d]">维护账号密码</span>
-              <span class="mt-0.5 block text-xs text-slate-400">{{ form.employmentType === 'formal' ? '正式员工仅支持飞书登录；密码仅为账号保存，不作为登录备用方式' : '临时员工必须使用手机号和密码登录' }}</span>
+              <span class="mt-0.5 block text-xs text-slate-400">{{ form.employmentType === 'formal' ? '正式员工仅支持飞书登录；密码仅为账号保存，不作为登录备用方式' : '临时员工使用手机号和密码登录；未设置密码的导入账号可只维护资料' }}</span>
             </span>
-            <input data-testid="password-login-enabled" v-model="form.passwordLoginEnabled" :disabled="readOnly || form.employmentType === 'temporary'" type="checkbox" class="h-5 w-9 accent-[#536dff]" />
+            <input data-testid="password-login-enabled" v-model="form.passwordLoginEnabled" :disabled="readOnly || (form.employmentType === 'temporary' && (isCreate || employee?.employmentType !== 'temporary'))" type="checkbox" class="h-5 w-9 accent-[#536dff]" />
           </label>
 
           <p v-if="employee?.passwordLoginEnabled" class="mt-2 text-xs text-slate-400">已有密码会保留；留空或取消勾选不会清除密码。</p>

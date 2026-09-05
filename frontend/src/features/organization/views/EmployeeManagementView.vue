@@ -276,8 +276,9 @@ const syncTask = ref<FeishuSyncTask | null>(null);
 const syncStarting = ref(false);
 const syncChecking = ref(true);
 const syncError = ref('');
+const syncReading = ref(false);
 const canSync = computed(() => currentUser.value?.permissions.includes('organization:sync') ?? false);
-const syncBusy = computed(() => syncStarting.value || syncChecking.value || (!syncError.value && (syncTask.value?.status === 'pending' || syncTask.value?.status === 'running')));
+const syncBusy = computed(() => syncStarting.value || syncChecking.value || (syncTask.value?.status === 'pending' || syncTask.value?.status === 'running'));
 const syncStatusLabel = computed(() => syncTask.value ? ({ pending: '等待同步', running: '正在同步', success: '同步成功', partial: '部分成功', failed: '同步失败' })[syncTask.value.status] : '尚无同步记录');
 let syncTimer: ReturnType<typeof setTimeout> | undefined;
 let disposed = false;
@@ -285,13 +286,14 @@ let disposed = false;
 async function receiveSyncTask(task: FeishuSyncTask, notify: boolean) {
   if (disposed) return;
   syncTask.value = task;
+  syncError.value = '';
   if (task.status === 'pending' || task.status === 'running') {
     syncTimer = setTimeout(async () => {
       try { await receiveSyncTask(await service.getFeishuSync(task.id), true); }
       catch (error) {
         if (disposed) return;
         syncError.value = messageFrom(error);
-        message.error(`同步进度读取失败：${syncError.value}，可点击同步重试`);
+        message.error(`同步进度读取失败：${syncError.value}，请重试读取进度`);
       }
     }, 2000);
     return;
@@ -312,6 +314,19 @@ async function receiveSyncTask(task: FeishuSyncTask, notify: boolean) {
   } catch (error) {
     if (!disposed) message.warning(`同步已完成，但页面刷新失败：${messageFrom(error)}`);
   }
+}
+
+async function retrySyncProgress() {
+  if (disposed || syncReading.value || !syncTask.value) return;
+  syncReading.value = true;
+  if (syncTimer) clearTimeout(syncTimer);
+  try { await receiveSyncTask(await service.getFeishuSync(syncTask.value.id), true); }
+  catch (error) {
+    if (!disposed) {
+      syncError.value = messageFrom(error);
+      message.error(`同步进度读取失败：${syncError.value}，请重试读取进度`);
+    }
+  } finally { syncReading.value = false; }
 }
 
 async function startSync() {
@@ -360,7 +375,7 @@ onMounted(() => { void loadReferenceData(); void resumeSync(); });
       </button>
     </header>
 
-    <p data-testid="sync-status" class="mb-3 text-sm text-slate-500" role="status">{{ syncStatusLabel }}<span v-if="syncTask"> · 任务 #{{ syncTask.id }} · {{ syncTask.finishedAt || syncTask.startedAt }}<template v-if="syncTask.status === 'success' || syncTask.status === 'partial'"> · 部门新增 {{ syncTask.departmentsCreated }} / 更新 {{ syncTask.departmentsUpdated }} · 员工新增 {{ syncTask.employeesCreated }} / 更新 {{ syncTask.employeesUpdated }} · 失败 {{ syncTask.recordsFailed }} / 跳过 {{ syncTask.recordsSkipped }}</template> · {{ syncTask.errorMessage || syncTask.warningMessage }}</span><span v-if="syncError"> · {{ syncError }}</span></p>
+    <p data-testid="sync-status" class="mb-3 text-sm text-slate-500" role="status">{{ syncStatusLabel }}<span v-if="syncTask"> · 任务 #{{ syncTask.id }} · {{ syncTask.finishedAt || syncTask.startedAt }}<template v-if="syncTask.status === 'success' || syncTask.status === 'partial'"> · 部门新增 {{ syncTask.departmentsCreated }} / 更新 {{ syncTask.departmentsUpdated }} · 员工新增 {{ syncTask.employeesCreated }} / 更新 {{ syncTask.employeesUpdated }} · 失败 {{ syncTask.recordsFailed }} / 跳过 {{ syncTask.recordsSkipped }}</template> · {{ syncTask.errorMessage || syncTask.warningMessage }}</span><span v-if="syncError"> · {{ syncError }}</span><button v-if="syncError && syncTask" data-testid="retry-sync-progress" type="button" :disabled="syncReading" class="ml-3 text-[#536dff] disabled:opacity-50" @click="retrySyncProgress">{{ syncReading ? '读取中…' : '重试读取进度' }}</button></p>
     <p v-if="pageNotice" data-testid="employee-page-notice" class="mb-4 rounded-[6px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700" role="status">{{ pageNotice }}</p>
 
     <div data-testid="employee-workspace" class="grid h-[804px] grid-cols-[280px_minmax(0,1fr)] gap-4">

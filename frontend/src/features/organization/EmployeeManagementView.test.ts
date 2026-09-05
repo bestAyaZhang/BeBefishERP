@@ -589,7 +589,7 @@ describe('EmployeeFormDrawer', () => {
     expect(payload).not.toHaveProperty('password');
   });
 
-  it('requires a password for a legacy temporary employee without password login', async () => {
+  it('preserves a legacy temporary employee without password login', async () => {
     const legacyTemporaryEmployee: Employee = {
       ...employee,
       employmentType: 'temporary',
@@ -599,11 +599,11 @@ describe('EmployeeFormDrawer', () => {
     };
     const wrapper = mountDrawer({ mode: 'edit', employee: legacyTemporaryEmployee });
 
-    expect(wrapper.find('[data-testid="employee-password"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="employee-password"]').exists()).toBe(false);
     await wrapper.get('[data-testid="save-employee"]').trigger('click');
 
-    expect(wrapper.get('[data-testid="employee-drawer-error"]').text()).toContain('临时员工必须启用手机号和密码登录');
-    expect(wrapper.emitted('save')).toBeUndefined();
+    expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({ passwordLoginEnabled: false });
+    expect(wrapper.emitted('save')?.[0]?.[0]).not.toHaveProperty('password');
   });
 });
 
@@ -706,5 +706,61 @@ it('requests the employee page while reference data is still loading', async () 
  vi.spyOn(service, 'listAllDepartments').mockReturnValue(new Promise(() => {}));
  const list = vi.spyOn(service, 'listEmployees');
  await mountPage(service);
+ expect(list).toHaveBeenCalledTimes(1);
+});
+
+it('preserves a passwordless imported temporary employee and lets the user explicitly provision login', async () => {
+ const wrapper = mountDrawer({mode:'edit', employee:{...employee,employmentType:'temporary',passwordLoginEnabled:false,mobile:'',hireDate:null,departmentId:null,positionId:null}});
+ const checkbox = wrapper.get('[data-testid="password-login-enabled"]');
+ expect((checkbox.element as HTMLInputElement).checked).toBe(false);
+ expect(checkbox.attributes('disabled')).toBeUndefined();
+ await wrapper.get('[data-testid="employee-name"]').setValue('导入临时员工');
+ await wrapper.get('[data-testid="save-employee"]').trigger('click');
+ expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({employeeName:'导入临时员工',passwordLoginEnabled:false,mobile:'',hireDate:null});
+ expect(wrapper.emitted('save')?.[0]?.[0]).not.toHaveProperty('password');
+ await checkbox.setValue(true);
+ await wrapper.get('[data-testid="save-employee"]').trigger('click');
+ expect(wrapper.emitted('save')).toHaveLength(1);
+ await wrapper.get('[data-testid="employee-password"]').setValue('Password@123');
+ await wrapper.get('[data-testid="employee-password-confirm"]').setValue('Password@123');
+ await wrapper.get('[data-testid="save-employee"]').trigger('click');
+ expect(wrapper.emitted('save')).toHaveLength(1);
+ await wrapper.get('[data-testid="employee-mobile"]').setValue('13800138001');
+ await wrapper.get('[data-testid="save-employee"]').trigger('click');
+ expect(wrapper.emitted('save')?.[1]?.[0]).toMatchObject({passwordLoginEnabled:true,password:'Password@123',mobile:'13800138001'});
+});
+it.each([['organization:view'],['organization:view','organization:sync']])('recovers original task with a read-only retry for %j', async (...permissions) => {
+ vi.useFakeTimers(); setPermissions(permissions);
+ const service = createMockOrganizationService();
+ vi.spyOn(service,'getLatestFeishuSync').mockResolvedValue(syncTask);
+ const poll = vi.spyOn(service,'getFeishuSync').mockRejectedValueOnce(new Error('临时断网')).mockResolvedValueOnce({...syncTask,status:'success'});
+ const start = vi.spyOn(service,'startFeishuSync');
+ const list = vi.spyOn(service,'listEmployees');
+ const wrapper = await mountPage(service);
+ await vi.advanceTimersByTimeAsync(2000); await flushPromises();
+ expect(wrapper.get('[data-testid="sync-status"]').text()).toContain('临时断网');
+ if (permissions.includes('organization:sync')) expect(wrapper.get('[data-testid="sync-feishu"]').attributes('disabled')).toBeDefined();
+ await wrapper.get('[data-testid="retry-sync-progress"]').trigger('click'); await flushPromises();
+ expect(poll.mock.calls).toEqual([[3],[3]]);
+ expect(start).not.toHaveBeenCalled();
+ expect(list).toHaveBeenCalledTimes(2);
+ expect(messages.value.at(-1)?.type).toBe('success');
+ expect(wrapper.get('[data-testid="sync-status"]').text()).not.toContain('临时断网');
+ expect(wrapper.find('[data-testid="retry-sync-progress"]').exists()).toBe(false);
+});
+it('ignores a retry response and cancels future polling after unmount', async () => {
+ vi.useFakeTimers(); setPermissions(['organization:view']);
+ const service = createMockOrganizationService();
+ vi.spyOn(service,'getLatestFeishuSync').mockResolvedValue(syncTask);
+ const pending = deferred<typeof syncTask>();
+ const poll = vi.spyOn(service,'getFeishuSync').mockRejectedValueOnce(new Error('临时断网')).mockReturnValueOnce(pending.promise);
+ const list = vi.spyOn(service,'listEmployees');
+ const wrapper = await mountPage(service);
+ await vi.advanceTimersByTimeAsync(2000); await flushPromises();
+ await wrapper.get('[data-testid="retry-sync-progress"]').trigger('click');
+ wrapper.unmount(); activeWrapper = undefined;
+ pending.resolve(syncTask); await flushPromises();
+ await vi.advanceTimersByTimeAsync(10000);
+ expect(poll).toHaveBeenCalledTimes(2);
  expect(list).toHaveBeenCalledTimes(1);
 });
