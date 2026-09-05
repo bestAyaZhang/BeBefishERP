@@ -1,3 +1,4 @@
+import { messages, clearMessages } from '../../components/feedback/message';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -49,13 +50,14 @@ function setPermissions(permissions: string[]) {
 }
 
 beforeEach(() => {
-  setPermissions(['organization:view', 'organization:manage']);
+  setPermissions(['organization:view', 'organization:create', 'organization:edit']);
 });
 
 afterEach(() => {
   activeWrapper?.unmount();
   activeWrapper = undefined;
   clearCurrentUser();
+  clearMessages();
   vi.useRealTimers();
 });
 
@@ -194,8 +196,8 @@ describe('EmployeeManagementView', () => {
     const latestPage = employeePage({ ...employee, id: 212, employeeName: '最新查询员工' });
     vi.spyOn(service, 'listAllDepartments').mockReturnValueOnce(initialReferences.promise);
     const listEmployees = vi.spyOn(service, 'listEmployees')
-      .mockReturnValueOnce(latestRequest.promise)
-      .mockResolvedValueOnce(stalePage);
+      .mockResolvedValueOnce(stalePage)
+      .mockReturnValueOnce(latestRequest.promise);
     const wrapper = mount(EmployeeManagementView, {
       global: { provide: { organizationService: service } }
     });
@@ -209,7 +211,7 @@ describe('EmployeeManagementView', () => {
 
     expect(wrapper.find('[data-testid="employee-loading"]').exists()).toBe(true);
     expect(wrapper.text()).not.toContain('过期初始化员工');
-    expect(listEmployees).toHaveBeenCalledOnce();
+    expect(listEmployees).toHaveBeenCalledTimes(2);
 
     latestRequest.resolve(latestPage);
     await flushPromises();
@@ -224,7 +226,7 @@ describe('EmployeeManagementView', () => {
     const latestRequest = deferred<PageResult<Employee>>();
     const latestPage = employeePage({ ...employee, id: 213, employeeName: '失败后最新员工' });
     vi.spyOn(service, 'listAllDepartments').mockReturnValueOnce(initialReferences.promise);
-    vi.spyOn(service, 'listEmployees').mockReturnValueOnce(latestRequest.promise);
+    vi.spyOn(service, 'listEmployees').mockResolvedValueOnce(employeePage(employee)).mockReturnValueOnce(latestRequest.promise);
     const wrapper = mount(EmployeeManagementView, {
       global: { provide: { organizationService: service } }
     });
@@ -392,9 +394,9 @@ describe('EmployeeManagementView', () => {
     const cases: Array<{ employee: Employee; label: string }> = [
       { employee: { ...employee, id: 101, status: 'disabled', passwordLoginEnabled: true }, label: '不可登录' },
       { employee: { ...employee, id: 102, status: 'resigned', employmentType: 'temporary', passwordLoginEnabled: true }, label: '不可登录' },
-      { employee: { ...employee, id: 103, passwordLoginEnabled: true }, label: '飞书 + 手机号' },
+      { employee: { ...employee, id: 103, passwordLoginEnabled: true }, label: '飞书已绑定' },
       { employee: { ...employee, id: 104, passwordLoginEnabled: false }, label: '飞书已绑定' },
-      { employee: { ...employee, id: 105, feishuBindingStatus: 'unbound', feishuDisplayName: '', passwordLoginEnabled: true }, label: '手机号账号' },
+      { employee: { ...employee, id: 105, feishuBindingStatus: 'unbound', feishuDisplayName: '', passwordLoginEnabled: true }, label: '飞书未绑定' },
       { employee: { ...employee, id: 106, feishuBindingStatus: 'pending', feishuDisplayName: '', passwordLoginEnabled: false }, label: '待绑定飞书' },
       { employee: { ...employee, id: 107, employmentType: 'temporary', feishuBindingStatus: 'unbound', feishuDisplayName: '', passwordLoginEnabled: true }, label: '手机号账号' },
       { employee: { ...employee, id: 108, employmentType: 'temporary', feishuBindingStatus: 'unbound', feishuDisplayName: '', passwordLoginEnabled: false }, label: '不可登录' },
@@ -627,3 +629,82 @@ function deferred<T>() {
 function employeePage(item: Employee): PageResult<Employee> {
   return { records: [item], page: 1, pageSize: 20, total: 1 };
 }
+
+ it('preserves nullable imported fields when editing', async () => {
+ const wrapper = mountDrawer({mode: 'edit', employee: {...employee, departmentId: null, positionId: null, hireDate: null}});
+ await wrapper.get('[data-testid="save-employee"]').trigger('click');
+ expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({departmentId: null, positionId: null, hireDate: null});
+ });
+ it('allows create permission without granting employee edit', async () => {
+ setPermissions(['organization:view', 'organization:create']);
+ const wrapper = await mountPage();
+ expect(wrapper.find('[data-testid="add-employee"]').exists()).toBe(true);
+ expect(wrapper.find('[data-testid^="edit-employee-"]').exists()).toBe(false);
+ });
+
+const syncTask = { id: 3, triggerType: 'manual' as const, status: 'running' as const, startedAt: '2026-09-05', finishedAt: null, departmentsCreated: 1, departmentsUpdated: 2, employeesCreated: 3, employeesUpdated: 4, recordsSkipped: 0, recordsFailed: 0, warningMessage: null, errorMessage: null };
+describe('Feishu sync feedback', () => {
+ it('hides sync without its own permission', async () => {
+ const wrapper = await mountPage();
+ expect(wrapper.find('[data-testid="sync-feishu"]').exists()).toBe(false);
+ });
+ it.each(['success', 'partial', 'failed'] as const)('resumes running task and reports %s once', async (status) => {
+ vi.useFakeTimers();
+ setPermissions(['organization:view','organization:sync']);
+ const service = createMockOrganizationService();
+ vi.spyOn(service, 'getLatestFeishuSync').mockResolvedValue(syncTask);
+ const poll = vi.spyOn(service, 'getFeishuSync').mockResolvedValue({...syncTask, status, errorMessage: '配置错误', warningMessage: '个别冲突'});
+ const list = vi.spyOn(service, 'listEmployees');
+ const wrapper = await mountPage(service);
+ const before = list.mock.calls.length;
+ expect(wrapper.get('[data-testid="sync-feishu"]').attributes('disabled')).toBeDefined();
+ await vi.advanceTimersByTimeAsync(2000); await flushPromises();
+ expect(messages.value.at(-1)?.type).toBe(status === 'partial' ? 'warning' : status === 'failed' ? 'error' : 'success');
+ expect(list.mock.calls.length).toBe(status === 'failed' ? before : before + 1);
+ expect(wrapper.get('[data-testid="sync-feishu"]').attributes('disabled')).toBeUndefined();
+ await vi.advanceTimersByTimeAsync(4000);
+ expect(poll).toHaveBeenCalledTimes(1);
+ });
+ it('prevents duplicate starts and cancels polling on unmount', async () => {
+ vi.useFakeTimers();
+ setPermissions(['organization:view','organization:sync']);
+ const service = createMockOrganizationService();
+ const start = vi.spyOn(service, 'startFeishuSync').mockResolvedValue(syncTask);
+ const poll = vi.spyOn(service, 'getFeishuSync');
+ const wrapper = await mountPage(service);
+ await wrapper.get('[data-testid="sync-feishu"]').trigger('click');
+ await wrapper.get('[data-testid="sync-feishu"]').trigger('click');
+ await flushPromises();
+ expect(start).toHaveBeenCalledTimes(1);
+ wrapper.unmount(); activeWrapper = undefined;
+ await vi.advanceTimersByTimeAsync(4000);
+ expect(poll).not.toHaveBeenCalled();
+ });
+ it('displays Feishu job title for an unassigned employee', async () => {
+ const service = createMockOrganizationService();
+ vi.spyOn(service, 'listEmployees').mockResolvedValue({records: [{...employee, departmentId: null, positionId: null, feishuJobTitle: '飞书架构师', hireDate: null}], page: 1, pageSize: 20, total: 1});
+ const wrapper = await mountPage(service);
+ expect(wrapper.text()).toContain('飞书架构师');
+ expect(wrapper.text()).toContain('未分配');
+ });
+});
+it('includes unassigned employees in the company tree count', async () => {
+ const service = createMockOrganizationService();
+ vi.spyOn(service, 'getDepartmentEmployeeCounts').mockResolvedValue({1: 1});
+ vi.spyOn(service, 'getSummary').mockResolvedValue({formalEmployees: 2, temporaryEmployees: 1, pendingFeishuBindings: 0, disabledAccounts: 0});
+ const wrapper = await mountPage(service);
+ expect(wrapper.get('[data-testid="department-all"]').text()).toMatch(/全公司\s*3/);
+});
+it('allows editing imported employee without mobile or hire date', async () => {
+ const wrapper = mountDrawer({mode:'edit', employee:{...employee,mobile:'',hireDate:null,departmentId:null,positionId:null}});
+ await wrapper.get('[data-testid="employee-name"]').setValue('新名字');
+ await wrapper.get('[data-testid="save-employee"]').trigger('click');
+ expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({employeeName:'新名字',mobile:'',hireDate:null});
+});
+it('requests the employee page while reference data is still loading', async () => {
+ const service = createMockOrganizationService();
+ vi.spyOn(service, 'listAllDepartments').mockReturnValue(new Promise(() => {}));
+ const list = vi.spyOn(service, 'listEmployees');
+ await mountPage(service);
+ expect(list).toHaveBeenCalledTimes(1);
+});

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { organizationService } from '../organization/organizationService';
+import { createMockOrganizationService } from '../organization/mockOrganizationService';
+const organizationService = createMockOrganizationService();
 import { createMockPermissionService } from './mockPermissionService';
 import { PERMISSION_MODULES } from './permissionCatalog';
 

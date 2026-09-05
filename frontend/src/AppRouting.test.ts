@@ -22,7 +22,8 @@ vi.mock('./features/dashboard/dashboardService', () => ({
 
 vi.mock('./features/permission/permissionService', async () => {
   const { createMockPermissionService } = await import('./features/permission/mockPermissionService');
-  const { organizationService } = await import('./features/organization/organizationService');
+  const { createMockOrganizationService } = await import('./features/organization/mockOrganizationService');
+  const organizationService = createMockOrganizationService();
   return { permissionService: createMockPermissionService(organizationService) };
 });
 

@@ -16,7 +16,7 @@ describe('permissionRules', () => {
       { key: 'inventory', label: '库存', supportedActions: ['view', 'create', 'edit', 'approve', 'export'] },
       { key: 'sales', label: '销售', supportedActions: ['view', 'create', 'edit', 'delete', 'approve', 'export'] },
       { key: 'finance', label: '财务', supportedActions: ['view', 'create', 'edit', 'approve', 'export'] },
-      { key: 'organization', label: '组织架构', supportedActions: ['view', 'create', 'edit', 'delete', 'export'] }
+      { key: 'organization', label: '组织架构', supportedActions: ['view', 'create', 'edit', 'delete', 'export', 'sync'] }
     ]);
   });
 

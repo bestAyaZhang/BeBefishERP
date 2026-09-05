@@ -22,7 +22,7 @@ export interface Position {
   id: number;
   positionCode: string;
   positionName: string;
-  departmentId: number;
+  departmentId: number | null;
   responsibilities: string;
   status: OrganizationRecordStatus;
   employeeCount: number;
@@ -39,11 +39,12 @@ export interface Employee {
   employeeNo: string;
   employeeName: string;
   mobile: string;
-  departmentId: number;
-  positionId: number;
+  departmentId: number | null;
+  positionId: number | null;
   employmentType: EmploymentType;
   status: EmployeeStatus;
-  hireDate: string;
+  hireDate: string | null;
+  feishuJobTitle?: string | null;
   feishuBindingStatus: FeishuBindingStatus;
   feishuDisplayName: string;
   passwordLoginEnabled: boolean;
@@ -93,3 +94,19 @@ export interface SaveEmployeePayload extends Omit<Employee, 'id' | 'feishuDispla
 
 export type SaveDepartmentPayload = Omit<Department, 'id' | 'managerName'>;
 export type SavePositionPayload = Omit<Position, 'id' | 'employeeCount'>;
+
+export interface FeishuSyncTask {
+  id: number;
+  triggerType: 'manual' | 'login';
+  status: 'pending' | 'running' | 'success' | 'partial' | 'failed';
+  startedAt: string;
+  finishedAt: string | null;
+  departmentsCreated: number;
+  departmentsUpdated: number;
+  employeesCreated: number;
+  employeesUpdated: number;
+  recordsSkipped: number;
+  recordsFailed: number;
+  warningMessage: string | null;
+  errorMessage: string | null;
+}

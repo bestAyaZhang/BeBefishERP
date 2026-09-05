@@ -43,13 +43,14 @@ const selectedDepartmentIds = ref<number[]>([]);
 let departmentOperationGeneration = 0;
 
 const departmentTree = computed(() => buildDepartmentTree(departments.value));
-const canManage = computed(() => currentUser.value?.permissions.includes('organization:manage') ?? false);
+const canCreate = computed(() => currentUser.value?.permissions.includes('organization:create') ?? false);
+const canManage = computed(() => currentUser.value?.permissions.includes('organization:edit') ?? false);
 const departmentById = computed(() => new Map(departments.value.map((department) => [department.id, department])));
 const selectedTreeDepartment = computed(() => departmentById.value.get(selectedDepartmentId.value ?? -1));
 const treeSummary = computed(() => {
   const department = selectedTreeDepartment.value;
   if (!department) {
-    const total = Object.values(employeeCounts.value).reduce((sum, count) => sum + count, 0);
+    const total = employees.value.length;
     return { label: '当前选中', title: '全公司', meta: `共 ${total} 人` };
   }
   return {
@@ -190,7 +191,7 @@ async function changePageSize(nextSize: number) {
 }
 
 function openCreate() {
-  if (!canManage.value) return;
+  if (!canCreate.value) return;
   selectedDepartment.value = null;
   drawerMode.value = 'create';
   saveError.value = '';
@@ -210,7 +211,7 @@ function closeDrawer() {
 }
 
 async function saveDepartment(payload: SaveDepartmentPayload) {
-  if (!canManage.value) return;
+  if (drawerMode.value === 'create' ? !canCreate.value : !canManage.value) return;
   saving.value = true;
   saveError.value = '';
   try {
@@ -273,7 +274,7 @@ function departmentStatusActionUnavailable(department: DepartmentListItem) {
   if (department.status !== 'enabled') return false;
   const departmentIds = collectDepartmentSubtreeIds(departments.value, department.id);
   return department.statusActionDisabled
-    || positions.value.some((item) => item.status === 'enabled' && departmentIds.has(item.departmentId));
+    || positions.value.some((item) => item.status === 'enabled' && departmentIds.has(item.departmentId ?? -1));
 }
 
 onMounted(loadReferenceData);
@@ -289,7 +290,7 @@ onMounted(loadReferenceData);
         </div>
         <p class="mt-1 text-sm leading-[22px] text-slate-500">维护多级部门结构、负责人、排序与启停状态。</p>
       </div>
-      <button v-if="canManage" data-testid="add-department" type="button" class="inline-flex h-10 w-32 shrink-0 items-center justify-center gap-2 rounded-[6px] bg-[#536dff] text-sm font-medium text-white shadow-[0_8px_18px_rgba(83,109,255,0.2)] transition hover:bg-[#465eea]" @click="openCreate">
+      <button v-if="canCreate" data-testid="add-department" type="button" class="inline-flex h-10 w-32 shrink-0 items-center justify-center gap-2 rounded-[6px] bg-[#536dff] text-sm font-medium text-white shadow-[0_8px_18px_rgba(83,109,255,0.2)] transition hover:bg-[#465eea]" @click="openCreate">
         <Plus class="h-[18px] w-[18px]" aria-hidden="true" />
         新增部门
       </button>
@@ -303,6 +304,7 @@ onMounted(loadReferenceData);
         :selected-id="selectedDepartmentId"
         :expanded-ids="expandedIds"
         :employee-counts="employeeCounts"
+        :total-employee-count="employees.length"
         title="部门结构"
         :summary="treeSummary"
         @select="selectDepartment"

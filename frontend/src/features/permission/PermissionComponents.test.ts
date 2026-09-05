@@ -177,3 +177,8 @@ describe('MemberSelectionDrawer', () => {
     expect(wrapper.emitted('update:selectedIds')).toBeUndefined();
   });
 });
+it('makes organization sync independently administrable', async () => {
+ const wrapper = mount(PermissionMatrix, {props: {modules: PERMISSION_MODULES, modelValue: ['organization:view'], readonly: false}});
+ await wrapper.get('input[data-testid="permission-organization-sync"]').setValue(true);
+ expect(wrapper.emitted('update:modelValue')?.[0]?.[0]).toEqual(['organization:sync','organization:view']);
+});

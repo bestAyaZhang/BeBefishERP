@@ -4,13 +4,12 @@ import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { message } from '../../components/feedback/message';
 import { salesOrderService } from './salesOrderService';
-import { listMockSalesOrders } from './mockSalesOrderStore';
 import type { SalesOrderListItem, SalesOrderService, SalesOrderStatus } from './types';
 
 const props = defineProps<{ service?: SalesOrderService }>();
 const route = useRoute();
 const service = props.service ?? salesOrderService;
-const orders = ref<SalesOrderListItem[]>(listMockSalesOrders());
+const orders = ref<SalesOrderListItem[]>([]);
 const searchQuery = ref('');
 const statusFilter = ref<'all' | SalesOrderStatus>('all');
 const loading = ref(false);

@@ -14,7 +14,7 @@ describe('SalesOrdersView', () => {
   it('shows sales orders and routes the add action to the order form', async () => {
     await router.push('/sales/orders');
     await router.isReady();
-    const wrapper = mount(SalesOrdersView, { global: { plugins: [router] } });
+    const wrapper = mount(SalesOrdersView, { props: { service: mockSalesOrderService }, global: { plugins: [router] } });
     await flushPromises();
 
     expect(wrapper.get('[data-testid="sales-orders-page"]').text()).toContain('销售单据');
@@ -25,7 +25,7 @@ describe('SalesOrdersView', () => {
   it('shows a success tip for a newly confirmed order', async () => {
     localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, 'test-token');
     await router.push({ name: 'sales-orders', query: { created: 'SO-20260713-003' } });
-    const wrapper = mount(SalesOrdersView, { global: { plugins: [router] } });
+    const wrapper = mount(SalesOrdersView, { props: { service: mockSalesOrderService }, global: { plugins: [router] } });
     await flushPromises();
 
     expect(messages.value.at(-1)?.type).toBe('success');
@@ -49,7 +49,7 @@ describe('SalesOrdersView', () => {
       lines: [{ skuId: 2001, quantity: 1, unitPrice: 12, amount: 12 }]
     });
     await router.push('/sales/orders');
-    const wrapper = mount(SalesOrdersView, { global: { plugins: [router] } });
+    const wrapper = mount(SalesOrdersView, { props: { service: mockSalesOrderService }, global: { plugins: [router] } });
     await flushPromises();
 
     await wrapper.get('[data-testid="sales-status-tab-draft"]').trigger('click');
@@ -77,10 +77,18 @@ describe('SalesOrdersView', () => {
       lines: [{ skuId: 2001, quantity: 2, unitPrice: 33, amount: 66 }]
     });
     await router.push('/sales/orders');
-    const wrapper = mount(SalesOrdersView, { global: { plugins: [router] } });
+    const wrapper = mount(SalesOrdersView, { props: { service: mockSalesOrderService }, global: { plugins: [router] } });
     await flushPromises();
 
     expect(wrapper.get('[data-testid="sales-orders-table"]').text()).toContain(result.orderNo);
     expect(wrapper.get('[data-testid="sales-orders-table"]').text()).toContain('¥66.00');
   });
+});
+it('does not display fixture orders when the real service fails', async () => {
+ const service = {...mockSalesOrderService, listOrders: async () => {throw new Error('offline');}};
+ const wrapper = mount(SalesOrdersView, {props:{service}, global:{plugins:[router]}});
+ await flushPromises();
+ expect(wrapper.text()).not.toContain('SO-20260713-001');
+ expect(messages.value.at(-1)?.text).toBe('offline');
+ wrapper.unmount();
 });

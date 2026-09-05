@@ -1,3 +1,4 @@
+import { createService } from '../../services/serviceFactory';
 export interface RegionOption {
   code: string;
   name: string;
@@ -56,4 +57,7 @@ export const mockRegionService: RegionService = {
   }
 };
 
-export const regionService: RegionService = mockRegionService;
+async function unavailable(): Promise<never> { throw new Error('地区选项暂不可用，请手工填写省、市、区/县'); }
+export const regionService: RegionService = createService(() => mockRegionService, () => ({
+  listProvinces: unavailable, listCities: unavailable, listDistricts: unavailable
+}));

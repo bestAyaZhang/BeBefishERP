@@ -55,7 +55,7 @@ function setPermissions(permissions: string[]) {
 }
 
 beforeEach(() => {
-  setPermissions(['organization:view', 'organization:manage']);
+  setPermissions(['organization:view', 'organization:create', 'organization:edit']);
 });
 
 afterEach(() => {
@@ -780,3 +780,28 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
+it.each(['department', 'position'] as const)('counts unassigned employees and separates create/edit in %s', async (kind) => {
+ setPermissions(['organization:view','organization:create']);
+ const service = createMockOrganizationService();
+ vi.spyOn(service, 'listAllEmployees').mockResolvedValue([...employees,{...employees[0],id:99,departmentId:null,positionId:null}]);
+ vi.spyOn(service, 'getDepartmentEmployeeCounts').mockResolvedValue({1:1,2:1});
+ const wrapper = kind === 'department' ? await mountDepartmentPage(service) : await mountPositionPage(service);
+ expect(wrapper.get('[data-testid="department-all"]').text()).toMatch(/全公司\s*3/);
+ expect(wrapper.find(`[data-testid="add-${kind}"]`).exists()).toBe(true);
+ expect(wrapper.find(`[data-testid^="edit-${kind}-"]`).exists()).toBe(false);
+ if (kind === 'department') expect(wrapper.text()).toContain('共 3 人');
+});
+it('preserves an unassigned position department on edit', async () => {
+ const wrapper = mount(PositionFormDrawer,{props:{mode:'edit', position:{...position,departmentId:null},departmentId:null,departments,saving:false,error:''}});
+ activeWrapper = wrapper;
+ await wrapper.get('[data-testid="save-position"]').trigger('click');
+ expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({departmentId:null});
+});
+it('counts only active employees assigned to positions as on-post employees', async () => {
+ const service = createMockOrganizationService();
+ vi.spyOn(service,'listAllEmployees').mockResolvedValue([{...employees[0],positionId:null},employees[1]]);
+ const wrapper = await mountPositionPage(service);
+ await wrapper.get('[data-testid="department-all"]').trigger('click');
+ await flushPromises();
+ expect(wrapper.get('[data-testid="department-tree-summary"]').text()).toContain('在岗员工 1 人');
+});

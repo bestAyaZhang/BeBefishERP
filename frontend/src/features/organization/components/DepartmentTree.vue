@@ -20,6 +20,7 @@ const props = withDefaults(defineProps<{
   nodes: DepartmentTreeNode[];
   selectedId: number | null;
   expandedIds?: number[];
+  totalEmployeeCount?: number;
   employeeCounts?: Record<number, number>;
   title?: string;
   summary?: DepartmentTreeSummary | null;
@@ -52,7 +53,7 @@ const subtreeEmployeeCounts = computed(() => {
   return totals;
 });
 
-const allEmployeeCount = computed(() => props.nodes.reduce(
+const allEmployeeCount = computed(() => props.totalEmployeeCount ?? props.nodes.reduce(
   (total, root) => total + (subtreeEmployeeCounts.value[root.id] ?? 0),
   0
 ));

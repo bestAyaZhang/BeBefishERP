@@ -41,7 +41,8 @@ const selectedPositionIds = ref<number[]>([]);
 let positionOperationGeneration = 0;
 
 const departmentTree = computed(() => buildDepartmentTree(departments.value));
-const canManage = computed(() => currentUser.value?.permissions.includes('organization:manage') ?? false);
+const canCreate = computed(() => currentUser.value?.permissions.includes('organization:create') ?? false);
+const canManage = computed(() => currentUser.value?.permissions.includes('organization:edit') ?? false);
 const departmentById = computed(() => new Map(departments.value.map((department) => [department.id, department])));
 const selectedDepartment = computed(() => departmentById.value.get(selectedDepartmentId.value ?? -1));
 const listTitle = computed(() => selectedDepartment.value ? `${selectedDepartment.value.departmentName}岗位` : '全部岗位');
@@ -50,8 +51,8 @@ const scopedActiveEmployeeCount = computed(() => {
     ? null
     : collectDepartmentSubtreeIds(departments.value, selectedDepartmentId.value);
   return employees.value.filter((employee) => (
-    employee.status === 'active'
-    && (departmentIds === null || departmentIds.has(employee.departmentId))
+    employee.status === 'active' && employee.positionId !== null
+    && (departmentIds === null || departmentIds.has(employee.departmentId ?? -1))
   )).length;
 });
 const treeSummary = computed(() => ({
@@ -191,7 +192,7 @@ async function changePageSize(nextSize: number) {
 }
 
 function openCreate() {
-  if (!canManage.value) return;
+  if (!canCreate.value) return;
   selectedPosition.value = null;
   drawerMode.value = 'create';
   saveError.value = '';
@@ -211,7 +212,7 @@ function closeDrawer() {
 }
 
 async function savePosition(payload: SavePositionPayload) {
-  if (!canManage.value) return;
+  if (drawerMode.value === 'create' ? !canCreate.value : !canManage.value) return;
   saving.value = true;
   saveError.value = '';
   try {
@@ -282,7 +283,7 @@ onMounted(loadReferenceData);
         </div>
         <p class="mt-1 text-sm leading-[22px] text-slate-500">按部门维护岗位名称、岗位编码、职责与启停状态。</p>
       </div>
-      <button v-if="canManage" data-testid="add-position" type="button" class="inline-flex h-10 w-32 shrink-0 items-center justify-center gap-2 rounded-[6px] bg-[#536dff] text-sm font-medium text-white shadow-[0_8px_18px_rgba(83,109,255,0.2)] transition hover:bg-[#465eea]" @click="openCreate">
+      <button v-if="canCreate" data-testid="add-position" type="button" class="inline-flex h-10 w-32 shrink-0 items-center justify-center gap-2 rounded-[6px] bg-[#536dff] text-sm font-medium text-white shadow-[0_8px_18px_rgba(83,109,255,0.2)] transition hover:bg-[#465eea]" @click="openCreate">
         <Plus class="h-[18px] w-[18px]" aria-hidden="true" />
         新增岗位
       </button>
@@ -296,6 +297,7 @@ onMounted(loadReferenceData);
         :selected-id="selectedDepartmentId"
         :expanded-ids="expandedIds"
         :employee-counts="employeeCounts"
+        :total-employee-count="employees.length"
         title="所属部门"
         :summary="treeSummary"
         @select="selectDepartment"
@@ -358,7 +360,7 @@ onMounted(loadReferenceData);
                 <td class="px-3"><input :data-testid="`select-position-${positionItem.id}`" type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300" :aria-label="`选择${positionItem.positionName}`" :checked="selectedPositionIds.includes(positionItem.id)" @change="togglePositionSelection(positionItem.id, $event)" /></td>
                 <td class="truncate px-2.5 font-numeric text-xs text-slate-500">{{ positionItem.positionCode }}</td>
                 <td class="truncate px-2.5 text-sm font-medium">{{ positionItem.positionName }}</td>
-                <td class="truncate px-2.5 text-sm text-slate-500">{{ departmentById.get(positionItem.departmentId)?.departmentName ?? '--' }}</td>
+                <td class="truncate px-2.5 text-sm text-slate-500">{{ departmentById.get(positionItem.departmentId ?? -1)?.departmentName ?? '--' }}</td>
                 <td class="px-2.5 font-numeric text-sm">{{ positionItem.employeeCount }}</td>
                 <td class="px-2.5 text-xs leading-[18px] text-slate-500"><span class="line-clamp-2">{{ positionItem.responsibilities || '--' }}</span></td>
                 <td class="px-2.5"><OrganizationStatusBadge :status="positionItem.status" /></td>

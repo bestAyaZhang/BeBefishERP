@@ -39,7 +39,7 @@ function initialForm(): PositionFormState {
   return {
     positionCode: props.position?.positionCode ?? '',
     positionName: props.position?.positionName ?? '',
-    departmentId: props.position ? props.position.departmentId : createDepartmentId,
+    departmentId: props.position ? props.position.departmentId ?? '' : createDepartmentId,
     responsibilities: props.position?.responsibilities ?? '',
     status: props.position?.status ?? 'enabled'
   };
@@ -64,7 +64,6 @@ watch(() => [props.mode, props.position?.id, props.departmentId] as const, () =>
 
 function validate() {
   if (!form.value.positionCode.trim() || !form.value.positionName.trim()) return '请完整填写岗位资料';
-  if (form.value.departmentId === '') return '请选择所属部门';
   return '';
 }
 
@@ -75,7 +74,7 @@ function submit() {
   emit('save', {
     positionCode: form.value.positionCode.trim(),
     positionName: form.value.positionName.trim(),
-    departmentId: Number(form.value.departmentId),
+    departmentId: form.value.departmentId === '' ? null : Number(form.value.departmentId),
     responsibilities: form.value.responsibilities.trim(),
     status: form.value.status
   });

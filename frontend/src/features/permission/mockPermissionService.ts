@@ -289,7 +289,7 @@ export function createMockPermissionService(organization: OrganizationService): 
       .filter((employee) => !candidates || employee.status === 'active')
       .map((employee) => materializeMember(role, employee, !candidates))
       .filter((member) => !candidates || member.lockedReason === null)
-      .filter((member) => departmentIds === null || departmentIds.has(member.departmentId))
+      .filter((member) => departmentIds === null || departmentIds.has(member.departmentId ?? -1))
       .filter((member) => !keyword || [member.employeeNo, member.employeeName, member.mobile, member.departmentName]
         .some((value) => value.toLowerCase().includes(keyword)));
   };

@@ -1,4 +1,4 @@
-export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export';
+export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export' | 'sync';
 export type PermissionDataScope = 'company' | 'department-and-descendants' | 'department' | 'self';
 export type PermissionRoleStatus = 'enabled' | 'disabled';
 export type PermissionRoleKind = 'system' | 'custom';
@@ -36,7 +36,7 @@ export interface RoleMember {
   employeeNo: string;
   employeeName: string;
   mobile: string;
-  departmentId: number;
+  departmentId: number | null;
   departmentName: string;
   positionName: string;
   employmentType: 'formal' | 'temporary';

@@ -1,3 +1,4 @@
+import { mockRegionService } from '../regionService';
 import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import type { MasterdataService } from '../types';
@@ -54,7 +55,7 @@ function createFakeService(): MasterdataService {
 describe('masterdata views', () => {
   it('creates a level-one category and refreshes the list', async () => {
     const fakeService = createFakeService();
-    const wrapper = mount(CategoryView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mount(CategoryView, { global: { provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     await wrapper.get('[data-testid="add-category"]').trigger('click');
@@ -73,7 +74,7 @@ describe('masterdata views', () => {
     vi.mocked(fakeService.createCustomer).mockResolvedValue({} as never);
     await router.push('/customers/new');
     await router.isReady();
-    const wrapper = mount(CustomerFormView, { global: { plugins: [router], provide: { masterdataService: fakeService } } });
+    const wrapper = mount(CustomerFormView, { global: { plugins: [router], provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     expect(wrapper.find('[data-testid="customer-no"]').exists()).toBe(false);
@@ -98,7 +99,7 @@ describe('masterdata views', () => {
     const fakeService = createFakeService();
     await router.push('/customers/new');
     await router.isReady();
-    const wrapper = mount(CustomerFormView, { global: { plugins: [router], provide: { masterdataService: fakeService } } });
+    const wrapper = mount(CustomerFormView, { global: { plugins: [router], provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     await wrapper.get('[data-testid="customer-name"]').setValue('杭州酒店');
@@ -127,7 +128,7 @@ describe('masterdata views', () => {
     const fakeService = createFakeService();
     await router.push('/customers/new');
     await router.isReady();
-    const wrapper = mount(CustomerFormView, { global: { plugins: [router], provide: { masterdataService: fakeService } } });
+    const wrapper = mount(CustomerFormView, { global: { plugins: [router], provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     const form = wrapper.get('form');
@@ -154,7 +155,7 @@ describe('masterdata views', () => {
     localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, 'test-token');
     await router.push('/customers/5/edit');
     await router.isReady();
-    const wrapper = mount(CustomerFormView, { global: { plugins: [router], provide: { masterdataService: fakeService } } });
+    const wrapper = mount(CustomerFormView, { global: { plugins: [router], provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     expect(wrapper.find('[data-testid="customer-no"]').exists()).toBe(false);
@@ -164,7 +165,7 @@ describe('masterdata views', () => {
 
   it('changes a supplier status from the list', async () => {
     const fakeService = createFakeService();
-    const wrapper = mount(SupplierView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mount(SupplierView, { global: { provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     await wrapper.get('[data-testid="supplier-status-3"]').trigger('click');
@@ -175,9 +176,9 @@ describe('masterdata views', () => {
 
   it('hides generated identifier columns from masterdata lists', async () => {
     const fakeService = createFakeService();
-    const categoryWrapper = mount(CategoryView, { global: { provide: { masterdataService: fakeService } } });
-    const customerWrapper = mount(CustomerView, { global: { plugins: [router], provide: { masterdataService: fakeService } } });
-    const warehouseWrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService } } });
+    const categoryWrapper = mount(CategoryView, { global: { provide: { masterdataService: fakeService, regionService: mockRegionService } } });
+    const customerWrapper = mount(CustomerView, { global: { plugins: [router], provide: { masterdataService: fakeService, regionService: mockRegionService } } });
+    const warehouseWrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     expect(categoryWrapper.text()).not.toContain('分类编码');
@@ -188,7 +189,7 @@ describe('masterdata views', () => {
   it('hides the generated supplier number and omits it from save payloads', async () => {
     const fakeService = createFakeService();
     vi.mocked(fakeService.createSupplier).mockResolvedValue({} as never);
-    const wrapper = mount(SupplierView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mount(SupplierView, { global: { provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     expect(wrapper.text()).not.toContain('供应商编号');
@@ -208,7 +209,7 @@ describe('masterdata views', () => {
 
   it('marks exactly one warehouse as default', async () => {
     const fakeService = createFakeService();
-    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     await wrapper.get('[data-testid="set-default-warehouse-2"]').trigger('click');
@@ -219,7 +220,7 @@ describe('masterdata views', () => {
 
   it('uses the prototype product-list table styling for master data lists', async () => {
     const fakeService = createFakeService();
-    const wrapper = mount(CategoryView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mount(CategoryView, { global: { provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     const table = wrapper.get('[data-testid="masterdata-table"]');
@@ -232,7 +233,7 @@ describe('masterdata views', () => {
 
   it('uses the prototype header and filter controls on the warehouse page', async () => {
     const fakeService = createFakeService();
-    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     expect(wrapper.get('[data-testid="masterdata-page-header"]').classes()).toContain('sm:items-end');
@@ -244,7 +245,7 @@ describe('masterdata views', () => {
 
   it('keeps warehouse row actions in one line', async () => {
     const fakeService = createFakeService();
-    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     const action = wrapper.get('[data-testid="set-default-warehouse-2"]');
@@ -255,7 +256,7 @@ describe('masterdata views', () => {
 
   it('opens a right-side drawer for the small warehouse form', async () => {
     const fakeService = createFakeService();
-    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     await wrapper.get('[data-testid="add-warehouse"]').trigger('click');
@@ -271,7 +272,7 @@ describe('masterdata views', () => {
   it('creates a warehouse without asking the user for its number', async () => {
     const fakeService = createFakeService();
     vi.mocked(fakeService.createWarehouse).mockResolvedValue({} as never);
-    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService, regionService: mockRegionService } } });
     await flushPromises();
 
     await wrapper.get('[data-testid="add-warehouse"]').trigger('click');
@@ -307,4 +308,18 @@ describe('masterdata views', () => {
     expect(categoryWrapper.get('[data-testid="masterdata-drawer"]').text()).toContain('编辑分类');
     expect((categoryWrapper.get('[data-testid="category-name"]').element as HTMLInputElement).value).toBe('水杯');
   });
+});
+it('keeps customer creation usable when region options are unavailable', async () => {
+ const fakeService = createFakeService();
+ vi.mocked(fakeService.createCustomer).mockResolvedValue({} as never);
+ await router.push('/customers/new'); await router.isReady();
+ const wrapper = mount(CustomerFormView, {global: {plugins: [router], provide: {masterdataService: fakeService, regionService: {listProvinces: async () => {throw new Error('地区选项暂不可用');}, listCities: vi.fn(), listDistricts: vi.fn()}}}});
+ await flushPromises();
+ expect(wrapper.text()).toContain('手工填写');
+ for (const [field, value] of Object.entries({name:'客户', contact:'联系人',mobile:'13800138000',province:'浙江省',city:'杭州市',district:'余杭区','detail-address':'88号'})) {
+ await wrapper.get(`input[data-testid="customer-${field}"]`).setValue(value);
+ }
+ await wrapper.get('[data-testid="customer-form-save"]').trigger('click'); await flushPromises();
+ expect(fakeService.createCustomer).toHaveBeenCalledWith(expect.objectContaining({province:'浙江省',city:'杭州市',district:'余杭区'}));
+ wrapper.unmount();
 });

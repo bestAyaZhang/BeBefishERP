@@ -1,7 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
-import { organizationService } from '../organization/organizationService';
+import { createMockOrganizationService } from '../organization/mockOrganizationService';
+const organizationService = createMockOrganizationService();
 import { createMockPermissionService } from './mockPermissionService';
 import type { PermissionService } from './permissionService';
 import type { PermissionRole, RoleMemberPage } from './types';

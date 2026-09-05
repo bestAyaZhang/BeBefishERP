@@ -48,8 +48,8 @@ const defaultPositions: Position[] = [
 function seedEmployee(
   id: number,
   employeeName: string,
-  departmentId: number,
-  positionId: number,
+  departmentId: number | null,
+  positionId: number | null,
   options: Partial<Pick<Employee,
     'employmentType' | 'status' | 'feishuBindingStatus' | 'passwordLoginEnabled' | 'hireDate'>> = {}
 ): Employee {
@@ -120,15 +120,16 @@ function sameNormalized(left: string, right: string) {
 }
 
 function validateEmployeeAssignment(
-  departmentId: number,
-  positionId: number,
+  departmentId: number | null,
+  positionId: number | null,
   departments: Department[],
   positions: Position[]
 ) {
   const department = departments.find((item) => item.id === departmentId);
-  if (!department || department.status !== 'enabled') throw new Error('所属部门未启用');
+  if (departmentId !== null && (!department || department.status !== 'enabled')) throw new Error('所属部门未启用');
   const position = positions.find((item) => item.id === positionId);
-  if (!position || position.departmentId !== departmentId) throw new Error('岗位不属于所选部门');
+  if (positionId === null) return;
+  if (!position || (position.departmentId !== null && position.departmentId !== departmentId)) throw new Error('岗位不属于所选部门');
   if (position.status !== 'enabled') throw new Error('所属岗位未启用');
 }
 
@@ -214,7 +215,7 @@ function validateDepartmentCanDisable(
     throw new Error('部门下存在在职员工，无法停用');
   }
   const departmentIds = collectDepartmentSubtreeIds(departments, id);
-  if (positions.some((item) => departmentIds.has(item.departmentId) && item.status === 'enabled')) {
+  if (positions.some((item) => departmentIds.has(item.departmentId ?? -1) && item.status === 'enabled')) {
     throw new Error('部门或下级部门存在启用岗位，无法停用');
   }
 }
@@ -256,7 +257,7 @@ export function createMockOrganizationService(): OrganizationService {
   const cloneEmployee = (employee: Employee): Employee => ({ ...employee });
 
   const departmentEmployeeCounts = () => employees.reduce<Record<number, number>>((counts, employee) => {
-    counts[employee.departmentId] = (counts[employee.departmentId] ?? 0) + 1;
+    if (employee.departmentId !== null) counts[employee.departmentId] = (counts[employee.departmentId] ?? 0) + 1;
     return counts;
   }, {});
 
@@ -276,7 +277,7 @@ export function createMockOrganizationService(): OrganizationService {
     && (departments.some((item) => item.parentId === department.id && item.status === 'enabled')
       || employees.some((item) => item.departmentId === department.id && item.status === 'active')
       || positions.some((item) => item.status === 'enabled'
-        && collectDepartmentSubtreeIds(departments, department.id).has(item.departmentId)));
+        && collectDepartmentSubtreeIds(departments, department.id).has(item.departmentId ?? -1)));
 
   const materializeDepartmentListItem = (department: Department): DepartmentListItem => ({
     ...materializeDepartment(department),
@@ -286,6 +287,9 @@ export function createMockOrganizationService(): OrganizationService {
   });
 
   return {
+    async getLatestFeishuSync() { return null; },
+    async startFeishuSync() { throw new Error('Mock 模式不支持飞书同步'); },
+    async getFeishuSync() { throw new Error('Mock 模式不支持飞书同步'); },
     async listDepartmentPage(query: DepartmentQuery) {
       const records = departments
         .filter((department) => (!query.status || department.status === query.status)
@@ -308,7 +312,7 @@ export function createMockOrganizationService(): OrganizationService {
         : collectDepartmentSubtreeIds(departments, query.departmentId);
       const records = positions
         .filter((position) => (!query.status || position.status === query.status)
-          && (departmentIds === null || departmentIds.has(position.departmentId))
+          && (departmentIds === null || departmentIds.has(position.departmentId ?? -1))
           && includesKeyword([position.positionCode, position.positionName, position.responsibilities], query.keyword))
         .map(materializePosition);
       return page(records, query.page, query.size);
@@ -323,7 +327,7 @@ export function createMockOrganizationService(): OrganizationService {
         ? null
         : collectDepartmentSubtreeIds(departments, query.departmentId);
       const records = employees
-        .filter((employee) => (departmentIds === null || departmentIds.has(employee.departmentId))
+        .filter((employee) => (departmentIds === null || departmentIds.has(employee.departmentId ?? -1))
           && (!query.employmentType || employee.employmentType === query.employmentType)
           && (!query.status || employee.status === query.status)
           && includesKeyword([employee.employeeNo, employee.employeeName, employee.mobile], query.keyword))

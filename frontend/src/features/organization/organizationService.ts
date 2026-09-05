@@ -1,5 +1,8 @@
+import { createService } from '../../services/serviceFactory';
+import { httpOrganizationService } from './httpOrganizationService';
 import { createMockOrganizationService } from './mockOrganizationService';
 import type {
+  FeishuSyncTask,
   Department,
   DepartmentListItem,
   DepartmentQuery,
@@ -17,6 +20,9 @@ import type {
 } from './types';
 
 export interface OrganizationService {
+  startFeishuSync(): Promise<FeishuSyncTask>;
+  getLatestFeishuSync(): Promise<FeishuSyncTask | null>;
+  getFeishuSync(id: number): Promise<FeishuSyncTask>;
   listDepartmentPage(query: DepartmentQuery): Promise<PageResult<DepartmentListItem>>;
   listAllDepartments(): Promise<Department[]>;
   getDepartmentEmployeeCounts(): Promise<Record<number, number>>;
@@ -37,5 +43,4 @@ export interface OrganizationService {
   changePositionStatus(id: number, status: OrganizationRecordStatus): Promise<Position>;
 }
 
-// Organization remains Mock-backed until an organization backend is available.
-export const organizationService: OrganizationService = createMockOrganizationService();
+export const organizationService: OrganizationService = createService(createMockOrganizationService, () => httpOrganizationService);

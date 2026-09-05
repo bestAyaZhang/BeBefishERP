@@ -160,7 +160,7 @@ describe('mockOrganizationService', () => {
     expect(departmentIds.has(4)).toBe(true);
     expect(page.records.some((item) => item.positionName === '后端工程师')).toBe(true);
     expect(page.records.some((item) => item.positionName === '产品设计师')).toBe(true);
-    expect(page.records.every((item) => [2, 3, 4, 11].includes(item.departmentId))).toBe(true);
+    expect(page.records.every((item) => [2, 3, 4, 11].includes(item.departmentId ?? -1))).toBe(true);
   });
 
   it('provides stable unpaged employee options and isolates service instances', async () => {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, ref, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { message } from '../../../components/feedback/message';
 import { Plus, Search, UsersRound } from 'lucide-vue-next';
 import DepartmentTree from '../components/DepartmentTree.vue';
 import EmployeeFormDrawer, { type EmployeeDrawerMode } from '../components/EmployeeFormDrawer.vue';
@@ -9,6 +10,7 @@ import { buildDepartmentTree } from '../organizationTree';
 import { organizationService, type OrganizationService } from '../organizationService';
 import { currentUser } from '../../../services/authSession';
 import type {
+  FeishuSyncTask,
   Department,
   Employee,
   EmployeeStatus,
@@ -45,7 +47,8 @@ const selectedEmployeeIds = ref<number[]>([]);
 let employeeOperationGeneration = 0;
 
 const departmentTree = computed(() => buildDepartmentTree(departments.value));
-const canManage = computed(() => currentUser.value?.permissions.includes('organization:manage') ?? false);
+const canCreate = computed(() => currentUser.value?.permissions.includes('organization:create') ?? false);
+const canManage = computed(() => currentUser.value?.permissions.includes('organization:edit') ?? false);
 const selectedDepartment = computed(() => departments.value.find((item) => item.id === selectedDepartmentId.value));
 const listTitle = computed(() => selectedDepartment.value?.departmentName ?? '全部员工');
 const departmentById = computed(() => new Map(departments.value.map((item) => [item.id, item])));
@@ -97,6 +100,7 @@ async function loadEmployees(
 
 async function loadReferenceData() {
   const requestGeneration = ++employeeOperationGeneration;
+  void loadEmployees('standard', requestGeneration);
   loading.value = true;
   error.value = '';
   try {
@@ -112,7 +116,6 @@ async function loadReferenceData() {
     summary.value = summaryData;
     expandedIds.value = departmentItems.filter((item) => departmentItems.some((candidate) => candidate.parentId === item.id)).map((item) => item.id);
     if (requestGeneration !== employeeOperationGeneration) return;
-    await loadEmployees('standard', requestGeneration);
   } catch (requestError) {
     if (requestGeneration !== employeeOperationGeneration) return;
     error.value = messageFrom(requestError);
@@ -185,7 +188,7 @@ async function changePageSize(nextSize: number) {
 }
 
 function openCreate() {
-  if (!canManage.value) return;
+  if (!canCreate.value) return;
   selectedEmployee.value = null;
   drawerMode.value = 'create';
   saveError.value = '';
@@ -205,7 +208,7 @@ function closeDrawer() {
 }
 
 async function saveEmployee(payload: SaveEmployeePayload) {
-  if (!canManage.value) return;
+  if (drawerMode.value === 'create' ? !canCreate.value : !canManage.value) return;
   saving.value = true;
   saveError.value = '';
   try {
@@ -237,15 +240,14 @@ function loginMethod(employee: Employee) {
     return employee.passwordLoginEnabled ? '手机号账号' : '不可登录';
   }
   if (employee.feishuBindingStatus === 'bound') {
-    return employee.passwordLoginEnabled ? '飞书 + 手机号' : '飞书已绑定';
+    return '飞书已绑定';
   }
-  if (employee.passwordLoginEnabled) return '手机号账号';
   return employee.feishuBindingStatus === 'pending' ? '待绑定飞书' : '飞书未绑定';
 }
 
 function loginMethodClass(employee: Employee) {
   if (employee.status !== 'active' || (employee.employmentType === 'temporary' && !employee.passwordLoginEnabled)) return 'text-slate-400';
-  if (employee.employmentType === 'temporary' || employee.passwordLoginEnabled) return 'text-cyan-600';
+  if (employee.employmentType === 'temporary') return 'text-cyan-600';
   if (employee.feishuBindingStatus === 'pending') return 'text-amber-500';
   if (employee.feishuBindingStatus === 'unbound') return 'text-rose-500';
   return 'text-emerald-600';
@@ -270,7 +272,75 @@ function toggleAllEmployees(event: Event) {
   selectedEmployeeIds.value = (event.target as HTMLInputElement).checked ? [...pageEmployeeIds.value] : [];
 }
 
-onMounted(loadReferenceData);
+const syncTask = ref<FeishuSyncTask | null>(null);
+const syncStarting = ref(false);
+const syncChecking = ref(true);
+const syncError = ref('');
+const canSync = computed(() => currentUser.value?.permissions.includes('organization:sync') ?? false);
+const syncBusy = computed(() => syncStarting.value || syncChecking.value || (!syncError.value && (syncTask.value?.status === 'pending' || syncTask.value?.status === 'running')));
+const syncStatusLabel = computed(() => syncTask.value ? ({ pending: '等待同步', running: '正在同步', success: '同步成功', partial: '部分成功', failed: '同步失败' })[syncTask.value.status] : '尚无同步记录');
+let syncTimer: ReturnType<typeof setTimeout> | undefined;
+let disposed = false;
+
+async function receiveSyncTask(task: FeishuSyncTask, notify: boolean) {
+  if (disposed) return;
+  syncTask.value = task;
+  if (task.status === 'pending' || task.status === 'running') {
+    syncTimer = setTimeout(async () => {
+      try { await receiveSyncTask(await service.getFeishuSync(task.id), true); }
+      catch (error) {
+        if (disposed) return;
+        syncError.value = messageFrom(error);
+        message.error(`同步进度读取失败：${syncError.value}，可点击同步重试`);
+      }
+    }, 2000);
+    return;
+  }
+  if (!notify) return;
+  const counts = `部门新增 ${task.departmentsCreated}、更新 ${task.departmentsUpdated}；员工新增 ${task.employeesCreated}、更新 ${task.employeesUpdated}`;
+  if (task.status === 'failed') {
+    message.error(task.errorMessage || '飞书同步失败，请稍后重试');
+    return;
+  }
+  if (task.status === 'partial') message.warning(`飞书同步部分成功：${counts}；失败 ${task.recordsFailed}，跳过 ${task.recordsSkipped}。${task.warningMessage || task.errorMessage || ''}`);
+  else message.success(`飞书同步成功：${counts}`);
+  try {
+    const departmentItems = await service.listAllDepartments();
+    if (disposed) return;
+    departments.value = departmentItems;
+    await refreshAfterSave();
+  } catch (error) {
+    if (!disposed) message.warning(`同步已完成，但页面刷新失败：${messageFrom(error)}`);
+  }
+}
+
+async function startSync() {
+  if (!canSync.value || syncBusy.value) return;
+  syncStarting.value = true;
+  syncError.value = '';
+  if (syncTimer) clearTimeout(syncTimer);
+  try { await receiveSyncTask(await service.startFeishuSync(), true); }
+  catch (error) {
+    if (!disposed) { syncError.value = messageFrom(error); message.error(syncError.value); }
+  } finally { syncStarting.value = false; }
+}
+
+async function resumeSync() {
+  try {
+    const task = await service.getLatestFeishuSync();
+    if (task) await receiveSyncTask(task, false);
+  } catch (error) {
+    if (!disposed) { syncError.value = messageFrom(error); message.error(`同步记录读取失败：${syncError.value}`); }
+  } finally { syncChecking.value = false; }
+}
+
+onBeforeUnmount(() => {
+  disposed = true;
+  employeeOperationGeneration++;
+  if (syncTimer) clearTimeout(syncTimer);
+});
+
+onMounted(() => { void loadReferenceData(); void resumeSync(); });
 </script>
 
 <template>
@@ -283,12 +353,14 @@ onMounted(loadReferenceData);
         </div>
         <p class="mt-1 text-sm leading-[22px] text-slate-500">统一维护员工归属、岗位、用工类型与登录账号。</p>
       </div>
-      <button v-if="canManage" data-testid="add-employee" type="button" class="inline-flex h-10 w-32 shrink-0 items-center justify-center gap-2 rounded-[6px] bg-[#536dff] text-sm font-medium text-white shadow-[0_8px_18px_rgba(83,109,255,0.2)] transition hover:bg-[#465eea]" @click="openCreate">
+      <button v-if="canSync" data-testid="sync-feishu" type="button" :disabled="syncBusy" :aria-busy="syncBusy" class="ml-auto h-10 shrink-0 rounded-[6px] border border-slate-200 bg-white px-4 text-sm font-medium disabled:opacity-50" @click="startSync">{{ syncBusy ? '同步中…' : '从飞书同步' }}</button>
+      <button v-if="canCreate" data-testid="add-employee" type="button" class="inline-flex h-10 w-32 shrink-0 items-center justify-center gap-2 rounded-[6px] bg-[#536dff] text-sm font-medium text-white shadow-[0_8px_18px_rgba(83,109,255,0.2)] transition hover:bg-[#465eea]" @click="openCreate">
         <Plus class="h-[18px] w-[18px]" aria-hidden="true" />
         新增员工
       </button>
     </header>
 
+    <p data-testid="sync-status" class="mb-3 text-sm text-slate-500" role="status">{{ syncStatusLabel }}<span v-if="syncTask"> · 任务 #{{ syncTask.id }} · {{ syncTask.finishedAt || syncTask.startedAt }}<template v-if="syncTask.status === 'success' || syncTask.status === 'partial'"> · 部门新增 {{ syncTask.departmentsCreated }} / 更新 {{ syncTask.departmentsUpdated }} · 员工新增 {{ syncTask.employeesCreated }} / 更新 {{ syncTask.employeesUpdated }} · 失败 {{ syncTask.recordsFailed }} / 跳过 {{ syncTask.recordsSkipped }}</template> · {{ syncTask.errorMessage || syncTask.warningMessage }}</span><span v-if="syncError"> · {{ syncError }}</span></p>
     <p v-if="pageNotice" data-testid="employee-page-notice" class="mb-4 rounded-[6px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700" role="status">{{ pageNotice }}</p>
 
     <div data-testid="employee-workspace" class="grid h-[804px] grid-cols-[280px_minmax(0,1fr)] gap-4">
@@ -297,6 +369,7 @@ onMounted(loadReferenceData);
         :selected-id="selectedDepartmentId"
         :expanded-ids="expandedIds"
         :employee-counts="employeeCounts"
+        :total-employee-count="summary.formalEmployees + summary.temporaryEmployees"
         @select="selectDepartment"
         @toggle="toggleDepartment"
       />
@@ -380,8 +453,8 @@ onMounted(loadReferenceData);
                 </td>
                 <td class="truncate px-2.5 font-numeric text-xs text-slate-600">{{ employee.employeeNo }}</td>
                 <td class="px-2.5">
-                  <span class="block truncate text-sm text-[#25314d]">{{ departmentById.get(employee.departmentId)?.departmentName ?? '--' }}</span>
-                  <span class="mt-0.5 block truncate text-xs text-slate-400">{{ positionById.get(employee.positionId)?.positionName ?? '--' }}</span>
+                  <span class="block truncate text-sm text-[#25314d]">{{ departmentById.get(employee.departmentId ?? -1)?.departmentName ?? '未分配' }}</span>
+                  <span class="mt-0.5 block truncate text-xs text-slate-400">{{ positionById.get(employee.positionId ?? -1)?.positionName || employee.feishuJobTitle || '未分配' }}</span>
                 </td>
                 <td class="px-2.5"><span class="inline-flex h-7 min-w-[54px] items-center justify-center rounded-[6px] px-2 text-xs font-medium" :class="employee.employmentType === 'formal' ? 'bg-emerald-50 text-emerald-600' : 'bg-cyan-50 text-cyan-600'">{{ employee.employmentType === 'formal' ? '正式' : '临时' }}</span></td>
                 <td :data-testid="`employee-login-method-${employee.id}`" class="truncate px-2.5 text-xs" :class="loginMethodClass(employee)">{{ loginMethod(employee) }}</td>
