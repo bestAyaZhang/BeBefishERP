@@ -2,7 +2,9 @@ package com.bebefish.erp.feishu.infrastructure;
 
 import com.bebefish.erp.feishu.FeishuBusinessRole;
 import com.bebefish.erp.feishu.FeishuClientException;
+import com.bebefish.erp.feishu.FeishuDepartment;
 import com.bebefish.erp.feishu.FeishuDirectoryClient;
+import com.bebefish.erp.feishu.FeishuDirectoryUser;
 import com.bebefish.erp.feishu.FeishuEmployeeProfile;
 import com.bebefish.erp.feishu.FeishuOAuthClient;
 import com.bebefish.erp.feishu.FeishuOAuthIdentity;
@@ -10,6 +12,11 @@ import com.bebefish.erp.feishu.FeishuProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -22,12 +29,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnProperty(prefix = "erp.feishu", name = "mock-enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(
+        prefix = "erp.feishu",
+        name = "mock-enabled",
+        havingValue = "false",
+        matchIfMissing = true)
 public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClient {
     private static final int FUNCTIONAL_ROLE_MEMBER_NOT_FOUND_CODE = 41203;
     private final FeishuProperties properties;
@@ -39,11 +47,11 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
         this(
                 properties,
                 objectMapper,
-                HttpClient.newBuilder().connectTimeout(properties.getConnectTimeout()).build()
-        );
+                HttpClient.newBuilder().connectTimeout(properties.getConnectTimeout()).build());
     }
 
-    public HttpFeishuClient(FeishuProperties properties, ObjectMapper objectMapper, HttpClient httpClient) {
+    public HttpFeishuClient(
+            FeishuProperties properties, ObjectMapper objectMapper, HttpClient httpClient) {
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.httpClient = httpClient;
@@ -51,21 +59,29 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
 
     @Override
     public URI authorizationUri(String state) {
-        String query = "app_id=" + encode(properties.getAppId())
-                + "&redirect_uri=" + encode(properties.getRedirectUri())
-                + "&state=" + encode(state);
+        String query =
+                "app_id="
+                        + encode(properties.getAppId())
+                        + "&redirect_uri="
+                        + encode(properties.getRedirectUri())
+                        + "&state="
+                        + encode(state);
         return URI.create(properties.getAuthorizationUri() + "?" + query);
     }
 
     @Override
     public FeishuOAuthIdentity exchangeCode(String code) {
-        JsonNode tokenData = data(post("/open-apis/authen/v2/oauth/token", Map.of(
-                "grant_type", "authorization_code",
-                "client_id", properties.getAppId(),
-                "client_secret", properties.getAppSecret(),
-                "code", code,
-                "redirect_uri", properties.getRedirectUri()
-        ), null));
+        JsonNode tokenData =
+                data(
+                        post(
+                                "/open-apis/authen/v2/oauth/token",
+                                Map.of(
+                                        "grant_type", "authorization_code",
+                                        "client_id", properties.getAppId(),
+                                        "client_secret", properties.getAppSecret(),
+                                        "code", code,
+                                        "redirect_uri", properties.getRedirectUri()),
+                                null));
         String userAccessToken = text(tokenData, "access_token");
         if (userAccessToken == null || userAccessToken.isBlank()) {
             throw new FeishuClientException("飞书接口未返回用户访问凭据");
@@ -79,8 +95,7 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
                 text(data, "union_id"),
                 firstText(data, "name", "display_name"),
                 text(data, "avatar_url"),
-                text(data, "mobile")
-        );
+                text(data, "mobile"));
     }
 
     @Override
@@ -92,22 +107,120 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
 
     @Override
     public FeishuEmployeeProfile employeeProfile(String openId) {
-        JsonNode data = data(get(
-                "/open-apis/contact/v3/users/" + encodePath(openId)
-                        + "?user_id_type=open_id&department_id_type=open_department_id",
-                tenantAccessToken()
-        ));
+        JsonNode data =
+                data(
+                        get(
+                                "/open-apis/contact/v3/users/"
+                                        + encodePath(openId)
+                                        + "?user_id_type=open_id&department_id_type=open_department_id",
+                                tenantAccessToken()));
         JsonNode user = data.path("user");
         if (user.isMissingNode()) {
             user = data;
+        }
+        return mapProfile(user);
+    }
+
+    @Override
+    public List<FeishuDepartment> departments() {
+        return directoryPages("/open-apis/contact/v3/departments/0/children?fetch_child=true")
+                .stream()
+                .map(
+                        item ->
+                                new FeishuDepartment(
+                                        requiredIdentityField(item, "open_department_id"),
+                                        text(item, "parent_department_id"),
+                                        requiredIdentityField(item, "name"),
+                                        text(item, "leader_user_id"),
+                                        item.path("order").asInt(0)))
+                .toList();
+    }
+
+    @Override
+    public List<FeishuDirectoryUser> usersInDepartment(String departmentId) {
+        return directoryPages(
+                        "/open-apis/contact/v3/users/find_by_department?department_id="
+                                + encode(departmentId))
+                .stream()
+                .map(
+                        item ->
+                                new FeishuDirectoryUser(
+                                        requiredIdentityField(item, "open_id"),
+                                        text(item, "union_id"),
+                                        firstText(
+                                                item.path("avatar"), "avatar_origin", "avatar_240"),
+                                        mapProfile(item)))
+                .toList();
+    }
+
+    private List<JsonNode> directoryPages(String path) {
+        String token = tenantAccessToken();
+        List<JsonNode> result = new ArrayList<>();
+        Set<String> visited = new HashSet<>();
+        String next = null;
+        do {
+            String query =
+                    path
+                            + "&user_id_type=open_id&department_id_type=open_department_id&page_size=50";
+            if (next != null) query += "&page_token=" + encode(next);
+            JsonNode page = data(get(query, token));
+            if (page == null
+                    || !page.isObject()
+                    || !page.path("has_more").isBoolean()
+                    || (!page.path("items").isArray() && !page.path("items").isNull())) {
+                throw new FeishuClientException("飞书通讯录分页响应无效");
+            }
+            if (page.path("items").isArray()) page.path("items").forEach(result::add);
+            if (!page.path("has_more").booleanValue()) break;
+            next = text(page, "page_token");
+            if (next == null || next.isBlank() || !visited.add(next)) {
+                throw new FeishuClientException("飞书通讯录分页响应无效");
+            }
+        } while (true);
+        return List.copyOf(result);
+    }
+
+    private FeishuEmployeeProfile mapProfile(JsonNode user) {
+        List<String> departments = new ArrayList<>();
+        if (user.path("department_ids").isArray()) {
+            user.path("department_ids")
+                    .forEach(
+                            id -> {
+                                if (id.isTextual()) departments.add(id.asText());
+                            });
+        }
+        JsonNode status = user.path("status");
+        java.time.LocalDate hireDate = null;
+        String joined = text(user, "join_time");
+        if (joined != null && !joined.isBlank() && !joined.equals("0")) {
+            try {
+                hireDate =
+                        java.time.Instant.ofEpochSecond(Long.parseLong(joined))
+                                .atZone(java.time.ZoneId.of("Asia/Shanghai"))
+                                .toLocalDate();
+            } catch (RuntimeException exception) {
+                throw new FeishuClientException("飞书入职日期无效");
+            }
         }
         return new FeishuEmployeeProfile(
                 firstText(user, "open_id", "user_id"),
                 firstText(user, "employee_no", "employee_number"),
                 text(user, "mobile"),
                 primaryDepartmentId(user),
-                firstText(user, "name", "display_name")
-        );
+                firstText(user, "name", "display_name"),
+                departments,
+                user.path("employee_type").isIntegralNumber()
+                        ? user.path("employee_type").intValue()
+                        : null,
+                text(user, "job_title"),
+                hireDate,
+                status.path("is_activated").isBoolean()
+                        ? status.path("is_activated").booleanValue()
+                        : null,
+                status.path("is_frozen").asBoolean(false),
+                status.path("is_unjoin").asBoolean(false),
+                status.path("is_resigned").asBoolean(false),
+                status.path("is_exited").asBoolean(false));
     }
 
     @Override
@@ -135,9 +248,11 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
         }
         String accessToken = tenantAccessToken();
         for (ConfiguredBusinessRole role : configuredRoles) {
-            result.add(new FeishuBusinessRole(
-                    role.id(), role.name(), functionalRoleMembers(role.id(), accessToken).size()
-            ));
+            result.add(
+                    new FeishuBusinessRole(
+                            role.id(),
+                            role.name(),
+                            functionalRoleMembers(role.id(), accessToken).size()));
         }
         return List.copyOf(result);
     }
@@ -162,20 +277,23 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
         Set<String> visitedPageTokens = new HashSet<>();
         String pageToken = null;
         do {
-            String path = "/open-apis/contact/v3/functional_roles/" + encodePath(roleId)
-                    + "/members?page_size=100&user_id_type=open_id";
+            String path =
+                    "/open-apis/contact/v3/functional_roles/"
+                            + encodePath(roleId)
+                            + "/members?page_size=100&user_id_type=open_id";
             if (pageToken != null) {
                 path += "&page_token=" + encode(pageToken);
             }
             JsonNode page = data(get(path, accessToken));
             JsonNode items = page.path("members");
             if (items.isArray()) {
-                items.forEach(item -> {
-                    String userId = text(item, "user_id");
-                    if (userId != null && !userId.isBlank()) {
-                        members.add(userId);
-                    }
-                });
+                items.forEach(
+                        item -> {
+                            String userId = text(item, "user_id");
+                            if (userId != null && !userId.isBlank()) {
+                                members.add(userId);
+                            }
+                        });
             }
             if (!page.path("has_more").asBoolean(false)) {
                 pageToken = null;
@@ -190,14 +308,18 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
     }
 
     private boolean functionalRoleMemberExists(String roleId, String openId, String accessToken) {
-        String path = "/open-apis/contact/v3/functional_roles/" + encodePath(roleId)
-                + "/members/" + encodePath(openId)
-                + "?user_id_type=open_id&department_id_type=open_department_id";
-        var request = HttpRequest.newBuilder(uri(path))
-                .timeout(properties.getRequestTimeout())
-                .header("Authorization", "Bearer " + accessToken)
-                .GET()
-                .build();
+        String path =
+                "/open-apis/contact/v3/functional_roles/"
+                        + encodePath(roleId)
+                        + "/members/"
+                        + encodePath(openId)
+                        + "?user_id_type=open_id&department_id_type=open_department_id";
+        var request =
+                HttpRequest.newBuilder(uri(path))
+                        .timeout(properties.getRequestTimeout())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .GET()
+                        .build();
         JsonNode root = send(request, FUNCTIONAL_ROLE_MEMBER_NOT_FOUND_CODE);
         if (root == null) {
             return false;
@@ -226,10 +348,13 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
     }
 
     private String tenantAccessToken() {
-        JsonNode root = post("/open-apis/auth/v3/tenant_access_token/internal", Map.of(
-                "app_id", properties.getAppId(),
-                "app_secret", properties.getAppSecret()
-        ), null);
+        JsonNode root =
+                post(
+                        "/open-apis/auth/v3/tenant_access_token/internal",
+                        Map.of(
+                                "app_id", properties.getAppId(),
+                                "app_secret", properties.getAppSecret()),
+                        null);
         String token = text(root, "tenant_access_token");
         if (token == null && root.has("data")) {
             token = text(root.get("data"), "tenant_access_token");
@@ -241,9 +366,8 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
     }
 
     private JsonNode get(String path, String bearerToken) {
-        var builder = HttpRequest.newBuilder(uri(path))
-                .timeout(properties.getRequestTimeout())
-                .GET();
+        var builder =
+                HttpRequest.newBuilder(uri(path)).timeout(properties.getRequestTimeout()).GET();
         if (bearerToken != null) {
             builder.header("Authorization", "Bearer " + bearerToken);
         }
@@ -252,10 +376,13 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
 
     private JsonNode post(String path, Map<String, String> body, String bearerToken) {
         try {
-            var builder = HttpRequest.newBuilder(uri(path))
-                    .timeout(properties.getRequestTimeout())
-                    .header("Content-Type", "application/json; charset=utf-8")
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)));
+            var builder =
+                    HttpRequest.newBuilder(uri(path))
+                            .timeout(properties.getRequestTimeout())
+                            .header("Content-Type", "application/json; charset=utf-8")
+                            .POST(
+                                    HttpRequest.BodyPublishers.ofString(
+                                            objectMapper.writeValueAsString(body)));
             if (bearerToken != null) {
                 builder.header("Authorization", "Bearer " + bearerToken);
             }
@@ -271,7 +398,16 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
 
     private JsonNode send(HttpRequest request, Integer absentBusinessCode) {
         try {
-            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            var response =
+                    httpClient.send(
+                            request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            response.headers()
+                    .firstValue("X-Request-Id")
+                    .filter(id -> id.matches("[A-Za-z0-9_-]{1,128}"))
+                    .ifPresent(
+                            id ->
+                                    org.slf4j.LoggerFactory.getLogger(HttpFeishuClient.class)
+                                            .debug("Feishu request id={}", id));
             JsonNode root = objectMapper.readTree(response.body());
             JsonNode businessCode = root == null ? null : root.get("code");
             if (response.statusCode() == 404
@@ -335,6 +471,5 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
         return encode(value).replace("+", "%20");
     }
 
-    private record ConfiguredBusinessRole(String id, String name) {
-    }
+    private record ConfiguredBusinessRole(String id, String name) {}
 }

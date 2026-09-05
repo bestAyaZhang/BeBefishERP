@@ -14,6 +14,36 @@ public record Employee(
         EmploymentType employmentType,
         EmployeeStatus status,
         String source,
-        boolean profileComplete
-) {
+        boolean profileComplete,
+        String statusSource,
+        String feishuJobTitle,
+        java.time.LocalDate hireDate) {
+    public Employee(
+            long id,
+            String employeeNo,
+            String name,
+            String mobile,
+            String avatarUrl,
+            Long departmentId,
+            Long positionId,
+            EmploymentType employmentType,
+            EmployeeStatus status,
+            String source,
+            boolean profileComplete) {
+        this(
+                id,
+                employeeNo,
+                name,
+                mobile,
+                avatarUrl,
+                departmentId,
+                positionId,
+                employmentType,
+                status,
+                source,
+                profileComplete,
+                "manual",
+                null,
+                null);
+    }
 }

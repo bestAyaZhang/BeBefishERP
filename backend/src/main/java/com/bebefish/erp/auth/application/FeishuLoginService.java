@@ -11,10 +11,12 @@ import com.bebefish.erp.feishu.FeishuClientException;
 import com.bebefish.erp.feishu.FeishuDirectoryClient;
 import com.bebefish.erp.feishu.FeishuOAuthClient;
 import com.bebefish.erp.identity.application.EmployeeProvisioningService;
+
+import org.springframework.stereotype.Service;
+
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
-import org.springframework.stereotype.Service;
 
 @Service
 public class FeishuLoginService {
@@ -28,6 +30,8 @@ public class FeishuLoginService {
     private final TokenIssuer sessions;
     private final LoginAuditRepository audits;
     private final Clock clock;
+    private final com.bebefish.erp.organization.application.FeishuDirectorySyncTaskService
+            directoryTasks;
 
     public FeishuLoginService(
             FeishuOAuthClient oauth,
@@ -39,8 +43,9 @@ public class FeishuLoginService {
             AuthorizationResolver authorizations,
             TokenIssuer sessions,
             LoginAuditRepository audits,
-            Clock clock
-    ) {
+            Clock clock,
+            com.bebefish.erp.organization.application.FeishuDirectorySyncTaskService
+                    directoryTasks) {
         this.oauth = oauth;
         this.directory = directory;
         this.provisioning = provisioning;
@@ -51,6 +56,7 @@ public class FeishuLoginService {
         this.sessions = sessions;
         this.audits = audits;
         this.clock = clock;
+        this.directoryTasks = directoryTasks;
     }
 
     public String login(String code, String ipAddress, String userAgent) {
@@ -64,22 +70,33 @@ public class FeishuLoginService {
             userId = provisioned.account().id();
             List<String> warnings;
             try {
-                warnings = roleSync.sync(
-                        userId,
-                        identity.tenantKey(),
-                        directory.businessRoles(identity.openId())
-                );
+                warnings =
+                        roleSync.sync(
+                                userId,
+                                identity.tenantKey(),
+                                directory.businessRoles(identity.openId()));
             } catch (FeishuClientException exception) {
                 warnings = roleSync.syncDegraded(userId);
             }
             users.recordLogin(userId, "feishu");
-            String warningCode = warnings.contains(FeishuRoleSyncService.DEGRADED_WARNING)
-                    ? FeishuRoleSyncService.DEGRADED_WARNING
-                    : null;
+            String warningCode =
+                    warnings.contains(FeishuRoleSyncService.DEGRADED_WARNING)
+                            ? FeishuRoleSyncService.DEGRADED_WARNING
+                            : null;
             audits.record(audit(userId, "success", warningCode, tenantKey, ipAddress, userAgent));
-            return tickets.issue(userId, warnings);
+            String ticket = tickets.issue(userId, warnings);
+            try {
+                directoryTasks.triggerAfterLogin(userId);
+            } catch (RuntimeException exception) {
+                // Full directory sync is best-effort and must never fail an otherwise successful
+                // login.
+                org.slf4j.LoggerFactory.getLogger(FeishuLoginService.class)
+                        .warn("Could not schedule Feishu directory sync after login");
+            }
+            return ticket;
         } catch (AuthException exception) {
-            audits.record(audit(userId, "failure", exception.code(), tenantKey, ipAddress, userAgent));
+            audits.record(
+                    audit(userId, "failure", exception.code(), tenantKey, ipAddress, userAgent));
             throw exception;
         } catch (FeishuClientException exception) {
             var mapped = new AuthException("FEISHU_USER_UNAVAILABLE", "暂时无法读取飞书用户信息，请重试");
@@ -90,21 +107,36 @@ public class FeishuLoginService {
 
     public LoginResult exchange(String ticket) {
         var consumed = tickets.consume(ticket);
-        var account = users.findById(consumed.userId())
-                .orElseThrow(() -> new AuthException("FEISHU_CALLBACK_EXPIRED", "登录结果已失效，请重新扫码"));
+        var account =
+                users.findById(consumed.userId())
+                        .orElseThrow(
+                                () ->
+                                        new AuthException(
+                                                "FEISHU_CALLBACK_EXPIRED", "登录结果已失效，请重新扫码"));
         if (!account.enabled() || !account.employeeActive()) {
             throw new AuthException("USER_DISABLED", "用户或员工已禁用");
         }
         var authorization = authorizations.resolve(account.id());
-        var user = new AuthenticatedUser(
-                account.id(), account.employeeId(), account.mobile(), account.displayName(), account.avatarUrl(),
-                authorization.roles(), authorization.permissions()
-        );
+        var user =
+                new AuthenticatedUser(
+                        account.id(),
+                        account.employeeId(),
+                        account.mobile(),
+                        account.displayName(),
+                        account.avatarUrl(),
+                        authorization.roles(),
+                        authorization.permissions());
         var login = sessions.issue(user, "feishu");
         return new LoginResult(
-                login.accessToken(), login.employeeId(), login.mobile(), login.displayName(), login.avatarUrl(),
-                login.roles(), login.permissions(), login.loginMethod(), consumed.warnings()
-        );
+                login.accessToken(),
+                login.employeeId(),
+                login.mobile(),
+                login.displayName(),
+                login.avatarUrl(),
+                login.roles(),
+                login.permissions(),
+                login.loginMethod(),
+                consumed.warnings());
     }
 
     private LoginAuditEvent audit(
@@ -113,12 +145,17 @@ public class FeishuLoginService {
             String errorCode,
             String tenantKey,
             String ipAddress,
-            String userAgent
-    ) {
+            String userAgent) {
         return new LoginAuditEvent(
-                userId, "feishu", result, errorCode, tenantKey, ipAddress,
-                userAgent == null ? null : userAgent.substring(0, Math.min(userAgent.length(), 500)),
-                Instant.now(clock)
-        );
+                userId,
+                "feishu",
+                result,
+                errorCode,
+                tenantKey,
+                ipAddress,
+                userAgent == null
+                        ? null
+                        : userAgent.substring(0, Math.min(userAgent.length(), 500)),
+                Instant.now(clock));
     }
 }

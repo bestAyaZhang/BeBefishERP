@@ -5,13 +5,16 @@ import com.bebefish.erp.auth.domain.EmploymentType;
 import com.bebefish.erp.auth.domain.UserAccount;
 import com.bebefish.erp.auth.domain.UserAccountRepository;
 import com.bebefish.erp.auth.domain.UserStatus;
+
 import jakarta.persistence.EntityManager;
+
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Optional;
-import org.springframework.stereotype.Repository;
-import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class JpaUserAccountRepository implements UserAccountRepository {
@@ -20,10 +23,7 @@ public class JpaUserAccountRepository implements UserAccountRepository {
     private final Clock clock;
 
     public JpaUserAccountRepository(
-            SpringDataUserAccountRepository users,
-            EntityManager entityManager,
-            Clock clock
-    ) {
+            SpringDataUserAccountRepository users, EntityManager entityManager, Clock clock) {
         this.users = users;
         this.entityManager = entityManager;
         this.clock = clock;
@@ -32,6 +32,18 @@ public class JpaUserAccountRepository implements UserAccountRepository {
     @Override
     public Optional<UserAccount> findById(long id) {
         return users.findById(id).map(this::toDomain);
+    }
+
+    @Override
+    @Transactional
+    public Optional<UserAccount> findByIdForUpdate(long id) {
+        return users.findById(id)
+                .map(
+                        entity -> {
+                            entityManager.refresh(
+                                    entity, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+                            return toDomain(entity);
+                        });
     }
 
     @Override
@@ -53,14 +65,16 @@ public class JpaUserAccountRepository implements UserAccountRepository {
             entity = users.findById(account.id()).orElseThrow();
             entity.update(account.mobile(), account.passwordHash(), db(account.userStatus()), now);
         } else {
-            var employee = entityManager.getReference(EmployeeAccountJpaEntity.class, account.employeeId());
-            entity = new UserAccountJpaEntity(
-                    employee,
-                    account.mobile(),
-                    account.passwordHash(),
-                    db(account.userStatus()),
-                    now
-            );
+            var employee =
+                    entityManager.getReference(
+                            EmployeeAccountJpaEntity.class, account.employeeId());
+            entity =
+                    new UserAccountJpaEntity(
+                            employee,
+                            account.mobile(),
+                            account.passwordHash(),
+                            db(account.userStatus()),
+                            now);
         }
         return toDomain(users.saveAndFlush(entity));
     }
@@ -84,8 +98,7 @@ public class JpaUserAccountRepository implements UserAccountRepository {
                 UserStatus.valueOf(entity.status().toUpperCase(Locale.ROOT)),
                 EmployeeStatus.valueOf(employee.status().toUpperCase(Locale.ROOT)),
                 employee.name(),
-                employee.avatarUrl()
-        );
+                employee.avatarUrl());
     }
 
     private static String db(Enum<?> value) {
