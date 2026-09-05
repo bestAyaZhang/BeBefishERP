@@ -17,6 +17,8 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.Executor;
 
 @Service
@@ -28,6 +30,8 @@ public class FeishuDirectorySyncTaskService {
     private final Clock clock;
     private final Executor executor;
     private final Object startLock = new Object();
+    // Guarded by startLock. A timeout must never expire work still owned by this executor.
+    private final Set<Long> localTasks = new HashSet<>();
 
     public FeishuDirectorySyncTaskService(
             JdbcTemplate jdbc,
@@ -56,6 +60,7 @@ public class FeishuDirectorySyncTaskService {
 
     private Task start(long userId, String trigger) {
         synchronized (startLock) {
+            recoverStaleTasks();
             var active =
                     jdbc.query(
                             """
@@ -96,10 +101,15 @@ values(?,?,'pending',?,?)
                     keys);
             long id = keys.getKey().longValue();
             Task pending = get(id);
+            localTasks.add(id);
             try {
                 executor.execute(() -> execute(id));
             } catch (RuntimeException exception) {
-                finish(id, "failed", emptyResult(), "后台同步任务无法启动，请重试");
+                try {
+                    finish(id, "failed", emptyResult(), "后台同步任务无法启动，请重试");
+                } finally {
+                    localTasks.remove(id);
+                }
                 return get(id);
             }
             return pending;
@@ -110,7 +120,7 @@ values(?,?,'pending',?,?)
         try {
             if (jdbc.update(
                             "update sys_feishu_directory_sync set status='running' where id=? and"
-                                + " status='pending'",
+                                    + " status='pending'",
                             id)
                     != 1) return;
             var result = sync.synchronize();
@@ -121,6 +131,10 @@ values(?,?,'pending',?,?)
                             ? failure.result()
                             : emptyResult();
             finish(id, "failed", result, "飞书通讯录同步失败，请检查应用配置、通讯录权限和网络后重试");
+        } finally {
+            synchronized (startLock) {
+                localTasks.remove(id);
+            }
         }
     }
 
@@ -154,21 +168,38 @@ where id=? and status in ('pending','running')
 
     @EventListener(ApplicationReadyEvent.class)
     public void recoverStaleTasks() {
-        jdbc.update(
-                """
-                update sys_feishu_directory_sync set status='failed',finished_at=?,error_message=?
-                where status in ('pending','running') and started_at<?
-                """,
-                Timestamp.from(Instant.now(clock)),
-                "同步任务中断或超时，请重新发起",
-                Timestamp.from(Instant.now(clock).minusSeconds(7200)));
+        synchronized (startLock) {
+            Timestamp cutoff = Timestamp.from(Instant.now(clock).minusSeconds(7200));
+            var staleIds =
+                    jdbc.queryForList(
+                            """
+                            select id from sys_feishu_directory_sync
+                            where tenant_key=? and status in ('pending','running') and started_at<?
+                            """,
+                            Long.class,
+                            tenant(),
+                            cutoff);
+            for (Long id : staleIds) {
+                if (localTasks.contains(id)) continue;
+                jdbc.update(
+                        """
+update sys_feishu_directory_sync set status='failed',finished_at=?,error_message=?
+where id=? and status in ('pending','running') and started_at<?
+""",
+                        Timestamp.from(Instant.now(clock)),
+                        "同步任务中断或超时，请重新发起",
+                        id,
+                        cutoff);
+            }
+        }
     }
 
     public Task latest() {
+        recoverStaleTasks();
         return jdbc
                 .query(
                         "select * from sys_feishu_directory_sync where tenant_key=? order by id"
-                            + " desc limit 1",
+                                + " desc limit 1",
                         this::map,
                         tenant())
                 .stream()
@@ -177,6 +208,7 @@ where id=? and status in ('pending','running')
     }
 
     public Task get(long id) {
+        recoverStaleTasks();
         return jdbc
                 .query(
                         "select * from sys_feishu_directory_sync where id=? and tenant_key=?",

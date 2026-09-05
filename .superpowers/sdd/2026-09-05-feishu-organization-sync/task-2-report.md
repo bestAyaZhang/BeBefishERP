@@ -33,3 +33,12 @@ The suite logs expected pre-existing failure-injection errors (audit failure, AP
 - Synchronization is intentionally single-instance. Multi-instance task locking remains future work per the design.
 - Official API routes/models were checked against the supplied larksuite SDK files and official endpoint pages: https://open.feishu.cn/document/server-docs/contact-v3/department/children and https://open.feishu.cn/document/server-docs/contact-v3/user/find_by_department .
 - No real tenant credentials were available; real external tenant acceptance remains unverified. Tests use real HTTP fixtures and real MySQL. No push or deployment.
+
+## Review round 1: eventual orphan recovery
+
+- Confirmed P1: startup-only recovery retained a fresh orphan indefinitely after a quick restart.
+- Recovery now runs under the start mutex on startup, start attempts, latest polling and individual task polling. Once an orphan crosses the two-hour cutoff, the existing page sees failed and can retry without another process restart or login.
+- Locally queued/running task IDs remain tracked until the runnable exits; recovery excludes them even after the cutoff. Executor rejection releases ownership. Timeout therefore cannot expire a live worker and create overlapping work in the supported single-instance deployment.
+- RED: `/tmp/task2-recovery-red.log` records four intended failures for pending/running orphans, individual polling/start recovery and erroneously expiring locally queued work.
+- GREEN: `/tmp/task2-recovery-green.log` has 12 passing lifecycle/API/login tests. Controlled queues and a mutable clock cover a previous process, quick replacement before cutoff, later GET/latest/start reconciliation, successful retry, and queued/running live-work exclusion.
+- Final backend suite: `/tmp/task2-recovery-full.log`, **291 tests, 0 failures/errors/skips**, BUILD SUCCESS. `git diff --check` passes. No schema, merge, authentication policy or frontend changes in this fix.

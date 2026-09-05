@@ -79,8 +79,9 @@ class FeishuDirectorySyncTaskServiceTest {
                 "update sys_feishu_directory_sync set started_at=? where id=?",
                 java.sql.Timestamp.from(now.minusSeconds(7201)),
                 fresh.id());
-        tasks.recoverStaleTasks();
-        assertThat(tasks.get(fresh.id()).status()).isEqualTo("failed");
+        var replacement = replacement(Clock.fixed(now, ZoneOffset.UTC), new ArrayList<>());
+        replacement.recoverStaleTasks();
+        assertThat(replacement.get(fresh.id()).status()).isEqualTo("failed");
     }
 
     @Test
@@ -125,13 +126,122 @@ class FeishuDirectorySyncTaskServiceTest {
             assertThat(
                             jdbc.queryForObject(
                                     "select count(*) from sys_feishu_directory_sync where"
-                                        + " tenant_key='tenant-concurrent-tasks'",
+                                            + " tenant_key='tenant-concurrent-tasks'",
                                     Integer.class))
                     .isOne();
         } finally {
             jdbc.update(
                     "delete from sys_feishu_directory_sync where"
-                        + " tenant_key='tenant-concurrent-tasks'");
+                            + " tenant_key='tenant-concurrent-tasks'");
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"pending", "running"})
+    void quickRestartEventuallyRecoversOrphanThroughPollingWithoutAnotherRestart(
+            String orphanStatus) {
+        var clock = new MutableClock(now);
+        var oldQueue = new ArrayList<Runnable>();
+        var oldProcess = replacement(clock, oldQueue);
+        var orphan = oldProcess.startManual(userId);
+        jdbc.update(
+                "update sys_feishu_directory_sync set status=? where id=?",
+                orphanStatus,
+                orphan.id());
+        oldQueue.clear(); // The previous process and its executor have stopped.
+        clock.advance(Duration.ofMinutes(5));
+        var replacementQueue = new ArrayList<Runnable>();
+        var replacement = replacement(clock, replacementQueue);
+        replacement.recoverStaleTasks(); // ApplicationReadyEvent on a quick restart.
+        assertThat(replacement.latest().status()).isEqualTo(orphanStatus);
+        assertThat(replacement.startManual(userId).id()).isEqualTo(orphan.id());
+        assertThat(replacementQueue).isEmpty();
+
+        clock.advance(Duration.ofHours(2));
+        assertThat(replacement.latest().status()).isEqualTo("failed");
+        assertThat(replacement.get(orphan.id()).status()).isEqualTo("failed");
+        when(sync.synchronize())
+                .thenReturn(new FeishuDirectorySyncService.Result(0, 0, 0, 0, 0, 0));
+        var retry = replacement.startManual(userId);
+        assertThat(retry.id()).isNotEqualTo(orphan.id());
+        assertThat(replacementQueue).hasSize(1);
+        replacementQueue.removeFirst().run();
+        assertThat(replacement.get(retry.id()).status()).isEqualTo("success");
+    }
+
+    @Test
+    void individualTaskPollingAndNewStartAlsoReconcileOrphans() {
+        var clock = new MutableClock(now);
+        var oldProcess = replacement(clock, new ArrayList<>());
+        var orphan = oldProcess.startManual(userId);
+        var restarted = replacement(clock, new ArrayList<>());
+        restarted.recoverStaleTasks();
+        clock.advance(Duration.ofHours(3));
+        assertThat(restarted.get(orphan.id()).status()).isEqualTo("failed");
+        var next = restarted.startManual(userId);
+        var anotherRestart = replacement(clock, new ArrayList<>());
+        anotherRestart.recoverStaleTasks();
+        clock.advance(Duration.ofHours(3));
+        assertThat(anotherRestart.startManual(userId).id()).isNotEqualTo(next.id());
+    }
+
+    @Test
+    void timeoutNeverExpiresLocallyQueuedOrRunningWorkIntoAnOverlappingTask() {
+        var clock = new MutableClock(now);
+        var localQueue = new ArrayList<Runnable>();
+        var local = replacement(clock, localQueue);
+        var task = local.startManual(userId);
+        clock.advance(Duration.ofHours(3));
+        local.recoverStaleTasks();
+        assertThat(local.latest().status()).isEqualTo("pending");
+        assertThat(local.startManual(userId).id()).isEqualTo(task.id());
+        assertThat(localQueue).hasSize(1);
+        when(sync.synchronize())
+                .thenAnswer(
+                        invocation -> {
+                            clock.advance(Duration.ofHours(3));
+                            local.recoverStaleTasks();
+                            assertThat(local.get(task.id()).status()).isEqualTo("running");
+                            assertThat(local.latest().status()).isEqualTo("running");
+                            assertThat(local.startManual(userId).id()).isEqualTo(task.id());
+                            assertThat(localQueue).isEmpty();
+                            return new FeishuDirectorySyncService.Result(0, 0, 0, 0, 0, 0);
+                        });
+        localQueue.removeFirst().run();
+        assertThat(local.get(task.id()).status()).isEqualTo("success");
+        verify(sync, times(1)).synchronize();
+    }
+
+    private FeishuDirectorySyncTaskService replacement(Clock clock, List<Runnable> queue) {
+        var properties = new FeishuProperties();
+        properties.setAllowedTenantKey("tenant-task");
+        return new FeishuDirectorySyncTaskService(jdbc, sync, properties, clock, queue::add);
+    }
+
+    private static final class MutableClock extends Clock {
+        private Instant current;
+
+        MutableClock(Instant current) {
+            this.current = current;
+        }
+
+        void advance(Duration duration) {
+            current = current.plus(duration);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return current;
         }
     }
 
