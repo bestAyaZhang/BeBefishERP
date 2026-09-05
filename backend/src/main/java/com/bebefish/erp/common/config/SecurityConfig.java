@@ -55,7 +55,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 "/api/auth/feishu/status",
                                 "/api/auth/feishu/authorize",
-                                "/api/auth/feishu/callback").permitAll()
+                                "/api/auth/feishu/callback",
+                                "/api/files/content/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )

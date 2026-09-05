@@ -192,5 +192,5 @@ export interface ProductService {
   listSupplierQuotes(skuId: number): Promise<ProductSupplierQuote[]>;
   saveSupplierQuote(skuId: number, payload: SaveSupplierQuotePayload, quoteId?: number): Promise<ProductSupplierQuote>;
   setDefaultSupplierQuote(skuId: number, quoteId: number, syncStandardCost: boolean): Promise<ProductSupplierQuote>;
-  uploadImage(file: File): Promise<UploadedImage>;
+  uploadImage(file: File, onProgress?: (progress: number) => void): Promise<UploadedImage>;
 }

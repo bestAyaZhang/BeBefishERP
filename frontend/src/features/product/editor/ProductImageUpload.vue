@@ -25,6 +25,7 @@ const inputId = `image-upload-${Math.random().toString(36).slice(2)}`;
 const previewUrl = ref(props.preview);
 const committedPreview = ref(props.preview);
 const status = ref<UploadStatus>(props.fileId !== null || Boolean(props.preview) ? 'uploaded' : 'idle');
+const progress = ref(0);
 const error = ref('');
 const ownedBlobUrls = new Set<string>();
 let requestGeneration = 0;
@@ -38,6 +39,7 @@ watch(() => props.preview, (value) => {
   previewUrl.value = value;
   committedPreview.value = value;
   status.value = value ? 'uploaded' : 'idle';
+  progress.value = value ? 100 : 0;
   error.value = '';
 });
 
@@ -69,10 +71,14 @@ async function upload(event: Event) {
   ownedBlobUrls.add(localPreview);
   previewUrl.value = localPreview;
   status.value = 'uploading';
+  progress.value = 0;
   error.value = '';
   setUploading(true);
   try {
-    const uploaded = await props.service.uploadImage(file);
+    const uploaded = await props.service.uploadImage(file, (value) => {
+      if (!mounted || generation !== requestGeneration) return;
+      progress.value = Math.min(100, Math.max(0, Math.round(value)));
+    });
     if (!mounted || generation !== requestGeneration) return;
     emit('update:fileId', uploaded.id);
     const nextPreview = uploaded.url || localPreview;
@@ -80,11 +86,13 @@ async function upload(event: Event) {
     previewUrl.value = nextPreview;
     committedPreview.value = nextPreview;
     emit('update:preview', nextPreview);
+    progress.value = 100;
     status.value = 'uploaded';
   } catch (cause) {
     if (!mounted || generation !== requestGeneration) return;
     revokeOwned(localPreview);
     previewUrl.value = committedPreview.value;
+    progress.value = 0;
     status.value = 'error';
     error.value = cause instanceof Error ? cause.message : '图片上传失败';
     message.error(error.value);
@@ -101,6 +109,7 @@ function remove() {
   previewUrl.value = '';
   committedPreview.value = '';
   status.value = 'idle';
+  progress.value = 0;
   error.value = '';
   emit('update:fileId', null);
   emit('update:preview', '');
@@ -112,7 +121,7 @@ function markPreviewError() {
 }
 
 function statusLabel() {
-  if (status.value === 'uploading') return '上传中...';
+  if (status.value === 'uploading') return `上传中 ${progress.value}%`;
   if (status.value === 'uploaded') return '上传成功';
   if (status.value === 'error') return '上传失败';
   return '未上传';
@@ -151,8 +160,13 @@ onBeforeUnmount(() => {
       <Trash2 class="h-4 w-4" aria-hidden="true" />
       删除
     </button>
-    <span :data-testid="`${testId}-status`" class="sr-only">{{ statusLabel() }}</span>
-    <p v-if="error" class="absolute bottom-2 left-3 right-3 z-20 truncate text-center text-xs font-medium text-[#ef476f]">{{ error }}</p>
+    <div class="absolute bottom-3 left-3 right-3 z-20 rounded-md bg-white/95 px-2 py-1.5 shadow-sm">
+      <span :data-testid="`${testId}-status`" class="block text-center text-xs font-medium" :class="status === 'error' ? 'text-[#ef476f]' : status === 'uploaded' ? 'text-[#16a36a]' : 'text-[#536dff]'">{{ statusLabel() }}</span>
+      <div v-if="status === 'uploading'" :data-testid="`${testId}-progress`" class="mt-1 h-1.5 overflow-hidden rounded-full bg-[#e6ebf5]" role="progressbar" aria-label="图片上传进度" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="progress">
+        <span class="block h-full rounded-full bg-[#536dff] transition-[width]" :style="{ width: `${progress}%` }" />
+      </div>
+    </div>
+    <p v-if="error" class="absolute bottom-12 left-3 right-3 z-20 truncate text-center text-xs font-medium text-[#ef476f]">{{ error }}</p>
   </div>
 
   <div v-else-if="variant === 'dialog-packaging'" class="flex h-[168px] w-full items-center gap-4 rounded-lg border border-[#dbe4f1] bg-[#f8faff] p-4">
@@ -161,6 +175,9 @@ onBeforeUnmount(() => {
     <div class="min-w-0 flex-1">
       <p class="text-sm font-medium text-[#25314d]">{{ label }}</p>
       <p :data-testid="`${testId}-status`" class="mt-2 text-xs font-medium" :class="status === 'error' ? 'text-[#ef476f]' : status === 'uploaded' ? 'text-[#16a36a]' : 'text-[#8292ae]'">{{ statusLabel() }}</p>
+      <div v-if="status === 'uploading'" :data-testid="`${testId}-progress`" class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#e6ebf5]" role="progressbar" aria-label="图片上传进度" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="progress">
+        <span class="block h-full rounded-full bg-[#536dff] transition-[width]" :style="{ width: `${progress}%` }" />
+      </div>
       <p class="mt-2 text-xs text-[#8292ae]">PNG / JPG，建议 1:1</p>
       <div class="mt-2 flex items-center gap-2">
         <input :id="inputId" :data-testid="testId" class="sr-only" type="file" accept="image/*" @change="upload" />
@@ -187,6 +204,9 @@ onBeforeUnmount(() => {
       <div class="min-w-0 flex-1">
         <p class="truncate text-sm font-black text-[#25314d]">{{ label }}</p>
         <p :data-testid="`${testId}-status`" class="mt-1 text-xs font-bold" :class="status === 'error' ? 'text-rose-600' : status === 'uploaded' ? 'text-emerald-600' : 'text-slate-500'">{{ statusLabel() }}</p>
+        <div v-if="status === 'uploading'" :data-testid="`${testId}-progress`" class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-label="图片上传进度" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="progress">
+          <span class="block h-full rounded-full bg-[#536dff] transition-[width]" :style="{ width: `${progress}%` }" />
+        </div>
         <p v-if="error" class="mt-1 break-words text-xs font-semibold text-rose-600">{{ error }}</p>
       </div>
     </div>

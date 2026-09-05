@@ -134,4 +134,27 @@ describe('ProductImageUpload request ownership', () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:unmounted.png');
   });
+
+  it('shows measured upload progress before confirming success', async () => {
+    const pending = deferred<UploadedImage>();
+    const uploadImage = vi.fn((
+      _file: File,
+      onProgress?: (progress: number) => void
+    ) => {
+      onProgress?.(37);
+      return pending.promise;
+    }) as unknown as ProductService['uploadImage'];
+    const wrapper = mountUpload(uploadImage);
+
+    await selectFile(wrapper, 'progress.png');
+
+    expect(wrapper.get('[data-testid="image-status"]').text()).toContain('上传中 37%');
+    expect(wrapper.get('[data-testid="image-progress"]').attributes('aria-valuenow')).toBe('37');
+
+    pending.resolve({ id: 45, url: '/uploads/progress.png', originalFileName: 'progress.png' });
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="image-status"]').text()).toContain('上传成功');
+    expect(wrapper.find('[data-testid="image-progress"]').exists()).toBe(false);
+  });
 });

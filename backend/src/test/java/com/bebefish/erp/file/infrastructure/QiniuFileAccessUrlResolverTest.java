@@ -6,14 +6,11 @@ import org.junit.jupiter.api.Test;
 
 class QiniuFileAccessUrlResolverTest {
     @Test
-    void signsPrivateHttpUrlForDefaultQiniuDomain() {
+    void returnsSameOriginProxyUrlForHttpQiniuImage() {
         var resolver = new QiniuFileAccessUrlResolver("test-ak", "test-sk");
 
-        var resolved = resolver.resolve("https://img.example.com/image.jpg");
+        var resolved = resolver.resolve("http://img.example.com/image.jpg");
 
-        assertThat(resolved)
-                .startsWith("http://img.example.com/image.jpg?")
-                .contains("e=")
-                .contains("&token=test-ak:");
+        assertThat(resolved).isEqualTo("/api/files/content/image.jpg");
     }
 }

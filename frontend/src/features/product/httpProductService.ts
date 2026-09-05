@@ -1,4 +1,4 @@
-import { request } from '../../services/http';
+import { request, uploadRequest } from '../../services/http';
 import type { PageResult, RecordStatus } from '../masterdata/types';
 import type { Product, ProductFormPayload, ProductQuery, ProductService, ProductSupplierQuote, SaveSupplierQuotePayload, UploadedImage } from './types';
 
@@ -19,5 +19,9 @@ export const httpProductService: ProductService = {
   listSupplierQuotes: (skuId) => request<ProductSupplierQuote[]>(`/api/skus/${skuId}/supplier-quotes`),
   saveSupplierQuote: (skuId, payload: SaveSupplierQuotePayload, quoteId?) => request<ProductSupplierQuote>(`/api/skus/${skuId}/supplier-quotes${quoteId ? `/${quoteId}` : ''}`, { method: quoteId ? 'PUT' : 'POST', body: JSON.stringify(payload) }),
   setDefaultSupplierQuote: (skuId, quoteId, syncStandardCost) => request<ProductSupplierQuote>(`/api/skus/${skuId}/supplier-quotes/${quoteId}/default`, { method: 'POST', body: JSON.stringify({ syncStandardCost }) }),
-  uploadImage: (file) => { const formData = new FormData(); formData.append('file', file); return request<UploadedImage>('/api/files/images', { method: 'POST', body: formData }); }
+  uploadImage: (file, onProgress) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return uploadRequest<UploadedImage>('/api/files/images', formData, onProgress);
+  }
 };

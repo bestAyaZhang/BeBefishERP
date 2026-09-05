@@ -121,12 +121,12 @@ ERP_FILE_STORAGE_PROVIDER=qiniu
 QINIU_ACCESS_KEY=你的AK
 QINIU_SECRET_KEY=你的SK
 QINIU_BUCKET=gd-goods-img
-QINIU_DOMAIN=https://tigd0hqp4.hn-bkt.clouddn.com
+QINIU_DOMAIN=https://img.example.com
 # 可选：z0、z1、z2、na0、as0；不填时由 SDK 自动识别
 QINIU_REGION=z0
 ```
 
-`QINIU_DOMAIN` 必须是该 Bucket 可访问的域名；如果空间是私有空间，还需要增加私有下载签名方案，当前版本按公开图片 URL 设计。已有本地图片不会自动迁移到七牛云。
+`QINIU_DOMAIN` 填写该 Bucket 绑定的正式域名，用于记录上传文件的来源 URL；线上不要使用有期限的七牛测试域名。读取图片时，后端会根据 Bucket 自动查询七牛源站、生成短时下载签名，并通过同域 `/api/files/content/` 地址向浏览器提供图片，避免 HTTPS 页面加载 HTTP 图片时被浏览器拦截。已有本地图片不会自动迁移到七牛云，已保存的七牛 URL 无需迁移。
 
 ## 登录策略
 

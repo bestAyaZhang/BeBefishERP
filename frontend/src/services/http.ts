@@ -52,6 +52,17 @@ function handleUnauthorized() {
   void unauthorizedHandler();
 }
 
+async function unwrapResponse<T>(response: Response): Promise<T> {
+  const payload = await parseApiResponse<T>(response);
+  if (response.status === 401) {
+    handleUnauthorized();
+  }
+  if (!response.ok || payload.code !== 'SUCCESS') {
+    throw new Error(payload.message || '请求失败');
+  }
+  return payload.data;
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -63,12 +74,37 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(SERVICE_UNAVAILABLE_MESSAGE);
   }
 
-  const payload = await parseApiResponse<T>(response);
-  if (response.status === 401) {
-    handleUnauthorized();
-  }
-  if (!response.ok || payload.code !== 'SUCCESS') {
-    throw new Error(payload.message || '请求失败');
-  }
-  return payload.data;
+  return unwrapResponse<T>(response);
+}
+
+export function uploadRequest<T>(
+  path: string,
+  body: FormData,
+  onProgress?: (progress: number) => void
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE_URL}${path}`);
+    for (const [name, value] of Object.entries(buildHeaders({ method: 'POST', body }))) {
+      xhr.setRequestHeader(name, value);
+    }
+    xhr.upload.addEventListener('progress', (event) => {
+      if (!event.lengthComputable || event.total <= 0) return;
+      onProgress?.((event.loaded / event.total) * 100);
+    });
+    xhr.addEventListener('load', () => {
+      const contentType = xhr.getResponseHeader('Content-Type');
+      const response = new Response(xhr.responseText, {
+        status: xhr.status,
+        statusText: xhr.statusText,
+        headers: contentType ? { 'Content-Type': contentType } : undefined
+      });
+      void unwrapResponse<T>(response).then(resolve, reject);
+    });
+    const rejectUnavailable = () => reject(new Error(SERVICE_UNAVAILABLE_MESSAGE));
+    xhr.addEventListener('error', rejectUnavailable);
+    xhr.addEventListener('abort', rejectUnavailable);
+    xhr.addEventListener('timeout', rejectUnavailable);
+    xhr.send(body);
+  });
 }

@@ -61,6 +61,13 @@ class BearerTokenAuthenticationFilterTest {
     }
 
     @Test
+    void leavesReadOnlyImageContentPublicForBrowserImageTags() throws Exception {
+        mvc.perform(get("/api/files/content/image.jpg"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value("public-image"));
+    }
+
+    @Test
     void rejectsUnknownFeishuAuthPathWithoutToken() throws Exception {
         mvc.perform(get("/api/auth/feishu/unexpected"))
                 .andExpect(status().isUnauthorized());
@@ -107,6 +114,11 @@ class BearerTokenAuthenticationFilterTest {
         @PostMapping("/api/auth/login/password")
         ApiResponse<String> passwordLogin() {
             return ApiResponse.success("public-login");
+        }
+
+        @GetMapping("/api/files/content/image.jpg")
+        ApiResponse<String> imageContent() {
+            return ApiResponse.success("public-image");
         }
     }
 }
