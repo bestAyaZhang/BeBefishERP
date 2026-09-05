@@ -152,7 +152,7 @@ async function handleLogout() {
 </script>
 
 <template>
-  <main data-testid="erp-shell" class="bebefish-prototype h-dvh min-h-screen overflow-hidden bg-[#f6f7fb] text-[#25314d]">
+  <main data-testid="erp-shell" class="bebefish-prototype fixed inset-0 overflow-hidden bg-[#f6f7fb] text-[#25314d]">
     <MessageHost />
     <div data-testid="erp-layout-grid" class="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[244px_minmax(0,1fr)]" :inert="mobileNavigationModalActive || undefined" :aria-hidden="mobileNavigationModalActive ? 'true' : undefined">
       <aside class="sticky top-0 hidden h-full min-h-0 border-r border-slate-200 bg-white lg:flex">

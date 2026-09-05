@@ -378,7 +378,7 @@ onMounted(() => { void loadReferenceData(); void resumeSync(); });
     <p data-testid="sync-status" class="mb-3 text-sm text-slate-500" role="status">{{ syncStatusLabel }}<span v-if="syncTask"> · 任务 #{{ syncTask.id }} · {{ syncTask.finishedAt || syncTask.startedAt }}<template v-if="syncTask.status === 'success' || syncTask.status === 'partial'"> · 部门新增 {{ syncTask.departmentsCreated }} / 更新 {{ syncTask.departmentsUpdated }} · 员工新增 {{ syncTask.employeesCreated }} / 更新 {{ syncTask.employeesUpdated }} · 失败 {{ syncTask.recordsFailed }} / 跳过 {{ syncTask.recordsSkipped }}</template> · {{ syncTask.errorMessage || syncTask.warningMessage }}</span><span v-if="syncError"> · {{ syncError }}</span><button v-if="syncError && syncTask" data-testid="retry-sync-progress" type="button" :disabled="syncReading" class="ml-3 text-[#536dff] disabled:opacity-50" @click="retrySyncProgress">{{ syncReading ? '读取中…' : '重试读取进度' }}</button></p>
     <p v-if="pageNotice" data-testid="employee-page-notice" class="mb-4 rounded-[6px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700" role="status">{{ pageNotice }}</p>
 
-    <div data-testid="employee-workspace" class="grid h-[804px] grid-cols-[280px_minmax(0,1fr)] gap-4">
+    <div data-testid="employee-workspace" class="grid grid-cols-[280px_minmax(0,1fr)] gap-4">
       <DepartmentTree
         :nodes="departmentTree"
         :selected-id="selectedDepartmentId"
@@ -423,7 +423,7 @@ onMounted(() => { void loadReferenceData(); void resumeSync(); });
           <span class="rounded-[6px] bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-500">账号停用 {{ summary.disabledAccounts }}</span>
         </div>
 
-        <div data-testid="employee-table-content" class="h-[572px] shrink-0 overflow-auto">
+        <div data-testid="employee-table-content" class="overflow-x-auto">
           <div v-if="loading" data-testid="employee-loading" class="space-y-px bg-slate-100" aria-label="正在加载员工">
             <div v-for="index in 6" :key="index" class="flex h-[72px] items-center gap-4 bg-white px-4">
               <span class="h-9 w-9 animate-pulse rounded-full bg-slate-100"></span>

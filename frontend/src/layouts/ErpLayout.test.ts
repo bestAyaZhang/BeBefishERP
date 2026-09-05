@@ -113,7 +113,10 @@ describe('ErpLayout', () => {
   it('fills the viewport with a fixed desktop sidebar and stable content frame', async () => {
     ({ router, wrapper } = await mountLayout());
 
-    expect(wrapper.get('[data-testid="erp-shell"]').classes()).toContain('min-h-screen');
+    expect(wrapper.get('[data-testid="erp-shell"]').classes()).toEqual(expect.arrayContaining([
+      'fixed',
+      'inset-0'
+    ]));
     expect(wrapper.get('[data-testid="erp-shell"]').classes()).not.toContain('px-4');
     expect(wrapper.get('[data-testid="erp-layout-grid"]').classes().join(' ')).toContain('lg:grid-cols-[244px_minmax(0,1fr)]');
     expect(wrapper.findAll('[class]').some((node) => node.classes().includes('max-w-[1440px]'))).toBe(false);
@@ -133,7 +136,8 @@ describe('ErpLayout', () => {
     ({ router, wrapper } = await mountLayout('/products'));
 
     expect(wrapper.get('[data-testid="erp-shell"]').classes()).toEqual(expect.arrayContaining([
-      'h-dvh',
+      'fixed',
+      'inset-0',
       'overflow-hidden'
     ]));
     expect(wrapper.get('[data-testid="erp-layout-grid"]').classes()).toEqual(expect.arrayContaining([

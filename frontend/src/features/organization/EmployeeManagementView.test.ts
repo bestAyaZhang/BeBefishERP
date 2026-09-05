@@ -380,11 +380,13 @@ describe('EmployeeManagementView', () => {
     expect(document.activeElement).toBe(trigger.element);
   });
 
-  it('uses the Figma desktop height and typography hierarchy', async () => {
+  it('lets the page own vertical scrolling while preserving horizontal table overflow', async () => {
     const wrapper = await mountPage();
 
-    expect(wrapper.get('[data-testid="employee-workspace"]').classes()).toContain('h-[804px]');
-    expect(wrapper.get('[data-testid="employee-table-content"]').classes()).toContain('h-[572px]');
+    expect(wrapper.get('[data-testid="employee-workspace"]').classes()).not.toContain('h-[804px]');
+    expect(wrapper.get('[data-testid="employee-table-content"]').classes()).toContain('overflow-x-auto');
+    expect(wrapper.get('[data-testid="employee-table-content"]').classes()).not.toContain('h-[572px]');
+    expect(wrapper.get('[data-testid="employee-table-content"]').classes()).not.toContain('overflow-auto');
     expect(wrapper.get('h1').classes()).toContain('font-bold');
     expect(wrapper.get('[data-testid="employee-list-title"]').classes()).toContain('font-medium');
   });
