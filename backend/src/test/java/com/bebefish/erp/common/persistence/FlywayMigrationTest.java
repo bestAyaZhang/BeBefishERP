@@ -77,7 +77,7 @@ class FlywayMigrationTest {
                 "department", "position", "employee", "sys_user", "sys_permission", "sys_role",
                 "sys_role_permission", "sys_user_role", "sys_feishu_identity",
                 "sys_feishu_role_mapping", "sys_auth_session", "sys_oauth_state",
-                "sys_login_ticket", "sys_login_audit"
+                "sys_login_ticket", "sys_login_audit", "sys_feishu_directory_sync"
         );
     }
 
@@ -289,7 +289,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("10");
+        )).isEqualTo("11");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId
@@ -451,5 +451,25 @@ class FlywayMigrationTest {
                 "select id from " + tableName + " where " + keyColumn + " = ?",
                 Long.class, keyValue
         );
+    }
+
+    @Test
+    void organizationV11PreservesManualDisabledStatusAndBackfillsActiveFeishuEmployees() {
+        flyway().clean();
+        Flyway.configure().dataSource(dataSource).target("10").load().migrate();
+        jdbc.update("""
+                insert into employee (employee_no,name,employment_type,status,source,created_at,updated_at)
+                values ('FS-A','Active','formal','active','feishu',now(3),now(3)),
+                       ('FS-D','Disabled','formal','disabled','feishu',now(3),now(3)),
+                       ('FS-R','Resigned','formal','resigned','feishu',now(3),now(3)),
+                       ('LOCAL-A','Local','formal','active','manual',now(3),now(3))
+                """);
+        flyway().migrate();
+        assertThat(jdbc.queryForObject("select status_source from employee where employee_no='FS-A'", String.class)).isEqualTo("feishu");
+        assertThat(jdbc.queryForList("select status_source from employee where employee_no<>'FS-A'", String.class)).containsOnly("manual");
+        assertThat(jdbc.queryForList("select column_name from information_schema.columns where table_schema=database() and table_name='sys_feishu_directory_sync'", String.class))
+                .containsExactlyInAnyOrder("id", "tenant_key", "trigger_type", "status", "started_by_user_id", "started_at", "finished_at", "departments_created", "departments_updated", "employees_created", "employees_updated", "records_skipped", "records_failed", "warning_message", "error_message");
+        assertThatThrownBy(() -> jdbc.update("insert into sys_feishu_directory_sync(tenant_key,trigger_type,status,started_at) values('test','invalid','pending',now(3))")).isInstanceOf(DataAccessException.class);
+        assertThatThrownBy(() -> jdbc.update("insert into sys_feishu_directory_sync(tenant_key,trigger_type,status,started_at) values('test','manual','invalid',now(3))")).isInstanceOf(DataAccessException.class);
     }
 }
