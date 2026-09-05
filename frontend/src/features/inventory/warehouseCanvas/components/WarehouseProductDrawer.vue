@@ -20,7 +20,7 @@ watch(() => props.open, (open) => {
 </script>
 
 <template>
-  <AccessibleDialog :open="open" title="添加产品" description="库存以“个”为权威值，件数由包装规格自动换算。" test-id="add-product-dialog" body-test-id="add-product-body" footer-test-id="add-product-footer" close-test-id="add-product-close" overlay-class="items-stretch justify-end" panel-class="w-[400px] max-w-full !rounded-none" @cancel="emit('cancel')">
+  <AccessibleDialog :open="open" title="添加产品" description="库存以“个”为权威值，件数由包装规格自动换算。" test-id="add-product-dialog" body-test-id="add-product-body" footer-test-id="add-product-footer" close-test-id="add-product-close" overlay-class="items-end justify-end" panel-class="warehouse-canvas-flow-drawer" body-class="min-h-0 flex-1 overflow-y-auto px-6 py-5 pb-8" @cancel="emit('cancel')">
     <div class="drawer-fields">
       <label>SKU 产品<select v-model="skuId" data-testid="add-product-sku"><option v-for="item in catalog" :key="item.skuId" :value="item.skuId">{{ item.productName }} · {{ item.skuCode }}</option></select></label>
       <label>每件个数<input data-testid="add-product-packaging" readonly :value="`${sku?.unitsPerCase ?? 0} 个/件`" /></label>

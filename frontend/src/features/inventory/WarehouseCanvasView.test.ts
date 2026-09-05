@@ -2,15 +2,26 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import WarehouseCanvasView from './views/WarehouseCanvasView.vue'
 import WarehouseFloorCanvas from './warehouseCanvas/components/WarehouseFloorCanvas.vue'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { parse } from '@vue/compiler-sfc'
 
 const mounted: ReturnType<typeof mount>[] = []
+const styleElements: HTMLStyleElement[] = []
+function applyPageStyles() {
+  const { descriptor } = parse(readFileSync(resolve(process.cwd(), 'src/features/inventory/views/WarehouseCanvasView.vue'), 'utf8'))
+  const style = document.createElement('style')
+  style.textContent = descriptor.styles.map((item) => item.content).join('\n')
+  document.head.append(style)
+  styleElements.push(style)
+}
 async function mountPage() {
   const wrapper = mount(WarehouseCanvasView, { attachTo: document.body })
   mounted.push(wrapper)
   await flushPromises()
   return wrapper
 }
-afterEach(() => { mounted.splice(0).forEach((wrapper) => wrapper.unmount()) })
+afterEach(() => { mounted.splice(0).forEach((wrapper) => wrapper.unmount()); styleElements.splice(0).forEach((style) => style.remove()) })
 type Page = Awaited<ReturnType<typeof mountPage>>
 function floor(wrapper: Page) { return wrapper.getComponent(WarehouseFloorCanvas) }
 async function selectBlock(wrapper: Page, id = 'block-blue-a') { floor(wrapper).vm.$emit('select-block', id); await flushPromises() }
@@ -27,9 +38,54 @@ describe('Warehouse canvas overview', () => {
     expect(wrapper.getComponent(WarehouseFloorCanvas).props('state').blocks).toHaveLength(5)
     expect(wrapper.get('[data-testid="library-sku-101"]').text()).toContain('250 个')
   })
+
+  it('keeps summary inside the 196px left panel and preserves the 760px desktop center allocation', async () => {
+    applyPageStyles()
+    const wrapper = await mountPage()
+    expect(wrapper.get('.layers').find('[data-testid="warehouse-canvas-summary"]').exists()).toBe(true)
+    const pageStyle = getComputedStyle(wrapper.element)
+    const workspaceStyle = getComputedStyle(wrapper.get('.workspace').element)
+    const centerStyle = getComputedStyle(wrapper.get('.floor-panel').element)
+    expect(pageStyle.paddingLeft).toBe('0px')
+    expect(pageStyle.paddingRight).toBe('0px')
+    expect(workspaceStyle.gridTemplateColumns).toBe('196px minmax(560px,1fr) 240px')
+    expect(Number.parseFloat(workspaceStyle.gap)).toBe(0)
+    expect(centerStyle.paddingLeft).toBe('16px')
+    expect(centerStyle.paddingRight).toBe('16px')
+    expect(centerStyle.borderLeftWidth).toBe('0px')
+    expect(centerStyle.borderRightWidth).toBe('0px')
+    // 1440px viewport minus 244px ERP sidebar, with no outer losses.
+    expect(1440 - 244 - 196 - 240 - 2 * Number.parseFloat(pageStyle.paddingLeft) - 2 * Number.parseFloat(workspaceStyle.gap)).toBe(760)
+  })
 })
 
 describe('Draw and add products', () => {
+  it.each(['add', 'partial'])('uses the approved accessible 720px right drawer surface for %s', async (flow) => {
+    applyPageStyles()
+    const wrapper = await mountPage()
+    if (flow === 'partial') {
+      await selectBlock(wrapper)
+      await wrapper.get('[data-testid="open-partial-move"]').trigger('click')
+    } else {
+      await wrapper.get('[data-testid="add-warehouse-product"]').trigger('click')
+    }
+    const dialog = wrapper.get(`[data-testid="${flow === 'add' ? 'add-product' : 'partial-move'}-dialog"]`)
+    expect(dialog.attributes('role')).toBe('dialog')
+    expect(dialog.attributes('aria-modal')).toBe('true')
+    const style = getComputedStyle(dialog.element)
+    expect(style.position).toBe('absolute')
+    expect(style.width).toBe('720px')
+    expect(style.top).toBe('264px')
+    expect(style.right).toBe('0px')
+    expect(style.bottom).toBe('0px')
+    expect(style.borderRadius).toBe('8px')
+    // At the approved 1440 × 1024 viewport: x = 720 and height = 760.
+    expect(1440 - Number.parseFloat(style.width) - Number.parseFloat(style.right)).toBe(720)
+    expect(1024 - Number.parseFloat(style.top) - Number.parseFloat(style.bottom)).toBe(760)
+    await dialog.trigger('keydown', { key: 'Escape' })
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+  })
+
   it('previews a named rectangle before creating an area and supports cancellation', async () => {
     const wrapper = await mountPage()
     await wrapper.get('[data-testid="canvas-tool-draw"]').trigger('click')
@@ -127,6 +183,8 @@ describe('Object properties, movement and safeguards', () => {
     await selectBlock(wrapper)
     await wrapper.get('[data-testid="open-partial-move"]').trigger('click')
     await wrapper.get('[data-testid="partial-move-units"]').setValue(value)
+    expect(wrapper.get('[data-testid="partial-move-confirm"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-testid="partial-move-conservation"]').exists()).toBe(false)
     await wrapper.get('[data-testid="partial-move-confirm"]').trigger('click')
     expect(wrapper.get('[data-testid="partial-move-dialog"]').text()).toContain('移动个数必须')
     expect(selectedBlock(wrapper)?.units).toBe(150)
@@ -218,6 +276,21 @@ describe('Object properties, movement and safeguards', () => {
     await flushPromises()
     expect(floor(wrapper).props('state').blocks[0]).toMatchObject({ areaId: 'area-b', units: 150, x: 40, y: 360 })
     expect(floor(wrapper).props('issues')).toHaveLength(0)
+  })
+
+  it('does not transfer a selected block on zero-distance pointer-up inside an overlapping area', async () => {
+    const wrapper = await mountPage()
+    floor(wrapper).vm.$emit('create-area', { x: 60, y: 80, width: 160, height: 120 })
+    await flushPromises()
+    await wrapper.get('[data-testid="area-name-input"]').setValue('Overlapping')
+    await wrapper.get('[data-testid="create-area-confirm"]').trigger('click')
+    const blockElement = wrapper.get('[data-testid="warehouse-sku-block-block-blue-a"]')
+    await blockElement.trigger('pointerdown', { button: 0, pointerId: 1, clientX: 100, clientY: 120 })
+    await wrapper.get('[data-testid="warehouse-canvas-floor"]').trigger('pointerup', { pointerId: 1, clientX: 100, clientY: 120 })
+    expect(selectedBlock(wrapper)).toMatchObject({ id: 'block-blue-a', areaId: 'area-a', x: 76, y: 96, units: 150 })
+    // The selection must not add history: undo removes the overlapping area creation.
+    await wrapper.get('[data-testid="canvas-undo"]').trigger('click')
+    expect(floor(wrapper).props('state').areas).toHaveLength(3)
   })
 
   it('opens the dragged catalog SKU at its dropped area, and ignores drops outside areas', async () => {

@@ -28,6 +28,10 @@ const drawerAreaId = ref<string>()
 const partialOpen = ref(false)
 const partialUnits = ref<number | string>(60)
 const partialTarget = ref('')
+const partialUnitsValid = computed(() => {
+  const units = Number(partialUnits.value)
+  return partialUnits.value !== '' && Number.isInteger(units) && units > 0 && units < (selectedBlock.value?.units ?? 0)
+})
 const moveTargets = computed(() => state.value.areas.filter((area) => area.id !== selectedBlock.value?.areaId && area.visible && !area.locked))
 const deleteAreaId = ref<string | null>(null)
 const deleteFinal = ref(false)
@@ -65,7 +69,8 @@ function updateBlockRect(rect: CanvasRect & { id: string }) {
     const block = state.value.blocks.find((item) => item.id === rect.id)
     if (!block || state.value.areas.find((area) => area.id === block.areaId)?.locked) return
     // An unchanged-size drag fully landing in another area means whole-block transfer.
-    const target = rect.width === block.width && rect.height === block.height
+    const positionChanged = rect.x !== block.x || rect.y !== block.y
+    const target = positionChanged && rect.width === block.width && rect.height === block.height
       ? state.value.areas.find((area) => area.id !== block.areaId && area.visible && !area.locked && rect.x >= area.x && rect.y >= area.y && rect.x + rect.width <= area.x + area.width && rect.y + rect.height <= area.y + area.height)
       : undefined
     if (target) canvas.moveWholeBlock(block.id, target.id, rect)
@@ -173,13 +178,13 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
     </div>
     <p v-if="notice" role="status">{{ notice }}</p>
     <p v-if="error && !drawerOpen && !pendingArea && !partialOpen && !selectedArea && !selectedBlock" role="alert" class="error">{{ error }}</p>
-    <div data-testid="warehouse-canvas-summary" class="summary">
-      <strong>{{ summary.totalUnits.toLocaleString('en-US') }} 个库存总量</strong>
-      <span>{{ state.areas.length }} 个区域</span><span>{{ summary.skuCount }} 种 SKU</span>
-      <span>布局尺寸不代表容量</span>
-    </div>
     <div class="workspace-scroll"><div class="workspace">
       <aside class="panel layers"><h2><Warehouse :size="16" /> 仓库与图层</h2>
+        <div data-testid="warehouse-canvas-summary" class="summary">
+          <strong>{{ summary.totalUnits.toLocaleString('en-US') }} 个库存总量</strong>
+          <span>{{ state.areas.length }} 个区域 · {{ summary.skuCount }} 种 SKU</span>
+          <span>布局尺寸不代表容量</span>
+        </div>
         <div v-for="area in state.areas" :key="area.id" class="area-row">
           <button class="area-select" :aria-pressed="selectedAreaId === area.id" @click="chooseArea(area.id)"><strong>{{ area.name }}</strong><small>{{ summary.areaTotals[area.id] }} 个</small></button>
           <button :data-testid="`layer-visibility-${area.id}`" :aria-label="`${area.visible ? '隐藏' : '显示'} ${area.name}`" :aria-pressed="!area.visible" @click="canvas.toggleAreaVisibility(area.id)"><Eye v-if="area.visible" :size="14" /><EyeOff v-else :size="14" /></button>
@@ -228,14 +233,15 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
       <template #footer><button data-testid="create-area-cancel" @click="pendingArea = null">取消</button><button data-testid="create-area-confirm" class="primary" @click="confirmArea">创建区域</button></template>
     </AccessibleDialog>
     <WarehouseProductDrawer :open="drawerOpen" :catalog="state.catalog" :areas="state.areas" :initial-sku-id="drawerSkuId" :initial-area-id="drawerAreaId" :error="error" @cancel="drawerOpen = false" @confirm="addProduct" />
-    <AccessibleDialog :open="partialOpen && !!selectedBlock" title="移动部分库存" test-id="partial-move-dialog" body-test-id="partial-move-body" footer-test-id="partial-move-footer" close-test-id="partial-move-close" panel-class="w-[440px] max-w-full" @cancel="partialOpen = false">
+    <AccessibleDialog :open="partialOpen && !!selectedBlock" title="移动部分库存" test-id="partial-move-dialog" body-test-id="partial-move-body" footer-test-id="partial-move-footer" close-test-id="partial-move-close" overlay-class="items-end justify-end" panel-class="warehouse-canvas-flow-drawer" body-class="min-h-0 flex-1 overflow-y-auto px-6 py-5 pb-8" @cancel="partialOpen = false">
       <div v-if="selectedBlock" class="area-form"><strong>{{ selectedSku?.productName }}</strong><p>来源库存 {{ selectedBlock.units }} 个</p>
-        <label>移动个数<input v-model="partialUnits" data-testid="partial-move-units" type="number" min="1" :max="selectedBlock.units - 1" step="1" /></label>
+        <label>移动个数<input v-model="partialUnits" data-testid="partial-move-units" type="number" min="1" :max="selectedBlock.units - 1" step="1" :aria-invalid="!partialUnitsValid" /></label>
         <label>目标区域<select v-model="partialTarget" data-testid="partial-move-area"><option v-for="area in moveTargets" :key="area.id" :value="area.id">{{ area.name }}</option></select></label>
-        <output data-testid="partial-move-conservation">{{ selectedBlock.units - Number(partialUnits) }} + {{ partialUnits }} = {{ selectedBlock.units }} 个</output>
-        <p>原产品块扣减移动个数，目标区域生成新产品块。</p><p v-if="error" role="alert" class="error">{{ error }}</p>
+        <output v-if="partialUnitsValid" data-testid="partial-move-conservation">{{ selectedBlock.units - Number(partialUnits) }} + {{ partialUnits }} = {{ selectedBlock.units }} 个</output>
+        <p v-else role="alert" class="error">移动个数必须是大于 0 且小于来源库存的整数</p>
+        <p>原产品块扣减移动个数，目标区域生成新产品块。</p><p v-if="error && partialUnitsValid" role="alert" class="error">{{ error }}</p>
       </div>
-      <template #footer><button @click="partialOpen = false">取消</button><button data-testid="partial-move-confirm" class="primary" @click="moveBlock(partialTarget, partialUnits === '' ? NaN : Number(partialUnits))">确认移动</button></template>
+      <template #footer><button @click="partialOpen = false">取消</button><button data-testid="partial-move-confirm" class="primary" :disabled="!partialUnitsValid || !moveTargets.some((area) => area.id === partialTarget)" @click="moveBlock(partialTarget, Number(partialUnits))">确认移动</button></template>
     </AccessibleDialog>
     <AccessibleDialog :open="deleteAreaId !== null" :title="deleteFinal ? '再次确认删除' : '区域内含有产品'" test-id="delete-area-dialog" body-test-id="delete-area-body" footer-test-id="delete-area-footer" close-test-id="delete-area-close" panel-class="w-[460px] max-w-full" @cancel="deleteAreaId = null">
       <p>{{ deletingArea?.name }} 中有 {{ deleteCount }} 个产品块。{{ deleteFinal ? '确认一并删除区域及这些产品块？可使用撤销恢复。' : '请先移动产品，或选择一并删除。' }}</p>
@@ -245,25 +251,47 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
 </template>
 
 <style scoped>
-.warehouse-page { background:#F6F7FB; color:#25314D; padding:20px; font-family:'Noto Sans SC Variable',Inter,sans-serif; font-size:12px; }
+.warehouse-page { background:#F6F7FB; color:#25314D; padding:0; font-family:'Noto Sans SC Variable',Inter,sans-serif; font-size:12px; }
 .page-header,.summary,h1,h2 { display:flex; align-items:center; gap:12px; }
-.page-header { justify-content:space-between; flex-wrap:wrap; margin-bottom:16px; }
+.page-header { justify-content:space-between; flex-wrap:wrap; margin-bottom:16px; padding:20px 16px 0; }
 h1 { font-size:20px; font-weight:700; } h2 { font-size:13px; font-weight:700; margin-bottom:16px; }
 p,small { color:#64748B; } p { margin-top:8px; line-height:1.7; }
 select,input,button { min-height:40px; border:1px solid #E2E8F0; border-radius:8px; padding:8px 12px; background:white; }
 button { display:inline-flex; align-items:center; justify-content:center; gap:6px; } button:disabled { opacity:.45; cursor:not-allowed; } .primary { background:#536DFF; color:white; border-color:#536DFF; }.primary:hover:enabled { background:#465EEA; }
-.toolbar { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; } .floor-stage { position:relative; } .pending-area { position:absolute; border:2px dashed #536DFF; background:#536DFF15; pointer-events:none; padding:8px; }
+.toolbar { display:flex; gap:8px; margin-bottom:12px; padding:0 16px; flex-wrap:wrap; } .floor-stage { position:relative; } .pending-area { position:absolute; border:2px dashed #536DFF; background:#536DFF15; pointer-events:none; padding:8px; }
 .search { display:flex; align-items:center; gap:8px; } .search input { width:190px; }.save-state { align-self:center; color:#16A36A; } button[aria-pressed="true"] { background:#536DFF12; color:#536DFF; border-color:#536DFF; }
 .canvas-viewport { overflow:auto; max-height:720px; touch-action:none; } .floor-stage { min-width:560px; }.pan-tool { cursor:grab; } .pan-tool:active { cursor:grabbing; }
 .issue-list { margin-top:12px; padding:12px; border:1px solid #F59E0B; border-radius:8px; background:#FFFBEB; color:#92400E; }.issue-list h3,.issue-list article { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }.issue-list article { margin-top:8px; }.danger-button { background:#EF476F; color:white; border-color:#EF476F; }
 .area-form,.area-form label { display:grid; gap:8px; } .rect-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; } .rect-grid input { width:100%; } .error { color:#EF476F; }
-.summary { background:white; border:1px solid #E2E8F0; border-radius:8px; padding:14px 16px; margin-bottom:16px; flex-wrap:wrap; } .summary strong { font-size:16px; } .summary span { color:#64748B; }
-.workspace-scroll { overflow-x:auto; } .workspace { display:grid; grid-template-columns:196px minmax(560px,1fr) 240px; gap:12px; align-items:start; }
-.panel { background:#FFF; border:1px solid #E2E8F0; border-radius:8px; padding:16px; min-width:0; }
+.summary { display:grid; gap:8px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:12px; margin-bottom:16px; } .summary strong { font-size:16px; } .summary span { color:#64748B; }
+.workspace-scroll { overflow-x:auto; } .workspace { display:grid; grid-template-columns:196px minmax(560px,1fr) 240px; gap:0; align-items:start; }
+.panel { background:#FFF; border:0 solid #E2E8F0; padding:16px; min-width:0; }
 .floor-panel h2 { justify-content:space-between; } .floor-panel h2 span { font-size:11px; color:#94A3B8; font-weight:400; }
 .area-row { display:flex; align-items:center; gap:4px; padding:8px 0; border-bottom:1px solid #E2E8F0; } .area-row button { padding:4px; border-color:transparent; min-width:28px; }.area-row .area-select { display:grid; justify-content:start; text-align:left; flex:1; }.area-row small { font-size:10px; }
 .product-card { display:grid; gap:6px; margin-top:12px; padding:12px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; }
 .accent-blue { border-left:3px solid #536DFF; }.accent-pink { border-left:3px solid #EF476F; }.accent-green { border-left:3px solid #16A36A; }.accent-cyan { border-left:3px solid #06B6D4; }
-@media (min-width:1024px) and (max-width:1179px) { .workspace { min-width:1020px; } }
+@media (min-width:1024px) and (max-width:1179px) { .workspace { min-width:996px; } }
 @media (max-width:1023px) { .workspace { display:flex; flex-direction:column; } .panel { width:100%; } .floor-panel { min-width:560px; } .warehouse-page { padding:12px; } }
+</style>
+
+<style>
+/* Both warehouse workflows share the approved viewport-aligned drawer surface. */
+.warehouse-canvas-flow-drawer {
+  position: absolute;
+  top: 264px;
+  right: 0;
+  bottom: 0;
+  width: 720px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+}
+@media (max-width: 1023px), (max-height: 600px) {
+  .warehouse-canvas-flow-drawer {
+    top: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: min(720px, calc(100vw - 32px));
+  }
+}
 </style>
