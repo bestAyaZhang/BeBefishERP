@@ -121,6 +121,50 @@ describe('WarehouseFloorCanvas rendering and selection', () => {
     expect(wrapper.get('[data-testid="warehouse-sku-block-block-blue-c"]').attributes('data-search-match')).toBe('true')
     expect(wrapper.get('[data-testid="warehouse-area-area-a"]').attributes('data-search-dimmed')).toBeUndefined()
   })
+
+  it('uses mutually exclusive area borders and separate selection and warning channels', () => {
+    const issues: LayoutIssue[] = [{
+      id: 'outside-area:block-blue-a',
+      type: 'outside-area',
+      blockIds: ['block-blue-a'],
+      message: '产品块 block-blue-a 超出所属区域边界',
+    }]
+    const wrapper = mountFloor({ selectedAreaId: 'area-a', selectedBlockId: 'block-blue-a', issues })
+
+    const selectedAreaClasses = wrapper.get('[data-testid="warehouse-area-area-a"]').classes()
+    expect(selectedAreaClasses).toContain('border-solid')
+    expect(selectedAreaClasses).toContain('border-blue-600')
+    expect(selectedAreaClasses).not.toContain('border-dashed')
+    expect(selectedAreaClasses).not.toContain('border-slate-300')
+
+    const selectedWarningClasses = wrapper.get('[data-testid="warehouse-sku-block-block-blue-a"]').classes()
+    expect(selectedWarningClasses).toContain('border-amber-500')
+    expect(selectedWarningClasses).toContain('ring-blue-600')
+    expect(selectedWarningClasses).not.toContain('border-blue-300')
+    expect(selectedWarningClasses).not.toContain('ring-amber-300')
+  })
+
+  it('places warning text above a block at the clipped floor bottom edge', () => {
+    const state: WarehouseCanvasState = {
+      ...seedWarehouseCanvas,
+      blocks: seedWarehouseCanvas.blocks.map((block) => (
+        block.id === 'block-blue-a' ? { ...block, y: 592 } : block
+      )),
+    }
+    const issues: LayoutIssue[] = [{
+      id: 'outside-area:block-blue-a',
+      type: 'outside-area',
+      blockIds: ['block-blue-a'],
+      message: '产品块 block-blue-a 超出所属区域边界',
+    }]
+    const wrapper = mountFloor({ state, issues })
+
+    const warning = wrapper.get('[data-testid="warehouse-sku-block-block-blue-a"]').get('[role="status"]')
+    expect(warning.attributes('data-warning-placement')).toBe('above')
+    expect(warning.classes()).toContain('bottom-[calc(100%+4px)]')
+    expect(warning.classes()).not.toContain('top-[calc(100%+4px)]')
+    expect(warning.text()).toContain('超出所属区域边界')
+  })
 })
 
 describe('WarehouseFloorCanvas pointer and keyboard interactions', () => {

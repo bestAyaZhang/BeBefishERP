@@ -94,14 +94,37 @@ function matchesSearch(block: WarehouseSkuBlock): boolean {
 function accentClasses(sku: WarehouseSku | undefined): string {
   switch (sku?.accent) {
     case 'pink':
-      return 'border-pink-300 bg-pink-50 text-pink-950'
+      return 'bg-pink-50 text-pink-950'
     case 'green':
-      return 'border-emerald-300 bg-emerald-50 text-emerald-950'
+      return 'bg-emerald-50 text-emerald-950'
     case 'cyan':
-      return 'border-cyan-300 bg-cyan-50 text-cyan-950'
+      return 'bg-cyan-50 text-cyan-950'
     default:
-      return 'border-blue-300 bg-blue-50 text-blue-950'
+      return 'bg-blue-50 text-blue-950'
   }
+}
+
+function accentBorderClass(sku: WarehouseSku | undefined): string {
+  switch (sku?.accent) {
+    case 'pink':
+      return 'border border-pink-300'
+    case 'green':
+      return 'border border-emerald-300'
+    case 'cyan':
+      return 'border border-cyan-300'
+    default:
+      return 'border border-blue-300'
+  }
+}
+
+function warningPlacement(block: WarehouseSkuBlock): 'above' | 'below' {
+  const availableBelow = FLOOR_HEIGHT - block.y - block.height
+  const availableAbove = block.y
+  return availableBelow >= 48 || availableBelow >= availableAbove ? 'below' : 'above'
+}
+
+function warningHorizontalClass(block: WarehouseSkuBlock): string {
+  return block.x + block.width / 2 > FLOOR_WIDTH / 2 ? 'right-1' : 'left-1'
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -320,8 +343,10 @@ function isPrimaryButton(event: PointerEvent): boolean {
       :data-testid="`warehouse-area-${area.id}`"
       :data-selected="selectedAreaId === area.id ? 'true' : 'false'"
       :style="rectangleStyle(area)"
-      class="absolute rounded-lg border-2 border-dashed border-slate-300 bg-white/55 text-left outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-blue-500"
-      :class="selectedAreaId === area.id ? 'border-solid border-blue-600 ring-2 ring-blue-200' : ''"
+      class="absolute rounded-lg border-2 bg-white/55 text-left outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-blue-500"
+      :class="selectedAreaId === area.id
+        ? 'border-solid border-blue-600 ring-2 ring-blue-200'
+        : 'border-dashed border-slate-300'"
       role="button"
       tabindex="0"
       :aria-label="`选择仓库区域 ${area.name}${area.locked ? '，已锁定' : ''}`"
@@ -364,11 +389,11 @@ function isPrimaryButton(event: PointerEvent): boolean {
       :data-warning="issuesFor(block.id).length > 0 ? 'true' : 'false'"
       :data-search-match="matchesSearch(block) ? 'true' : 'false'"
       :style="rectangleStyle(block)"
-      class="absolute z-10 flex min-h-0 flex-col overflow-visible rounded-md border p-2 text-left outline-none transition-[opacity,box-shadow] focus-visible:ring-2 focus-visible:ring-blue-500"
+      class="absolute z-10 flex min-h-0 flex-col overflow-visible rounded-md p-2 text-left outline-none transition-[opacity,box-shadow] focus-visible:ring-2 focus-visible:ring-blue-500"
       :class="[
         accentClasses(skuFor(block)),
+        issuesFor(block.id).length > 0 ? 'border-2 border-amber-500' : accentBorderClass(skuFor(block)),
         selectedBlockId === block.id ? 'ring-2 ring-blue-600 ring-offset-1' : '',
-        issuesFor(block.id).length > 0 ? 'border-amber-500 ring-2 ring-amber-300' : '',
         searchQuery.trim() && !matchesSearch(block) ? 'opacity-25' : 'opacity-100',
       ]"
       role="button"
@@ -391,7 +416,12 @@ function isPrimaryButton(event: PointerEvent): boolean {
 
       <div
         v-if="issuesFor(block.id).length"
-        class="pointer-events-none absolute left-1 top-[calc(100%+4px)] z-40 flex max-w-52 items-start gap-1 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-1 text-[10px] font-medium leading-tight text-amber-900 shadow-sm"
+        :data-warning-placement="warningPlacement(block)"
+        class="pointer-events-none absolute z-40 flex max-w-52 items-start gap-1 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-1 text-[10px] font-medium leading-tight text-amber-900 shadow-sm"
+        :class="[
+          warningPlacement(block) === 'above' ? 'bottom-[calc(100%+4px)]' : 'top-[calc(100%+4px)]',
+          warningHorizontalClass(block),
+        ]"
         role="status"
       >
         <TriangleAlert :size="12" class="mt-px shrink-0" aria-hidden="true" />
