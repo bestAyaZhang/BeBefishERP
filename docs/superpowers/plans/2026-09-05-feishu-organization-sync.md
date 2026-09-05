@@ -25,11 +25,11 @@
 
 **Interfaces:** GET/POST/PUT/PATCH /api/organization/departments, positions, employees plus /all, /summary, /employee-counts; payloads and page result match frontend/src/features/organization/types.ts (page, pageSize, total, records). departmentId/positionId nullable. Employee has optional feishuJobTitle. Require organization:view for reads and organization:manage for writes (verify existing catalog and reuse its established codes if different).
 
-- [ ] Add migration integration assertions for manager_employee_id, responsibilities, hire_date, feishu_job_title, status_source; assert active Feishu rows become feishu while disabled rows remain manual. Assert organization:sync assigned only to SUPER_ADMIN. Task table fields/statuses exactly follow spec §4.2.
-- [ ] Write failing repository/controller tests for empty page, keyword/type/status filters, SQL descendant department filter, page bounds, CRUD, unique employee/code/mobile constraints, parent cycles, occupied department/position disable checks and permission denial. Example: `assertThat(service.listEmployees(query).total()).isEqualTo(0);` against cleared real test tables; create parent/child and verify parent query returns child employee.
-- [ ] Run `cd backend && mvn -Dtest='*Organization*Test' test` and capture the expected missing API/migration failures.
-- [ ] Implement typed DTOs, validated service, repository and controller. Use parameterized SQL, count query and LIMIT/OFFSET. Status mutation sets status_source=manual and updates sys_user status in same transaction. Password uses existing encoder and is only changed when explicitly supplied; never return hashes. Validate FK relationships and enabled selectors; permit null department/position. Department cycles rejected before mutation.
-- [ ] Run focused tests until green; commit Task 1 source/tests/migration only.
+- [x] Add migration integration assertions for manager_employee_id, responsibilities, hire_date, feishu_job_title, status_source; assert active Feishu rows become feishu while disabled rows remain manual. Assert organization:sync assigned only to SUPER_ADMIN. Task table fields/statuses exactly follow spec §4.2.
+- [x] Write failing repository/controller tests for empty page, keyword/type/status filters, SQL descendant department filter, page bounds, CRUD, unique employee/code/mobile constraints, parent cycles, occupied department/position disable checks and permission denial. Example: `assertThat(service.listEmployees(query).total()).isEqualTo(0);` against cleared real test tables; create parent/child and verify parent query returns child employee.
+- [x] Run `cd backend && mvn -Dtest='*Organization*Test' test` and capture the expected missing API/migration failures.
+- [x] Implement typed DTOs, validated service, repository and controller. Use parameterized SQL, count query and LIMIT/OFFSET. Status mutation sets status_source=manual and updates sys_user status in same transaction. Password uses existing encoder and is only changed when explicitly supplied; never return hashes. Validate FK relationships and enabled selectors; permit null department/position. Department cycles rejected before mutation.
+- [x] Run focused tests until green; commit Task 1 source/tests/migration only.
 
 ### Task 2: 飞书客户端与安全同步、登录任务
 
@@ -37,13 +37,13 @@
 
 **Interfaces:** directory client returns complete department/user collections through paginated endpoints; task service `startManual(long userId)`, `triggerAfterLogin(long userId)`, `latest()`, `get(long id)`. REST POST /api/organization/feishu-syncs returns 202 ApiResponse task (id/status/counters/messages), GET latest nullable and GET id. Use organization:sync to start, organization:view to read (adapt to verified catalog).
 
-- [ ] Add HTTP fixture tests for root children and root users, multiple pages, missing/repeated page token, null fields and primary department order. Add merge tests for union/open conflict, normalized unique mobile binding, duplicate import, employee_no collision/stable fallback, status precedence and preservation of passwords/LOCAL roles/position. Example: sync same profile twice then assert one identity and employee, stable FS-U- hash and unchanged password.
-- [ ] Run focused Maven tests and observe intended failures.
-- [ ] Implement maximum page sizes supported by official endpoint; validate every response and prevent token loops. Upsert departments parent-first using FS-D- stable hash, never create root. Deduplicate open_id across departments. Resolve primary department using order.is_primary_dept before first imported department.
-- [ ] Share identity conflict and merge rules between login provisioning and directory sync. Match tenant+union then tenant+open, reject disagreement, then normalized unique unbound mobile. Preserve manual nonactive state; Feishu negative state disables account. Map employee_type=1 formal, others temporary; store job title/join date. Each employee commit independent; counter failure messages must be sanitized. Backfill department managers after users.
-- [ ] Test task concurrency using controlled executor; two starts return same pending ID; successful/partial result throttles login for 30 minutes; login returns without executing queued sync; executor/API failure persists failed. Test stale pending/running recovery on startup.
-- [ ] Implement durable task transitions and single-instance mutex with database task check. Inject executor, do not self-invoke @Async. Add login hook that never propagates sync failure into login. Log task ID/counts/request ID only, no response body or credentials.
-- [ ] Run focused tests until green and commit Task 2.
+- [x] Add HTTP fixture tests for root children and root users, multiple pages, missing/repeated page token, null fields and primary department order. Add merge tests for union/open conflict, normalized unique mobile binding, duplicate import, employee_no collision/stable fallback, status precedence and preservation of passwords/LOCAL roles/position. Example: sync same profile twice then assert one identity and employee, stable FS-U- hash and unchanged password.
+- [x] Run focused Maven tests and observe intended failures.
+- [x] Implement maximum page sizes supported by official endpoint; validate every response and prevent token loops. Upsert departments parent-first using FS-D- stable hash, never create root. Deduplicate open_id across departments. Resolve primary department using order.is_primary_dept before first imported department.
+- [x] Share identity conflict and merge rules between login provisioning and directory sync. Match tenant+union then tenant+open, reject disagreement, then normalized unique unbound mobile. Preserve manual nonactive state; Feishu negative state disables account. Map employee_type=1 formal, others temporary; store job title/join date. Each employee commit independent; counter failure messages must be sanitized. Backfill department managers after users.
+- [x] Test task concurrency using controlled executor; two starts return same pending ID; successful/partial result throttles login for 30 minutes; login returns without executing queued sync; executor/API failure persists failed. Test stale pending/running recovery on startup.
+- [x] Implement durable task transitions and single-instance mutex with database task check. Inject executor, do not self-invoke @Async. Add login hook that never propagates sync failure into login. Log task ID/counts/request ID only, no response body or credentials.
+- [x] Run focused tests until green and commit Task 2.
 
 ### Task 3: 前端真实服务与同步反馈
 
@@ -51,17 +51,17 @@
 
 **Interfaces:** Existing OrganizationService methods unchanged; add startFeishuSync/getLatestFeishuSync/getFeishuSync with Task 2 task shape; nullable organization IDs and feishuJobTitle fallback. HTTP client propagates errors.
 
-- [ ] Add failing contract tests asserting routes, filters, mutation payloads, nullable latest and propagation of failed fetch. Add factory production real/mock rejection test. Example: mock fetch rejects; `await expect(service.listEmployees({page:1,size:20})).rejects.toThrow()`.
-- [ ] Run `cd frontend && npm run test:run -- src/features/organization` for red evidence.
-- [ ] Implement typed HTTP calls with existing request helper and createService factory. Audit remaining exported mock-only services so production never silently serves fixture data; use existing real services when available and explicit unsupported failure where no endpoint exists.
-- [ ] Add view tests for organization:sync permission, initial running-task resume, duplicate-click prevention, terminal success/partial/failed messages, polling cleanup and refresh. Implement button + task status using existing Message API; keep filters/list on failure. Poll until terminal and cancel on unmount; show ERP position then Feishu job title then 未分配.
-- [ ] Run focused frontend tests and typecheck; commit Task 3.
+- [x] Add failing contract tests asserting routes, filters, mutation payloads, nullable latest and propagation of failed fetch. Add factory production real/mock rejection test. Example: mock fetch rejects; `await expect(service.listEmployees({page:1,size:20})).rejects.toThrow()`.
+- [x] Run `cd frontend && npm run test:run -- src/features/organization` for red evidence.
+- [x] Implement typed HTTP calls with existing request helper and createService factory. Audit remaining exported mock-only services so production never silently serves fixture data; use existing real services when available and explicit unsupported failure where no endpoint exists.
+- [x] Add view tests for organization:sync permission, initial running-task resume, duplicate-click prevention, terminal success/partial/failed messages, polling cleanup and refresh. Implement button + task status using existing Message API; keep filters/list on failure. Poll until terminal and cancel on unmount; show ERP position then Feishu job title then 未分配.
+- [x] Run focused frontend tests and typecheck; commit Task 3.
 
 ### Task 4: 全量验收与评审
 
 **Files:** Update this plan progress and create docs/superpowers/plans/2026-09-05-feishu-organization-sync-validation.md.
 
-- [ ] Run backend full Maven suite with local MySQL test configuration; record executed/skipped totals, fix regressions with failing tests.
-- [ ] Run frontend full Vitest and `npm run build`; run production build with VITE_DATA_SOURCE=mock and confirm rejection.
-- [ ] Package/start backend with dedicated local MySQL database; start frontend real source. Use browser to log in with local test account, inspect employees/departments/positions, empty state and CRUD, manual sync unavailable/error feedback if actual Feishu credentials are absent. Never fabricate external live-sync success.
-- [ ] Review entire diff against spec and security requirements, resolve important findings, rerun changed-area checks, record limitations and commands. Keep branch local.
+- [x] Run backend full Maven suite with local MySQL test configuration; record executed/skipped totals, fix regressions with failing tests.
+- [x] Run frontend full Vitest and `npm run build`; run production build with VITE_DATA_SOURCE=mock and confirm rejection.
+- [x] Package/start backend with dedicated local MySQL database; start frontend real source. Use browser to log in with local test account, inspect employees/departments/positions, empty state and CRUD, manual sync unavailable/error feedback if actual Feishu credentials are absent. Never fabricate external live-sync success.
+- [x] Review entire diff against spec and security requirements, resolve important findings, rerun changed-area checks, record limitations and commands. Keep branch local.
