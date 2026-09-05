@@ -40,9 +40,14 @@ public class JdbcEmployeeRepository implements EmployeeRepository {
         return jdbc.query(
                 """
 select * from employee where
-regexp_replace(regexp_replace(mobile, '[[:space:]()-]', ''), '^([+]86|0086)', '') = ?
+replace(replace(replace(replace(replace(replace(replace(replace(replace(
+    mobile, ' ', ''), char(9), ''), char(10), ''), char(11), ''),
+    char(12), ''), char(13), ''), '(', ''), ')', ''), '-', '')
+in (?, concat('+86', ?), concat('0086', ?))
 """,
                 this::map,
+                mobile,
+                mobile,
                 mobile);
     }
 
