@@ -204,6 +204,30 @@ describe('application routes', () => {
     expect(router.currentRoute.value.name).toBe('inventory-balances');
   });
 
+  it('renders the warehouse canvas with its inventory breadcrumb and route-only flush content shell', async () => {
+    await router.push('/inventory/warehouse-canvas');
+    await router.isReady();
+    wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('仓库画布');
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('库存管理');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('仓库画布');
+    expect(wrapper.get('[data-testid="erp-page-content"]').classes()).toContain('p-0');
+    expect(wrapper.get('[data-testid="erp-page-content"]').classes()).not.toContain('p-4');
+
+    await router.push('/inventory/balances');
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="erp-page-content"]').classes()).toEqual(expect.arrayContaining([
+      'p-4',
+      'lg:px-8',
+      'lg:pb-3',
+      'lg:pt-8'
+    ]));
+    expect(wrapper.get('[data-testid="erp-page-content"]').classes()).not.toContain('p-0');
+  });
+
   it('opens the customer full-page form for a data-heavy new record', async () => {
     await router.push('/customers');
     await router.isReady();

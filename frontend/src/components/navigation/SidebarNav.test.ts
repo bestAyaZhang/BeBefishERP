@@ -54,6 +54,18 @@ describe('SidebarNav', () => {
     expect(wrapper.text()).not.toContain('销售开单');
   });
 
+  it('shows the warehouse canvas first in the inventory submenu', () => {
+    const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
+
+    const inventoryLinks = wrapper.findAll('a').filter((link) => link.attributes('href')?.startsWith('/inventory/'));
+    expect(inventoryLinks.map((link) => link.text())).toEqual([
+      '仓库画布',
+      '库存余额',
+      '库存流水',
+      '库存调整'
+    ]);
+  });
+
   it('uses the full-height ERP navigation structure without a card shell', () => {
     const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
 

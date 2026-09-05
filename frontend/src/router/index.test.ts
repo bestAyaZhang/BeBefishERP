@@ -27,4 +27,12 @@ describe('ERP router', () => {
     expect(resolved.name).toBe('workbench');
     expect(resolved.meta).not.toHaveProperty('ownsPrototypeHeader');
   });
+
+  it('registers the warehouse canvas as an authenticated flush-content route', () => {
+    const resolved = router.resolve('/inventory/warehouse-canvas');
+
+    expect(resolved.name).toBe('warehouse-canvas');
+    expect(resolved.meta.requiresAuth).toBe(true);
+    expect(resolved.meta.flushContent).toBe(true);
+  });
 });

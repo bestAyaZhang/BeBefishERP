@@ -51,6 +51,10 @@ function createFakeService(): MasterdataService {
   };
 }
 
+function mountWarehouseView(service: MasterdataService) {
+  return mount(WarehouseView, { global: { plugins: [router], provide: { masterdataService: service } } });
+}
+
 describe('masterdata views', () => {
   it('creates a level-one category and refreshes the list', async () => {
     const fakeService = createFakeService();
@@ -177,7 +181,7 @@ describe('masterdata views', () => {
     const fakeService = createFakeService();
     const categoryWrapper = mount(CategoryView, { global: { provide: { masterdataService: fakeService } } });
     const customerWrapper = mount(CustomerView, { global: { plugins: [router], provide: { masterdataService: fakeService } } });
-    const warehouseWrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService } } });
+    const warehouseWrapper = mountWarehouseView(fakeService);
     await flushPromises();
 
     expect(categoryWrapper.text()).not.toContain('分类编码');
@@ -208,13 +212,32 @@ describe('masterdata views', () => {
 
   it('marks exactly one warehouse as default', async () => {
     const fakeService = createFakeService();
-    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mountWarehouseView(fakeService);
     await flushPromises();
 
     await wrapper.get('[data-testid="set-default-warehouse-2"]').trigger('click');
     await flushPromises();
 
     expect(fakeService.setDefaultWarehouse).toHaveBeenCalledWith(2);
+  });
+
+  it('opens the warehouse canvas for the selected warehouse row', async () => {
+    const fakeService = createFakeService();
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, 'test-token');
+    await router.push('/warehouses');
+    await router.isReady();
+    const push = vi.spyOn(router, 'push');
+    const wrapper = mountWarehouseView(fakeService);
+    await flushPromises();
+
+    await wrapper.get('[data-testid="open-warehouse-canvas-1"]').trigger('click');
+    await push.mock.results[0]?.value;
+    await flushPromises();
+
+    expect(push).toHaveBeenCalledWith({ name: 'warehouse-canvas', query: { warehouseId: '1' } });
+    expect(router.currentRoute.value.name).toBe('warehouse-canvas');
+    expect(router.currentRoute.value.query).toEqual({ warehouseId: '1' });
+    push.mockRestore();
   });
 
   it('uses the prototype product-list table styling for master data lists', async () => {
@@ -232,7 +255,7 @@ describe('masterdata views', () => {
 
   it('uses the prototype header and filter controls on the warehouse page', async () => {
     const fakeService = createFakeService();
-    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mountWarehouseView(fakeService);
     await flushPromises();
 
     expect(wrapper.get('[data-testid="masterdata-page-header"]').classes()).toContain('sm:items-end');
@@ -244,7 +267,7 @@ describe('masterdata views', () => {
 
   it('keeps warehouse row actions in one line', async () => {
     const fakeService = createFakeService();
-    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mountWarehouseView(fakeService);
     await flushPromises();
 
     const action = wrapper.get('[data-testid="set-default-warehouse-2"]');
@@ -255,7 +278,7 @@ describe('masterdata views', () => {
 
   it('opens a right-side drawer for the small warehouse form', async () => {
     const fakeService = createFakeService();
-    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mountWarehouseView(fakeService);
     await flushPromises();
 
     await wrapper.get('[data-testid="add-warehouse"]').trigger('click');
@@ -271,7 +294,7 @@ describe('masterdata views', () => {
   it('creates a warehouse without asking the user for its number', async () => {
     const fakeService = createFakeService();
     vi.mocked(fakeService.createWarehouse).mockResolvedValue({} as never);
-    const wrapper = mount(WarehouseView, { global: { provide: { masterdataService: fakeService } } });
+    const wrapper = mountWarehouseView(fakeService);
     await flushPromises();
 
     await wrapper.get('[data-testid="add-warehouse"]').trigger('click');
