@@ -5,7 +5,7 @@ export const seedWarehouseCanvas: WarehouseCanvasState = {
   warehouseName: 'BeBeFish 主仓',
   areas: [
     { id: 'area-a', name: 'A-01', x: 40, y: 60, width: 360, height: 300, visible: true, locked: false },
-    { id: 'area-b', name: 'B-01', x: 40, y: 340, width: 360, height: 300, visible: true, locked: false },
+    { id: 'area-b', name: 'B-01', x: 40, y: 360, width: 360, height: 300, visible: true, locked: false },
     { id: 'area-c', name: 'C-01', x: 440, y: 60, width: 240, height: 300, visible: true, locked: false },
   ],
   catalog: [

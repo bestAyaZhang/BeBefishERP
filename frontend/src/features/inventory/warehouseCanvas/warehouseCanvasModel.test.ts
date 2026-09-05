@@ -10,13 +10,32 @@ import {
 import { seedWarehouseCanvas } from './mockWarehouseCanvasData'
 
 describe('warehouse canvas model', () => {
-  it('keeps every seed area inside the 728 by 672 logical floor', () => {
+  it('keeps every seed area and block inside the 728 by 672 logical floor', () => {
     expect(seedWarehouseCanvas.areas.every((area) => (
       area.x >= 0
       && area.y >= 0
       && area.x + area.width <= 728
       && area.y + area.height <= 672
     ))).toBe(true)
+    expect(seedWarehouseCanvas.blocks.every((block) => (
+      block.x >= 0
+      && block.y >= 0
+      && block.x + block.width <= 728
+      && block.y + block.height <= 672
+    ))).toBe(true)
+  })
+
+  it('keeps seed areas from overlapping', () => {
+    const hasOverlappingAreas = seedWarehouseCanvas.areas.some((area, index) => (
+      seedWarehouseCanvas.areas.slice(index + 1).some((otherArea) => (
+        area.x < otherArea.x + otherArea.width
+        && area.x + area.width > otherArea.x
+        && area.y < otherArea.y + otherArea.height
+        && area.y + area.height > otherArea.y
+      ))
+    ))
+
+    expect(hasOverlappingAreas).toBe(false)
   })
 
   it('formats complete cases and remaining units from the authoritative unit count', () => {
