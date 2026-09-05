@@ -1,7 +1,9 @@
-param([string]$State = 'overview', [string]$Suffix = 'before', [int]$X = 0, [int]$Y = 0, [int]$Width = 1440, [int]$Height = 1024, [string]$Region = 'full')
+param([string]$State = 'overview', [string]$Suffix = 'before', [int]$X = 0, [int]$Y = 0, [int]$Width = 1440, [int]$Height = 1024, [string]$Region = 'full', [string]$SourceFile = '', [string]$ImplementationFile = '')
 Add-Type -AssemblyName System.Drawing
-$source = [System.Drawing.Image]::FromFile((Join-Path $PSScriptRoot "source-$State.png"))
-$implementation = [System.Drawing.Image]::FromFile((Join-Path $PSScriptRoot "implementation-$State-$Suffix.png"))
+if (-not $SourceFile) { $SourceFile = "source-$State.png" }
+if (-not $ImplementationFile) { $ImplementationFile = "implementation-$State-$Suffix.png" }
+$source = [System.Drawing.Image]::FromFile((Join-Path $PSScriptRoot $SourceFile))
+$implementation = [System.Drawing.Image]::FromFile((Join-Path $PSScriptRoot $ImplementationFile))
 if ($X -lt 0 -or $Y -lt 0 -or $Width -le 0 -or $Height -le 0 -or ($X + $Width) -gt [Math]::Min($source.Width, $implementation.Width) -or ($Y + $Height) -gt [Math]::Min($source.Height, $implementation.Height)) {
   $source.Dispose(); $implementation.Dispose()
   throw 'The comparison crop must fit both original images at 1:1 scale.'

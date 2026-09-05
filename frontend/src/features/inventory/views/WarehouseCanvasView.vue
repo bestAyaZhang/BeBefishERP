@@ -283,6 +283,7 @@ button { display:inline-flex; align-items:center; justify-content:center; gap:6p
 .warehouse-selector small,.search small { font-size:11px; line-height:16px; color:#64748b; }
 .search-control { display:flex; align-items:center; gap:8px; padding:0 12px; border:1px solid #e2e8f0; border-radius:8px; background:white; color:#64748b; }
 .search-control input { border:0; padding:0; min-width:0; width:100%; outline:none; }
+.search-control:focus-within { outline:2px solid #536dff; outline-offset:2px; }
 .tool-group { display:flex; align-items:center; justify-content:center; gap:8px; height:56px; border:1px solid #e2e8f0; border-radius:8px; background:white; }
 .tool-group button { width:40px; height:40px; padding:8px; color:#64748b; }
 .tool-group select { width:60px; padding:0; border:0; font-size:14px; }

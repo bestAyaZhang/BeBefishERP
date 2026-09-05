@@ -273,3 +273,74 @@ Non-image artifact paths:
 
 Implementation and evidence committed as c81ee17. Report committed separately under the subject recorded at the top. 393/393 tests and production build pass; six full and eight focused actual comparisons inspected; no actionable P0/P1/P2; verified server and browser are left running.
 
+## Task 6 fix round 1 — completed
+
+Review received two P2 findings: search selector specificity hid warning borders under blue search paint; the SKU search input removed its focus outline with no replacement. Both were confirmed against source CSS, compiled selectors and the controller's real IAB RED assertions.
+
+Files changed in this round:
+- frontend/src/features/inventory/warehouseCanvas/components/WarehouseFloorCanvas.vue — add the warning-state exclusion to search border paint.
+- frontend/src/features/inventory/views/WarehouseCanvasView.vue — add the wrapper focus-within outline.
+- frontend/src/features/inventory/warehouseCanvas/warehouseCanvasStyles.test.ts — two regression-first compiled-style/DOM checks, no production test hooks or new dependencies.
+- frontend/prototype-screenshots/warehouse-canvas/compare.ps1 — optional source/input filenames for genuine runtime before/after and source comparison, preserving existing defaults and bounds checks.
+- design-qa.md — fix-round section inside the appended warehouse QA, final result passed; all earlier sections preserved.
+- frontend/prototype-screenshots/warehouse-canvas/evidence.md — append exact fix-round evidence/provenance/dimensions.
+- This report — fix-round append.
+- Thirteen new fix1 image artifacts, individually listed below. Earlier images are untouched.
+
+Automated output:
+- RED 01:59:02: style tests2 failed (invalid block eligible for search paint; no focus outline).
+- Initial GREEN diagnosis: the search regression passed, but jsdom did not propagate focus-within or expand the outline longhands. The test now emulates only that unsupported pseudo-state and verifies the real compiled outline shorthand; actual native keyboard focus is separately verified in IAB.
+- Finalized selector mutation RED02:02:58:1 failed/1 passed with only the old production search selector temporarily restored for a correctly sized before capture.
+- Final restored affected run02:04:29:3 files/50 tests passed (style2, floor18, view30).
+- Final restored full run02:04:33:37 files/395 tests passed, exit0.
+- Final restored production build: vue-tsc --noEmit and Vite passed, exit0;1744 modules;3.50 s.
+- Self-review: no unrelated files/data mutation, CSS fixes remain two narrowly scoped rules; no new functional behavior, inventory computation or geometry mutation. Confirmed tests include a valid-blue search control case rather than merely suppressing every search border.
+
+Browser coordination: this resumed subagent no longer had an IAB provider after tool reset. The controller confirmed the IAB is parent-task scoped and performed before/after UI assertions and screenshots on the already authorized in-app surface. The agent did not substitute Chrome and performed all file/composite inspections locally. This is not a new subagent dispatch.
+
+
+## Warehouse Canvas fix round 1 — reviewed combined states
+
+The prior pass was reopened by two P2 review findings; both are now fixed. This section supersedes the earlier acceptance for the combined search/warning and keyboard-focus states only. No earlier QA section or screenshot was removed.
+
+- **P2: search paint overriding warnings.** The source warning frame retains an active SKU search. The earlier runtime warning capture did not, so it failed to exercise the competing selectors. The high-specificity search rule painted blue over the amber warning border. The search rule now excludes `data-warning="true"`, preserving amber warning borders while valid search matches stay blue.
+- **P2: absent keyboard search focus.** The borderless input had `outline:none` without replacement. Its wrapper now has `:focus-within { outline:2px solid #536dff; outline-offset:2px; }`, with no layout displacement.
+- Regression-first validation: two new compiled-style tests failed before production edits. The warning test exercises the real compiled selector against valid/invalid matched DOM nodes. The focus test exercises compiled outline paint with descendant focus; it explicitly emulates only `:focus-within` for jsdom, whose selector engine does not propagate that state to ancestors. Real IAB keyboard focus and computed styles are the authoritative browser checks.
+- Finalized mutation check: temporarily restoring the original search selector produced the expected 1 failed / 1 passed at 02:02:58. Restoring the fix yielded **50/50 affected tests** at 02:04:29. Final full suite **395 tests / 37 files passed** at 02:04:33; production typecheck/build passed, 1744 modules, 3.50 s.
+- IAB was scoped to the parent task during this resumed round, so the controller captured the original browser bytes and computed styles on port 5186. No Chrome or external/headless browser was used. I inspected the resulting actual source/implementation and before/after composites.
+- Browser RED: matching invalid blue A-01 block had `warning=true`, `searchMatch=true`, 2 px border `rgb(83,109,255)`. Browser GREEN: same combined state has 2 px `rgb(245,158,11)`. Quantity is 150 and total is 1,026; warning text and save lock remain.
+- Native Tab focus RED: input `:focus-visible=true`, wrapper outline style none. GREEN: native keyboard focus remains true, wrapper outline solid `rgb(83,109,255)`, 2 px width and 2 px offset; base border is unchanged.
+- All final comparison inputs are 1440 × 1024 at viewport1440 × 1024/DPR1. Full composites are 2880 × 1024. A first warning RED capture was actually1026 × 897; the compositor rejected it, it remains diagnostic only, and it was recaptured at1440 × 1024 before comparison. Parent IAB bytes are JPEG-encoded despite their supplied .png filename extension; they remain untouched. Composites are actual PNGs, decoded/cropped 1:1 without rescaling.
+- Source correspondence: warning comparisons use `source-warning.png` with the same active SKU search and the targeted invalid blue block. The source's second overlap and delete composite are unrelated to this narrow regression; runtime isolates the single warning. Focus comparisons use `source-overview.png` for geometry; the reference does not define keyboard focus, so the before/after runtime focus delta proves the required accessible state instead of claiming it exists in the source.
+- No actionable P0/P1/P2 remains in this review round. Previously documented demo limitations and P3 source/runtime differences are unchanged.
+- Final parent-IAB console audit: **0 warnings, 0 errors**. The controller reloaded the restored GREEN route to a clean overview and marked the visible tab for handoff; port5186 remains running.
+
+All paths below are relative to `frontend/prototype-screenshots/warehouse-canvas/`.
+
+| Fix-round artifact | Actual pixels |
+| --- | --- |
+| comparison-overview-full-focus-fix1-after.png | 2880 × 1024 |
+| comparison-overview-full-focus-fix1-before.png | 2880 × 1024 |
+| comparison-overview-search-focus-fix1-after.png | 688 × 96 |
+| comparison-search-focus-search-fix1-delta.png | 688 × 96 |
+| comparison-warning-full-search-fix1-after.png | 2880 × 1024 |
+| comparison-warning-full-search-fix1-before-1440.png | 2880 × 1024 |
+| comparison-warning-invalid-block-search-fix1-after.png | 480 × 190 |
+| comparison-warning-search-invalid-block-fix1-delta.png | 480 × 190 |
+| implementation-search-focus-fix1-after.png | 1440 × 1024 |
+| implementation-search-focus-fix1-before.png | 1440 × 1024 |
+| implementation-warning-search-fix1-after.png | 1440 × 1024 |
+| implementation-warning-search-fix1-before-1440.png | 1440 × 1024 |
+| implementation-warning-search-fix1-before.png | 1026 × 897 |
+
+Focused crops: warning x960,y408,w240,h190 on each side →480 × 190; search x588,y176,w344,h96 →688 × 96. Full source/implementation pairs and both focused deltas were opened and inspected.
+
+
+Updated risks:
+- No remaining blocking finding. Single-warehouse/current-page memory limitations and P3 native-control/source-composite differences remain explicit.
+- jsdom cannot prove browser specificity/focus-within behavior by itself; real parent-IAB computed-style and screenshot assertions close this gap.
+- JPEG capture encoding is explicitly documented; no image enhancement/upscaling or reconstructed browser state is used.
+- Corrected 1440 before capture replaces the smaller diagnostic input for final evidence; the diagnostic original is preserved.
+- Parent's visible IAB and port5186 server remain the handoff surface.
+
+Commit for this round: **fix(inventory): preserve warning and search focus states** (exact SHA returned in the handoff, avoiding a self-referential report hash).

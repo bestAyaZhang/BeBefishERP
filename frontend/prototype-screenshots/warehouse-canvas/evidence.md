@@ -90,3 +90,38 @@ Paths below are relative to this directory. Dimensions are read from actual PNG 
 
 Comparison generation: compare.ps1 validates matching crop bounds and joins originals without rescaling. Final full views use x=0,y=0,w=1440,h=1024. Focused crop coordinates are in design-qa.md. Original screenshots are preserved.
 
+## Warehouse Canvas fix round 1 — reviewed combined states
+
+The prior pass was reopened by two P2 review findings; both are now fixed. This section supersedes the earlier acceptance for the combined search/warning and keyboard-focus states only. No earlier QA section or screenshot was removed.
+
+- **P2: search paint overriding warnings.** The source warning frame retains an active SKU search. The earlier runtime warning capture did not, so it failed to exercise the competing selectors. The high-specificity search rule painted blue over the amber warning border. The search rule now excludes `data-warning="true"`, preserving amber warning borders while valid search matches stay blue.
+- **P2: absent keyboard search focus.** The borderless input had `outline:none` without replacement. Its wrapper now has `:focus-within { outline:2px solid #536dff; outline-offset:2px; }`, with no layout displacement.
+- Regression-first validation: two new compiled-style tests failed before production edits. The warning test exercises the real compiled selector against valid/invalid matched DOM nodes. The focus test exercises compiled outline paint with descendant focus; it explicitly emulates only `:focus-within` for jsdom, whose selector engine does not propagate that state to ancestors. Real IAB keyboard focus and computed styles are the authoritative browser checks.
+- Finalized mutation check: temporarily restoring the original search selector produced the expected 1 failed / 1 passed at 02:02:58. Restoring the fix yielded **50/50 affected tests** at 02:04:29. Final full suite **395 tests / 37 files passed** at 02:04:33; production typecheck/build passed, 1744 modules, 3.50 s.
+- IAB was scoped to the parent task during this resumed round, so the controller captured the original browser bytes and computed styles on port 5186. No Chrome or external/headless browser was used. I inspected the resulting actual source/implementation and before/after composites.
+- Browser RED: matching invalid blue A-01 block had `warning=true`, `searchMatch=true`, 2 px border `rgb(83,109,255)`. Browser GREEN: same combined state has 2 px `rgb(245,158,11)`. Quantity is 150 and total is 1,026; warning text and save lock remain.
+- Native Tab focus RED: input `:focus-visible=true`, wrapper outline style none. GREEN: native keyboard focus remains true, wrapper outline solid `rgb(83,109,255)`, 2 px width and 2 px offset; base border is unchanged.
+- All final comparison inputs are 1440 × 1024 at viewport1440 × 1024/DPR1. Full composites are 2880 × 1024. A first warning RED capture was actually1026 × 897; the compositor rejected it, it remains diagnostic only, and it was recaptured at1440 × 1024 before comparison. Parent IAB bytes are JPEG-encoded despite their supplied .png filename extension; they remain untouched. Composites are actual PNGs, decoded/cropped 1:1 without rescaling.
+- Source correspondence: warning comparisons use `source-warning.png` with the same active SKU search and the targeted invalid blue block. The source's second overlap and delete composite are unrelated to this narrow regression; runtime isolates the single warning. Focus comparisons use `source-overview.png` for geometry; the reference does not define keyboard focus, so the before/after runtime focus delta proves the required accessible state instead of claiming it exists in the source.
+- No actionable P0/P1/P2 remains in this review round. Previously documented demo limitations and P3 source/runtime differences are unchanged.
+- Final parent-IAB console audit: **0 warnings, 0 errors**. The controller reloaded the restored GREEN route to a clean overview and marked the visible tab for handoff; port5186 remains running.
+
+All paths below are relative to `frontend/prototype-screenshots/warehouse-canvas/`.
+
+| Fix-round artifact | Actual pixels |
+| --- | --- |
+| comparison-overview-full-focus-fix1-after.png | 2880 × 1024 |
+| comparison-overview-full-focus-fix1-before.png | 2880 × 1024 |
+| comparison-overview-search-focus-fix1-after.png | 688 × 96 |
+| comparison-search-focus-search-fix1-delta.png | 688 × 96 |
+| comparison-warning-full-search-fix1-after.png | 2880 × 1024 |
+| comparison-warning-full-search-fix1-before-1440.png | 2880 × 1024 |
+| comparison-warning-invalid-block-search-fix1-after.png | 480 × 190 |
+| comparison-warning-search-invalid-block-fix1-delta.png | 480 × 190 |
+| implementation-search-focus-fix1-after.png | 1440 × 1024 |
+| implementation-search-focus-fix1-before.png | 1440 × 1024 |
+| implementation-warning-search-fix1-after.png | 1440 × 1024 |
+| implementation-warning-search-fix1-before-1440.png | 1440 × 1024 |
+| implementation-warning-search-fix1-before.png | 1026 × 897 |
+
+Focused crops: warning x960,y408,w240,h190 on each side →480 × 190; search x588,y176,w344,h96 →688 × 96. Full source/implementation pairs and both focused deltas were opened and inspected.

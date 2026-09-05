@@ -469,7 +469,7 @@ function isPrimaryButton(event: PointerEvent): boolean {
 <style scoped>
 .warehouse-floor { background:#fff; }
 .area-visible { position:absolute; right:15px; top:15px; color:#64748b; }
-.warehouse-floor:has([data-search-match="false"]) [data-search-match="true"] { border:2px solid #536dff; }
+.warehouse-floor:has([data-search-match="false"]) [data-search-match="true"]:not([data-warning="true"]) { border:2px solid #536dff; }
 [data-testid^="warehouse-area-area"] { background:#f8fafc; border-width:1px; border-style:solid; border-color:#e2e8f0; }
 [data-testid^="warehouse-area-area"][data-selected="true"] { border-color:#536dff; }
 [data-testid^="warehouse-area-area"] > div:first-child { padding:13px 15px; font-size:15px; font-weight:500; line-height:22px; color:#25314d; }
