@@ -28,7 +28,7 @@ public class WarehouseController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('masterdata:view')")
+    @PreAuthorize("hasAuthority('warehouse:view')")
     public ApiResponse<PageResponse<WarehouseResponse>> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -49,13 +49,13 @@ public class WarehouseController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('masterdata:view')")
+    @PreAuthorize("hasAuthority('warehouse:view')")
     public ApiResponse<WarehouseResponse> get(@PathVariable long id) {
         return ApiResponse.success(WarehouseResponse.from(service.get(id)));
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('masterdata:edit')")
+    @PreAuthorize("hasAuthority('warehouse:create')")
     public ApiResponse<WarehouseResponse> create(
             @Valid @RequestBody SaveWarehouseRequest request
     ) {
@@ -63,7 +63,7 @@ public class WarehouseController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('masterdata:edit')")
+    @PreAuthorize("hasAuthority('warehouse:edit')")
     public ApiResponse<WarehouseResponse> update(
             @PathVariable long id,
             @Valid @RequestBody SaveWarehouseRequest request
@@ -72,7 +72,7 @@ public class WarehouseController {
     }
 
     @PostMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('masterdata:edit')")
+    @PreAuthorize("hasAuthority('warehouse:edit')")
     public ApiResponse<WarehouseResponse> changeStatus(
             @PathVariable long id,
             @Valid @RequestBody ChangeMasterdataStatusRequest request
@@ -83,7 +83,7 @@ public class WarehouseController {
     }
 
     @PostMapping("/{id}/default")
-    @PreAuthorize("hasAuthority('masterdata:edit')")
+    @PreAuthorize("hasAuthority('warehouse:edit')")
     public ApiResponse<WarehouseResponse> setDefault(@PathVariable long id) {
         return ApiResponse.success(WarehouseResponse.from(service.setDefault(id)));
     }

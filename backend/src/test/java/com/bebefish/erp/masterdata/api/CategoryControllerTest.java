@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bebefish.erp.auth.domain.TokenIssuer;
-import com.bebefish.erp.auth.domain.UserAccount;
+import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,8 +43,8 @@ class CategoryControllerTest {
     void setUp() {
         jdbc.update("delete from product_category where category_code like 'T3-%'");
         jdbc.update("delete from product_category where category_name = '自动编号分类-T3'");
-        editToken = issueToken("masterdata:view", "masterdata:edit");
-        viewToken = issueToken("masterdata:view");
+        editToken = issueToken("category:view", "category:create", "category:edit");
+        viewToken = issueToken("category:view");
     }
 
     @Test
@@ -157,11 +157,8 @@ class CategoryControllerTest {
     }
 
     private String issueToken(String... permissions) {
-        var user = new UserAccount(
-                "13900000001", "unused", true, true,
-                List.of("TESTER"), List.of(permissions)
-        );
-        return tokenIssuer.issue(user, "test").accessToken();
+        return com.bebefish.erp.support.TestAuthTokens.issue(
+                jdbc, tokenIssuer, "13900000001", permissions);
     }
 
     private String bearer(String token) {

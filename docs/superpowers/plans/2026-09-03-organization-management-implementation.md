@@ -255,6 +255,7 @@ export interface OrganizationService {
   listPositions(query: PositionQuery): Promise<PageResult<Position>>;
   listAllPositions(): Promise<Position[]>;
   listEmployees(query: EmployeeQuery): Promise<PageResult<Employee>>;
+  listAllEmployees(): Promise<Employee[]>;
   getSummary(): Promise<OrganizationSummary>;
   getEmployee(id: number): Promise<Employee>;
   createEmployee(payload: SaveEmployeePayload): Promise<Employee>;

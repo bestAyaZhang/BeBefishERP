@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Package,
   ReceiptText,
+  ShieldCheck,
   Truck,
   UsersRound,
   WalletCards,
@@ -35,19 +36,24 @@ const sidebarIcons = {
   supplier: Truck,
   warehouse: Warehouse,
   inventory: Boxes,
+  organization: UsersRound,
+  permission: ShieldCheck,
   'sales-orders': FileText,
   finance: WalletCards
 };
 
 const activeRouteName = computed(() => String(route.name ?? ''));
-const expandedGroups = ref<string[]>(['库存管理', '财务管理']);
+const expandedGroups = ref<string[]>(['库存管理', '组织架构', '财务管理']);
 const visibleMenuItems = computed<SidebarNavigationItem[]>(() => props.navigationItems.flatMap((item) => {
   if (item.routeName) return currentUser.value?.permissions.includes(item.permission ?? '') ? [item] : [];
   const children = item.children?.filter((child) => currentUser.value?.permissions.includes(child.permission)) ?? [];
   return children.length ? [{ ...item, children }] : [];
 }));
-const currentUserMobile = computed(() => currentUser.value?.mobile ?? '未登录');
-const currentUserInitials = computed(() => currentUser.value?.mobile.slice(-2) ?? '--');
+const currentUserMobile = computed(() => currentUser.value?.displayName ?? currentUser.value?.mobile ?? '未登录');
+const currentUserInitials = computed(() => {
+  const label = currentUser.value?.displayName ?? currentUser.value?.mobile;
+  return label?.slice(-2) ?? '--';
+});
 
 function isActive(item: SidebarNavigationItem) {
   return item.routeName === activeRouteName.value || item.children?.some((child) => child.routeName === activeRouteName.value);

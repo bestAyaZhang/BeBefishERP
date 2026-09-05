@@ -6,7 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bebefish.erp.auth.domain.TokenIssuer;
-import com.bebefish.erp.auth.domain.UserAccount;
+import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.bebefish.erp.inventory.application.InventoryChange;
 import com.bebefish.erp.inventory.application.InventoryService;
 import com.bebefish.erp.inventory.application.InventorySource;
@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -32,6 +33,9 @@ class InventoryQueryControllerTest {
     @Autowired
     private InventoryService inventoryService;
 
+    @Autowired
+    private JdbcTemplate jdbc;
+
     @Test
     void queriesBalanceAndLedgerByWarehouseAndSku() throws Exception {
         var warehouseId = 920_000_000L + Math.abs(System.nanoTime() % 100_000_000L);
@@ -42,9 +46,8 @@ class InventoryQueryControllerTest {
                 new InventorySource("purchase", warehouseId, "PI-QUERY-" + warehouseId),
                 "13800138000"
         );
-        var token = "Bearer " + tokenIssuer.issue(new UserAccount(
-                "13900000003", "unused", true, true, List.of("TESTER"), List.of("inventory:view")
-        ), "inventory-query-test").accessToken();
+        var token = "Bearer " + com.bebefish.erp.support.TestAuthTokens.issue(
+                jdbc, tokenIssuer, "13900000013", "inventory:view");
 
         mvc.perform(get("/api/inventory/balances")
                         .header("Authorization", token)

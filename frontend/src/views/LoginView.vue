@@ -5,23 +5,19 @@ import {
   EyeOff,
   LogIn,
   LogOut,
-  Send,
   ShieldCheck,
   Sparkles
 } from 'lucide-vue-next';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import { loginWithPassword, loginWithSms, logout, sendSmsCode } from '../services/auth';
+import { useRoute, useRouter } from 'vue-router';
+import { beginFeishuLogin, getFeishuStatus, loginWithPassword, logout } from '../services/auth';
 import { clearCurrentUser, saveCurrentUser } from '../services/authSession';
 import { ACCESS_TOKEN_STORAGE_KEY, type LoginResult } from '../types/auth';
 
-type LoginMode = 'password' | 'sms';
-type ActiveField = 'none' | 'mobile' | 'password' | 'sms';
+type ActiveField = 'none' | 'mobile' | 'password';
 
-const mode = ref<LoginMode>('password');
 const mobile = ref('');
 const password = ref('');
-const smsCode = ref('');
 const showPassword = ref(false);
 const activeField = ref<ActiveField>('none');
 const lookX = ref(0);
@@ -29,16 +25,20 @@ const lookY = ref(0);
 const lookingAtEachOther = ref(false);
 const peeking = ref(false);
 const loading = ref(false);
-const sendingCode = ref(false);
+const temporaryExpanded = ref(false);
+const feishuAvailable = ref(false);
+const feishuStatusLoading = ref(true);
+const feishuRedirecting = ref(false);
+const feishuStatusMessage = ref('正在检查飞书登录状态…');
 const errorMessage = ref('');
 const successMessage = ref('');
 const currentUser = ref<LoginResult | null>(null);
 const accessToken = ref(localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ?? '');
 const router = useRouter();
+const route = useRoute();
 
-const primaryButtonText = computed(() => (mode.value === 'password' ? '密码登录' : '验证码登录'));
 const passwordState = computed(() => `${password.value ? 'filled' : 'empty'}-${showPassword.value ? 'visible' : 'hidden'}`);
-const charactersAreWatchingForm = computed(() => activeField.value !== 'none' || (mode.value === 'password' && password.value.length > 0));
+const charactersAreWatchingForm = computed(() => activeField.value !== 'none' || password.value.length > 0);
 const stageMotionStyle = computed(() => ({
   '--look-x': `${lookX.value}px`,
   '--look-y': `${lookY.value}px`
@@ -83,7 +83,7 @@ function getPupilStyle(scale = 1) {
     y = 3 * scale;
   }
 
-  if (mode.value === 'password' && password.value && showPassword.value) {
+  if (password.value && showPassword.value) {
     x = peeking.value ? 4 * scale : -4 * scale;
     y = peeking.value ? 5 * scale : -4 * scale;
   }
@@ -102,12 +102,6 @@ function clearActiveField(field: ActiveField) {
   if (activeField.value === field) {
     activeField.value = 'none';
   }
-}
-
-function selectMode(nextMode: LoginMode) {
-  mode.value = nextMode;
-  activeField.value = 'none';
-  peeking.value = false;
 }
 
 function togglePasswordVisibility() {
@@ -141,8 +135,19 @@ watch(showPassword, (visible) => {
   }
 });
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('mousemove', handleMouseMove);
+  temporaryExpanded.value = route.query.temporary === '1';
+  try {
+    const status = await getFeishuStatus();
+    feishuAvailable.value = status.available;
+    feishuStatusMessage.value = status.message;
+  } catch (error) {
+    feishuAvailable.value = false;
+    feishuStatusMessage.value = error instanceof Error ? error.message : '飞书登录暂不可用';
+  } finally {
+    feishuStatusLoading.value = false;
+  }
 });
 
 onBeforeUnmount(() => {
@@ -156,10 +161,7 @@ async function submitLogin() {
   errorMessage.value = '';
   successMessage.value = '';
   try {
-    const result =
-      mode.value === 'password'
-        ? await loginWithPassword({ mobile: mobile.value, password: password.value })
-        : await loginWithSms({ mobile: mobile.value, smsCode: smsCode.value });
+    const result = await loginWithPassword({ mobile: mobile.value, password: password.value });
     currentUser.value = result;
     accessToken.value = result.accessToken;
     localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, result.accessToken);
@@ -173,18 +175,12 @@ async function submitLogin() {
   }
 }
 
-async function handleSendCode() {
-  sendingCode.value = true;
-  errorMessage.value = '';
-  successMessage.value = '';
-  try {
-    await sendSmsCode(mobile.value);
-    successMessage.value = '验证码已发送，有效期 5 分钟。';
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '验证码发送失败';
-  } finally {
-    sendingCode.value = false;
-  }
+function handleFeishuLogin() {
+  if (feishuRedirecting.value || feishuStatusLoading.value || !feishuAvailable.value) return;
+  feishuRedirecting.value = true;
+  const destination = typeof route.query.redirect === 'string' ? route.query.redirect : '/workbench';
+  sessionStorage.setItem('bebefish_post_login_redirect', destination);
+  beginFeishuLogin();
 }
 
 async function handleLogout() {
@@ -350,10 +346,36 @@ async function handleLogout() {
             </div>
             <p class="text-sm font-medium text-slate-500">内部电商经营系统</p>
             <h1 class="mt-2 text-3xl font-bold tracking-tight">欢迎回来</h1>
-            <p class="mt-2 text-sm text-slate-500">使用员工手机号进入 ERP 工作台</p>
+            <p class="mt-2 text-sm text-slate-500">正式员工使用飞书扫码，临时员工使用本地密码</p>
           </div>
 
-          <form class="space-y-5" @submit.prevent="submitLogin">
+          <button
+            type="button"
+            data-testid="feishu-login"
+            class="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-[#3370ff] px-4 text-base font-semibold text-white transition hover:bg-[#2862e5] disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="feishuStatusLoading || !feishuAvailable || feishuRedirecting"
+            @click="handleFeishuLogin"
+          >
+            <BadgeCheck class="h-5 w-5" aria-hidden="true" />
+            {{ feishuRedirecting ? '正在前往飞书…' : feishuStatusLoading ? '正在检查飞书…' : '飞书扫码登录' }}
+          </button>
+          <p class="mt-2 text-center text-xs" :class="feishuAvailable ? 'text-slate-500' : 'text-amber-700'">
+            {{ feishuStatusMessage }}
+          </p>
+
+          <div class="my-6 flex items-center gap-3 text-xs text-slate-400">
+            <span class="h-px flex-1 bg-slate-200"></span><span>仅临时员工</span><span class="h-px flex-1 bg-slate-200"></span>
+          </div>
+          <button
+            type="button"
+            data-testid="temporary-login-toggle"
+            class="mb-4 inline-flex h-10 w-full items-center justify-center rounded-md border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            @click="temporaryExpanded = !temporaryExpanded"
+          >
+            {{ temporaryExpanded ? '收起临时员工登录' : '使用临时员工账号登录' }}
+          </button>
+
+          <form v-show="temporaryExpanded" data-testid="temporary-login-form" class="space-y-5" @submit.prevent="submitLogin">
             <label class="block space-y-2">
               <span data-testid="login-mobile-label" class="block text-sm font-medium uppercase text-slate-700">MOBILE</span>
               <input
@@ -369,7 +391,7 @@ async function handleLogout() {
               />
             </label>
 
-            <div v-if="mode === 'password'" data-testid="login-credential-fields" class="space-y-2">
+            <div data-testid="login-credential-fields" class="space-y-2">
               <label data-testid="login-password-label" class="block text-sm font-medium uppercase text-slate-700" for="login-password">
                 PASSWORD
               </label>
@@ -400,53 +422,6 @@ async function handleLogout() {
               </div>
             </div>
 
-            <div v-else data-testid="login-credential-fields" class="grid grid-cols-[1fr_auto] gap-3">
-              <label class="block space-y-2">
-                <span class="block text-sm font-medium uppercase text-slate-700">SMS CODE</span>
-                <input
-                  v-model.trim="smsCode"
-                  data-testid="sms-code-input"
-                  class="h-12 w-full rounded-md border border-slate-300 bg-white px-3 text-base outline-none transition placeholder:text-slate-400 focus:border-pine focus:ring-2 focus:ring-pine/20"
-                  inputmode="numeric"
-                  placeholder="6 位验证码"
-                  @focus="setActiveField('sms')"
-                  @input="setActiveField('sms')"
-                  @blur="clearActiveField('sms')"
-                />
-              </label>
-              <button
-                type="button"
-                data-testid="send-code-button"
-                class="mt-7 inline-flex h-12 min-w-28 items-center justify-center gap-2 rounded-md border border-pine px-3 text-sm font-medium text-pine transition hover:bg-pine hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="sendingCode || !mobile"
-                @click="handleSendCode"
-              >
-                <Send class="h-4 w-4" aria-hidden="true" />
-                {{ sendingCode ? '发送中' : '发送' }}
-              </button>
-            </div>
-
-            <div data-testid="login-mode-tabs" class="flex items-center justify-between pt-1 text-sm">
-              <button
-                type="button"
-                data-testid="login-mode-password-tab"
-                class="inline-flex h-9 items-center gap-2 rounded px-1.5 font-medium transition"
-                :class="mode === 'password' ? 'text-pine' : 'text-slate-500 hover:text-pine'"
-                @click="selectMode('password')"
-              >
-                密码
-              </button>
-              <button
-                type="button"
-                data-testid="login-mode-sms-tab"
-                class="inline-flex h-9 items-center gap-2 rounded px-1.5 font-medium transition"
-                :class="mode === 'sms' ? 'text-pine' : 'text-slate-500 hover:text-pine'"
-                @click="selectMode('sms')"
-              >
-                验证码
-              </button>
-            </div>
-
             <p v-if="errorMessage" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {{ errorMessage }}
             </p>
@@ -461,23 +436,14 @@ async function handleLogout() {
               :disabled="loading || !mobile"
             >
               <LogIn class="h-4 w-4" aria-hidden="true" />
-              {{ loading ? '登录中' : primaryButtonText }}
+              {{ loading ? '登录中' : '临时员工登录' }}
             </button>
           </form>
-
-          <button
-            type="button"
-            class="mt-4 inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-md border border-slate-200 bg-white text-sm font-medium text-slate-400"
-            disabled
-          >
-            <BadgeCheck class="h-4 w-4" aria-hidden="true" />
-            飞书登录（预留）
-          </button>
 
           <div v-if="currentUser" class="mt-6 border-t border-slate-200 pt-5 text-sm text-slate-600">
             <div class="flex items-center justify-between">
               <div>
-                <p class="font-medium text-ink">{{ currentUser.mobile }}</p>
+                <p class="font-medium text-ink">{{ currentUser.displayName || currentUser.mobile || '飞书员工' }}</p>
                 <p class="mt-1">角色：{{ currentUser.roles.join(', ') }}</p>
               </div>
               <button
@@ -491,9 +457,6 @@ async function handleLogout() {
             </div>
           </div>
 
-          <p class="mt-8 text-center text-xs text-slate-500">
-            Dev demo: 13800138000 / Admin@123456，短信验证码默认 123456。
-          </p>
         </div>
       </section>
     </div>

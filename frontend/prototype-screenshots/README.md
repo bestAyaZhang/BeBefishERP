@@ -50,6 +50,16 @@ All prototype images are organized by module. Use the module folder first, then 
 | `tasks/task-list-context-menu.png` | Task list context menu |
 | `tasks/task-list-calendar-popup.png` | Task list calendar popup |
 
+## Organization
+
+| File | Module / state |
+| --- | --- |
+| `organization/employee-management.png` | Employee management: all-company list |
+| `organization/employee-department-filter.png` | Employee management: product-center subtree filter |
+| `organization/department-management.png` | Department management: tree and department list |
+| `organization/position-management.png` | Position management: product-center position scope |
+| `organization/employee-drawer.png` | Employee management: read-only employee drawer |
+
 ## Global
 
 | File | Module / state |

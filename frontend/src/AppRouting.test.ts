@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import router from './router';
 import { getCurrentUser } from './services/auth';
+import { clearCurrentUser, saveCurrentUser } from './services/authSession';
 import { ACCESS_TOKEN_STORAGE_KEY } from './types/auth';
 
 const dashboardMocks = vi.hoisted(() => ({
@@ -19,11 +20,18 @@ vi.mock('./features/dashboard/dashboardService', () => ({
   }
 }));
 
+vi.mock('./features/permission/permissionService', async () => {
+  const { createMockPermissionService } = await import('./features/permission/mockPermissionService');
+  const { organizationService } = await import('./features/organization/organizationService');
+  return { permissionService: createMockPermissionService(organizationService) };
+});
+
 describe('application routes', () => {
   let wrapper: ReturnType<typeof mount> | null = null;
 
   beforeEach(() => {
     localStorage.clear();
+    clearCurrentUser();
     localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, 'test-token');
     dashboardMocks.getOverview.mockReset();
     dashboardMocks.getOverview.mockResolvedValue({
@@ -89,6 +97,37 @@ describe('application routes', () => {
     expect(wrapper.find('[data-testid="product-keyword"]').exists()).toBe(true);
     expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('主数据');
     expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('商品资料');
+  });
+
+  it.each([
+    ['/organization/employees', '员工管理', 'employee-workspace'],
+    ['/organization/departments', '部门管理', 'department-workspace'],
+    ['/organization/positions', '岗位管理', 'position-workspace']
+  ])('renders the organization route %s inside the shared ERP layout', async (path, title, testId) => {
+    await router.push(path);
+    await router.isReady();
+    wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="erp-shell"]').exists()).toBe(true);
+    expect(wrapper.find(`[data-testid="${testId}"]`).exists()).toBe(true);
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('组织架构');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe(title);
+  });
+
+  it('renders permission management as an independent navigation area', async () => {
+    saveCurrentUser({
+      accessToken: 'test-token', mobile: '13800138000', roles: ['ADMIN'], permissions: ['system:role:view'], loginMethod: 'password'
+    });
+    await router.push('/organization/permissions');
+    await router.isReady();
+    wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="erp-shell"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="permission-workspace"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('权限管理');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('权限管理');
   });
 
   it('renders the final product create, detail, and edit route surfaces', async () => {

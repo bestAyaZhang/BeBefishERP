@@ -3,43 +3,74 @@ package com.bebefish.erp.auth.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.bebefish.erp.auth.domain.PasswordHasher;
-import com.bebefish.erp.auth.domain.SmsCodeStore;
+import com.bebefish.erp.auth.domain.LoginAuditEvent;
+import com.bebefish.erp.auth.domain.LoginAuditRepository;
+import com.bebefish.erp.auth.domain.EmployeeStatus;
+import com.bebefish.erp.auth.domain.EmploymentType;
 import com.bebefish.erp.auth.domain.TokenIssuer;
 import com.bebefish.erp.auth.domain.UserAccount;
 import com.bebefish.erp.auth.domain.UserAccountRepository;
+import com.bebefish.erp.auth.domain.UserStatus;
+import com.bebefish.erp.authorization.application.AuthorizationResolver;
+import com.bebefish.erp.authorization.domain.DataScope;
+import com.bebefish.erp.authorization.domain.PermissionDefinition;
+import com.bebefish.erp.authorization.domain.Role;
+import com.bebefish.erp.authorization.domain.RoleRepository;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.time.Clock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class AuthServiceTest {
     private FakeUserAccountRepository users;
-    private FakeSmsCodeStore smsCodes;
+    private FakeRoleRepository roles;
     private AuthService authService;
+    private FakeLoginAuditRepository audits;
 
     @BeforeEach
     void setUp() {
         users = new FakeUserAccountRepository();
-        smsCodes = new FakeSmsCodeStore();
+        roles = new FakeRoleRepository();
         PasswordHasher passwordHasher = (rawPassword, passwordHash) -> ("hash:" + rawPassword).equals(passwordHash);
         TokenIssuer tokenIssuer = new FakeTokenIssuer();
-        authService = new AuthService(users, passwordHasher, smsCodes, tokenIssuer);
+        audits = new FakeLoginAuditRepository();
+        authService = new AuthService(users, passwordHasher, tokenIssuer, new AuthorizationResolver(roles), audits, Clock.systemUTC());
     }
 
     @Test
-    void passwordLoginReturnsTokenRolesAndPermissions() {
+    void passwordLoginReturnsClaimsResolvedFromActiveRoles() {
         users.save(activeUser("13800138000"));
+        roles.save(role("ORG_ADMIN", Set.of("organization:view", "organization:manage"), "13800138000"));
 
         var result = authService.loginWithPassword(new PasswordLoginCommand(" 13800138000 ", "secret"));
 
         assertThat(result.accessToken()).isEqualTo("token-13800138000-password");
         assertThat(result.mobile()).isEqualTo("13800138000");
-        assertThat(result.roles()).containsExactly("ADMIN");
-        assertThat(result.permissions()).containsExactly("system:user:view", "system:role:view");
+        assertThat(result.roles()).containsExactly("ORG_ADMIN");
+        assertThat(result.permissions()).containsExactly("organization:manage", "organization:view");
         assertThat(users.lastLoginMethod("13800138000")).isEqualTo("password");
+        assertThat(audits.events).singleElement().satisfies(event -> {
+            assertThat(event.identityMethod()).isEqualTo("password");
+            assertThat(event.result()).isEqualTo("success");
+            assertThat(event.userId()).isEqualTo(1L);
+        });
+    }
+
+    @Test
+    void developmentAdministratorResolvesSuperAdministratorPermissions() {
+        roles.save(new Role("SUPER_ADMIN", "超级管理员", true, true, true,
+                DataScope.COMPANY, Set.of(), Set.of("13800138000")));
+        var authorization = new AuthorizationResolver(roles).resolve("13800138000");
+
+        assertThat(authorization.roles()).containsExactly("SUPER_ADMIN");
+        assertThat(authorization.permissions()).isEmpty();
     }
 
     @Test
@@ -48,12 +79,17 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.loginWithPassword(new PasswordLoginCommand("13800138000", "wrong")))
                 .isInstanceOf(AuthException.class)
-                .hasMessage("手机号、密码或验证码错误");
+                .extracting("code")
+                .isEqualTo("LOGIN_FAILED");
+        assertThat(audits.events).singleElement().satisfies(event -> {
+            assertThat(event.result()).isEqualTo("failure");
+            assertThat(event.errorCode()).isEqualTo("LOGIN_FAILED");
+        });
     }
 
     @Test
     void disabledUserCannotLogin() {
-        users.save(new UserAccount("13800138000", "hash:secret", false, true, List.of("ADMIN"), List.of()));
+        users.save(new UserAccount("13800138000", "hash:secret", false, true));
 
         assertThatThrownBy(() -> authService.loginWithPassword(new PasswordLoginCommand("13800138000", "secret")))
                 .isInstanceOf(AuthException.class)
@@ -61,43 +97,49 @@ class AuthServiceTest {
     }
 
     @Test
-    void smsLoginConsumesCodeAndRecordsLoginMethod() {
-        users.save(activeUser("13800138000"));
-        smsCodes.put("13800138000", "123456");
+    void formalEmployeeCannotUsePasswordLogin() {
+        users.save(new UserAccount(
+                0, 9, "13800138000", null, EmploymentType.FORMAL,
+                UserStatus.ENABLED, EmployeeStatus.ACTIVE, "正式员工", null
+        ));
 
-        var result = authService.loginWithSms(new SmsLoginCommand("13800138000", "123456"));
-
-        assertThat(result.accessToken()).isEqualTo("token-13800138000-sms");
-        assertThat(smsCodes.verifyAndConsume("13800138000", "123456")).isFalse();
-        assertThat(users.lastLoginMethod("13800138000")).isEqualTo("sms");
-    }
-
-    @Test
-    void sendingSmsCodeRequiresActiveUser() {
-        users.save(new UserAccount("13800138000", "hash:secret", true, false, List.of("ADMIN"), List.of()));
-
-        assertThatThrownBy(() -> authService.sendSmsCode(new SendSmsCodeCommand("13800138000")))
+        assertThatThrownBy(() -> authService.loginWithPassword(new PasswordLoginCommand("13800138000", "secret")))
                 .isInstanceOf(AuthException.class)
-                .hasMessage("用户或员工已禁用");
+                .extracting("code")
+                .isEqualTo("LOGIN_FAILED");
     }
 
     private UserAccount activeUser(String mobile) {
-        return new UserAccount(
-                mobile,
-                "hash:secret",
+        return new UserAccount(mobile, "hash:secret", true, true);
+    }
+
+    private static Role role(String code, Set<String> permissions, String memberKey) {
+        return new Role(
+                code,
+                code,
+                false,
+                false,
                 true,
-                true,
-                List.of("ADMIN"),
-                List.of("system:user:view", "system:role:view")
+                DataScope.COMPANY,
+                permissions,
+                Set.of(memberKey)
         );
     }
 
     private static class FakeUserAccountRepository implements UserAccountRepository {
         private final Map<String, UserAccount> users = new HashMap<>();
+        private final Map<Long, UserAccount> usersById = new HashMap<>();
         private final Map<String, String> loginMethods = new HashMap<>();
 
-        void save(UserAccount user) {
-            users.put(user.mobile(), user);
+        @Override
+        public UserAccount save(UserAccount user) {
+            var saved = user.id() == 0
+                    ? new UserAccount(users.size() + 1L, users.size() + 1L, user.mobile(), user.passwordHash(),
+                    user.employmentType(), user.userStatus(), user.employeeStatus(), user.displayName(), user.avatarUrl())
+                    : user;
+            users.put(saved.mobile(), saved);
+            usersById.put(saved.id(), saved);
+            return saved;
         }
 
         String lastLoginMethod(String mobile) {
@@ -110,36 +152,52 @@ class AuthServiceTest {
         }
 
         @Override
-        public void recordLogin(String mobile, String loginMethod) {
-            loginMethods.put(mobile, loginMethod);
+        public Optional<UserAccount> findById(long id) {
+            return Optional.ofNullable(usersById.get(id));
+        }
+
+        @Override
+        public Optional<UserAccount> findByEmployeeId(long employeeId) {
+            return usersById.values().stream()
+                    .filter(user -> user.employeeId() == employeeId)
+                    .findFirst();
+        }
+
+        @Override
+        public void recordLogin(long userId, String loginMethod) {
+            loginMethods.put(usersById.get(userId).mobile(), loginMethod);
         }
     }
 
-    private static class FakeSmsCodeStore implements SmsCodeStore {
-        private final Map<String, String> codes = new HashMap<>();
+    private static class FakeRoleRepository implements RoleRepository {
+        private final List<Role> roles = new ArrayList<>();
 
-        void put(String mobile, String code) {
-            codes.put(mobile, code);
+        void save(Role role) {
+            roles.add(role);
         }
 
         @Override
-        public void issueCode(String mobile) {
-            codes.put(mobile, "123456");
+        public List<Role> findEnabledByMemberKey(String memberKey) {
+            return roles.stream()
+                    .filter(Role::enabled)
+                    .filter(role -> role.memberKeys().contains(memberKey))
+                    .toList();
         }
 
         @Override
-        public boolean verifyAndConsume(String mobile, String smsCode) {
-            if (!smsCode.equals(codes.get(mobile))) {
-                return false;
-            }
-            codes.remove(mobile);
-            return true;
+        public List<Role> findEnabledByUserId(long userId) {
+            return roles.stream().filter(Role::enabled).toList();
+        }
+
+        @Override
+        public List<PermissionDefinition> findAllPermissions() {
+            return List.of();
         }
     }
 
     private static class FakeTokenIssuer implements TokenIssuer {
         @Override
-        public LoginResult issue(UserAccount user, String loginMethod) {
+        public LoginResult issue(AuthenticatedUser user, String loginMethod) {
             return new LoginResult(
                     "token-" + user.mobile() + "-" + loginMethod,
                     user.mobile(),
@@ -156,6 +214,15 @@ class AuthServiceTest {
 
         @Override
         public void revoke(String accessToken) {
+        }
+    }
+
+    private static class FakeLoginAuditRepository implements LoginAuditRepository {
+        private final List<LoginAuditEvent> events = new ArrayList<>();
+
+        @Override
+        public void record(LoginAuditEvent event) {
+            events.add(event);
         }
     }
 }

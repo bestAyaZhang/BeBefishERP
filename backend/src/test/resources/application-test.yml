@@ -9,3 +9,12 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+context:
+  initializer:
+    classes: com.bebefish.erp.support.TestDatabaseSafetyInitializer
+erp:
+  auth:
+    local-admin:
+      enabled: true
+      mobile: 13800138000
+      password: Admin@123456

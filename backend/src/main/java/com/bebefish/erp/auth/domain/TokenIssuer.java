@@ -3,7 +3,7 @@ package com.bebefish.erp.auth.domain;
 import com.bebefish.erp.auth.application.LoginResult;
 
 public interface TokenIssuer {
-    LoginResult issue(UserAccount user, String loginMethod);
+    LoginResult issue(AuthenticatedUser user, String loginMethod);
 
     LoginResult resolve(String accessToken);
 

@@ -5,9 +5,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.hamcrest.Matchers.startsWith;
 
 import com.bebefish.erp.auth.domain.TokenIssuer;
-import com.bebefish.erp.auth.domain.UserAccount;
+import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.List;
@@ -114,7 +115,29 @@ class SalesOrderControllerTest {
                 .andExpect(jsonPath("$.data.outstandingAmount").value(29.00))
                 .andExpect(jsonPath("$.data.items[0].skuId").value(skuId))
                 .andExpect(jsonPath("$.data.items[0].skuCodeSnapshot").isNotEmpty())
-                .andExpect(jsonPath("$.data.salespersonMobile").value("13800138000"));
+                .andExpect(jsonPath("$.data.salespersonMobile").value(startsWith("13900000010-")));
+    }
+
+    @Test
+    void savesDraftForAuthorizedEmployeeWithoutMobile() throws Exception {
+        var body = objectMapper.writeValueAsString(Map.of(
+                "customerId", customerId,
+                "warehouseId", warehouseId,
+                "orderDate", java.time.LocalDate.now().plusDays(3).toString(),
+                "transportMethod", "delivery",
+                "settlementCycle", "monthly",
+                "lines", List.of(Map.of("skuId", skuId, "quantity", 1, "unitPrice", 12))
+        ));
+        String token = com.bebefish.erp.support.TestAuthTokens.issueWithoutMobile(
+                jdbc, tokenIssuer, "sales:create"
+        );
+
+        mvc.perform(post("/api/sales-orders")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.salespersonMobile", startsWith("employee:")));
     }
 
     @Test
@@ -177,8 +200,7 @@ class SalesOrderControllerTest {
     }
 
     private String bearerToken() {
-        return "Bearer " + tokenIssuer.issue(new UserAccount(
-                "13800138000", "unused", true, true, List.of("SALES"), List.of("sales:view", "sales:create")
-        ), "sales-order-controller-test").accessToken();
+        return "Bearer " + com.bebefish.erp.support.TestAuthTokens.issue(
+                jdbc, tokenIssuer, "13900000010", "sales:view", "sales:create");
     }
 }

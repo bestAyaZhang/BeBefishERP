@@ -55,7 +55,11 @@ function createTestRouter() {
       { path: '/products', name: 'products', component: TestPage },
       { path: '/products/new', name: 'product-new', component: TestPage },
       { path: '/products/:id/edit', name: 'product-edit', component: TestPage },
-      { path: '/products/:id', name: 'product-detail', component: TestPage }
+      { path: '/products/:id', name: 'product-detail', component: TestPage },
+      { path: '/organization/employees', name: 'organization-employees', component: TestPage },
+      { path: '/organization/departments', name: 'organization-departments', component: TestPage },
+      { path: '/organization/positions', name: 'organization-positions', component: TestPage },
+      { path: '/organization/permissions', name: 'organization-permissions', component: TestPage }
     ]
   });
 }
@@ -187,6 +191,27 @@ describe('ErpLayout', () => {
         'border-slate-200'
       ]));
     }
+  });
+
+  it.each([
+    ['/organization/employees', '员工管理'],
+    ['/organization/departments', '部门管理'],
+    ['/organization/positions', '岗位管理']
+  ])('matches the organization breadcrumb and search copy for %s', async (path, title) => {
+    ({ router, wrapper } = await mountLayout(path));
+
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('组织架构');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe(title);
+    expect(wrapper.get('[data-testid="erp-global-search"]').attributes('placeholder')).toBe('搜索员工、手机号或岗位');
+  });
+
+  it('uses an independent permission breadcrumb and search context', async () => {
+    ({ router, wrapper } = await mountLayout('/organization/permissions'));
+
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('权限管理');
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').attributes('href')).toBe('/organization/permissions');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('权限管理');
+    expect(wrapper.get('[data-testid="erp-global-search"]').attributes('placeholder')).toBe('搜索角色或成员');
   });
 
   it.each([

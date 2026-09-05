@@ -18,7 +18,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
-@SpringBootTest(properties = "spring.flyway.enabled=false")
+@SpringBootTest(properties = {
+        "spring.flyway.enabled=false",
+        "spring.jpa.hibernate.ddl-auto=none",
+        "erp.auth.local-admin.enabled=false"
+})
 @ActiveProfiles("test")
 class FlywayMigrationTest {
     @Autowired
@@ -69,8 +73,72 @@ class FlywayMigrationTest {
                 "product_sku_spec_value", "sku_supplier_quote", "supplier_quote_allowed_state",
                 "file_asset", "business_code_sequence",
                 "inventory_balance", "inventory_ledger", "stock_adjustment", "stock_adjustment_item",
-                "sales_order_sequence", "sales_order", "sales_order_item"
+                "sales_order_sequence", "sales_order", "sales_order_item",
+                "department", "position", "employee", "sys_user", "sys_permission", "sys_role",
+                "sys_role_permission", "sys_user_role", "sys_feishu_identity",
+                "sys_feishu_role_mapping", "sys_auth_session", "sys_oauth_state",
+                "sys_login_ticket", "sys_login_audit"
         );
+    }
+
+    @Test
+    void seedsAuthenticationRolesAndPermissionsWithoutAUniversalAdministrator() {
+        assertThat(jdbc.queryForObject(
+                "select count(*) from sys_permission where code = 'system:role:manage'",
+                Integer.class
+        )).isEqualTo(1);
+        assertThat(jdbc.queryForMap(
+                "select immutable, is_sensitive as sensitive_value, data_scope from sys_role where code = 'SUPER_ADMIN'"
+        )).containsEntry("immutable", true)
+                .containsEntry("sensitive_value", true)
+                .containsEntry("data_scope", "COMPANY");
+        assertThat(jdbc.queryForMap(
+                "select is_sensitive as sensitive_value, data_scope from sys_role where code = 'BASIC_EMPLOYEE'"
+        )).containsEntry("sensitive_value", false)
+                .containsEntry("data_scope", "SELF");
+        assertThat(jdbc.queryForObject(
+                "select count(*) from sys_user where mobile = '13800138000'",
+                Integer.class
+        )).isZero();
+    }
+
+    @Test
+    void enforcesFeishuIdentityAndRoleAssignmentUniqueness() {
+        jdbc.update("""
+                insert into employee
+                    (employee_no, name, employment_type, status, source, profile_complete, created_at, updated_at)
+                values ('FS-TEST0001', '测试员工', 'formal', 'active', 'feishu', false, now(3), now(3))
+                """);
+        var employeeId = requiredId("employee", "employee_no", "FS-TEST0001");
+        jdbc.update("""
+                insert into sys_user (employee_id, status, created_at, updated_at)
+                values (?, 'enabled', now(3), now(3))
+                """, employeeId);
+        var userId = jdbc.queryForObject(
+                "select id from sys_user where employee_id = ?", Long.class, employeeId
+        );
+        jdbc.update("""
+                insert into sys_feishu_identity
+                    (user_id, tenant_key, open_id, union_id, display_name, bound_at, last_verified_at)
+                values (?, 'tenant-a', 'open-a', 'union-a', '测试员工', now(3), now(3))
+                """, userId);
+        assertThatThrownBy(() -> jdbc.update("""
+                insert into sys_feishu_identity
+                    (user_id, tenant_key, open_id, union_id, display_name, bound_at, last_verified_at)
+                values (?, 'tenant-a', 'open-a', 'union-b', '重复身份', now(3), now(3))
+                """, userId)).isInstanceOf(DataIntegrityViolationException.class);
+
+        var basicRoleId = jdbc.queryForObject(
+                "select id from sys_role where code = 'BASIC_EMPLOYEE'", Long.class
+        );
+        jdbc.update("""
+                insert into sys_user_role (user_id, role_id, assignment_source, assigned_at)
+                values (?, ?, 'FEISHU', now(3))
+                """, userId, basicRoleId);
+        assertThatThrownBy(() -> jdbc.update("""
+                insert into sys_user_role (user_id, role_id, assignment_source, assigned_at)
+                values (?, ?, 'FEISHU', now(3))
+                """, userId, basicRoleId)).isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
@@ -221,7 +289,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("9");
+        )).isEqualTo("10");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId
@@ -370,8 +438,12 @@ class FlywayMigrationTest {
     }
 
     private long requiredId(String tableName, String keyColumn, String keyValue) {
-        var allowedTables = java.util.Set.of("product_category", "product_spu", "product_sku", "supplier");
-        var allowedColumns = java.util.Set.of("category_code", "product_code", "sku_code", "supplier_no");
+        var allowedTables = java.util.Set.of(
+                "product_category", "product_spu", "product_sku", "supplier", "employee"
+        );
+        var allowedColumns = java.util.Set.of(
+                "category_code", "product_code", "sku_code", "supplier_no", "employee_no"
+        );
         if (!allowedTables.contains(tableName) || !allowedColumns.contains(keyColumn)) {
             throw new IllegalArgumentException("Unsupported identifier lookup");
         }

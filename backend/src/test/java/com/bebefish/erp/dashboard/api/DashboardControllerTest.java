@@ -6,7 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bebefish.erp.auth.domain.TokenIssuer;
-import com.bebefish.erp.auth.domain.UserAccount;
+import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -61,9 +61,8 @@ class DashboardControllerTest {
         jdbc.update("delete from product_sku");
         jdbc.update("delete from product_spu");
         jdbc.update("delete from supplier");
-        viewToken = tokenIssuer.issue(new UserAccount(
-                "13900000008", "unused", true, true, List.of("TESTER"), List.of("dashboard:view")
-        ), "dashboard-controller-test").accessToken();
+        viewToken = com.bebefish.erp.support.TestAuthTokens.issue(
+                jdbc, tokenIssuer, "13900000008", "dashboard:view");
     }
 
     @Test
@@ -75,9 +74,8 @@ class DashboardControllerTest {
 
     @Test
     void rejectsAuthenticatedUserWithoutDashboardPermission() throws Exception {
-        var token = tokenIssuer.issue(new UserAccount(
-                "13900000009", "unused", true, true, List.of("TESTER"), List.of("product:view")
-        ), "dashboard-controller-test-without-permission").accessToken();
+        var token = com.bebefish.erp.support.TestAuthTokens.issue(
+                jdbc, tokenIssuer, "13900000009", "product:view");
 
         mvc.perform(get("/api/dashboard/overview")
                         .header("Authorization", "Bearer " + token))

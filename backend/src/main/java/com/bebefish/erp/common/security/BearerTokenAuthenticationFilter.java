@@ -50,7 +50,9 @@ public final class BearerTokenAuthenticationFilter extends OncePerRequestFilter 
 
         try {
             var login = tokenIssuer.resolve(token);
-            var principal = new ErpPrincipal(login.mobile(), login.roles(), login.permissions());
+            var principal = new ErpPrincipal(
+                    login.employeeId(), login.mobile(), login.displayName(), login.roles(), login.permissions()
+            );
             var authorities = Stream.concat(
                             login.permissions().stream().map(SimpleGrantedAuthority::new),
                             login.roles().stream().map(role -> new SimpleGrantedAuthority("ROLE_" + role))

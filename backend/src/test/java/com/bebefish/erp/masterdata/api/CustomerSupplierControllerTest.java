@@ -7,7 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bebefish.erp.auth.domain.TokenIssuer;
-import com.bebefish.erp.auth.domain.UserAccount;
+import com.bebefish.erp.auth.domain.AuthenticatedUser;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,8 +32,9 @@ class CustomerSupplierControllerTest {
     void setUp() {
         jdbc.update("delete from customer where customer_no like 'T4-%'");
         jdbc.update("delete from supplier where supplier_no like 'T4-%'");
-        editToken = token("masterdata:view", "masterdata:edit");
-        viewToken = token("masterdata:view");
+        editToken = token("customer:view", "customer:create", "customer:edit",
+                "supplier:view", "supplier:create", "supplier:edit");
+        viewToken = token("customer:view", "supplier:view");
     }
 
     @Test
@@ -123,8 +124,8 @@ class CustomerSupplierControllerTest {
     }
 
     private String token(String... permissions) {
-        return tokenIssuer.issue(new UserAccount("13900000002", "unused", true, true,
-                List.of("TESTER"), List.of(permissions)), "test").accessToken();
+        return com.bebefish.erp.support.TestAuthTokens.issue(
+                jdbc, tokenIssuer, "13900000002", permissions);
     }
     private String bearer(String token) { return "Bearer " + token; }
 }

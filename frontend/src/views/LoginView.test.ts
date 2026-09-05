@@ -2,12 +2,12 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import router from '../router';
 import LoginView from './LoginView.vue';
-import { loginWithPassword, loginWithSms, sendSmsCode } from '../services/auth';
+import { beginFeishuLogin, getFeishuStatus, loginWithPassword } from '../services/auth';
 
 vi.mock('../services/auth', () => ({
   loginWithPassword: vi.fn(),
-  loginWithSms: vi.fn(),
-  sendSmsCode: vi.fn(),
+  getFeishuStatus: vi.fn(),
+  beginFeishuLogin: vi.fn(),
   logout: vi.fn()
 }));
 
@@ -26,6 +26,7 @@ describe('LoginView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    vi.mocked(getFeishuStatus).mockResolvedValue({ available: true, errorCode: null, message: '飞书登录可用' });
   });
 
   afterEach(() => {
@@ -63,29 +64,26 @@ describe('LoginView', () => {
     expect(router.currentRoute.value.name).toBe('workbench');
   });
 
-  it('sends sms code and submits sms login', async () => {
-    vi.mocked(sendSmsCode).mockResolvedValue();
-    vi.mocked(loginWithSms).mockResolvedValue({
-      accessToken: 'token-2',
-      mobile: '13800138000',
-      roles: ['ADMIN'],
-      permissions: ['dashboard:view'],
-      loginMethod: 'sms'
-    });
+  it('shows feishu as the primary entry and removes sms controls', async () => {
     const wrapper = mountLoginView();
-
-    await wrapper.get('[data-testid="mobile-input"]').setValue('13800138000');
-    await wrapper.findAll('button').find((button) => button.text().includes('验证码'))!.trigger('click');
-    await wrapper.get('[data-testid="send-code-button"]').trigger('click');
-    await wrapper.get('[data-testid="sms-code-input"]').setValue('123456');
-    await wrapper.get('form').trigger('submit.prevent');
     await flushPromises();
 
-    expect(sendSmsCode).toHaveBeenCalledWith('13800138000');
-    expect(loginWithSms).toHaveBeenCalledWith({
-      mobile: '13800138000',
-      smsCode: '123456'
-    });
+    expect(wrapper.text()).not.toContain('Admin@123456');
+    expect(wrapper.get('[data-testid="feishu-login"]').text()).toContain('飞书扫码登录');
+    expect(wrapper.find('[data-testid="sms-code-input"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="send-code-button"]').exists()).toBe(false);
+  });
+
+  it('prevents duplicate feishu redirects', async () => {
+    const wrapper = mountLoginView();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="feishu-login"]').trigger('click');
+    await wrapper.get('[data-testid="feishu-login"]').trigger('click');
+
+    expect(beginFeishuLogin).toHaveBeenCalledTimes(1);
+    expect(wrapper.get('[data-testid="feishu-login"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="feishu-login"]').text()).toContain('正在前往飞书');
   });
 
   it('renders the animated characters login template structure', () => {
@@ -125,18 +123,15 @@ describe('LoginView', () => {
     expect(wrapper.get('[data-testid="login-stage-ground"]').classes()).not.toContain('z-50');
   });
 
-  it('places password and sms tabs below the credential field at opposite ends', () => {
+  it('keeps temporary employee login as a secondary expandable form', async () => {
     const wrapper = mountLoginView();
-    const form = wrapper.get('form');
-    const credentialFields = wrapper.get('[data-testid="login-credential-fields"]');
-    const modeTabs = wrapper.get('[data-testid="login-mode-tabs"]');
-    const formChildren = Array.from(form.element.children);
+    await flushPromises();
 
-    expect(formChildren.indexOf(credentialFields.element)).toBeLessThan(formChildren.indexOf(modeTabs.element));
-    expect(modeTabs.classes()).toContain('justify-between');
-    expect(wrapper.get('[data-testid="login-mode-password-tab"]').text()).toContain('密码');
-    expect(wrapper.get('[data-testid="login-mode-sms-tab"]').text()).toContain('验证码');
-    expect(modeTabs.find('svg').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="temporary-login-form"]').attributes('style')).toContain('display: none');
+    await wrapper.get('[data-testid="temporary-login-toggle"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="temporary-login-form"]').attributes('style')).not.toContain('display: none');
+    expect(wrapper.get('[data-testid="temporary-login-toggle"]').text()).toContain('收起');
   });
 
   it('uses uppercase English labels for mobile and password fields', () => {

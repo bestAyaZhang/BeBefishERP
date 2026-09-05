@@ -58,7 +58,9 @@ public class StockAdjustmentController {
             @PathVariable long id,
             @AuthenticationPrincipal ErpPrincipal principal
     ) {
-        return ApiResponse.success(StockAdjustmentResponse.from(service.confirm(id, principal.mobile())));
+        return ApiResponse.success(StockAdjustmentResponse.from(
+                service.confirm(id, principal.operatorIdentifier())
+        ));
     }
 
     @PostMapping("/{id}/void")
@@ -70,7 +72,7 @@ public class StockAdjustmentController {
     ) {
         var reason = request == null ? null : request.reason();
         return ApiResponse.success(StockAdjustmentResponse.from(
-                service.voidAdjustment(id, reason, principal.mobile())
+                service.voidAdjustment(id, reason, principal.operatorIdentifier())
         ));
     }
 }
