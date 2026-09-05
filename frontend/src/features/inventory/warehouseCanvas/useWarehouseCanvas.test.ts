@@ -204,4 +204,25 @@ describe('warehouse canvas controller', () => {
     expect(canvas.state.value.areas).toEqual([])
     expect(canvas.dirty.value).toBe(false)
   })
+
+  it('rejects invalid save geometry without changing current or saved state', async () => {
+    const canvas = useWarehouseCanvas({
+      repository: {
+        load: async () => seedWarehouseCanvas,
+        save: async () => ({
+          ...seedWarehouseCanvas,
+          areas: seedWarehouseCanvas.areas.map((area) => area.id === 'area-a' ? { ...area, x: -1 } : area),
+        }),
+      },
+    })
+    await canvas.load(8)
+    canvas.renameArea('area-a', 'A-待保存')
+
+    await expect(canvas.save()).rejects.toThrow('区域必须位于逻辑画布范围内')
+    expect(canvas.state.value.areas.find((area) => area.id === 'area-a')?.name).toBe('A-待保存')
+    expect(canvas.dirty.value).toBe(true)
+
+    canvas.undo()
+    expect(canvas.dirty.value).toBe(false)
+  })
 })

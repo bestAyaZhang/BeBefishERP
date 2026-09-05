@@ -190,6 +190,7 @@ export function useWarehouseCanvas(options: { repository?: WarehouseCanvasReposi
     saving.value = true
     try {
       const saved = cloneState(await repository.save(stateAtSaveStart))
+      assertCanvasGeometry(saved)
       savedState.value = cloneState(saved)
       if (statesEqual(state.value, stateAtSaveStart)) state.value = saved
       savedAt.value = new Date()
