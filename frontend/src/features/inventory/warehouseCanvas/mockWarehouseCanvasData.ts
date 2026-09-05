@@ -1,5 +1,10 @@
 import type { WarehouseCanvasState } from './types'
 
+export interface WarehouseCanvasRepository {
+  load(warehouseId: number): Promise<WarehouseCanvasState>
+  save(state: WarehouseCanvasState): Promise<WarehouseCanvasState>
+}
+
 export const seedWarehouseCanvas: WarehouseCanvasState = {
   warehouseId: 1,
   warehouseName: 'BeBeFish 主仓',
@@ -21,4 +26,29 @@ export const seedWarehouseCanvas: WarehouseCanvasState = {
     { id: 'block-tea-b', skuId: 103, areaId: 'area-b', units: 236, x: 220, y: 540, width: 120, height: 80 },
     { id: 'block-blue-c', skuId: 101, areaId: 'area-c', units: 100, x: 476, y: 96, width: 120, height: 80 },
   ],
+}
+
+export function createMemoryWarehouseCanvasRepository(
+  initialState: WarehouseCanvasState,
+): WarehouseCanvasRepository {
+  let storedState = cloneState(initialState)
+
+  return {
+    async load(warehouseId) {
+      return { ...cloneState(storedState), warehouseId }
+    },
+    async save(state) {
+      storedState = cloneState(state)
+      return cloneState(storedState)
+    },
+  }
+}
+
+function cloneState(state: WarehouseCanvasState): WarehouseCanvasState {
+  return {
+    ...state,
+    areas: state.areas.map((area) => ({ ...area })),
+    catalog: state.catalog.map((sku) => ({ ...sku })),
+    blocks: state.blocks.map((block) => ({ ...block })),
+  }
 }
