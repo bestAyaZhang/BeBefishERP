@@ -340,6 +340,18 @@ from department d left join employee m on m.id=d.manager_employee_id
         jdbc.update("update position set status=?,updated_at=now(3) where id=?", status, id);
     }
 
+    public boolean hasIncompatiblePositionAssignments(long id, Long departmentId) {
+        // A position without a department can be used by employees in any department.
+        if (departmentId == null) return false;
+        return jdbc.queryForObject(
+                        "select count(*) from employee where position_id=? and not (department_id"
+                            + " <=> ?)",
+                        Long.class,
+                        id,
+                        departmentId)
+                > 0;
+    }
+
     public boolean positionOccupied(long id) {
         return jdbc.queryForObject(
                         "select count(*) from employee where position_id=? and status='active'",

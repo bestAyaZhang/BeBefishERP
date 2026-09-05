@@ -390,4 +390,143 @@ class OrganizationControllerTest {
                                 Integer.class))
                 .isZero();
     }
+
+    @Test
+    void cannotReactivateEmployeeAssignedToDisabledPositionOrDepartment() throws Exception {
+        long department =
+                save(
+                                "departments",
+                                "{\"departmentCode\":\"REACTIVATE-D\",\"departmentName\":\"Reactivate\",\"status\":\"enabled\"}")
+                        .path("id")
+                        .asLong();
+        long position =
+                save(
+                                "positions",
+                                "{\"positionCode\":\"REACTIVATE-P\",\"positionName\":\"Reactivate\",\"departmentId\":"
+                                        + department
+                                        + ",\"status\":\"enabled\"}")
+                        .path("id")
+                        .asLong();
+        long employee =
+                save(
+                                "employees",
+                                "{\"employeeNo\":\"REACTIVATE-E\",\"employeeName\":\"Reactivate\",\"departmentId\":"
+                                        + department
+                                        + ",\"positionId\":"
+                                        + position
+                                        + ",\"employmentType\":\"temporary\",\"status\":\"active\"}")
+                        .path("id")
+                        .asLong();
+        for (String path : new String[] {"employees/" + employee, "positions/" + position}) {
+            mvc.perform(
+                            patch("/api/organization/" + path + "/status")
+                                    .header("Authorization", token)
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("{\"status\":\"disabled\"}"))
+                    .andExpect(status().isOk());
+        }
+        mvc.perform(
+                        patch("/api/organization/employees/" + employee + "/status")
+                                .header("Authorization", token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"status\":\"active\"}"))
+                .andExpect(status().isBadRequest());
+        assertThat(
+                        jdbc.queryForObject(
+                                "select status from sys_user where employee_id=?",
+                                String.class,
+                                employee))
+                .isEqualTo("disabled");
+        mvc.perform(
+                        patch("/api/organization/departments/" + department + "/status")
+                                .header("Authorization", token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"status\":\"disabled\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(
+                        patch("/api/organization/employees/" + employee + "/status")
+                                .header("Authorization", token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"status\":\"active\"}"))
+                .andExpect(status().isBadRequest());
+        assertThat(
+                        jdbc.queryForObject(
+                                "select status from employee where id=?", String.class, employee))
+                .isEqualTo("disabled");
+        assertThat(
+                        jdbc.queryForObject(
+                                "select status from sys_user where employee_id=?",
+                                String.class,
+                                employee))
+                .isEqualTo("disabled");
+    }
+
+    @Test
+    void cannotMovePositionWhenAssignedEmployeesWouldHaveDifferentDepartment() throws Exception {
+        long first =
+                save(
+                                "departments",
+                                "{\"departmentCode\":\"MOVE-A\",\"departmentName\":\"First\",\"status\":\"enabled\"}")
+                        .path("id")
+                        .asLong();
+        long second =
+                save(
+                                "departments",
+                                "{\"departmentCode\":\"MOVE-B\",\"departmentName\":\"Second\",\"status\":\"enabled\"}")
+                        .path("id")
+                        .asLong();
+        long position =
+                save(
+                                "positions",
+                                "{\"positionCode\":\"MOVE-P\",\"positionName\":\"Move\",\"departmentId\":"
+                                        + first
+                                        + ",\"status\":\"enabled\"}")
+                        .path("id")
+                        .asLong();
+        long employee =
+                save(
+                                "employees",
+                                "{\"employeeNo\":\"MOVE-E\",\"employeeName\":\"Move\",\"departmentId\":"
+                                        + first
+                                        + ",\"positionId\":"
+                                        + position
+                                        + ",\"employmentType\":\"temporary\",\"status\":\"active\"}")
+                        .path("id")
+                        .asLong();
+        for (String employeeStatus : new String[] {"active", "disabled"}) {
+            mvc.perform(
+                            patch("/api/organization/employees/" + employee + "/status")
+                                    .header("Authorization", token)
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("{\"status\":\"" + employeeStatus + "\"}"))
+                    .andExpect(status().isOk());
+            mvc.perform(
+                            put("/api/organization/positions/" + position)
+                                    .header("Authorization", token)
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(
+                                            "{\"positionCode\":\"MOVE-P\",\"positionName\":\"Move\",\"departmentId\":"
+                                                    + second
+                                                    + ",\"status\":\"enabled\"}"))
+                    .andExpect(status().isConflict());
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select department_id from position where id=?",
+                                    Long.class,
+                                    position))
+                    .isEqualTo(first);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select department_id from employee where id=?",
+                                    Long.class,
+                                    employee))
+                    .isEqualTo(first);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select position_id from employee where id=?",
+                                    Long.class,
+                                    employee))
+                    .isEqualTo(position);
+        }
+    }
 }

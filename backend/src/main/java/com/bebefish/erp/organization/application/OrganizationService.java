@@ -141,6 +141,11 @@ public class OrganizationService {
         enabledDepartment(request.departmentId());
         if (id != null) {
             var existing = found(repository.position(id));
+            if (!Objects.equals(existing.departmentId(), request.departmentId())
+                    && repository.hasIncompatiblePositionAssignments(id, request.departmentId())) {
+                throw new BusinessException(
+                        "ORGANIZATION_IN_USE", HttpStatus.CONFLICT, "岗位已分配员工，不能移至不同部门");
+            }
             if ("disabled".equals(request.status())) occupied(repository.positionOccupied(id));
         }
         return unique(() -> repository.position(repository.savePosition(id, request)));
@@ -190,7 +195,11 @@ public class OrganizationService {
     @Transactional
     public Employee employeeStatus(long id, String status) {
         status(status, true);
-        employee(id);
+        var existing = employee(id);
+        if ("active".equals(status)) {
+            enabledDepartment(existing.departmentId());
+            enabledPosition(existing.positionId(), existing.departmentId());
+        }
         repository.employeeStatus(id, status);
         return repository.employee(id);
     }

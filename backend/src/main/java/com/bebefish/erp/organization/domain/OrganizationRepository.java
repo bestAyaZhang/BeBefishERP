@@ -41,5 +41,7 @@ public interface OrganizationRepository {
 
     boolean positionOccupied(long id);
 
+    boolean hasIncompatiblePositionAssignments(long id, Long departmentId);
+
     boolean descendant(long root, long candidate);
 }
