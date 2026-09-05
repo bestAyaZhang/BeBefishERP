@@ -164,13 +164,14 @@ public class HttpFeishuClient implements FeishuOAuthClient, FeishuDirectoryClien
                             + "&user_id_type=open_id&department_id_type=open_department_id&page_size=50";
             if (next != null) query += "&page_token=" + encode(next);
             JsonNode page = data(get(query, token));
+            JsonNode items = page == null ? null : page.path("items");
             if (page == null
                     || !page.isObject()
                     || !page.path("has_more").isBoolean()
-                    || (!page.path("items").isArray() && !page.path("items").isNull())) {
+                    || (!items.isMissingNode() && !items.isArray() && !items.isNull())) {
                 throw new FeishuClientException("飞书通讯录分页响应无效");
             }
-            if (page.path("items").isArray()) page.path("items").forEach(result::add);
+            if (items.isArray()) items.forEach(result::add);
             if (!page.path("has_more").booleanValue()) break;
             next = text(page, "page_token");
             if (next == null || next.isBlank() || !visited.add(next)) {

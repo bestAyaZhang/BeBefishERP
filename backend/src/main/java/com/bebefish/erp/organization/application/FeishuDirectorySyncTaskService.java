@@ -1,6 +1,7 @@
 package com.bebefish.erp.organization.application;
 
 import com.bebefish.erp.common.api.BusinessException;
+import com.bebefish.erp.feishu.FeishuClientException;
 import com.bebefish.erp.feishu.FeishuProperties;
 
 import org.slf4j.Logger;
@@ -126,6 +127,16 @@ values(?,?,'pending',?,?)
             var result = sync.synchronize();
             finish(id, result.recordsFailed() == 0 ? "success" : "partial", result, null);
         } catch (RuntimeException exception) {
+            Throwable rootFailure = exception.getCause() == null ? exception : exception.getCause();
+            String reason =
+                    rootFailure instanceof FeishuClientException
+                            ? rootFailure.getMessage()
+                            : rootFailure.getClass().getSimpleName();
+            log.warn(
+                    "Feishu directory sync id={} failed type={} reason={}",
+                    id,
+                    rootFailure.getClass().getSimpleName(),
+                    reason);
             var result =
                     exception instanceof FeishuDirectorySyncService.SyncFailure failure
                             ? failure.result()

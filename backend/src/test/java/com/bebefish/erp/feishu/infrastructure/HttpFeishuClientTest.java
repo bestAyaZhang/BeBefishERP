@@ -385,6 +385,18 @@ class HttpFeishuClientTest {
                 .isInstanceOf(FeishuClientException.class);
     }
 
+    @Test
+    void acceptsMissingItemsForAnEmptyDirectoryPage() {
+        server.createContext(
+                "/open-apis/auth/v3/tenant_access_token/internal",
+                exchange -> json(exchange, "{\"code\":0,\"tenant_access_token\":\"t-token\"}"));
+        server.createContext(
+                "/open-apis/contact/v3/users/find_by_department",
+                exchange -> json(exchange, "{\"code\":0,\"data\":{\"has_more\":false}}"));
+
+        assertThat(client().usersInDepartment("0")).isEmpty();
+    }
+
     private HttpFeishuClient client() {
         return new HttpFeishuClient(
                 properties,

@@ -161,4 +161,22 @@ class FeishuDirectorySyncServiceTest {
                 .isZero();
         assertThat(service.synchronize().employeesUpdated()).isOne();
     }
+
+    @Test
+    void preservesTheUpstreamFailureForOperationalDiagnosis() {
+        var client = mock(FeishuDirectoryClient.class);
+        var properties = new FeishuProperties();
+        properties.setEnabled(true);
+        properties.setAllowedTenantKey("tenant-a");
+        when(client.currentTenantKey()).thenReturn("tenant-a");
+        var upstream = new FeishuClientException("diagnostic marker");
+        when(client.departments()).thenThrow(upstream);
+        var service =
+                new FeishuDirectorySyncService(
+                        client, properties, provisioning, jdbc, transactionManager);
+
+        assertThatThrownBy(service::synchronize)
+                .isInstanceOf(FeishuDirectorySyncService.SyncFailure.class)
+                .hasCause(upstream);
+    }
 }

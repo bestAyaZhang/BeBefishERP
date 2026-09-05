@@ -115,7 +115,7 @@ where i.tenant_key=? and i.open_id=?
             }
             return counts.result();
         } catch (RuntimeException exception) {
-            throw new SyncFailure(counts.result());
+            throw new SyncFailure(counts.result(), exception);
         }
     }
 
@@ -205,8 +205,8 @@ insert into department(department_code,department_name,parent_id,feishu_departme
     public static final class SyncFailure extends RuntimeException {
         private final Result result;
 
-        public SyncFailure(Result result) {
-            super("飞书通讯录同步失败，请检查应用配置、通讯录权限和网络后重试");
+        public SyncFailure(Result result, RuntimeException cause) {
+            super("飞书通讯录同步失败，请检查应用配置、通讯录权限和网络后重试", cause);
             this.result = result;
         }
 
