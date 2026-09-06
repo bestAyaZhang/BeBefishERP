@@ -123,3 +123,138 @@ Mobile implementation screenshot path: `frontend/prototype-screenshots/products/
 - Verification: `npm run test:run` passed 255 tests across 31 files; `npm run build` completed successfully.
 
 final result: passed
+
+# Warehouse Canvas Design QA
+
+## Scope and capture
+
+Completed 2026-09-06 against the approved Warehouse Canvas MVP spec and the six Figma nodes in file `jIz9HNkSoXH63gvTc3yOtj`. This section is appended; all earlier QA sections and unrelated screenshot evidence are preserved.
+
+Evidence directory: `frontend/prototype-screenshots/warehouse-canvas/`. Every source PNG was downloaded from the actual Figma screenshot tool response and opened. Every implementation PNG is an actual Codex in-app browser capture of the routed Vue application, not a reconstruction. The comparison script crops both original images at 1:1 and joins them with source on the left.
+
+| State | Actual Figma node | Source visual truth | Final implementation | Full-view comparison |
+| --- | --- | --- | --- | --- |
+| Overview | 1187:2 | source-overview.png | implementation-overview-after.png | comparison-overview-full-after.png |
+| Draw/name area | 1190:516 | source-draw-area.png | implementation-draw-area-after.png | comparison-draw-area-full-after.png |
+| Add SKU | 1193:39676 | source-add-sku.png | implementation-add-sku-after.png | comparison-add-sku-full-after.png |
+| Selected SKU | 1193:40024 | source-sku-selected.png | implementation-sku-selected-after.png | comparison-sku-selected-full-after.png |
+| Partial move | 1193:40372 | source-partial-move.png | implementation-partial-move-after.png | comparison-partial-move-full-after.png |
+| Warnings | 1210:2466 | source-warning.png | implementation-warning-after.png | comparison-warning-full-after.png |
+
+Final source and implementation images are each **1440 × 1024 pixels**, with a **1440 × 1024 CSS viewport and devicePixelRatio 1**. Full comparisons are **2880 × 1024**, with no rescaling or invented pixels. Initial overflowing captures for selected SKU, partial move, and overview iteration 1 are 1425 × 1013; their historical comparisons use the same 1425 × 1013 crop from both sides (2850 × 1013). These are diagnostic history, not final normalization.
+
+The final floor measures x=456, y=352, width=728, height=672. The existing 244 px application sidebar and 64 px top bar are retained. Workspace tracks are 196 px / 760 px / 240 px. Selected-object properties overlay x=1080, y=168, width=360; the add/partial drawer is x=720, y=264, width=720, height=760. Selected-panel scrollHeight and clientHeight are both 854; the last destructive-action button ends at y=1000, without clipping.
+
+## Focused comparisons
+
+All focused artifacts below use matching original-image crops, source left and implementation right, without scale changes; they were opened and inspected in addition to all six full comparisons.
+
+| Artifact | Crop x,y,w,h on each side | Combined pixels |
+| --- | --- | --- |
+| comparison-overview-toolbar-after.png | 936,190,504,90 | 1008 × 90 |
+| comparison-overview-area-sku-after.png | 472,368,696,224 | 1392 × 224 |
+| comparison-draw-area-draft-after.png | 892,376,276,360 | 552 × 360 |
+| comparison-add-sku-drawer-after.png | 720,264,720,760 | 1440 × 760 |
+| comparison-sku-selected-properties-after.png | 1080,168,360,856 | 720 × 856 |
+| comparison-partial-move-arithmetic-after.png | 744,376,672,544 | 1344 × 544 |
+| comparison-warning-issues-after.png | 1080,488,360,536 | 720 × 536 |
+| comparison-warning-confirmation-delete.png | 588,448,440,240 | 880 × 240 |
+
+The warning reference composes a selected SKU, a two-issue panel, and an area-delete dialog simultaneously. Runtime warning and area-delete states are captured separately rather than faking simultaneous selections. The last focused comparison uses `implementation-warning-delete.png`, copied from the actual first-confirmation capture. The issue panel and deletion confirmation are both verified.
+
+## Findings and iteration history
+
+Initial result was blocked. No actionable P0/P1/P2 finding remains after the following iterations.
+
+| Severity / location | Evidence and impact | Fix and verified post-fix evidence |
+| --- | --- | --- |
+| P1: overview composition and mock geometry | comparison-overview-full-before.png: wrong area arrangement, small blocks, extra grid, mismatched inventory fixtures and density | Match actual overview geometry, names, quantities, packaging, page/header/workspace rhythm. Source geometry regression RED then GREEN. comparison-overview-full-after.png and area-sku crop |
+| P2: area/library summaries and search | Before overview lacks per-area distinct SKU counts and aggregate whole-case/remainder copy; library filtering collapses source context | Add distinct counts and computed aggregate cases; keep all library cards and dim nonmatches. Regressions RED then GREEN. Final overview and toolbar/area crops |
+| P1: drag/resize feedback; selection jitter | Deferred live-preview issue confirmed in pointer tests; objects jump only at release and click jitter can create history | Render transient geometry from active pointer interaction, commit once on release, cancel without mutation, ignore sub-4-unit jitter. New tests RED then GREEN; interaction-resized-250.png and interaction-whole-move-250.png |
+| P1: draw over existing area and locked preview | implementation-draw-area-before.png shows the attempted draw selecting the covering A-01; locked blocks could visually preview a move | Forward draw-tool pointer input through area/SKU surfaces; prevent locked preview. Two new tests RED then GREEN. comparison-draw-area-full-after.png and draft crop |
+| P1: selected-object and drawer proportions | comparison-sku-selected-full-before.png / comparison-add-sku-full-before.png / comparison-partial-move-full-before.png: incorrect panel width, form density and hierarchy | Match source overlays, drawer body/footer, read-only packaging, quantity and conservation hierarchy. All final full and focused panel comparisons |
+| P2: footer/compact block readability | interaction-property-overflow-before.png: property actions overflow; compact 250-unit block needs readable quantity lines | Tighten property rhythm and use compact-block container styling. All property actions now fit 854 px; quantity remains readable after resize. Final properties crop and interaction-resized-250.png |
+| P1: warning placement and repair access | comparison-warning-full-before.png: issues sit below the clipped floor; a fixed panel then obscured coordinate inputs | Move issue panel to the source-aligned right overlay; add close/reopen summary and collapse on locate, preserving count/save lock. Warning repair test RED then GREEN. comparison-warning-issues-after.png, interaction-warnings-repaired.png |
+| P2: source-surface polish | Final draft comparison showed blue fill instead of neutral dashed outline; opacity animation produced inconsistent intermediate search captures | Neutral transparent dashed draft; immediate search opacity. Final draft and overview area/SKU comparisons inspected again |
+
+## Required fidelity surfaces
+
+- **Fonts/typography:** actual computed family is Noto Sans SC Variable / Inter / sans-serif, local project fonts. Page title is 24/32/700; section headings 18/26/500. Forms use 14 px values, readable hierarchy, native truncation and read-only states. Small source labels were checked in focused crops, not only scaled full views.
+- **Spacing/layout:** source frame, three regions, floor coordinates, drawer/selected-panel bounds, 40 px primary controls and 8 px panel radii are reproduced. The source has static instructional composites; the functional property panel makes room for a target selector. No primary or destructive action is clipped at the target viewport.
+- **Colors/tokens:** white and #F8FAFC surfaces, #E2E8F0 borders, project blue #536DFF, green conservation/save, pink destructive actions and amber warnings preserve the source semantics. Search matches have blue outlines; nonmatches are dimmed without changing totals or hiding areas. Warnings also have text, not color alone.
+- **Images/assets/icons:** these six frames contain no product photos/illustrations to reconstruct. Existing application branding is preserved; controls use the installed Lucide library. No new fake raster imagery, handcrafted SVG, CSS illustration, emoji, or placeholder asset substitutes were introduced. Standard-native select chevrons and small Lucide glyph differences are P3.
+- **Copy/content:** source SKU fixtures and packaging now match. User-facing Chinese copy states units are authoritative and size is visual only. Internal block IDs were removed from visible warning messages. Conservation uses live values, not static instructional text. The visible single-warehouse and page-memory limitation is explicit.
+
+## Expected constraints and P3 differences
+
+- The existing authenticated application shell has a permission-based navigation list, live account identity, and its existing global-search placeholder; it is not replaced by the static source shell.
+- The Figma selected/partial frames show both before/after or preview blocks and explanatory implementation notes. Runtime only commits real blocks on confirmation; it does not duplicate inventory for illustration or expose implementation-language notes. The partial frame's static summary is inconsistent with its 250-unit source; runtime correctly totals 1,126 after changing the original 150 to 250.
+- The source Add/Selected staged examples shrink existing B-01 blocks to make extra space, unlike the overview. Runtime retains manually chosen sizes, rejects placement into a full target, and succeeds in C-01 or newly drawn D-01. No automatic resizing or capacity logic was added.
+- Layout coordinates remain visual canvas coordinates; the source's decorative metre labels are not treated as physical dimensions.
+- The first nonempty-area dialog retains an explicit Cancel control and the existing second confirmation, stronger than the static source. The warning panel can collapse so its covered properties remain editable.
+- P3 only: minor native-select/icon stroke differences, extra close controls, and small typography/spacing differences required by functional target selection. No mobile fidelity claim is made; mobile is explicitly outside the approved MVP.
+
+## Interaction and console verification
+
+- Draw/name D-01 (x=478,y=46,w=220,h=134), add blue SKU 250 = 10 件 + 10 个.
+- Resize 120 × 80 to 138 × 97; quantity stays 250. Drag whole block D-01 → C-01; quantity stays 250 and total stays 1,276.
+- Split 60 back into D-01: source 190 + target 60 = 250; warehouse total stays 1,276. Zero, negative, fractional and source-equal quantities disable confirmation.
+- Undo/redo restores/reapplies the split without changing total.
+- Create out-of-area and overlap warnings together; save is disabled. Locate/collapse each warning, repair coordinates, and save becomes enabled only after both clear.
+- Nonempty A-01 deletion requires first and second confirmation. Confirmed demo deletion changes total 1,026 → 756; undo restores all products/areas and total 1,026.
+- Native library drag opens the correct C-01 drawer. Lock disables inventory editing; hide removes only visible geometry, preserving 1,026 total. Zoom 150% and pan change viewport offsets (130,140), not stock.
+- Query `warehouseId=99` visibly states that only demo warehouse ID 1 is supported and ID 99 was not loaded. Save is explicitly current-page memory and refresh resets the demo.
+- 1280 × 900 and 1024 × 768 desktop checks: no document horizontal overflow; dense workspace scrolls internally at 1024; toolbar controls remain reachable. Native scrollbar-excluded screenshots are 1265 × 889 and 1009 × 757. The final preview is restored to 1440 × 1024.
+- Final 5186 application console: zero warnings and zero errors. Two older router warnings in the same browser tab came from an unrelated checkout on port 5173 before the correct dev server was opened; those URLs/timestamps are recorded in the evidence log, not hidden.
+- Before changes: 385 tests / 36 files passed, production build passed.
+- Final: `npm run test:run` **393 tests / 36 files passed**; `npm run build` **passed** (vue-tsc and Vite, 1744 modules). Final focused warehouse coverage totals 79 tests across its component/view/controller/model files.
+
+## Implementation checklist
+
+- [x] Open actual Figma sources and routed implementation in Codex IAB.
+- [x] Preserve original QA sections and screenshot history.
+- [x] Record RED/GREEN before behavioral fixes.
+- [x] Capture, compose and inspect full/focused comparisons.
+- [x] Verify inventory conservation, safety states, desktop resilience and console.
+- [x] Run full tests and production build; self-review the diff.
+- [x] Leave the verified 5186 dev server and IAB preview running.
+
+
+## Warehouse Canvas fix round 1 — reviewed combined states
+
+The prior pass was reopened by two P2 review findings; both are now fixed. This section supersedes the earlier acceptance for the combined search/warning and keyboard-focus states only. No earlier QA section or screenshot was removed.
+
+- **P2: search paint overriding warnings.** The source warning frame retains an active SKU search. The earlier runtime warning capture did not, so it failed to exercise the competing selectors. The high-specificity search rule painted blue over the amber warning border. The search rule now excludes `data-warning="true"`, preserving amber warning borders while valid search matches stay blue.
+- **P2: absent keyboard search focus.** The borderless input had `outline:none` without replacement. Its wrapper now has `:focus-within { outline:2px solid #536dff; outline-offset:2px; }`, with no layout displacement.
+- Regression-first validation: two new compiled-style tests failed before production edits. The warning test exercises the real compiled selector against valid/invalid matched DOM nodes. The focus test exercises compiled outline paint with descendant focus; it explicitly emulates only `:focus-within` for jsdom, whose selector engine does not propagate that state to ancestors. Real IAB keyboard focus and computed styles are the authoritative browser checks.
+- Finalized mutation check: temporarily restoring the original search selector produced the expected 1 failed / 1 passed at 02:02:58. Restoring the fix yielded **50/50 affected tests** at 02:04:29. Final full suite **395 tests / 37 files passed** at 02:04:33; production typecheck/build passed, 1744 modules, 3.50 s.
+- IAB was scoped to the parent task during this resumed round, so the controller captured the original browser bytes and computed styles on port 5186. No Chrome or external/headless browser was used. I inspected the resulting actual source/implementation and before/after composites.
+- Browser RED: matching invalid blue A-01 block had `warning=true`, `searchMatch=true`, 2 px border `rgb(83,109,255)`. Browser GREEN: same combined state has 2 px `rgb(245,158,11)`. Quantity is 150 and total is 1,026; warning text and save lock remain.
+- Native Tab focus RED: input `:focus-visible=true`, wrapper outline style none. GREEN: native keyboard focus remains true, wrapper outline solid `rgb(83,109,255)`, 2 px width and 2 px offset; base border is unchanged.
+- All final comparison inputs are 1440 × 1024 at viewport1440 × 1024/DPR1. Full composites are 2880 × 1024. A first warning RED capture was actually1026 × 897; the compositor rejected it, it remains diagnostic only, and it was recaptured at1440 × 1024 before comparison. Parent IAB bytes are JPEG-encoded despite their supplied .png filename extension; they remain untouched. Composites are actual PNGs, decoded/cropped 1:1 without rescaling.
+- Source correspondence: warning comparisons use `source-warning.png` with the same active SKU search and the targeted invalid blue block. The source's second overlap and delete composite are unrelated to this narrow regression; runtime isolates the single warning. Focus comparisons use `source-overview.png` for geometry; the reference does not define keyboard focus, so the before/after runtime focus delta proves the required accessible state instead of claiming it exists in the source.
+- No actionable P0/P1/P2 remains in this review round. Previously documented demo limitations and P3 source/runtime differences are unchanged.
+- Final parent-IAB console audit: **0 warnings, 0 errors**. The controller reloaded the restored GREEN route to a clean overview and marked the visible tab for handoff; port5186 remains running.
+
+All paths below are relative to `frontend/prototype-screenshots/warehouse-canvas/`.
+
+| Fix-round artifact | Actual pixels |
+| --- | --- |
+| comparison-overview-full-focus-fix1-after.png | 2880 × 1024 |
+| comparison-overview-full-focus-fix1-before.png | 2880 × 1024 |
+| comparison-overview-search-focus-fix1-after.png | 688 × 96 |
+| comparison-search-focus-search-fix1-delta.png | 688 × 96 |
+| comparison-warning-full-search-fix1-after.png | 2880 × 1024 |
+| comparison-warning-full-search-fix1-before-1440.png | 2880 × 1024 |
+| comparison-warning-invalid-block-search-fix1-after.png | 480 × 190 |
+| comparison-warning-search-invalid-block-fix1-delta.png | 480 × 190 |
+| implementation-search-focus-fix1-after.png | 1440 × 1024 |
+| implementation-search-focus-fix1-before.png | 1440 × 1024 |
+| implementation-warning-search-fix1-after.png | 1440 × 1024 |
+| implementation-warning-search-fix1-before-1440.png | 1440 × 1024 |
+| implementation-warning-search-fix1-before.png | 1026 × 897 |
+
+Focused crops: warning x960,y408,w240,h190 on each side →480 × 190; search x588,y176,w344,h96 →688 × 96. Full source/implementation pairs and both focused deltas were opened and inspected.
+
+
+final result: passed

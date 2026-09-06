@@ -38,6 +38,7 @@ const pageHeaders: Record<string, PageHeader> = {
   'customer-edit': { group: 'Master Data', groupRoute: 'customers', title: 'Edit Customer', titleRoute: 'customer-edit' },
   suppliers: { group: 'Master Data', groupRoute: 'categories', title: 'Suppliers', titleRoute: 'suppliers' },
   warehouses: { group: 'Master Data', groupRoute: 'categories', title: 'Warehouses', titleRoute: 'warehouses' },
+  'warehouse-canvas': { group: '库存管理', groupRoute: 'inventory-balances', title: '仓库画布', titleRoute: 'warehouse-canvas' },
   'inventory-balances': { group: 'Inventory', groupRoute: 'inventory-balances', title: 'Balances', titleRoute: 'inventory-balances' },
   'inventory-ledger': { group: 'Inventory', groupRoute: 'inventory-balances', title: 'Ledger', titleRoute: 'inventory-ledger' },
   'inventory-adjustments': { group: 'Inventory', groupRoute: 'inventory-balances', title: 'Adjustments', titleRoute: 'inventory-adjustments' },
@@ -189,7 +190,7 @@ async function handleLogout() {
           </div>
         </header>
 
-        <div data-testid="erp-page-content" class="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 lg:px-8 lg:pb-3 lg:pt-8">
+        <div data-testid="erp-page-content" class="min-h-0 min-w-0 flex-1 overflow-y-auto" :class="route.meta.flushContent === true ? 'p-0' : 'p-4 lg:px-8 lg:pb-3 lg:pt-8'">
           <RouterView />
         </div>
       </section>

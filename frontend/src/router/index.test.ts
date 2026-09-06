@@ -85,4 +85,12 @@ describe('ERP router', () => {
 
     expect(router.currentRoute.value.name).toBe('organization-permissions');
   });
+
+  it('registers the warehouse canvas as an authenticated flush-content route', () => {
+    const resolved = router.resolve('/inventory/warehouse-canvas');
+
+    expect(resolved.name).toBe('warehouse-canvas');
+    expect(resolved.meta.requiresAuth).toBe(true);
+    expect(resolved.meta.flushContent).toBe(true);
+  });
 });

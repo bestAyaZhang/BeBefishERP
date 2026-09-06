@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { inject, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import MasterdataFilterBar from '../components/MasterdataFilterBar.vue';
 import MasterdataFormDrawer from '../components/MasterdataFormDrawer.vue';
 import MasterdataPageHeader from '../components/MasterdataPageHeader.vue';
@@ -8,6 +9,7 @@ import { masterdataService } from '../masterdataService';
 import type { MasterdataRow, MasterdataService, PageResult, RecordStatus, SaveWarehousePayload, Warehouse } from '../types';
 
 const service = inject<MasterdataService>('masterdataService', masterdataService);
+const router = useRouter();
 const result = ref<PageResult<Warehouse>>({ records: [], page: 1, pageSize: 20, total: 0 });
 const keyword = ref('');
 const status = ref<RecordStatus | ''>('');
@@ -28,6 +30,7 @@ function edit(warehouse: Warehouse) { editingId.value = warehouse.id; form.value
 async function save() { try { if (editingId.value === null) await service.createWarehouse(form.value); else await service.updateWarehouse(editingId.value, form.value); formOpen.value = false; resetForm(); await load(1); } catch (error) { errorMessage.value = error instanceof Error ? error.message : '保存仓库失败'; } }
 async function toggleStatus(warehouse: Warehouse) { try { await service.changeWarehouseStatus(warehouse.id, warehouse.status === 'enabled' ? 'disabled' : 'enabled'); await load(); } catch (error) { errorMessage.value = error instanceof Error ? error.message : '更新状态失败'; } }
 async function setDefault(warehouse: Warehouse) { try { await service.setDefaultWarehouse(warehouse.id); await load(); } catch (error) { errorMessage.value = error instanceof Error ? error.message : '设置默认仓失败'; } }
+function openWarehouseCanvas(warehouse: Warehouse) { return router.push({ name: 'warehouse-canvas', query: { warehouseId: String(warehouse.id) } }); }
 onMounted(() => void load(1));
 </script>
 
@@ -45,6 +48,6 @@ onMounted(() => void load(1));
       <template #actions><button type="button" class="h-11 rounded-xl border border-slate-200 px-5 text-sm font-black text-slate-500 transition hover:border-slate-300 hover:text-[#25314d]" @click="formOpen = false">取消</button><button data-testid="save-warehouse" type="button" class="h-11 rounded-xl bg-[#536dff] px-5 text-sm font-black text-white shadow-[0_10px_22px_rgba(83,109,255,0.22)] transition hover:bg-[#4560eb]" @click="save">保存</button></template>
     </MasterdataFormDrawer>
     <p v-if="errorMessage" class="border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{{ errorMessage }}</p>
-    <MasterdataTable :records="result.records" :columns="columns" :page="result.page" :page-size="result.pageSize" :total="result.total" :loading="loading" @page="load"><template #cell-defaultWarehouse="{ record }"><span :class="isDefaultWarehouse(record) ? 'text-emerald-700' : 'text-slate-400'">{{ isDefaultWarehouse(record) ? '默认仓' : '-' }}</span></template><template #actions="{ record }"><div class="flex min-w-max justify-end gap-3 whitespace-nowrap text-sm"><button v-if="!isDefaultWarehouse(record) && record.status === 'enabled'" :data-testid="`set-default-warehouse-${record.id}`" type="button" class="shrink-0 whitespace-nowrap text-slate-700 hover:underline" @click="setDefault(asWarehouse(record))">设为默认</button><button type="button" class="shrink-0 whitespace-nowrap text-slate-700 hover:underline" @click="edit(asWarehouse(record))">编辑</button><button :disabled="isDefaultWarehouse(record)" :data-testid="`warehouse-status-${record.id}`" type="button" class="shrink-0 whitespace-nowrap text-slate-500 hover:underline disabled:cursor-not-allowed disabled:opacity-40" @click="toggleStatus(asWarehouse(record))">{{ record.status === 'enabled' ? '停用' : '启用' }}</button></div></template></MasterdataTable>
+    <MasterdataTable :records="result.records" :columns="columns" :page="result.page" :page-size="result.pageSize" :total="result.total" :loading="loading" @page="load"><template #cell-defaultWarehouse="{ record }"><span :class="isDefaultWarehouse(record) ? 'text-emerald-700' : 'text-slate-400'">{{ isDefaultWarehouse(record) ? '默认仓' : '-' }}</span></template><template #actions="{ record }"><div class="flex min-w-max justify-end gap-3 whitespace-nowrap text-sm"><button :data-testid="`open-warehouse-canvas-${record.id}`" type="button" class="shrink-0 whitespace-nowrap text-[#536dff] hover:underline" @click="openWarehouseCanvas(asWarehouse(record))">规划画布</button><button v-if="!isDefaultWarehouse(record) && record.status === 'enabled'" :data-testid="`set-default-warehouse-${record.id}`" type="button" class="shrink-0 whitespace-nowrap text-slate-700 hover:underline" @click="setDefault(asWarehouse(record))">设为默认</button><button type="button" class="shrink-0 whitespace-nowrap text-slate-700 hover:underline" @click="edit(asWarehouse(record))">编辑</button><button :disabled="isDefaultWarehouse(record)" :data-testid="`warehouse-status-${record.id}`" type="button" class="shrink-0 whitespace-nowrap text-slate-500 hover:underline disabled:cursor-not-allowed disabled:opacity-40" @click="toggleStatus(asWarehouse(record))">{{ record.status === 'enabled' ? '停用' : '启用' }}</button></div></template></MasterdataTable>
   </section>
 </template>

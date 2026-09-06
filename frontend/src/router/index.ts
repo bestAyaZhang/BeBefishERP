@@ -40,6 +40,12 @@ const placeholderPages: RouteRecordRaw[] = [
   { path: 'customers', name: 'customers', component: () => import('../features/masterdata/views/CustomerView.vue') },
   { path: 'suppliers', name: 'suppliers', component: () => import('../features/masterdata/views/SupplierView.vue') },
   { path: 'warehouses', name: 'warehouses', component: () => import('../features/masterdata/views/WarehouseView.vue') },
+  {
+    path: 'inventory/warehouse-canvas',
+    name: 'warehouse-canvas',
+    component: () => import('../features/inventory/views/WarehouseCanvasView.vue'),
+    meta: { flushContent: true }
+  },
   { path: 'inventory/balances', name: 'inventory-balances', component: InventoryBalanceView },
   { path: 'inventory/ledger', name: 'inventory-ledger', component: InventoryLedgerView },
   { path: 'inventory/adjustments', name: 'inventory-adjustments', component: StockAdjustmentView },
