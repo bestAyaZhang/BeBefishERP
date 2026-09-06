@@ -11,14 +11,17 @@ export type PlannerAisle = PlannerRect & { id: string; label: string; direction:
 export type PlannerRoom = PlannerRect & { id: string; label: string; detail: string }
 export type PlannerFireLane = PlannerRect & { id: string; rotation: number }
 export type PlannerColumn = { id: string; left: number; top: number }
+export type PlannerPalletContent = {
+  productName: string
+  skuCode: string
+  units: number
+  unitsPerCase: number
+}
 
 export type PlannerPalletGroup = PlannerRect & {
   id: string
   code: string
   name: string
-  skuCode: string
-  units: number
-  unitsPerCase: number
   columns: number
   rows: number
   xMeters: number
@@ -26,6 +29,7 @@ export type PlannerPalletGroup = PlannerRect & {
   lengthMeters: number
   widthMeters: number
   rotation: number
+  contents: PlannerPalletContent[]
 }
 
 const pallet = (
@@ -41,9 +45,6 @@ const pallet = (
   id,
   code: id.replace('pallet-', '').toUpperCase(),
   name: `地面货堆 ${id.replace('pallet-', '').toUpperCase()}`,
-  skuCode: `SKU-${id.replace('pallet-', '').toUpperCase()}`,
-  units: 144,
-  unitsPerCase: 24,
   left,
   top,
   width,
@@ -55,6 +56,12 @@ const pallet = (
   lengthMeters: Number((width * .54).toFixed(1)),
   widthMeters: Number((height * .42).toFixed(1)),
   rotation: 0,
+  contents: [{
+    productName: `仓内商品 ${id.replace('pallet-', '').toUpperCase()}`,
+    skuCode: `SKU-${id.replace('pallet-', '').toUpperCase()}`,
+    units: 144,
+    unitsPerCase: 24,
+  }],
   ...overrides,
 })
 
@@ -102,14 +109,16 @@ export const warehousePlannerScene = {
     pallet('pallet-c018', 58.5, 49, 7, 5.5, 3, 2, {
       code: 'C-018',
       name: '地面货堆 C-018',
-      skuCode: 'SKU-C-018',
-      units: 250,
-      unitsPerCase: 24,
       xMeters: 32.4,
       yMeters: 21.8,
       lengthMeters: 4.8,
       widthMeters: 2.4,
       rotation: 90,
+      contents: [
+        { productName: '深海矿物水 500ml 蓝', skuCode: 'SKU-FISH-500ML-蓝', units: 120, unitsPerCase: 24 },
+        { productName: '12oz 冷饮杯', skuCode: 'SKU-CUP-12OZ', units: 80, unitsPerCase: 50 },
+        { productName: '茉莉绿茶 1L', skuCode: 'SKU-TEA-1L-绿', units: 50, unitsPerCase: 20 },
+      ],
     }),
     pallet('pallet-b04', 56, 58, 14, 6, 7, 2),
     pallet('pallet-b05', 71.5, 58, 5, 6, 2, 3),

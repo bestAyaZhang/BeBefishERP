@@ -20,6 +20,7 @@ describe('WarehouseBlueprintScene', () => {
     expect(wrapper.text()).toContain('消防留空区')
     expect(wrapper.get('[data-testid="planner-pallet-pallet-c018"]').attributes('data-selected')).toBe('true')
     expect(wrapper.get('[data-testid="planner-pallet-pallet-c018"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.get('[data-testid="planner-pallet-pallet-c018"]').attributes('aria-label')).toContain('3 种商品，共 250 个')
     expect(wrapper.get('[data-testid="planner-pallet-pallet-a01"]').attributes('aria-pressed')).toBe('false')
     expect(wrapper.find('[data-testid="planner-minimap"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="planner-coordinate-status"]').text()).toContain('比例  1:100')

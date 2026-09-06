@@ -54,6 +54,10 @@ function palletStyle(pallet: PlannerPalletGroup) {
   }
 }
 
+function palletTotalUnits(pallet: PlannerPalletGroup) {
+  return pallet.contents.reduce((total, item) => total + item.units, 0)
+}
+
 function inspectorStyle(pallet: PlannerPalletGroup) {
   const left = Math.min(pallet.left + pallet.width + 2, 72)
   const top = Math.max(14, pallet.top - 3)
@@ -178,10 +182,10 @@ function inspectorStyle(pallet: PlannerPalletGroup) {
         :aria-pressed="selectedPalletId === pallet.id"
         :style="palletStyle(pallet)"
         type="button"
-        :aria-label="`${pallet.name}，地面箱子堆砌，${pallet.units} 个`"
+        :aria-label="`${pallet.name}，地面箱子堆砌，${pallet.contents.length} 种商品，共 ${palletTotalUnits(pallet)} 个`"
         @click="emit('select-pallet', pallet.id)"
       >
-        <span class="sr-only">{{ pallet.name }} · {{ pallet.skuCode }} · {{ pallet.units }} 个</span>
+        <span class="sr-only">{{ pallet.name }} · {{ pallet.contents.length }} 种商品 · 共 {{ palletTotalUnits(pallet) }} 个</span>
         <template v-if="selectedPalletId === pallet.id">
           <i v-for="handle in 8" :key="handle" class="selection-handle" :class="`handle-${handle}`" aria-hidden="true" />
           <i class="rotation-handle" aria-hidden="true">↻</i>
