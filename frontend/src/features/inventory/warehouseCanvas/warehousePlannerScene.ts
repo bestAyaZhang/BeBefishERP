@@ -83,8 +83,8 @@ export const warehousePlannerScene = {
     { id: 'aisle-east', label: '叉车通道 4.0m', direction: 'vertical', left: 76, top: 38, width: 5, height: 43 },
   ] satisfies PlannerAisle[],
   rooms: [
-    { id: 'room-equipment', label: '设备间', detail: '6.0 × 4.0m', left: 6, top: 82, width: 13, height: 10 },
-    { id: 'room-office', label: '办公区', detail: '8.0 × 4.0m', left: 19, top: 82, width: 17, height: 10 },
+    { id: 'room-equipment', label: '设备间', detail: '6.0 × 4.0m', left: 6.8, top: 79.9, width: 13, height: 10 },
+    { id: 'room-office', label: '办公区', detail: '8.0 × 4.0m', left: 19.8, top: 79.9, width: 17, height: 10 },
   ] satisfies PlannerRoom[],
   fireLanes: [
     { id: 'fire-upper', left: 92.5, top: 12, width: 3, height: 25, rotation: -13 },

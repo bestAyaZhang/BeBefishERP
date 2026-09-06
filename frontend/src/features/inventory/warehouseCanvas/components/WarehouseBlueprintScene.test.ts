@@ -66,4 +66,25 @@ describe('WarehouseBlueprintScene', () => {
     expect(wrapper.get('[data-testid="planner-ruler-x"]').text()).toContain('60')
     expect(wrapper.get('[data-testid="planner-ruler-y"]').text()).toContain('40')
   })
+
+  it('keeps utility rooms inside the lower warehouse wall', () => {
+    const wrapper = mount(WarehouseBlueprintScene, {
+      props: {
+        gridSnapping: true,
+        measurementEnabled: false,
+        selectedPalletId: 'pallet-c018',
+      },
+    })
+
+    const rooms = wrapper.findAll('.utility-room')
+    expect(rooms).toHaveLength(2)
+    for (const room of rooms) {
+      const style = room.attributes('style') ?? ''
+      const left = Number(style.match(/left:\s*([\d.]+)%/)?.[1])
+      const top = Number(style.match(/top:\s*([\d.]+)%/)?.[1])
+      const height = Number(style.match(/height:\s*([\d.]+)%/)?.[1])
+      expect(left).toBeGreaterThanOrEqual(6.8)
+      expect(top + height).toBeLessThanOrEqual(89.9)
+    }
+  })
 })
