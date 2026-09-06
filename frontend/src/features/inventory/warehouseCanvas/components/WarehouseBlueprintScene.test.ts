@@ -38,7 +38,10 @@ function runAnimationFramesImmediately() {
   vi.stubGlobal('cancelAnimationFrame', vi.fn())
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 describe('WarehouseBlueprintScene', () => {
   it('renders the reference layers and selects floor-stacked goods', async () => {
@@ -65,9 +68,6 @@ describe('WarehouseBlueprintScene', () => {
 
     await wrapper.get('[data-testid="planner-pallet-pallet-a01"]').trigger('click')
     expect(wrapper.emitted('select-pallet')?.[0]).toEqual(['pallet-a01'])
-
-    await wrapper.get('[data-testid="planner-inspector-close"]').trigger('click')
-    expect(wrapper.emitted('select-pallet')?.[1]).toEqual([null])
   })
 
   it('exposes measuring and grid state without changing the warehouse fixture', async () => {
@@ -153,7 +153,23 @@ describe('WarehouseBlueprintScene', () => {
     expect(wrapper.emitted('move-pallet')?.[0]).toEqual([{ id: 'pallet-c018', left: 61.67, top: 50 }])
   })
 
-  it('hides product information while a pile is moving and restores it after release', async () => {
+  it('does not render pile inventory details while planning', () => {
+    const wrapper = mount(WarehouseBlueprintScene, {
+      props: {
+        gridSnapping: true,
+        measurementEnabled: false,
+        selectedPalletId: 'pallet-c018',
+        palletGroups: warehousePlannerScene.palletGroups,
+      },
+    })
+    expect(wrapper.find('.scene-inspector').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="planner-inspector-product"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('SKU-FISH-500ML-蓝')
+  })
+
+  it('marks both overlapping piles and returns the moved pile when the drop is rejected', async () => {
+    vi.useFakeTimers()
+    runAnimationFramesImmediately()
     const wrapper = mount(WarehouseBlueprintScene, {
       props: {
         gridSnapping: true,
@@ -163,14 +179,30 @@ describe('WarehouseBlueprintScene', () => {
       },
     })
     const board = setDrawingBoardBounds(wrapper)
-    const pile = wrapper.get('[data-testid="planner-pallet-pallet-c018"]')
+    const movingPile = wrapper.get('[data-testid="planner-pallet-pallet-c018"]')
+    const blockedPile = wrapper.get('[data-testid="planner-pallet-pallet-b04"]')
+    const originalStyle = movingPile.attributes('style')
 
-    expect(wrapper.find('.scene-inspector').exists()).toBe(true)
-    await pile.trigger('pointerdown', { button: 0, pointerId: 14, clientX: 600, clientY: 400 })
-    expect(wrapper.find('.scene-inspector').exists()).toBe(false)
+    await movingPile.trigger('pointerdown', { button: 0, pointerId: 14, clientX: 600, clientY: 400 })
+    await board.trigger('pointermove', { pointerId: 14, clientX: 600, clientY: 450 })
 
-    await board.trigger('pointerup', { pointerId: 14, clientX: 600, clientY: 400 })
-    expect(wrapper.find('.scene-inspector').exists()).toBe(true)
+    expect(movingPile.classes()).toContain('overlapping')
+    expect(blockedPile.classes()).toContain('overlapping')
+
+    await board.trigger('pointerup', { pointerId: 14, clientX: 600, clientY: 450 })
+
+    expect(wrapper.emitted('move-pallet')).toBeUndefined()
+    expect(movingPile.attributes('style')).toBe(originalStyle)
+    expect(movingPile.classes()).toContain('overlapping')
+    expect(blockedPile.classes()).toContain('overlapping')
+
+    await vi.advanceTimersByTimeAsync(800)
+    expect(movingPile.classes()).toContain('overlapping')
+    expect(blockedPile.classes()).toContain('overlapping')
+
+    await vi.advanceTimersByTimeAsync(500)
+    expect(movingPile.classes()).not.toContain('overlapping')
+    expect(blockedPile.classes()).not.toContain('overlapping')
   })
 
   it('shows center alignment guides and lets object alignment win over grid snapping', async () => {
@@ -187,14 +219,14 @@ describe('WarehouseBlueprintScene', () => {
     const pile = wrapper.get('[data-testid="planner-pallet-pallet-c018"]')
 
     await pile.trigger('pointerdown', { button: 0, pointerId: 15, clientX: 600, clientY: 400 })
-    await board.trigger('pointermove', { pointerId: 15, clientX: 610, clientY: 474 })
+    await board.trigger('pointermove', { pointerId: 15, clientX: 410, clientY: 474 })
 
-    expect(wrapper.get('[data-testid="planner-alignment-guide-x"]').attributes('style')).toContain('left: 63%')
+    expect(wrapper.get('[data-testid="planner-alignment-guide-x"]').attributes('style')).toContain('left: 43%')
     expect(wrapper.get('[data-testid="planner-alignment-guide-y"]').attributes('style')).toContain('top: 61%')
-    expect(pile.attributes('style')).toContain('transform: translate3d(10px, 74px, 0)')
+    expect(pile.attributes('style')).toContain('transform: translate3d(-190px, 74px, 0)')
 
-    await board.trigger('pointerup', { pointerId: 15, clientX: 610, clientY: 474 })
-    expect(wrapper.emitted('move-pallet')?.[0]).toEqual([{ id: 'pallet-c018', left: 59.5, top: 58.25 }])
+    await board.trigger('pointerup', { pointerId: 15, clientX: 410, clientY: 474 })
+    expect(wrapper.emitted('move-pallet')?.[0]).toEqual([{ id: 'pallet-c018', left: 39.5, top: 58.25 }])
   })
 
   it('keeps a dragged pile fully inside the sloped warehouse boundary', async () => {
@@ -236,25 +268,5 @@ describe('WarehouseBlueprintScene', () => {
     await board.trigger('pointerup', { pointerId: 13, clientX: 600, clientY: 400 })
 
     expect(wrapper.emitted('move-pallet')).toBeUndefined()
-  })
-
-  it('keeps the inventory panel inside the board when its pile reaches the lower-right boundary', () => {
-    const movedPallets = warehousePlannerScene.palletGroups.map((pallet) => (
-      pallet.id === 'pallet-c018' ? { ...pallet, left: 80.44, top: 84.4 } : pallet
-    ))
-    const wrapper = mount(WarehouseBlueprintScene, {
-      props: {
-        gridSnapping: true,
-        measurementEnabled: false,
-        selectedPalletId: 'pallet-c018',
-        palletGroups: movedPallets,
-      },
-    })
-
-    const style = wrapper.get('.scene-inspector').attributes('style') ?? ''
-    expect(style).toContain('bottom:')
-    expect(style).toContain('right:')
-    expect(style).not.toContain('top:')
-    expect(style).not.toContain('left:')
   })
 })

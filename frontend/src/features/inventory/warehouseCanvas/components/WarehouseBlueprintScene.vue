@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { warehousePlannerScene } from '../warehousePlannerScene'
 import type { PlannerPalletGroup, PlannerRect } from '../warehousePlannerScene'
-import WarehousePlannerInspector from './WarehousePlannerInspector.vue'
 
 const props = defineProps<{
   gridSnapping: boolean
@@ -48,11 +47,14 @@ type PalletDrag = {
   pallet: PlannerPalletGroup
   preview: { left: number; top: number }
   guides: { x?: number; y?: number }
+  overlappingIds: string[]
 }
 type PointerSample = { pointerId: number; clientX: number; clientY: number }
 const palletDrag = ref<PalletDrag | null>(null)
+const collisionFeedbackIds = ref<string[]>([])
 let pendingDragSample: PointerSample | null = null
 let dragFrameId: number | null = null
+let collisionFeedbackTimer: number | null = null
 const selectedPallet = computed(() => {
   const pallet = palletGroups.value.find((item) => item.id === props.selectedPalletId)
   return pallet ? displayedPallet(pallet) : undefined
@@ -90,16 +92,6 @@ function palletTotalUnits(pallet: PlannerPalletGroup) {
   return pallet.contents.reduce((total, item) => total + item.units, 0)
 }
 
-function inspectorStyle(pallet: PlannerPalletGroup) {
-  const horizontal = pallet.left > 65
-    ? { right: `${roundPosition(100 - pallet.left + 2)}%` }
-    : { left: `${Math.min(pallet.left + pallet.width + 2, 72)}%` }
-  const vertical = pallet.top >= 58
-    ? { bottom: '4%' }
-    : { top: `${Math.max(14, pallet.top - 3)}%` }
-  return { ...horizontal, ...vertical }
-}
-
 function roundPosition(value: number) {
   return Number(value.toFixed(2))
 }
@@ -133,6 +125,38 @@ function nearestAlignment(moving: number[], others: number[][], boardSize: numbe
     }
   }
   return best
+}
+
+function overlappingPalletIds(pallet: PlannerPalletGroup, position: { left: number; top: number }) {
+  const right = position.left + pallet.width
+  const bottom = position.top + pallet.height
+  return palletGroups.value
+    .filter((other) => other.id !== pallet.id)
+    .filter((other) => (
+      position.left < other.left + other.width
+      && right > other.left
+      && position.top < other.top + other.height
+      && bottom > other.top
+    ))
+    .map((other) => other.id)
+}
+
+function palletIsOverlapping(id: string) {
+  if (collisionFeedbackIds.value.includes(id)) return true
+  const drag = palletDrag.value
+  return Boolean(drag?.overlappingIds.length && (drag.pallet.id === id || drag.overlappingIds.includes(id)))
+}
+
+function clearCollisionFeedback() {
+  if (collisionFeedbackTimer !== null) window.clearTimeout(collisionFeedbackTimer)
+  collisionFeedbackTimer = null
+  collisionFeedbackIds.value = []
+}
+
+function showCollisionFeedback(ids: string[]) {
+  clearCollisionFeedback()
+  collisionFeedbackIds.value = ids
+  collisionFeedbackTimer = window.setTimeout(clearCollisionFeedback, 1200)
 }
 
 function dragPreview(sample: PointerSample, drag: PalletDrag) {
@@ -169,19 +193,23 @@ function dragPreview(sample: PointerSample, drag: PalletDrag) {
       x: xAlignment?.position,
       y: yAlignment?.position,
     },
+    overlappingIds: overlappingPalletIds(drag.pallet, preview),
   }
 }
 
-function committedPosition(sample: PointerSample, drag: PalletDrag) {
+function committedDrop(sample: PointerSample, drag: PalletDrag) {
   const aligned = dragPreview(sample, drag)
-  if (!props.gridSnapping) return constrainedPosition(drag.pallet, aligned.preview.left, aligned.preview.top, false)
-  const gridPosition = constrainedPosition(drag.pallet, aligned.preview.left, aligned.preview.top, true)
-  return constrainedPosition(
-    drag.pallet,
-    aligned.guides.x === undefined ? gridPosition.left : aligned.preview.left,
-    aligned.guides.y === undefined ? gridPosition.top : aligned.preview.top,
-    false,
-  )
+  let position = constrainedPosition(drag.pallet, aligned.preview.left, aligned.preview.top, false)
+  if (props.gridSnapping) {
+    const gridPosition = constrainedPosition(drag.pallet, aligned.preview.left, aligned.preview.top, true)
+    position = constrainedPosition(
+      drag.pallet,
+      aligned.guides.x === undefined ? gridPosition.left : aligned.preview.left,
+      aligned.guides.y === undefined ? gridPosition.top : aligned.preview.top,
+      false,
+    )
+  }
+  return { position, overlappingIds: overlappingPalletIds(drag.pallet, position) }
 }
 
 function clearScheduledPreview() {
@@ -200,8 +228,8 @@ function schedulePalletPreview(sample: PointerSample) {
     pendingDragSample = null
     const drag = palletDrag.value
     if (!next || !drag || drag.pointerId !== next.pointerId) return
-    const { preview, guides } = dragPreview(next, drag)
-    palletDrag.value = { ...drag, preview, guides }
+    const { preview, guides, overlappingIds } = dragPreview(next, drag)
+    palletDrag.value = { ...drag, preview, guides, overlappingIds }
   })
   if (dragFrameId !== null) dragFrameId = scheduledId
 }
@@ -211,6 +239,7 @@ function startPalletDrag(event: PointerEvent, pallet: PlannerPalletGroup) {
   const bounds = drawingBoard.value?.getBoundingClientRect()
   if (!bounds || bounds.width <= 0 || bounds.height <= 0) return
   event.preventDefault()
+  clearCollisionFeedback()
   emit('select-pallet', pallet.id)
   palletDrag.value = {
     pointerId: event.pointerId,
@@ -221,6 +250,7 @@ function startPalletDrag(event: PointerEvent, pallet: PlannerPalletGroup) {
     pallet: { ...pallet, contents: pallet.contents.map((item) => ({ ...item })) },
     preview: { left: pallet.left, top: pallet.top },
     guides: {},
+    overlappingIds: [],
   }
   drawingBoard.value?.setPointerCapture?.(event.pointerId)
 }
@@ -240,9 +270,11 @@ function stopPalletDrag(event: PointerEvent) {
     drawingBoard.value?.releasePointerCapture?.(event.pointerId)
     return
   }
-  const position = committedPosition({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY }, drag)
-  if (position.left !== drag.pallet.left || position.top !== drag.pallet.top) {
-    emit('move-pallet', { id: drag.pallet.id, ...position })
+  const drop = committedDrop({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY }, drag)
+  if (drop.overlappingIds.length > 0) {
+    showCollisionFeedback([drag.pallet.id, ...drop.overlappingIds])
+  } else if (drop.position.left !== drag.pallet.left || drop.position.top !== drag.pallet.top) {
+    emit('move-pallet', { id: drag.pallet.id, ...drop.position })
   }
   palletDrag.value = null
   drawingBoard.value?.releasePointerCapture?.(event.pointerId)
@@ -254,6 +286,11 @@ function cancelPalletDrag(event: PointerEvent) {
   palletDrag.value = null
   drawingBoard.value?.releasePointerCapture?.(event.pointerId)
 }
+
+onBeforeUnmount(() => {
+  clearScheduledPreview()
+  clearCollisionFeedback()
+})
 </script>
 
 <template>
@@ -374,8 +411,9 @@ function cancelPalletDrag(event: PointerEvent) {
         :key="pallet.id"
         :data-testid="`planner-pallet-${pallet.id}`"
         class="pallet-group"
-        :class="{ selected: selectedPalletId === pallet.id, dragging: palletDrag?.pallet.id === pallet.id }"
+        :class="{ selected: selectedPalletId === pallet.id, dragging: palletDrag?.pallet.id === pallet.id, overlapping: palletIsOverlapping(pallet.id) }"
         :data-selected="selectedPalletId === pallet.id ? 'true' : 'false'"
+        :data-overlapping="palletIsOverlapping(pallet.id) ? 'true' : 'false'"
         :aria-pressed="selectedPalletId === pallet.id"
         :style="palletStyle(pallet)"
         type="button"
@@ -413,14 +451,6 @@ function cancelPalletDrag(event: PointerEvent) {
           <span>{{ selectedPallet.widthMeters }}m</span>
         </div>
       </template>
-
-      <WarehousePlannerInspector
-        v-if="selectedPallet && !palletDrag"
-        class="scene-inspector"
-        :style="inspectorStyle(selectedPallet)"
-        :pallet="selectedPallet"
-        @close="emit('select-pallet', null)"
-      />
 
       <aside data-testid="planner-minimap" class="planner-minimap" aria-label="仓库小地图">
         <div class="minimap-shell">
@@ -483,6 +513,7 @@ function cancelPalletDrag(event: PointerEvent) {
 .pallet-group.dragging { z-index: 19; cursor: grabbing; will-change: transform; }
 .pallet-group:hover { border-color: #7c6c45; filter: brightness(1.02); }.pallet-group:focus-visible { outline: 2px solid #536dff; outline-offset: 2px; }
 .pallet-group.selected { z-index: 15; border: 2px solid #12a9ac; box-shadow: 0 0 0 1px rgba(18,169,172,.18); }
+.pallet-group.overlapping { z-index: 20; border: 2px solid #e5484d; box-shadow: 0 0 0 3px rgba(229,72,77,.18),0 3px 10px rgba(139,35,40,.16); }
 .selection-handle { position: absolute; width: 7px; height: 7px; border: 1px solid white; background: #12a9ac; box-shadow: 0 0 0 1px #12a9ac; }
 .handle-1{left:-4px;top:-4px}.handle-2{left:50%;top:-4px}.handle-3{right:-4px;top:-4px}.handle-4{right:-4px;top:50%}.handle-5{right:-4px;bottom:-4px}.handle-6{left:50%;bottom:-4px}.handle-7{left:-4px;bottom:-4px}.handle-8{left:-4px;top:50%}
 .rotation-handle { position: absolute; left: 50%; top: -25px; display: grid; place-items: center; width: 17px; height: 17px; border: 1px solid #12a9ac; border-radius: 50%; background: white; color: #12a9ac; font-size: 12px; font-style: normal; transform: translateX(-50%); }
@@ -494,7 +525,6 @@ function cancelPalletDrag(event: PointerEvent) {
 .width-measure { border-top: 1px solid #12a9ac; }.height-measure { border-left: 1px solid #12a9ac; }
 .measurement span { position: absolute; padding: 2px 4px; border-radius: 3px; background: #f9ffff; white-space: nowrap; }
 .width-measure span { left: 50%; top: -17px; transform: translateX(-50%); }.height-measure span { left: 4px; top: 50%; transform: translateY(-50%); }
-.scene-inspector { position: absolute; z-index: 24; }
 .planner-minimap { position: absolute; z-index: 20; right: 16px; bottom: 17px; width: 150px; height: 112px; border: 1px solid #e1e6ec; border-radius: 7px; padding: 9px; background: rgba(255,255,255,.96); box-shadow: 0 7px 20px rgba(37,49,77,.12); }
 .minimap-shell { position: relative; width: 100%; height: 100%; clip-path: polygon(3% 5%,88% 5%,98% 36%,98% 62%,89% 95%,3% 95%); background: #f5f7f9; box-shadow: inset 0 0 0 2px #8994a1; }
 .minimap-shell i { position: absolute; display: block; background: #d8ca9f; opacity: .8; transform: scale(.9); }
