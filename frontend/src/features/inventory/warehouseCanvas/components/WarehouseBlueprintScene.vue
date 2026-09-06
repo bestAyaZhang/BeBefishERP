@@ -81,6 +81,7 @@ function palletStyle(pallet: PlannerPalletGroup) {
     '--pallet-columns': String(pallet.columns),
     '--pallet-rows': String(pallet.rows),
     transform,
+    zIndex: drag ? 21 : undefined,
   }
 }
 

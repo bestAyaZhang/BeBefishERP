@@ -228,6 +228,8 @@ describe('WarehouseBlueprintScene', () => {
 
     expect(movingPile.classes()).toContain('overlapping')
     expect(blockedPile.classes()).toContain('overlapping')
+    const movingLayer = Number((movingPile.element as HTMLElement).style.zIndex)
+    expect(movingLayer).toBeGreaterThan(20)
 
     await board.trigger('pointerup', { pointerId: 14, clientX: 600, clientY: 450 })
 
