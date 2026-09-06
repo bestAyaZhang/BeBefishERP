@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { warehousePlannerScene } from '../warehousePlannerScene'
 import type { PlannerPalletGroup, PlannerRect } from '../warehousePlannerScene'
+import WarehousePlannerInspector from './WarehousePlannerInspector.vue'
 
 const props = defineProps<{
   gridSnapping: boolean
@@ -32,6 +33,12 @@ function palletStyle(pallet: PlannerPalletGroup) {
     '--pallet-columns': String(pallet.columns),
     '--pallet-rows': String(pallet.rows),
   }
+}
+
+function inspectorStyle(pallet: PlannerPalletGroup) {
+  const left = Math.min(pallet.left + pallet.width + 2, 72)
+  const top = Math.max(14, pallet.top - 3)
+  return { left: `${left}%`, top: `${top}%` }
 }
 </script>
 
@@ -137,7 +144,30 @@ function palletStyle(pallet: PlannerPalletGroup) {
           <span>{{ selectedPallet.widthMeters }}m</span>
         </div>
       </template>
+
+      <WarehousePlannerInspector
+        v-if="selectedPallet"
+        class="scene-inspector"
+        :style="inspectorStyle(selectedPallet)"
+        :pallet="selectedPallet"
+        @close="emit('select-pallet', '')"
+      />
+
+      <aside data-testid="planner-minimap" class="planner-minimap" aria-label="仓库小地图">
+        <div class="minimap-shell">
+          <i v-for="pallet in warehousePlannerScene.palletGroups.slice(0, 18)" :key="pallet.id" :style="rectStyle(pallet)" />
+          <span aria-hidden="true" />
+        </div>
+      </aside>
     </div>
+    <footer data-testid="planner-coordinate-status" class="coordinate-status">
+      <span>X&nbsp; {{ selectedPallet?.xMeters ?? 32.4 }}m</span>
+      <span>Y&nbsp; {{ selectedPallet?.yMeters ?? 21.8 }}m</span>
+      <span class="status-divider" aria-hidden="true" />
+      <span>比例&nbsp; 1:100</span>
+      <span>缩放&nbsp; 100%</span>
+      <strong class="north-indicator" aria-label="北向">N<span>▲</span></strong>
+    </footer>
   </section>
 </template>
 
@@ -179,5 +209,12 @@ function palletStyle(pallet: PlannerPalletGroup) {
 .width-measure { border-top: 1px solid #12a9ac; }.height-measure { border-left: 1px solid #12a9ac; }
 .measurement span { position: absolute; padding: 2px 4px; border-radius: 3px; background: #f9ffff; white-space: nowrap; }
 .width-measure span { left: 50%; top: -17px; transform: translateX(-50%); }.height-measure span { left: 4px; top: 50%; transform: translateY(-50%); }
+.scene-inspector { position: absolute; z-index: 24; }
+.planner-minimap { position: absolute; z-index: 20; right: 16px; bottom: 17px; width: 150px; height: 112px; border: 1px solid #e1e6ec; border-radius: 7px; padding: 9px; background: rgba(255,255,255,.96); box-shadow: 0 7px 20px rgba(37,49,77,.12); }
+.minimap-shell { position: relative; width: 100%; height: 100%; clip-path: polygon(3% 5%,88% 5%,98% 36%,98% 62%,89% 95%,3% 95%); background: #f5f7f9; box-shadow: inset 0 0 0 2px #8994a1; }
+.minimap-shell i { position: absolute; display: block; background: #d8ca9f; opacity: .8; transform: scale(.9); }
+.minimap-shell > span { position: absolute; left: 7%; top: 8%; width: 82%; height: 80%; border: 2px solid #536dff; background: rgba(83,109,255,.04); }
+.coordinate-status { position: absolute; z-index: 25; right: 0; bottom: 0; left: 0; display: flex; align-items: center; gap: 22px; height: 28px; padding: 0 22px; border-top: 1px solid #e6ebf1; background: rgba(255,255,255,.96); color: #536176; font: 11px/1 Inter,sans-serif; }
+.status-divider { width: 1px; height: 14px; margin-inline: -8px; background: #d6dde5; }.north-indicator { display: flex; align-items: center; gap: 4px; margin-left: auto; color: #354159; font-size: 10px; }.north-indicator span { font-size: 15px; }
 @media (max-width: 1280px) { .blueprint-scene { min-width: 1060px; } }
 </style>
