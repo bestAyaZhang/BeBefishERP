@@ -1,0 +1,183 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import { warehousePlannerScene } from '../warehousePlannerScene'
+import type { PlannerPalletGroup, PlannerRect } from '../warehousePlannerScene'
+
+const props = defineProps<{
+  gridSnapping: boolean
+  measurementEnabled: boolean
+  selectedPalletId: string | null
+}>()
+
+const emit = defineEmits<{
+  'select-pallet': [id: string]
+}>()
+
+const horizontalTicks = Array.from({ length: 13 }, (_, index) => index * 5)
+const verticalTicks = Array.from({ length: 9 }, (_, index) => index * 5)
+const selectedPallet = computed(() => warehousePlannerScene.palletGroups.find((item) => item.id === props.selectedPalletId))
+
+function rectStyle(rect: PlannerRect) {
+  return {
+    left: `${rect.left}%`,
+    top: `${rect.top}%`,
+    width: `${rect.width}%`,
+    height: `${rect.height}%`,
+  }
+}
+
+function palletStyle(pallet: PlannerPalletGroup) {
+  return {
+    ...rectStyle(pallet),
+    '--pallet-columns': String(pallet.columns),
+    '--pallet-rows': String(pallet.rows),
+  }
+}
+</script>
+
+<template>
+  <section
+    data-testid="warehouse-blueprint-scene"
+    class="blueprint-scene"
+    :class="{ 'grid-muted': !gridSnapping }"
+    :data-measuring="measurementEnabled ? 'true' : 'false'"
+    :data-grid-snapping="gridSnapping ? 'true' : 'false'"
+    aria-label="一号仓平面规划画布"
+  >
+    <ol class="ruler ruler-x" aria-label="横向标尺，单位米">
+      <li v-for="tick in horizontalTicks" :key="tick" :style="{ left: `${tick / 60 * 100}%` }">{{ tick }}</li>
+      <span class="ruler-unit">(m)</span>
+    </ol>
+    <ol class="ruler ruler-y" aria-label="纵向标尺，单位米">
+      <li v-for="tick in verticalTicks" :key="tick" :style="{ top: `${tick / 40 * 100}%` }">{{ tick }}</li>
+      <span class="ruler-unit">(m)</span>
+    </ol>
+
+    <div class="drawing-board">
+      <div class="warehouse-shell" aria-hidden="true"><div class="warehouse-interior" /></div>
+
+      <article
+        v-for="door in warehousePlannerScene.doors"
+        :key="door.id"
+        :data-testid="`planner-loading-door-${door.id}`"
+        class="loading-door"
+        :style="rectStyle(door)"
+      >
+        <strong>{{ door.label }}</strong>
+        <span>宽 {{ door.widthMeters.toFixed(1) }}m</span>
+        <i aria-hidden="true" />
+      </article>
+
+      <article
+        v-for="zone in warehousePlannerScene.zones"
+        :key="zone.id"
+        class="operation-zone"
+        :class="`tone-${zone.tone}`"
+        :style="rectStyle(zone)"
+      >
+        <strong>{{ zone.label }}</strong>
+        <span>{{ zone.id === 'zone-buffer' ? '待分配货物' : zone.id === 'zone-receiving' ? '入库交接' : '出库集货' }}</span>
+      </article>
+
+      <div
+        v-for="aisle in warehousePlannerScene.aisles"
+        :key="aisle.id"
+        class="forklift-aisle"
+        :class="aisle.direction"
+        :style="rectStyle(aisle)"
+      >
+        <span class="aisle-arrow" aria-hidden="true">←</span>
+        <strong>{{ aisle.label }}</strong>
+        <span class="aisle-arrow" aria-hidden="true">→</span>
+      </div>
+
+      <article v-for="room in warehousePlannerScene.rooms" :key="room.id" class="utility-room" :style="rectStyle(room)">
+        <strong>{{ room.label }}</strong><span>{{ room.detail }}</span>
+      </article>
+
+      <div
+        v-for="lane in warehousePlannerScene.fireLanes"
+        :key="lane.id"
+        class="fire-lane"
+        :style="{ ...rectStyle(lane), transform: `rotate(${lane.rotation}deg)` }"
+      ><span>消防留空区<br />宽 2.0m</span></div>
+
+      <i
+        v-for="column in warehousePlannerScene.columns"
+        :key="column.id"
+        class="structure-column"
+        :style="{ left: `${column.left}%`, top: `${column.top}%` }"
+        aria-hidden="true"
+      />
+
+      <button
+        v-for="pallet in warehousePlannerScene.palletGroups"
+        :key="pallet.id"
+        :data-testid="`planner-pallet-${pallet.id}`"
+        class="pallet-group"
+        :class="{ selected: selectedPalletId === pallet.id }"
+        :data-selected="selectedPalletId === pallet.id ? 'true' : 'false'"
+        :style="palletStyle(pallet)"
+        type="button"
+        :aria-label="`${pallet.name}，地面箱子堆砌，${pallet.units} 个`"
+        @click="emit('select-pallet', pallet.id)"
+      >
+        <span class="sr-only">{{ pallet.name }} · {{ pallet.skuCode }} · {{ pallet.units }} 个</span>
+        <template v-if="selectedPalletId === pallet.id">
+          <i v-for="handle in 8" :key="handle" class="selection-handle" :class="`handle-${handle}`" aria-hidden="true" />
+          <i class="rotation-handle" aria-hidden="true">↻</i>
+        </template>
+      </button>
+
+      <template v-if="measurementEnabled && selectedPallet">
+        <div data-testid="planner-measurement-width" class="measurement width-measure" :style="{ left: `${selectedPallet.left}%`, top: `${selectedPallet.top - 2}%`, width: `${selectedPallet.width}%` }">
+          <span>{{ selectedPallet.lengthMeters }}m</span>
+        </div>
+        <div data-testid="planner-measurement-height" class="measurement height-measure" :style="{ left: `${selectedPallet.left + selectedPallet.width + 1}%`, top: `${selectedPallet.top}%`, height: `${selectedPallet.height}%` }">
+          <span>{{ selectedPallet.widthMeters }}m</span>
+        </div>
+      </template>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.blueprint-scene { position: relative; width: 100%; min-width: 980px; height: 100%; min-height: 720px; padding: 36px 28px 28px 48px; background: #f9fbfd; color: #25314d; }
+.drawing-board { position: relative; width: 100%; height: 100%; overflow: hidden; border: 1px solid #eef2f6; background-color: #fbfcfd; background-image: linear-gradient(#e8edf3 1px, transparent 1px), linear-gradient(90deg, #e8edf3 1px, transparent 1px), linear-gradient(#f1f4f8 1px, transparent 1px), linear-gradient(90deg, #f1f4f8 1px, transparent 1px); background-size: 40px 40px, 40px 40px, 8px 8px, 8px 8px; }
+.grid-muted .drawing-board { background-image: linear-gradient(#eef2f6 1px, transparent 1px), linear-gradient(90deg, #eef2f6 1px, transparent 1px); background-size: 40px 40px; }
+.ruler { position: absolute; z-index: 2; margin: 0; padding: 0; color: #536176; font: 11px/1 Inter,sans-serif; list-style: none; }
+.ruler-x { top: 8px; left: 48px; right: 28px; height: 27px; border-bottom: 1px solid #aeb8c5; background: repeating-linear-gradient(90deg, transparent 0 calc(1.666% - 1px), #aeb8c5 calc(1.666% - 1px) 1.666%); }
+.ruler-x li { position: absolute; top: 0; transform: translateX(-50%); }
+.ruler-y { top: 36px; bottom: 28px; left: 8px; width: 39px; border-right: 1px solid #aeb8c5; background: repeating-linear-gradient(180deg, transparent 0 calc(2.5% - 1px), #aeb8c5 calc(2.5% - 1px) 2.5%); }
+.ruler-y li { position: absolute; right: 8px; transform: translateY(-50%); }
+.ruler-unit { position: absolute; color: #64748b; }
+.ruler-x .ruler-unit { right: -25px; top: 0; }.ruler-y .ruler-unit { bottom: -18px; right: 7px; }
+.warehouse-shell,.warehouse-interior { position: absolute; clip-path: polygon(5% 8%,89% 8%,98% 41%,98% 61%,89% 92%,5% 92%); }
+.warehouse-shell { inset: 2.5% 2% 2.5% 2%; background: #566271; filter: drop-shadow(0 2px 2px rgba(37,49,77,.14)); }
+.warehouse-interior { inset: .8%; background: rgba(255,255,255,.76); }
+.loading-door { position: absolute; z-index: 5; display: grid; justify-items: center; color: #202b43; font-size: 11px; line-height: 15px; }
+.loading-door strong { margin-top: -29px; font-size: 13px; font-weight: 600; white-space: nowrap; }.loading-door span { margin-top: -14px; white-space: nowrap; }
+.loading-door i { position: absolute; inset: 0; border: 2px solid #607080; border-top: 0; background: repeating-linear-gradient(0deg,#e9eef3 0 4px,#f7f9fb 4px 8px); box-shadow: inset 0 -5px #dbe2e9; }
+.operation-zone { position: absolute; z-index: 3; display: grid; place-content: center; gap: 4px; border: 1px dashed; text-align: center; }
+.operation-zone strong { font-size: 15px; font-weight: 650; }.operation-zone span { font-size: 10px; opacity: .7; }
+.tone-green { border-color: #91c5ad; background: rgba(226,244,234,.72); color: #17624b; }.tone-blue { border-color: #93b4df; background: rgba(228,238,252,.72); color: #315a91; }
+.forklift-aisle { position: absolute; z-index: 4; display: flex; align-items: center; justify-content: center; gap: 22px; border-block: 1px dashed #c6ced8; color: #536176; white-space: nowrap; }
+.forklift-aisle strong { font-size: 11px; font-weight: 500; }.aisle-arrow { font-size: 17px; color: #718096; }
+.forklift-aisle.vertical { flex-direction: column; gap: 12px; border: 0; border-inline: 1px dashed #c6ced8; writing-mode: vertical-rl; }
+.forklift-aisle.vertical .aisle-arrow { transform: rotate(90deg); }
+.utility-room { position: absolute; z-index: 4; display: grid; place-content: center; gap: 4px; border: 2px solid #687585; background: rgba(245,247,249,.92); text-align: center; }.utility-room strong { font-size: 12px; }.utility-room span { color: #64748b; font-size: 10px; }
+.fire-lane { position: absolute; z-index: 4; border-inline: 1px solid #ef7868; background: repeating-linear-gradient(45deg,rgba(245,102,82,.3) 0 2px,transparent 2px 6px); transform-origin: center; }.fire-lane span { position: absolute; left: 125%; top: 45%; color: #d54734; font-size: 10px; line-height: 15px; white-space: nowrap; transform: rotate(0deg); }
+.structure-column { position: absolute; z-index: 6; width: 14px; height: 14px; border: 1px solid #46515f; background: #6b7786; box-shadow: inset 2px 2px rgba(255,255,255,.35); }
+.pallet-group { position: absolute; z-index: 8; min-height: 0; border: 1px solid #a6966b; border-radius: 1px; padding: 0; background-color: #d9c797; background-image: linear-gradient(90deg,transparent calc(100% / var(--pallet-columns) - 1px),#aa9a70 calc(100% / var(--pallet-columns) - 1px)),linear-gradient(transparent calc(100% / var(--pallet-rows) - 1px),#aa9a70 calc(100% / var(--pallet-rows) - 1px)); background-size: calc(100% / var(--pallet-columns)) 100%,100% calc(100% / var(--pallet-rows)); box-shadow: inset 0 0 0 2px rgba(255,255,255,.2),0 1px 2px rgba(37,49,77,.12); cursor: pointer; }
+.pallet-group:hover { border-color: #7c6c45; filter: brightness(1.02); }.pallet-group:focus-visible { outline: 2px solid #536dff; outline-offset: 2px; }
+.pallet-group.selected { z-index: 15; border: 2px solid #12a9ac; box-shadow: 0 0 0 1px rgba(18,169,172,.18); }
+.selection-handle { position: absolute; width: 7px; height: 7px; border: 1px solid white; background: #12a9ac; box-shadow: 0 0 0 1px #12a9ac; }
+.handle-1{left:-4px;top:-4px}.handle-2{left:50%;top:-4px}.handle-3{right:-4px;top:-4px}.handle-4{right:-4px;top:50%}.handle-5{right:-4px;bottom:-4px}.handle-6{left:50%;bottom:-4px}.handle-7{left:-4px;bottom:-4px}.handle-8{left:-4px;top:50%}
+.rotation-handle { position: absolute; left: 50%; top: -25px; display: grid; place-items: center; width: 17px; height: 17px; border: 1px solid #12a9ac; border-radius: 50%; background: white; color: #12a9ac; font-size: 12px; font-style: normal; transform: translateX(-50%); }
+.rotation-handle::after { content: ''; position: absolute; top: 16px; width: 1px; height: 8px; background: #12a9ac; }
+.measurement { position: absolute; z-index: 18; color: #03989c; font: 11px/1 Inter,sans-serif; pointer-events: none; }
+.width-measure { border-top: 1px solid #12a9ac; }.height-measure { border-left: 1px solid #12a9ac; }
+.measurement span { position: absolute; padding: 2px 4px; border-radius: 3px; background: #f9ffff; white-space: nowrap; }
+.width-measure span { left: 50%; top: -17px; transform: translateX(-50%); }.height-measure span { left: 4px; top: 50%; transform: translateY(-50%); }
+@media (max-width: 1280px) { .blueprint-scene { min-width: 1060px; } }
+</style>
