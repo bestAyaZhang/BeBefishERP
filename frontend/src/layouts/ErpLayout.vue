@@ -66,6 +66,7 @@ const globalSearchPlaceholder = computed(() => {
   return 'Search here';
 });
 const routeOwnsHeader = computed(() => route.meta.ownsPrototypeHeader === true);
+const plannerFocus = computed(() => route.name === 'warehouse-canvas');
 const mobileNavigationModalActive = computed(() => mobileNavigationOpen.value && !desktopViewport.value);
 
 provide('openMobileNavigation', openMobileNavigation);
@@ -155,13 +156,20 @@ async function handleLogout() {
 <template>
   <main data-testid="erp-shell" class="bebefish-prototype fixed inset-0 overflow-hidden bg-[#f6f7fb] text-[#25314d]">
     <MessageHost />
-    <div data-testid="erp-layout-grid" class="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[244px_minmax(0,1fr)]" :inert="mobileNavigationModalActive || undefined" :aria-hidden="mobileNavigationModalActive ? 'true' : undefined">
-      <aside class="sticky top-0 hidden h-full min-h-0 border-r border-slate-200 bg-white lg:flex">
+    <div
+      data-testid="erp-layout-grid"
+      class="grid h-full min-h-0"
+      :class="plannerFocus ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[244px_minmax(0,1fr)]'"
+      :data-planner-focus="plannerFocus ? 'true' : undefined"
+      :inert="mobileNavigationModalActive || undefined"
+      :aria-hidden="mobileNavigationModalActive ? 'true' : undefined"
+    >
+      <aside v-if="!plannerFocus" class="sticky top-0 hidden h-full min-h-0 border-r border-slate-200 bg-white lg:flex">
         <SidebarNav />
       </aside>
 
       <section data-testid="erp-main" class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-        <header v-if="!routeOwnsHeader" data-testid="erp-topbar" class="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:gap-4 sm:px-4 lg:gap-5 lg:px-6">
+        <header v-if="!routeOwnsHeader && !plannerFocus" data-testid="erp-topbar" class="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:gap-4 sm:px-4 lg:gap-5 lg:px-6">
           <div data-testid="erp-topbar-leading" class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:gap-4">
             <button ref="mobileNavigationTrigger" data-testid="erp-mobile-trigger" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-white hover:text-[#25314d] lg:hidden" type="button" aria-label="打开菜单" @click="openMobileNavigation">
               <Menu class="h-5 w-5" aria-hidden="true" />
@@ -189,6 +197,11 @@ async function handleLogout() {
             </button>
           </div>
         </header>
+
+        <nav v-if="plannerFocus" data-testid="planner-breadcrumb" class="sr-only" aria-label="Breadcrumb">
+          <RouterLink data-testid="breadcrumb-group" :to="{ name: pageHeader.groupRoute }">{{ pageHeader.group }}</RouterLink>
+          <RouterLink data-testid="breadcrumb-current" :to="{ name: pageHeader.titleRoute }">{{ pageHeader.title }}</RouterLink>
+        </nav>
 
         <div data-testid="erp-page-content" class="min-h-0 min-w-0 flex-1 overflow-y-auto" :class="route.meta.flushContent === true ? 'p-0' : 'p-4 lg:px-8 lg:pb-3 lg:pt-8'">
           <RouterView />

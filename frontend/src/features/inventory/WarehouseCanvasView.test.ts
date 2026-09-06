@@ -30,9 +30,13 @@ function selectedBlock(wrapper: Page) { return floor(wrapper).props('state').blo
 
 describe('Warehouse canvas overview', () => {
   it('renders the professional planner and drives UI-only toggles', async () => {
+    applyPageStyles()
     const wrapper = await mountPage()
 
     expect(wrapper.get('[data-testid="planner-title"]').text()).toContain('一号仓 · 平面规划')
+    expect(getComputedStyle(wrapper.get('[data-testid="warehouse-canvas-view"]').element).height).toBe('100%')
+    expect(wrapper.get('.planner-prototype').attributes('data-fullscreen')).toBe('true')
+    expect(getComputedStyle(wrapper.get('.planner-prototype').element).height).toBe('100%')
     expect(wrapper.get('[data-testid="planner-tool-goods"]').attributes('aria-pressed')).toBe('true')
 
     await wrapper.get('[data-testid="planner-measure-toggle"]').trigger('click')

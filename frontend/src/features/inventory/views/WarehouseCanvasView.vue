@@ -184,7 +184,7 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
 
 <template>
   <main data-testid="warehouse-canvas-view" class="warehouse-page">
-    <section class="planner-prototype" aria-label="仓库平面规划 UI 预览">
+    <section class="planner-prototype" data-fullscreen="true" aria-label="仓库平面规划 UI 预览">
       <WarehousePlannerChrome
         :warehouse-name="state.warehouseName"
         :active-tool="plannerTool"
@@ -307,8 +307,8 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
 </template>
 
 <style scoped>
-.warehouse-page { position:relative; min-height:100%; background:#F6F7FB; color:#25314D; padding:0; font-family:'Noto Sans SC Variable',Inter,sans-serif; font-size:12px; }
-.planner-prototype { position:relative; height:calc(100vh - 64px); min-height:760px; overflow:hidden; background:#f9fbfd; }
+.warehouse-page { position:relative; height:100%; min-height:760px; background:#F6F7FB; color:#25314D; padding:0; font-family:'Noto Sans SC Variable',Inter,sans-serif; font-size:12px; }
+.planner-prototype { position:relative; height:100%; min-height:760px; overflow:hidden; background:#f9fbfd; }
 .planner-canvas-scroll { height:calc(100% - 56px); overflow:auto; }
 .legacy-editor { display:none; }
 .warehouse-page > p[role="status"] { position:fixed; z-index:55; bottom:18px; left:50%; margin:0; padding:9px 14px; border:1px solid #d8e0e8; border-radius:8px; background:#fff; color:#354159; box-shadow:0 8px 24px #25314d20; transform:translateX(-50%); }

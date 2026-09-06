@@ -59,7 +59,9 @@ function createTestRouter() {
       { path: '/organization/employees', name: 'organization-employees', component: TestPage },
       { path: '/organization/departments', name: 'organization-departments', component: TestPage },
       { path: '/organization/positions', name: 'organization-positions', component: TestPage },
-      { path: '/organization/permissions', name: 'organization-permissions', component: TestPage }
+      { path: '/organization/permissions', name: 'organization-permissions', component: TestPage },
+      { path: '/inventory/balances', name: 'inventory-balances', component: TestPage },
+      { path: '/inventory/warehouse-canvas', name: 'warehouse-canvas', component: TestPage, meta: { flushContent: true } }
     ]
   });
 }
@@ -157,6 +159,17 @@ describe('ErpLayout', () => {
       'flex-1',
       'overflow-y-auto'
     ]));
+  });
+
+  it('gives the warehouse planner the full viewport without duplicate navigation chrome', async () => {
+    ({ router, wrapper } = await mountLayout('/inventory/warehouse-canvas'));
+
+    expect(wrapper.get('[data-testid="erp-layout-grid"]').attributes('data-planner-focus')).toBe('true');
+    expect(wrapper.get('[data-testid="erp-layout-grid"]').classes()).toContain('grid-cols-1');
+    expect(wrapper.find('[data-testid="erp-sidebar"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="erp-topbar"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="planner-breadcrumb"]').classes()).toContain('sr-only');
+    expect(wrapper.get('[data-testid="erp-page-content"]').classes()).toContain('p-0');
   });
 
   it('keeps the 320px topbar shrink-safe while preserving full desktop actions', async () => {

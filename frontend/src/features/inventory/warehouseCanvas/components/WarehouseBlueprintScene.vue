@@ -182,9 +182,9 @@ function inspectorStyle(pallet: PlannerPalletGroup) {
 .ruler-y li { position: absolute; right: 8px; transform: translateY(-50%); }
 .ruler-unit { position: absolute; color: #64748b; }
 .ruler-x .ruler-unit { right: -25px; top: 0; }.ruler-y .ruler-unit { bottom: -18px; right: 7px; }
-.warehouse-shell,.warehouse-interior { position: absolute; clip-path: polygon(5% 8%,89% 8%,98% 41%,98% 61%,89% 92%,5% 92%); }
+.warehouse-shell { position: absolute; clip-path: polygon(5% 8%,89% 8%,98% 41%,98% 61%,89% 92%,5% 92%); }
 .warehouse-shell { inset: 2.5% 2% 2.5% 2%; background: #566271; filter: drop-shadow(0 2px 2px rgba(37,49,77,.14)); }
-.warehouse-interior { inset: .8%; background: rgba(255,255,255,.76); }
+.warehouse-interior { position: absolute; inset: 0; clip-path: polygon(5.7% 8.9%,88.4% 8.9%,97.1% 41.3%,97.1% 60.7%,88.4% 91.1%,5.7% 91.1%); background: rgba(255,255,255,.92); }
 .loading-door { position: absolute; z-index: 5; display: grid; justify-items: center; color: #202b43; font-size: 11px; line-height: 15px; }
 .loading-door strong { margin-top: -29px; font-size: 13px; font-weight: 600; white-space: nowrap; }.loading-door span { margin-top: -14px; white-space: nowrap; }
 .loading-door i { position: absolute; inset: 0; border: 2px solid #607080; border-top: 0; background: repeating-linear-gradient(0deg,#e9eef3 0 4px,#f7f9fb 4px 8px); box-shadow: inset 0 -5px #dbe2e9; }
