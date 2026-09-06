@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { warehousePlannerScene } from '../warehousePlannerScene'
 import type { PlannerPalletGroup, PlannerRect } from '../warehousePlannerScene'
 import WarehousePlannerInspector from './WarehousePlannerInspector.vue'
+import WarehouseStructureLayer from './WarehouseStructureLayer.vue'
+import { createWarehouseStructure, palletStructureConflicts, validatePlannerLayout } from '../warehouseStructure'
+import type { WarehouseStructure, StructureIssue } from '../warehouseStructure'
 
 const props = defineProps<{
   gridSnapping: boolean
@@ -10,11 +13,17 @@ const props = defineProps<{
   measurementEnabled: boolean
   selectedPalletId: string | null
   palletGroups?: readonly PlannerPalletGroup[]
+  structure?: WarehouseStructure
+  structureEditing?: boolean
+  focusedStructureId?: string | null
 }>()
 
 const emit = defineEmits<{
   'select-pallet': [id: string | null]
   'move-pallet': [move: { id: string; left: number; top: number }]
+  'change-structure': [structure: WarehouseStructure]
+  'structure-issues': [issues: StructureIssue[]]
+  'structure-busy': [busy: boolean]
 }>()
 
 type RulerTickKind = 'minor' | 'meter' | 'major'
@@ -40,6 +49,14 @@ const horizontalRulerLabels = horizontalRulerTicks.filter((tick) => tick.kind ==
 const verticalRulerLabels = verticalRulerTicks.filter((tick) => tick.kind === 'major')
 const palletGroups = computed(() => props.palletGroups ?? warehousePlannerScene.palletGroups)
 const drawingBoard = ref<HTMLElement | null>(null)
+const initialStructure = createWarehouseStructure()
+const structurePreview = ref<WarehouseStructure | null>(null)
+const committedStructure = computed(() => props.structure ?? initialStructure)
+const currentStructure = computed(() => structurePreview.value ?? committedStructure.value)
+const planningIssues = computed(() => validatePlannerLayout(currentStructure.value, palletGroups.value))
+watch(planningIssues, (issues) => emit('structure-issues', issues), { immediate: true })
+const persistentConflictIds = computed(() => new Set(planningIssues.value.flatMap((v) => v.objectIds)))
+const minimapOutline = computed(() => currentStructure.value.outline.nodes.map((p) => `${p.x},${p.y}`).join(' '))
 type PalletDrag = {
   pointerId: number
   startClientX: number
@@ -109,22 +126,13 @@ function roundPosition(value: number) {
   return Number(value.toFixed(2))
 }
 
-function warehouseRightBoundary(y: number) {
-  if (y <= 10.1) return 87.44
-  if (y < 41.45) return 87.44 + (y - 10.1) / (41.45 - 10.1) * (96.08 - 87.44)
-  if (y <= 60.45) return 96.08
-  if (y < 89.9) return 96.08 - (y - 60.45) / (89.9 - 60.45) * (96.08 - 87.44)
-  return 87.44
-}
-
 function constrainedPosition(pallet: PlannerPalletGroup, left: number, top: number, snapToGrid: boolean, roundResult = true) {
   if (snapToGrid && props.gridSnapping) {
     left = Math.round(left / (100 / 120)) * (100 / 120)
     top = Math.round(top / (100 / 80)) * (100 / 80)
   }
-  top = Math.min(Math.max(top, 10.1), 89.9 - pallet.height)
-  const rightBoundary = Math.min(warehouseRightBoundary(top), warehouseRightBoundary(top + pallet.height))
-  left = Math.min(Math.max(left, 6.8), rightBoundary - pallet.width)
+  top = Math.min(Math.max(top, 0), 100 - pallet.height)
+  left = Math.min(Math.max(left, 0), 100 - pallet.width)
   return roundResult ? { left: roundPosition(left), top: roundPosition(top) } : { left, top }
 }
 
@@ -143,7 +151,7 @@ function nearestAlignment(moving: number[], others: number[][], boardSize: numbe
 function overlappingPalletIds(pallet: PlannerPalletGroup, position: { left: number; top: number }) {
   const right = position.left + pallet.width
   const bottom = position.top + pallet.height
-  return palletGroups.value
+  const ids = palletGroups.value
     .filter((other) => other.id !== pallet.id)
     .filter((other) => (
       position.left < other.left + other.width
@@ -152,9 +160,11 @@ function overlappingPalletIds(pallet: PlannerPalletGroup, position: { left: numb
       && bottom > other.top
     ))
     .map((other) => other.id)
+  return [...ids, ...palletStructureConflicts(currentStructure.value, { ...pallet, ...position })]
 }
 
 function palletIsOverlapping(id: string) {
+  if (persistentConflictIds.value.has(id) && palletDrag.value?.pallet.id !== id) return true
   if (collisionFeedbackIds.value.includes(id)) return true
   const drag = palletDrag.value
   return Boolean(drag?.overlappingIds.length && (drag.pallet.id === id || drag.overlappingIds.includes(id)))
@@ -248,7 +258,7 @@ function schedulePalletPreview(sample: PointerSample) {
 }
 
 function startPalletDrag(event: PointerEvent, pallet: PlannerPalletGroup) {
-  if (props.inventoryDetailsVisible) return
+  if (props.inventoryDetailsVisible || props.structureEditing) return
   if (event.button !== 0) return
   const bounds = drawingBoard.value?.getBoundingClientRect()
   if (!bounds || bounds.width <= 0 || bounds.height <= 0) return
@@ -266,6 +276,7 @@ function startPalletDrag(event: PointerEvent, pallet: PlannerPalletGroup) {
     guides: {},
     overlappingIds: [],
   }
+  emit('structure-busy', true)
   drawingBoard.value?.setPointerCapture?.(event.pointerId)
 }
 
@@ -281,6 +292,7 @@ function stopPalletDrag(event: PointerEvent) {
   clearScheduledPreview()
   if (Math.abs(event.clientX - drag.startClientX) < 3 && Math.abs(event.clientY - drag.startClientY) < 3) {
     palletDrag.value = null
+    emit('structure-busy', false)
     drawingBoard.value?.releasePointerCapture?.(event.pointerId)
     return
   }
@@ -291,17 +303,26 @@ function stopPalletDrag(event: PointerEvent) {
     emit('move-pallet', { id: drag.pallet.id, ...drop.position })
   }
   palletDrag.value = null
+  emit('structure-busy', false)
   drawingBoard.value?.releasePointerCapture?.(event.pointerId)
 }
 
-function cancelPalletDrag(event: PointerEvent) {
+function cancelPalletDrag(event: Pick<PointerEvent, 'pointerId'>) {
   if (!palletDrag.value || palletDrag.value.pointerId !== event.pointerId) return
   clearScheduledPreview()
   palletDrag.value = null
+  emit('structure-busy', false)
   drawingBoard.value?.releasePointerCapture?.(event.pointerId)
 }
+function cancelPalletWithEscape(event: KeyboardEvent) {
+  if(event.key !== 'Escape' || !palletDrag.value) return
+  event.preventDefault()
+  cancelPalletDrag({pointerId:palletDrag.value.pointerId})
+}
+onMounted(() => window.addEventListener('keydown', cancelPalletWithEscape))
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', cancelPalletWithEscape)
   clearScheduledPreview()
   clearCollisionFeedback()
 })
@@ -365,19 +386,12 @@ onBeforeUnmount(() => {
       @pointerup="stopPalletDrag"
       @pointercancel="cancelPalletDrag"
     >
-      <div class="warehouse-shell" aria-hidden="true"><div class="warehouse-interior" /></div>
-
-      <article
-        v-for="door in warehousePlannerScene.doors"
-        :key="door.id"
-        :data-testid="`planner-loading-door-${door.id}`"
-        class="loading-door"
-        :style="rectStyle(door)"
-      >
-        <strong>{{ door.label }}</strong>
-        <span>宽 {{ door.widthMeters.toFixed(1) }}m</span>
-        <i aria-hidden="true" />
-      </article>
+      <WarehouseStructureLayer
+        :structure="committedStructure" :editing="Boolean(structureEditing) && !inventoryDetailsVisible"
+        :grid-snapping="gridSnapping" :issues="planningIssues.concat(collisionFeedbackIds.length ? [{id:'drop-conflict',objectIds:collisionFeedbackIds,message:'位置冲突'}] : [], palletDrag?.overlappingIds.length ? [{id:'drag-conflict',objectIds:palletDrag.overlappingIds,message:'位置冲突'}] : [])"
+        :focused-id="focusedStructureId"
+        @preview="structurePreview = $event" @commit="emit('change-structure', $event)" @busy="emit('structure-busy', $event)"
+      />
 
       <article
         v-for="zone in warehousePlannerScene.zones"
@@ -437,10 +451,11 @@ onBeforeUnmount(() => {
         @click="emit('select-pallet', pallet.id)"
       >
         <span class="sr-only">{{ pallet.name }} · {{ pallet.contents.length }} 种商品 · 共 {{ palletTotalUnits(pallet) }} 个</span>
-        <template v-if="selectedPalletId === pallet.id">
+        <template v-if="selectedPalletId === pallet.id && !structureEditing && !inventoryDetailsVisible">
           <i v-for="handle in 8" :key="handle" class="selection-handle" :class="`handle-${handle}`" aria-hidden="true" />
           <i class="rotation-handle" aria-hidden="true">↻</i>
         </template>
+        <span v-if="persistentConflictIds.has(pallet.id) && !palletDrag" class="pile-issue-label">{{ palletStructureConflicts(currentStructure,pallet).includes('outline') ? '超出仓库边界' : '位置冲突' }}</span>
       </button>
 
       <i
@@ -477,7 +492,8 @@ onBeforeUnmount(() => {
 
       <aside data-testid="planner-minimap" class="planner-minimap" aria-label="仓库小地图">
         <div class="minimap-shell">
-          <i v-for="pallet in palletGroups.slice(0, 18)" :key="pallet.id" :style="rectStyle(pallet)" />
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon :points="minimapOutline" fill="#f0f3f6" stroke="#8994a1" stroke-width="1.5" /></svg>
+          <i v-for="pallet in palletGroups" :key="pallet.id" :style="rectStyle(pallet)" />
           <span aria-hidden="true" />
         </div>
       </aside>
@@ -529,7 +545,7 @@ onBeforeUnmount(() => {
 .forklift-aisle strong { font-size: 11px; font-weight: 500; }.aisle-arrow { font-size: 17px; color: #718096; }
 .forklift-aisle.vertical { flex-direction: column; gap: 12px; border: 0; border-inline: 1px dashed #c6ced8; writing-mode: vertical-rl; }
 .forklift-aisle.vertical .aisle-arrow { transform: rotate(90deg); }
-.utility-room { position: absolute; z-index: 4; display: grid; place-content: center; gap: 4px; border: 2px solid #687585; background: rgba(245,247,249,.92); text-align: center; }.utility-room strong { font-size: 12px; }.utility-room span { color: #64748b; font-size: 10px; }
+.utility-room { position: absolute; z-index: 4; display: grid; place-content: center; gap: 4px; border: 0; background: transparent; text-align: center; pointer-events:none; }.utility-room strong { font-size: 12px; }.utility-room span { color: #64748b; font-size: 10px; }
 .fire-lane { position: absolute; z-index: 4; border-inline: 1px solid #ef7868; background: repeating-linear-gradient(45deg,rgba(245,102,82,.3) 0 2px,transparent 2px 6px); transform-origin: center; }.fire-lane span { position: absolute; left: 125%; top: 45%; color: #d54734; font-size: 10px; line-height: 15px; white-space: nowrap; transform: rotate(0deg); }
 .structure-column { position: absolute; z-index: 6; width: 14px; height: 14px; border: 1px solid #46515f; background: #6b7786; box-shadow: inset 2px 2px rgba(255,255,255,.35); }
 .pallet-group { position: absolute; z-index: 8; min-height: 0; border: 1px solid #a6966b; border-radius: 1px; padding: 0; background-color: #d9c797; background-image: linear-gradient(90deg,transparent calc(100% / var(--pallet-columns) - 1px),#aa9a70 calc(100% / var(--pallet-columns) - 1px)),linear-gradient(transparent calc(100% / var(--pallet-rows) - 1px),#aa9a70 calc(100% / var(--pallet-rows) - 1px)); background-size: calc(100% / var(--pallet-columns)) 100%,100% calc(100% / var(--pallet-rows)); box-shadow: inset 0 0 0 2px rgba(255,255,255,.2),0 1px 2px rgba(37,49,77,.12); cursor: grab; touch-action: none; user-select: none; }
@@ -551,7 +567,9 @@ onBeforeUnmount(() => {
 .width-measure span { left: 50%; top: -17px; transform: translateX(-50%); }.height-measure span { left: 4px; top: 50%; transform: translateY(-50%); }
 .scene-inspector { position: absolute; z-index: 24; }
 .planner-minimap { position: absolute; z-index: 20; right: 16px; bottom: 17px; width: 150px; height: 112px; border: 1px solid #e1e6ec; border-radius: 7px; padding: 9px; background: rgba(255,255,255,.96); box-shadow: 0 7px 20px rgba(37,49,77,.12); }
-.minimap-shell { position: relative; width: 100%; height: 100%; clip-path: polygon(3% 5%,88% 5%,98% 36%,98% 62%,89% 95%,3% 95%); background: #f5f7f9; box-shadow: inset 0 0 0 2px #8994a1; }
+.minimap-shell { position: relative; width: 100%; height: 100%; background: #f5f7f9; }
+.minimap-shell svg {position:absolute;inset:0;width:100%;height:100%;}
+.pile-issue-label {position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);white-space:nowrap;background:#fff1f2;color:#c8263c;border:1px solid #fecdd3;border-radius:4px;padding:2px 5px;font-size:10px;pointer-events:none;}
 .minimap-shell i { position: absolute; display: block; background: #d8ca9f; opacity: .8; transform: scale(.9); }
 .minimap-shell > span { position: absolute; left: 7%; top: 8%; width: 82%; height: 80%; border: 2px solid #536dff; background: rgba(83,109,255,.04); }
 .coordinate-status { position: absolute; z-index: 25; right: 0; bottom: 0; left: 0; display: flex; align-items: center; gap: 22px; height: 28px; padding: 0 22px; border-top: 1px solid #e6ebf1; background: rgba(255,255,255,.96); color: #536176; font: 11px/1 Inter,sans-serif; }

@@ -14,6 +14,8 @@ import { findOpenPosition, formatCaseBreakdown, summarizeCanvas } from '../wareh
 import type { CanvasRect } from '../warehouseCanvas/types'
 import { warehousePlannerScene } from '../warehouseCanvas/warehousePlannerScene'
 import type { PlannerPalletGroup } from '../warehouseCanvas/warehousePlannerScene'
+import { cloneStructure, createWarehouseStructure, validatePlannerLayout } from '../warehouseCanvas/warehouseStructure'
+import type { WarehouseStructure, StructureIssue } from '../warehouseCanvas/warehouseStructure'
 
 const canvas = useWarehouseCanvas()
 const route = inject(routeLocationKey, null)
@@ -40,6 +42,11 @@ const plannerTool = ref<PlannerUiTool>('goods')
 const measurementEnabled = ref(false)
 const gridSnapping = ref(true)
 const plannerCompleted = ref(false)
+const plannerStructure = ref(createWarehouseStructure())
+const plannerStructureIssues = ref<StructureIssue[]>([])
+const plannerStructureBusy = ref(false)
+const plannerIssuesOpen = ref(false)
+const focusedStructureId = ref<string | null>(null)
 const selectedPalletId = ref<string | null>('pallet-c018')
 function clonePlannerPalletGroups(groups: readonly PlannerPalletGroup[]): PlannerPalletGroup[] {
   return groups.map((pallet) => ({
@@ -54,6 +61,7 @@ type PlannerSnapshot = {
   gridSnapping: boolean
   selectedPalletId: string | null
   palletGroups: PlannerPalletGroup[]
+  structure: WarehouseStructure
 }
 const plannerUndoStack = ref<PlannerSnapshot[]>([])
 const plannerRedoStack = ref<PlannerSnapshot[]>([])
@@ -99,6 +107,7 @@ function capturePlannerSnapshot(): PlannerSnapshot {
     gridSnapping: gridSnapping.value,
     selectedPalletId: selectedPalletId.value,
     palletGroups: clonePlannerPalletGroups(plannerPalletGroups.value),
+    structure: cloneStructure(plannerStructure.value),
   }
 }
 function applyPlannerSnapshot(snapshot: PlannerSnapshot) {
@@ -107,6 +116,7 @@ function applyPlannerSnapshot(snapshot: PlannerSnapshot) {
   gridSnapping.value = snapshot.gridSnapping
   selectedPalletId.value = snapshot.selectedPalletId
   plannerPalletGroups.value = clonePlannerPalletGroups(snapshot.palletGroups)
+  plannerStructure.value = cloneStructure(snapshot.structure)
   activeTool.value = snapshot.tool === 'zone' ? 'draw' : snapshot.tool === 'measure' ? 'pan' : 'select'
 }
 function changePlannerState(change: () => void) {
@@ -118,11 +128,10 @@ function changePlannerState(change: () => void) {
   plannerRedoStack.value = []
 }
 function changePlannerTool(tool: PlannerUiTool) {
-  changePlannerState(() => {
+  if (plannerCompleted.value) return
     plannerTool.value = tool
     activeTool.value = tool === 'zone' ? 'draw' : tool === 'measure' ? 'pan' : 'select'
     if (tool === 'measure') measurementEnabled.value = true
-  })
 }
 function togglePlannerMeasurement() {
   changePlannerState(() => { measurementEnabled.value = !measurementEnabled.value })
@@ -131,7 +140,20 @@ function togglePlannerGrid() {
   changePlannerState(() => { gridSnapping.value = !gridSnapping.value })
 }
 function selectPlannerPallet(id: string | null) {
-  changePlannerState(() => { selectedPalletId.value = id })
+  selectedPalletId.value = id
+}
+function changePlannerStructure(value: WarehouseStructure) {
+  changePlannerState(() => { plannerStructure.value = cloneStructure(value) })
+}
+async function locatePlannerIssue(issue: StructureIssue) {
+  const pile = plannerPalletGroups.value.find((p) => issue.objectIds.includes(p.id))
+  if (pile) { plannerTool.value='goods'; selectedPalletId.value=pile.id }
+  else { plannerTool.value='structure'; focusedStructureId.value=null; await nextTick(); focusedStructureId.value=issue.objectIds[0] ?? null }
+  await nextTick()
+  const root = document.querySelector('[data-testid="warehouse-blueprint-scene"]')
+  const target = pile ? [...(root?.querySelectorAll<HTMLElement>('[data-testid^="planner-pallet-"]') ?? [])].find((e)=>e.dataset.testid===`planner-pallet-${pile.id}`) : root?.querySelector('.structure-toolbar')
+  target?.scrollIntoView?.({block:'nearest',inline:'nearest'})
+  if (pile) (target as HTMLElement | undefined)?.focus?.({preventScroll:true})
 }
 function movePlannerPallet(move: { id: string; left: number; top: number }) {
   changePlannerState(() => {
@@ -149,6 +171,7 @@ function movePlannerPallet(move: { id: string; left: number; top: number }) {
   })
 }
 function undoPlanner() {
+  if (plannerCompleted.value || plannerStructureBusy.value) return
   const previous = plannerUndoStack.value.at(-1)
   if (!previous) return
   plannerRedoStack.value = [...plannerRedoStack.value, capturePlannerSnapshot()]
@@ -156,6 +179,7 @@ function undoPlanner() {
   applyPlannerSnapshot(previous)
 }
 function redoPlanner() {
+  if (plannerCompleted.value || plannerStructureBusy.value) return
   const next = plannerRedoStack.value.at(-1)
   if (!next) return
   plannerUndoStack.value = [...plannerUndoStack.value, capturePlannerSnapshot()]
@@ -163,6 +187,10 @@ function redoPlanner() {
   applyPlannerSnapshot(next)
 }
 function completeUiPreview() {
+  if (!plannerCompleted.value) {
+    plannerStructureIssues.value=validatePlannerLayout(plannerStructure.value,plannerPalletGroups.value)
+    if (plannerStructureBusy.value || plannerStructureIssues.value.length) { plannerIssuesOpen.value=true;return }
+  }
   plannerCompleted.value = !plannerCompleted.value
   notice.value = plannerCompleted.value
     ? '规划已完成，点击货堆查看详情'
@@ -283,9 +311,11 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
         :active-tool="plannerTool"
         :measurement-enabled="measurementEnabled"
         :grid-snapping="gridSnapping"
-        :can-undo="plannerCanUndo"
-        :can-redo="plannerCanRedo"
+        :can-undo="plannerCanUndo && !plannerCompleted && !plannerStructureBusy"
+        :can-redo="plannerCanRedo && !plannerCompleted && !plannerStructureBusy"
         :completed="plannerCompleted"
+        :completion-blocked="!plannerCompleted && (plannerStructureBusy || plannerStructureIssues.length > 0)"
+        :completion-reason="plannerStructureBusy ? '请先结束当前操作' : `请先处理 ${plannerStructureIssues.length} 个规划问题`"
         @change-tool="changePlannerTool"
         @toggle-measurement="togglePlannerMeasurement"
         @toggle-grid="togglePlannerGrid"
@@ -300,10 +330,22 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
           :measurement-enabled="measurementEnabled"
           :selected-pallet-id="selectedPalletId"
           :pallet-groups="plannerPalletGroups"
+          :structure="plannerStructure"
+          :structure-editing="plannerTool === 'structure' && !plannerCompleted"
+          :focused-structure-id="focusedStructureId"
+          @change-structure="changePlannerStructure"
+          @structure-issues="plannerStructureIssues = $event"
+          @structure-busy="plannerStructureBusy = $event"
           @select-pallet="selectPlannerPallet"
           @move-pallet="movePlannerPallet"
         />
       </div>
+      <aside v-if="plannerStructureIssues.length && !plannerCompleted" class="planner-structure-issues" aria-label="规划问题">
+        <button class="structure-issues-toggle" data-testid="planner-structure-issues-toggle" :aria-expanded="plannerIssuesOpen" @click="plannerIssuesOpen = !plannerIssuesOpen"><TriangleAlert :size="16" />{{ plannerStructureIssues.length }} 个规划问题 · {{ plannerIssuesOpen ? '收起' : '查看' }}</button>
+        <div v-if="plannerIssuesOpen" class="structure-issue-items">
+          <div v-for="issue in plannerStructureIssues" :key="issue.id"><span>{{ issue.message }}</span><button @click="locatePlannerIssue(issue)">定位</button></div>
+        </div>
+      </aside>
     </section>
     <p v-if="notice" role="status" class="planner-toast">{{ notice }}</p>
     <section class="legacy-editor" aria-hidden="true">
@@ -404,6 +446,12 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
 </template>
 
 <style scoped>
+.planner-structure-issues {position:absolute;z-index:36;top:116px;right:24px;max-width:320px;border:1px solid #fecdd3;border-radius:8px;background:#fff;box-shadow:0 4px 16px #25314d15;}
+.structure-issues-toggle {display:flex;align-items:center;gap:7px;width:100%;padding:9px 12px;border:0;border-radius:8px;background:#fff1f2;color:#bc263c;font:inherit;font-size:12px;cursor:pointer;}
+.structure-issue-items {max-height:280px;overflow:auto;padding:4px 10px;}
+.structure-issue-items>div {display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #f1f5f9;font-size:12px;}
+.structure-issue-items>div>span {flex:1;}
+.structure-issue-items button {border:0;border-radius:4px;padding:5px 8px;background:#eef2ff;color:#4663ee;cursor:pointer;white-space:nowrap;font:inherit;}
 .warehouse-page { position:relative; height:100%; min-height:760px; background:#F6F7FB; color:#25314D; padding:0; font-family:'Noto Sans SC Variable',Inter,sans-serif; font-size:12px; }
 .planner-prototype { position:relative; height:100%; min-height:760px; overflow:hidden; background:#f9fbfd; }
 .planner-canvas-scroll { height:calc(100% - 56px); overflow:auto; }

@@ -271,7 +271,7 @@ describe('WarehouseBlueprintScene', () => {
     expect(wrapper.emitted('move-pallet')?.[0]).toEqual([{ id: 'pallet-c018', left: 39.5, top: 58.25 }])
   })
 
-  it('keeps a dragged pile fully inside the sloped warehouse boundary', async () => {
+  it('rejects an outside drop at the sloped warehouse boundary and restores its origin', async () => {
     const wrapper = mount(WarehouseBlueprintScene, {
       props: {
         gridSnapping: false,
@@ -287,7 +287,9 @@ describe('WarehouseBlueprintScene', () => {
     await board.trigger('pointermove', { pointerId: 12, clientX: 1600, clientY: 1400 })
     await board.trigger('pointerup', { pointerId: 12, clientX: 1600, clientY: 1400 })
 
-    expect(wrapper.emitted('move-pallet')?.[0]).toEqual([{ id: 'pallet-c018', left: 80.44, top: 84.4 }])
+    expect(wrapper.emitted('move-pallet')).toBeUndefined()
+    expect(pile.attributes('style')).toContain('left: 58.5%')
+    expect(pile.attributes('data-overlapping')).toBe('true')
   })
 
   it('does not turn a selection click into a snapped position edit', async () => {

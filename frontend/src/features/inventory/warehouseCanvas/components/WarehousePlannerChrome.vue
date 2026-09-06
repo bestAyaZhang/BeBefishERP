@@ -20,6 +20,8 @@ defineProps<{
   canUndo: boolean
   canRedo: boolean
   completed?: boolean
+  completionBlocked?: boolean
+  completionReason?: string
 }>()
 
 const emit = defineEmits<{
@@ -78,7 +80,7 @@ const tools: Array<{
           <Grid2X2 :size="17" />网格吸附
           <span class="switch" aria-hidden="true"><span /></span>
         </button>
-        <button data-testid="planner-complete" type="button" class="complete-button" @click="emit('complete')">
+        <button data-testid="planner-complete" type="button" class="complete-button" :disabled="completionBlocked" :title="completionBlocked ? completionReason : undefined" @click="emit('complete')">
           {{ completed ? '返回规划' : '完成规划' }}
         </button>
       </div>
@@ -91,6 +93,7 @@ const tools: Array<{
         :data-testid="`planner-tool-${tool.id}`"
         type="button"
         :aria-pressed="activeTool === tool.id"
+        :disabled="completed"
         @click="emit('change-tool', tool.id)"
       >
         <component :is="tool.icon" :size="23" stroke-width="1.8" />
@@ -142,6 +145,8 @@ button[aria-pressed="true"] .switch { background: #536dff; }
 button[aria-pressed="true"] .switch span { transform: translateX(14px); }
 .planner-actions .complete-button { min-width: 98px; margin-left: 5px; padding-inline: 17px; background: #536dff; color: white; font-weight: 600; box-shadow: 0 4px 11px rgba(83,109,255,.22); }
 .planner-actions .complete-button:hover { background: #465eea; color: white; }
+.planner-actions .complete-button:disabled {background:#cbd5e1;color:#64748b;box-shadow:none;cursor:not-allowed;}
+.planner-tool-rail button:disabled {opacity:.45;cursor:default;}
 .planner-tool-rail {
   position: absolute;
   z-index: 35;

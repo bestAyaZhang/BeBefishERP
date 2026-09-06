@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import WarehouseCanvasView from './views/WarehouseCanvasView.vue'
 import WarehouseFloorCanvas from './warehouseCanvas/components/WarehouseFloorCanvas.vue'
 import WarehouseBlueprintScene from './warehouseCanvas/components/WarehouseBlueprintScene.vue'
+import { createWarehouseStructure, moveStructureNode } from './warehouseCanvas/warehouseStructure'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parse } from '@vue/compiler-sfc'
@@ -34,6 +35,39 @@ async function selectArea(wrapper: Page, id = 'area-a') { floor(wrapper).vm.$emi
 function selectedBlock(wrapper: Page) { return floor(wrapper).props('state').blocks.find((block) => block.id === floor(wrapper).props('selectedBlockId')) }
 
 describe('Warehouse canvas overview', () => {
+  it('includes wall and door geometry in the same undo history and blocks invalid completion', async () => {
+    const wrapper = await mountPage()
+    const scene = wrapper.getComponent(WarehouseBlueprintScene)
+    await wrapper.get('[data-testid="planner-tool-structure"]').trigger('click')
+    const before = createWarehouseStructure()
+    const changed = moveStructureNode(before, 'outline', 'outer-1', {x:60,y:9.5})
+    scene.vm.$emit('change-structure', changed)
+    await flushPromises()
+    expect(scene.props('structure')!.outline.nodes[1]!.x).toBe(60)
+    expect(wrapper.get('[data-testid="planner-complete"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="planner-structure-issues-toggle"]').text()).toContain('规划问题')
+    await wrapper.get('[data-testid="planner-undo"]').trigger('click')
+    expect(scene.props('structure')).toEqual(before)
+    expect(wrapper.get('[data-testid="planner-complete"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-testid="planner-redo"]').trigger('click')
+    expect(scene.props('structure')).toEqual(changed)
+  })
+  it('does not create history for selecting a pile or switching structure tools', async () => {
+    const wrapper=await mountPage()
+    await wrapper.get('[data-testid="planner-tool-structure"]').trigger('click')
+    await wrapper.get('[data-testid="planner-tool-goods"]').trigger('click')
+    await wrapper.get('[data-testid="planner-pallet-pallet-a01"]').trigger('click')
+    expect(wrapper.get('[data-testid="planner-undo"]').attributes('disabled')).toBeDefined()
+    const scene=wrapper.getComponent(WarehouseBlueprintScene)
+    scene.vm.$emit('structure-busy',true)
+    await flushPromises()
+    expect(wrapper.get('[data-testid="planner-complete"]').attributes('disabled')).toBeDefined()
+    scene.vm.$emit('structure-busy',false)
+    await flushPromises()
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    expect(wrapper.find('[data-testid="structure-tool-outline"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="planner-tool-structure"]').attributes('disabled')).toBeDefined()
+  })
   it('renders the professional planner and drives UI-only toggles', async () => {
     applyPageStyles()
     const wrapper = await mountPage()
