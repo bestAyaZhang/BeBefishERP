@@ -47,8 +47,12 @@ type PalletDrag = {
   boardHeight: number
   pallet: PlannerPalletGroup
   preview: { left: number; top: number }
+  guides: { x?: number; y?: number }
 }
+type PointerSample = { pointerId: number; clientX: number; clientY: number }
 const palletDrag = ref<PalletDrag | null>(null)
+let pendingDragSample: PointerSample | null = null
+let dragFrameId: number | null = null
 const selectedPallet = computed(() => {
   const pallet = palletGroups.value.find((item) => item.id === props.selectedPalletId)
   return pallet ? displayedPallet(pallet) : undefined
@@ -64,11 +68,15 @@ function rectStyle(rect: PlannerRect) {
 }
 
 function palletStyle(pallet: PlannerPalletGroup) {
-  const displayed = displayedPallet(pallet)
+  const drag = palletDrag.value?.pallet.id === pallet.id ? palletDrag.value : null
+  const transform = drag
+    ? `translate3d(${roundPosition((drag.preview.left - pallet.left) / 100 * drag.boardWidth)}px, ${roundPosition((drag.preview.top - pallet.top) / 100 * drag.boardHeight)}px, 0)`
+    : undefined
   return {
-    ...rectStyle(displayed),
+    ...rectStyle(pallet),
     '--pallet-columns': String(pallet.columns),
     '--pallet-rows': String(pallet.rows),
+    transform,
   }
 }
 
@@ -104,23 +112,98 @@ function warehouseRightBoundary(y: number) {
   return 87.44
 }
 
-function constrainedPosition(pallet: PlannerPalletGroup, left: number, top: number) {
-  if (props.gridSnapping) {
+function constrainedPosition(pallet: PlannerPalletGroup, left: number, top: number, snapToGrid: boolean, roundResult = true) {
+  if (snapToGrid && props.gridSnapping) {
     left = Math.round(left / (100 / 120)) * (100 / 120)
     top = Math.round(top / (100 / 80)) * (100 / 80)
   }
   top = Math.min(Math.max(top, 10.1), 89.9 - pallet.height)
   const rightBoundary = Math.min(warehouseRightBoundary(top), warehouseRightBoundary(top + pallet.height))
   left = Math.min(Math.max(left, 6.8), rightBoundary - pallet.width)
-  return { left: roundPosition(left), top: roundPosition(top) }
+  return roundResult ? { left: roundPosition(left), top: roundPosition(top) } : { left, top }
 }
 
-function dragPosition(event: PointerEvent, drag: PalletDrag) {
+function nearestAlignment(moving: number[], others: number[][], boardSize: number) {
+  let best: { delta: number; position: number } | undefined
+  for (const anchors of others) {
+    for (let index = 0; index < moving.length; index += 1) {
+      const delta = anchors[index] - moving[index]
+      if (Math.abs(delta) * boardSize / 100 > 6) continue
+      if (!best || Math.abs(delta) < Math.abs(best.delta)) best = { delta, position: anchors[index] }
+    }
+  }
+  return best
+}
+
+function dragPreview(sample: PointerSample, drag: PalletDrag) {
+  const raw = constrainedPosition(
+    drag.pallet,
+    drag.pallet.left + (sample.clientX - drag.startClientX) / drag.boardWidth * 100,
+    drag.pallet.top + (sample.clientY - drag.startClientY) / drag.boardHeight * 100,
+    false,
+    false,
+  )
+  const xAnchors = [raw.left, raw.left + drag.pallet.width / 2, raw.left + drag.pallet.width]
+  const yAnchors = [raw.top, raw.top + drag.pallet.height / 2, raw.top + drag.pallet.height]
+  const otherPallets = palletGroups.value.filter((pallet) => pallet.id !== drag.pallet.id)
+  const xAlignment = nearestAlignment(
+    xAnchors,
+    otherPallets.map((pallet) => [pallet.left, pallet.left + pallet.width / 2, pallet.left + pallet.width]),
+    drag.boardWidth,
+  )
+  const yAlignment = nearestAlignment(
+    yAnchors,
+    otherPallets.map((pallet) => [pallet.top, pallet.top + pallet.height / 2, pallet.top + pallet.height]),
+    drag.boardHeight,
+  )
+  const preview = constrainedPosition(
+    drag.pallet,
+    raw.left + (xAlignment?.delta ?? 0),
+    raw.top + (yAlignment?.delta ?? 0),
+    false,
+    false,
+  )
+  return {
+    preview,
+    guides: {
+      x: xAlignment?.position,
+      y: yAlignment?.position,
+    },
+  }
+}
+
+function committedPosition(sample: PointerSample, drag: PalletDrag) {
+  const aligned = dragPreview(sample, drag)
+  if (!props.gridSnapping) return constrainedPosition(drag.pallet, aligned.preview.left, aligned.preview.top, false)
+  const gridPosition = constrainedPosition(drag.pallet, aligned.preview.left, aligned.preview.top, true)
   return constrainedPosition(
     drag.pallet,
-    drag.pallet.left + (event.clientX - drag.startClientX) / drag.boardWidth * 100,
-    drag.pallet.top + (event.clientY - drag.startClientY) / drag.boardHeight * 100,
+    aligned.guides.x === undefined ? gridPosition.left : aligned.preview.left,
+    aligned.guides.y === undefined ? gridPosition.top : aligned.preview.top,
+    false,
   )
+}
+
+function clearScheduledPreview() {
+  if (dragFrameId !== null && dragFrameId >= 0) cancelAnimationFrame(dragFrameId)
+  dragFrameId = null
+  pendingDragSample = null
+}
+
+function schedulePalletPreview(sample: PointerSample) {
+  pendingDragSample = sample
+  if (dragFrameId !== null) return
+  dragFrameId = -1
+  const scheduledId = requestAnimationFrame(() => {
+    dragFrameId = null
+    const next = pendingDragSample
+    pendingDragSample = null
+    const drag = palletDrag.value
+    if (!next || !drag || drag.pointerId !== next.pointerId) return
+    const { preview, guides } = dragPreview(next, drag)
+    palletDrag.value = { ...drag, preview, guides }
+  })
+  if (dragFrameId !== null) dragFrameId = scheduledId
 }
 
 function startPalletDrag(event: PointerEvent, pallet: PlannerPalletGroup) {
@@ -137,6 +220,7 @@ function startPalletDrag(event: PointerEvent, pallet: PlannerPalletGroup) {
     boardHeight: bounds.height,
     pallet: { ...pallet, contents: pallet.contents.map((item) => ({ ...item })) },
     preview: { left: pallet.left, top: pallet.top },
+    guides: {},
   }
   drawingBoard.value?.setPointerCapture?.(event.pointerId)
 }
@@ -144,18 +228,19 @@ function startPalletDrag(event: PointerEvent, pallet: PlannerPalletGroup) {
 function movePalletDrag(event: PointerEvent) {
   const drag = palletDrag.value
   if (!drag || drag.pointerId !== event.pointerId) return
-  palletDrag.value = { ...drag, preview: dragPosition(event, drag) }
+  schedulePalletPreview({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY })
 }
 
 function stopPalletDrag(event: PointerEvent) {
   const drag = palletDrag.value
   if (!drag || drag.pointerId !== event.pointerId) return
+  clearScheduledPreview()
   if (Math.abs(event.clientX - drag.startClientX) < 3 && Math.abs(event.clientY - drag.startClientY) < 3) {
     palletDrag.value = null
     drawingBoard.value?.releasePointerCapture?.(event.pointerId)
     return
   }
-  const position = dragPosition(event, drag)
+  const position = committedPosition({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY }, drag)
   if (position.left !== drag.pallet.left || position.top !== drag.pallet.top) {
     emit('move-pallet', { id: drag.pallet.id, ...position })
   }
@@ -165,6 +250,7 @@ function stopPalletDrag(event: PointerEvent) {
 
 function cancelPalletDrag(event: PointerEvent) {
   if (!palletDrag.value || palletDrag.value.pointerId !== event.pointerId) return
+  clearScheduledPreview()
   palletDrag.value = null
   drawingBoard.value?.releasePointerCapture?.(event.pointerId)
 }
@@ -304,7 +390,22 @@ function cancelPalletDrag(event: PointerEvent) {
         </template>
       </button>
 
-      <template v-if="measurementEnabled && selectedPallet">
+      <i
+        v-if="palletDrag?.guides.x !== undefined"
+        data-testid="planner-alignment-guide-x"
+        class="alignment-guide vertical-guide"
+        :style="{ left: `${palletDrag.guides.x}%` }"
+        aria-hidden="true"
+      />
+      <i
+        v-if="palletDrag?.guides.y !== undefined"
+        data-testid="planner-alignment-guide-y"
+        class="alignment-guide horizontal-guide"
+        :style="{ top: `${palletDrag.guides.y}%` }"
+        aria-hidden="true"
+      />
+
+      <template v-if="measurementEnabled && selectedPallet && !palletDrag">
         <div data-testid="planner-measurement-width" class="measurement width-measure" :style="{ left: `${selectedPallet.left}%`, top: `${selectedPallet.top - 2}%`, width: `${selectedPallet.width}%` }">
           <span>{{ selectedPallet.lengthMeters }}m</span>
         </div>
@@ -314,7 +415,7 @@ function cancelPalletDrag(event: PointerEvent) {
       </template>
 
       <WarehousePlannerInspector
-        v-if="selectedPallet"
+        v-if="selectedPallet && !palletDrag"
         class="scene-inspector"
         :style="inspectorStyle(selectedPallet)"
         :pallet="selectedPallet"
@@ -379,13 +480,16 @@ function cancelPalletDrag(event: PointerEvent) {
 .fire-lane { position: absolute; z-index: 4; border-inline: 1px solid #ef7868; background: repeating-linear-gradient(45deg,rgba(245,102,82,.3) 0 2px,transparent 2px 6px); transform-origin: center; }.fire-lane span { position: absolute; left: 125%; top: 45%; color: #d54734; font-size: 10px; line-height: 15px; white-space: nowrap; transform: rotate(0deg); }
 .structure-column { position: absolute; z-index: 6; width: 14px; height: 14px; border: 1px solid #46515f; background: #6b7786; box-shadow: inset 2px 2px rgba(255,255,255,.35); }
 .pallet-group { position: absolute; z-index: 8; min-height: 0; border: 1px solid #a6966b; border-radius: 1px; padding: 0; background-color: #d9c797; background-image: linear-gradient(90deg,transparent calc(100% / var(--pallet-columns) - 1px),#aa9a70 calc(100% / var(--pallet-columns) - 1px)),linear-gradient(transparent calc(100% / var(--pallet-rows) - 1px),#aa9a70 calc(100% / var(--pallet-rows) - 1px)); background-size: calc(100% / var(--pallet-columns)) 100%,100% calc(100% / var(--pallet-rows)); box-shadow: inset 0 0 0 2px rgba(255,255,255,.2),0 1px 2px rgba(37,49,77,.12); cursor: grab; touch-action: none; user-select: none; }
-.pallet-group.dragging { z-index: 19; cursor: grabbing; }
+.pallet-group.dragging { z-index: 19; cursor: grabbing; will-change: transform; }
 .pallet-group:hover { border-color: #7c6c45; filter: brightness(1.02); }.pallet-group:focus-visible { outline: 2px solid #536dff; outline-offset: 2px; }
 .pallet-group.selected { z-index: 15; border: 2px solid #12a9ac; box-shadow: 0 0 0 1px rgba(18,169,172,.18); }
 .selection-handle { position: absolute; width: 7px; height: 7px; border: 1px solid white; background: #12a9ac; box-shadow: 0 0 0 1px #12a9ac; }
 .handle-1{left:-4px;top:-4px}.handle-2{left:50%;top:-4px}.handle-3{right:-4px;top:-4px}.handle-4{right:-4px;top:50%}.handle-5{right:-4px;bottom:-4px}.handle-6{left:50%;bottom:-4px}.handle-7{left:-4px;bottom:-4px}.handle-8{left:-4px;top:50%}
 .rotation-handle { position: absolute; left: 50%; top: -25px; display: grid; place-items: center; width: 17px; height: 17px; border: 1px solid #12a9ac; border-radius: 50%; background: white; color: #12a9ac; font-size: 12px; font-style: normal; transform: translateX(-50%); }
 .rotation-handle::after { content: ''; position: absolute; top: 16px; width: 1px; height: 8px; background: #12a9ac; }
+.alignment-guide { position: absolute; z-index: 18; display: block; pointer-events: none; background: #0bb4b7; box-shadow: 0 0 0 1px rgba(11,180,183,.12); }
+.vertical-guide { top: 10.1%; bottom: 10.1%; width: 1px; }
+.horizontal-guide { right: 4%; left: 6.8%; height: 1px; }
 .measurement { position: absolute; z-index: 18; color: #03989c; font: 11px/1 Inter,sans-serif; pointer-events: none; }
 .width-measure { border-top: 1px solid #12a9ac; }.height-measure { border-left: 1px solid #12a9ac; }
 .measurement span { position: absolute; padding: 2px 4px; border-radius: 3px; background: #f9ffff; white-space: nowrap; }

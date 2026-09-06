@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import WarehouseBlueprintScene from './WarehouseBlueprintScene.vue'
 import { warehousePlannerScene } from '../warehousePlannerScene'
 
@@ -29,6 +29,16 @@ function setDrawingBoardBounds(wrapper: ReturnType<typeof mount>) {
   })
   return board
 }
+
+function runAnimationFramesImmediately() {
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    callback(0)
+    return 1
+  })
+  vi.stubGlobal('cancelAnimationFrame', vi.fn())
+}
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('WarehouseBlueprintScene', () => {
   it('renders the reference layers and selects floor-stacked goods', async () => {
@@ -117,6 +127,7 @@ describe('WarehouseBlueprintScene', () => {
   })
 
   it('previews a pile drag and snaps its committed position to half-meter grid lines', async () => {
+    runAnimationFramesImmediately()
     const wrapper = mount(WarehouseBlueprintScene, {
       props: {
         gridSnapping: true,
@@ -130,15 +141,60 @@ describe('WarehouseBlueprintScene', () => {
     const originalStyle = pile.attributes('style')
 
     await pile.trigger('pointerdown', { button: 0, pointerId: 11, clientX: 600, clientY: 400 })
-    await board.trigger('pointermove', { pointerId: 11, clientX: 613, clientY: 409 })
+    await board.trigger('pointermove', { pointerId: 11, clientX: 629, clientY: 409 })
 
     expect(pile.attributes('style')).not.toBe(originalStyle)
+    expect(pile.attributes('style')).toContain('transform: translate3d(29px, 9px, 0)')
     expect(pile.attributes('aria-label')).toContain('3 种商品，共 250 个')
     expect(wrapper.emitted('move-pallet')).toBeUndefined()
 
-    await board.trigger('pointerup', { pointerId: 11, clientX: 613, clientY: 409 })
+    await board.trigger('pointerup', { pointerId: 11, clientX: 629, clientY: 409 })
 
-    expect(wrapper.emitted('move-pallet')?.[0]).toEqual([{ id: 'pallet-c018', left: 60, top: 50 }])
+    expect(wrapper.emitted('move-pallet')?.[0]).toEqual([{ id: 'pallet-c018', left: 61.67, top: 50 }])
+  })
+
+  it('hides product information while a pile is moving and restores it after release', async () => {
+    const wrapper = mount(WarehouseBlueprintScene, {
+      props: {
+        gridSnapping: true,
+        measurementEnabled: false,
+        selectedPalletId: 'pallet-c018',
+        palletGroups: warehousePlannerScene.palletGroups,
+      },
+    })
+    const board = setDrawingBoardBounds(wrapper)
+    const pile = wrapper.get('[data-testid="planner-pallet-pallet-c018"]')
+
+    expect(wrapper.find('.scene-inspector').exists()).toBe(true)
+    await pile.trigger('pointerdown', { button: 0, pointerId: 14, clientX: 600, clientY: 400 })
+    expect(wrapper.find('.scene-inspector').exists()).toBe(false)
+
+    await board.trigger('pointerup', { pointerId: 14, clientX: 600, clientY: 400 })
+    expect(wrapper.find('.scene-inspector').exists()).toBe(true)
+  })
+
+  it('shows center alignment guides and lets object alignment win over grid snapping', async () => {
+    runAnimationFramesImmediately()
+    const wrapper = mount(WarehouseBlueprintScene, {
+      props: {
+        gridSnapping: true,
+        measurementEnabled: false,
+        selectedPalletId: 'pallet-c018',
+        palletGroups: warehousePlannerScene.palletGroups,
+      },
+    })
+    const board = setDrawingBoardBounds(wrapper)
+    const pile = wrapper.get('[data-testid="planner-pallet-pallet-c018"]')
+
+    await pile.trigger('pointerdown', { button: 0, pointerId: 15, clientX: 600, clientY: 400 })
+    await board.trigger('pointermove', { pointerId: 15, clientX: 610, clientY: 474 })
+
+    expect(wrapper.get('[data-testid="planner-alignment-guide-x"]').attributes('style')).toContain('left: 63%')
+    expect(wrapper.get('[data-testid="planner-alignment-guide-y"]').attributes('style')).toContain('top: 61%')
+    expect(pile.attributes('style')).toContain('transform: translate3d(10px, 74px, 0)')
+
+    await board.trigger('pointerup', { pointerId: 15, clientX: 610, clientY: 474 })
+    expect(wrapper.emitted('move-pallet')?.[0]).toEqual([{ id: 'pallet-c018', left: 59.5, top: 58.25 }])
   })
 
   it('keeps a dragged pile fully inside the sloped warehouse boundary', async () => {
