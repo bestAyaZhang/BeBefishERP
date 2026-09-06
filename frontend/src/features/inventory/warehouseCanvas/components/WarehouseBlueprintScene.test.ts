@@ -19,7 +19,7 @@ describe('WarehouseBlueprintScene', () => {
     expect(wrapper.text()).toContain('叉车通道 4.0m')
     expect(wrapper.text()).toContain('消防留空区')
     expect(wrapper.get('[data-testid="planner-pallet-pallet-c018"]').attributes('data-selected')).toBe('true')
-    expect(wrapper.get('[data-testid="planner-minimap"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="planner-minimap"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="planner-coordinate-status"]').text()).toContain('比例  1:100')
 
     await wrapper.get('[data-testid="planner-pallet-pallet-a01"]').trigger('click')

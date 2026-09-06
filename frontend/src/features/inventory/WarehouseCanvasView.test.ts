@@ -29,6 +29,21 @@ async function selectArea(wrapper: Page, id = 'area-a') { floor(wrapper).vm.$emi
 function selectedBlock(wrapper: Page) { return floor(wrapper).props('state').blocks.find((block) => block.id === floor(wrapper).props('selectedBlockId')) }
 
 describe('Warehouse canvas overview', () => {
+  it('renders the professional planner and drives UI-only toggles', async () => {
+    const wrapper = await mountPage()
+
+    expect(wrapper.get('[data-testid="planner-title"]').text()).toContain('一号仓 · 平面规划')
+    expect(wrapper.get('[data-testid="planner-tool-goods"]').attributes('aria-pressed')).toBe('true')
+
+    await wrapper.get('[data-testid="planner-measure-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="planner-grid-toggle"]').trigger('click')
+    expect(wrapper.get('[data-testid="warehouse-blueprint-scene"]').attributes('data-measuring')).toBe('true')
+    expect(wrapper.get('[data-testid="warehouse-blueprint-scene"]').attributes('data-grid-snapping')).toBe('false')
+
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    expect(wrapper.get('[role="status"]').text()).toContain('UI 预览')
+  })
+
   it('shows per-area SKU counts and aggregate case conversions', async () => {
     const wrapper = await mountPage()
     expect(wrapper.get('.area-row').text()).toContain('2 个 SKU')

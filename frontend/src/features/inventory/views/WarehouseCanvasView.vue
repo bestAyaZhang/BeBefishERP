@@ -4,6 +4,9 @@ import { routeLocationKey } from 'vue-router'
 import { Warehouse, Plus, SquareDashedMousePointer, MousePointer2, Hand, Undo2, Redo2, Search, Eye, EyeOff, Lock, Unlock, TriangleAlert, X } from 'lucide-vue-next'
 import AccessibleDialog from '../../../components/AccessibleDialog.vue'
 import WarehouseFloorCanvas from '../warehouseCanvas/components/WarehouseFloorCanvas.vue'
+import WarehouseBlueprintScene from '../warehouseCanvas/components/WarehouseBlueprintScene.vue'
+import WarehousePlannerChrome from '../warehouseCanvas/components/WarehousePlannerChrome.vue'
+import type { PlannerUiTool } from '../warehouseCanvas/components/WarehousePlannerChrome.vue'
 import WarehouseProductDrawer from '../warehouseCanvas/components/WarehouseProductDrawer.vue'
 import WarehouseObjectPanel from '../warehouseCanvas/components/WarehouseObjectPanel.vue'
 import { useWarehouseCanvas } from '../warehouseCanvas/useWarehouseCanvas'
@@ -28,6 +31,10 @@ const pendingArea = ref<CanvasRect | null>(null)
 const areaName = ref('D-01')
 const error = ref('')
 const notice = ref('')
+const plannerTool = ref<PlannerUiTool>('goods')
+const measurementEnabled = ref(false)
+const gridSnapping = ref(true)
+const selectedPalletId = ref<string | null>('pallet-c018')
 const issuesCollapsed = ref(false)
 watch(() => issues.value.length, (count, previous) => { if (count === 0 || count > previous) issuesCollapsed.value = false })
 const drawerOpen = ref(false)
@@ -61,6 +68,14 @@ watch(state, () => {
   if (deleteAreaId.value && !deletingArea.value) deleteAreaId.value = null
 })
 function clearSelection() { canvas.selectArea(null); canvas.selectBlock(null); error.value = '' }
+function changePlannerTool(tool: PlannerUiTool) {
+  plannerTool.value = tool
+  activeTool.value = tool === 'zone' ? 'draw' : tool === 'measure' ? 'pan' : 'select'
+  if (tool === 'measure') measurementEnabled.value = true
+}
+function completeUiPreview() {
+  notice.value = 'UI 预览已完成，功能将在视觉确认后继续设计'
+}
 function chooseArea(id: string) { error.value = ''; canvas.selectArea(id) }
 function chooseBlock(id: string) { error.value = ''; canvas.selectBlock(id) }
 async function locateBlock(id: string) {
@@ -169,6 +184,32 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
 
 <template>
   <main data-testid="warehouse-canvas-view" class="warehouse-page">
+    <section class="planner-prototype" aria-label="仓库平面规划 UI 预览">
+      <WarehousePlannerChrome
+        :warehouse-name="state.warehouseName"
+        :active-tool="plannerTool"
+        :measurement-enabled="measurementEnabled"
+        :grid-snapping="gridSnapping"
+        :can-undo="canUndo"
+        :can-redo="canRedo"
+        @change-tool="changePlannerTool"
+        @toggle-measurement="measurementEnabled = !measurementEnabled"
+        @toggle-grid="gridSnapping = !gridSnapping"
+        @undo="canvas.undo"
+        @redo="canvas.redo"
+        @complete="completeUiPreview"
+      />
+      <div class="planner-canvas-scroll">
+        <WarehouseBlueprintScene
+          :grid-snapping="gridSnapping"
+          :measurement-enabled="measurementEnabled"
+          :selected-pallet-id="selectedPalletId"
+          @select-pallet="selectedPalletId = $event || null"
+        />
+      </div>
+    </section>
+    <p v-if="notice" role="status" class="planner-toast">{{ notice }}</p>
+    <section class="legacy-editor" aria-hidden="true">
     <header class="page-header">
       <div><h1>仓库画布 <span class="area-badge">{{ state.areas.length }} 个区域</span></h1><p>绘制区域并放入 SKU；库存仅以“个”为权威值。</p></div>
       <button data-testid="add-warehouse-product" class="primary" @click="openProduct()"><Plus :size="16" />添加产品</button>
@@ -186,7 +227,6 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
       </div>
       <button data-testid="save-warehouse-layout" class="save-state" :disabled="issues.length > 0 || saving || loading" @click="saveLayout"><span data-testid="warehouse-save-state">{{ saving ? '保存中…' : dirty ? '未保存 · 保存' : '已保存' }}</span></button>
     </div>
-    <p v-if="notice" role="status">{{ notice }}</p>
     <p v-if="error && !drawerOpen && !pendingArea && !partialOpen && !selectedArea && !selectedBlock" role="alert" class="error">{{ error }}</p>
     <div class="workspace-scroll"><div class="workspace">
       <aside class="panel layers"><h2>区域与图层</h2>
@@ -235,6 +275,7 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
       <article v-for="issue in issues" :key="issue.id"><strong>{{ issue.type === 'outside-area' ? '产品块越出所属区域边界' : '产品块发生重叠' }}</strong><p>{{ issue.message }}</p><button v-for="(id, index) in issue.blockIds" :key="id" data-testid="locate-layout-issue" :aria-label="`定位问题产品 ${index + 1}`" @click="locateBlock(id)">定位产品{{ issue.blockIds.length > 1 ? ` ${index + 1}` : '' }}</button></article>
       <button disabled class="issue-save">保存布局</button>
     </aside>
+    </section>
     <AccessibleDialog :open="pendingArea !== null" :title="`区域名称: ${areaName}`" test-id="area-name-dialog" body-test-id="area-name-body" footer-test-id="area-name-footer" close-test-id="area-name-close" panel-class="warehouse-area-name-dialog" @cancel="pendingArea = null">
       <div v-if="pendingArea" class="area-form"><label>区域名称<input v-model="areaName" data-testid="area-name-input" /></label>
         <p v-if="error" role="alert" class="error">{{ error }}</p>
@@ -266,8 +307,11 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
 </template>
 
 <style scoped>
-.warehouse-page { background:#F6F7FB; color:#25314D; padding:0; font-family:'Noto Sans SC Variable',Inter,sans-serif; font-size:12px; }
-.warehouse-page > p[role="status"] { position:fixed; z-index:45; bottom:16px; left:460px; margin:0; padding:8px 12px; background:#fff; border:1px solid #e2e8f0; border-radius:8px; box-shadow:0 4px 16px #25314d14; }
+.warehouse-page { position:relative; min-height:100%; background:#F6F7FB; color:#25314D; padding:0; font-family:'Noto Sans SC Variable',Inter,sans-serif; font-size:12px; }
+.planner-prototype { position:relative; height:calc(100vh - 64px); min-height:760px; overflow:hidden; background:#f9fbfd; }
+.planner-canvas-scroll { height:calc(100% - 56px); overflow:auto; }
+.legacy-editor { display:none; }
+.warehouse-page > p[role="status"] { position:fixed; z-index:55; bottom:18px; left:50%; margin:0; padding:9px 14px; border:1px solid #d8e0e8; border-radius:8px; background:#fff; color:#354159; box-shadow:0 8px 24px #25314d20; transform:translateX(-50%); }
 .page-header,.summary,h1,h2 { display:flex; align-items:center; gap:12px; }
 .page-header { justify-content:space-between; height:112px; margin:0; padding:24px 24px 12px; }
 h1 { font-size:24px; line-height:32px; font-weight:700; } h2 { font-size:18px; line-height:26px; font-weight:500; margin-bottom:12px; }
