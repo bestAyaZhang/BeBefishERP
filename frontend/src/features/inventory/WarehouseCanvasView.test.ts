@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import WarehouseCanvasView from './views/WarehouseCanvasView.vue'
 import WarehouseFloorCanvas from './warehouseCanvas/components/WarehouseFloorCanvas.vue'
+import WarehouseBlueprintScene from './warehouseCanvas/components/WarehouseBlueprintScene.vue'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parse } from '@vue/compiler-sfc'
@@ -68,6 +69,26 @@ describe('Warehouse canvas overview', () => {
 
     await wrapper.get('[data-testid="planner-redo"]').trigger('click')
     expect(wrapper.get('[data-testid="warehouse-blueprint-scene"]').attributes('data-grid-snapping')).toBe('false')
+  })
+
+  it('stores pile movement in planner history without changing product quantities', async () => {
+    const wrapper = await mountPage()
+    const scene = wrapper.getComponent(WarehouseBlueprintScene)
+    const pile = () => wrapper.get('[data-testid="planner-pallet-pallet-c018"]')
+
+    expect(pile().attributes('style')).toContain('left: 58.5%')
+    scene.vm.$emit('move-pallet', { id: 'pallet-c018', left: 60, top: 50 })
+    await flushPromises()
+
+    expect(pile().attributes('style')).toContain('left: 60%')
+    expect(pile().attributes('style')).toContain('top: 50%')
+    expect(pile().attributes('aria-label')).toContain('3 种商品，共 250 个')
+
+    await wrapper.get('[data-testid="planner-undo"]').trigger('click')
+    expect(pile().attributes('style')).toContain('left: 58.5%')
+
+    await wrapper.get('[data-testid="planner-redo"]').trigger('click')
+    expect(pile().attributes('style')).toContain('left: 60%')
   })
 
   it('shows a visible warning when a non-demo warehouse is requested', async () => {

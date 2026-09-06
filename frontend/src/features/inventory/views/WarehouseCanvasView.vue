@@ -12,6 +12,8 @@ import WarehouseObjectPanel from '../warehouseCanvas/components/WarehouseObjectP
 import { useWarehouseCanvas } from '../warehouseCanvas/useWarehouseCanvas'
 import { findOpenPosition, formatCaseBreakdown, summarizeCanvas } from '../warehouseCanvas/warehouseCanvasModel'
 import type { CanvasRect } from '../warehouseCanvas/types'
+import { warehousePlannerScene } from '../warehouseCanvas/warehousePlannerScene'
+import type { PlannerPalletGroup } from '../warehouseCanvas/warehousePlannerScene'
 
 const canvas = useWarehouseCanvas()
 const route = inject(routeLocationKey, null)
@@ -38,11 +40,19 @@ const plannerTool = ref<PlannerUiTool>('goods')
 const measurementEnabled = ref(false)
 const gridSnapping = ref(true)
 const selectedPalletId = ref<string | null>('pallet-c018')
+function clonePlannerPalletGroups(groups: readonly PlannerPalletGroup[]): PlannerPalletGroup[] {
+  return groups.map((pallet) => ({
+    ...pallet,
+    contents: pallet.contents.map((item) => ({ ...item })),
+  }))
+}
+const plannerPalletGroups = ref<PlannerPalletGroup[]>(clonePlannerPalletGroups(warehousePlannerScene.palletGroups))
 type PlannerSnapshot = {
   tool: PlannerUiTool
   measurementEnabled: boolean
   gridSnapping: boolean
   selectedPalletId: string | null
+  palletGroups: PlannerPalletGroup[]
 }
 const plannerUndoStack = ref<PlannerSnapshot[]>([])
 const plannerRedoStack = ref<PlannerSnapshot[]>([])
@@ -87,6 +97,7 @@ function capturePlannerSnapshot(): PlannerSnapshot {
     measurementEnabled: measurementEnabled.value,
     gridSnapping: gridSnapping.value,
     selectedPalletId: selectedPalletId.value,
+    palletGroups: clonePlannerPalletGroups(plannerPalletGroups.value),
   }
 }
 function applyPlannerSnapshot(snapshot: PlannerSnapshot) {
@@ -94,6 +105,7 @@ function applyPlannerSnapshot(snapshot: PlannerSnapshot) {
   measurementEnabled.value = snapshot.measurementEnabled
   gridSnapping.value = snapshot.gridSnapping
   selectedPalletId.value = snapshot.selectedPalletId
+  plannerPalletGroups.value = clonePlannerPalletGroups(snapshot.palletGroups)
   activeTool.value = snapshot.tool === 'zone' ? 'draw' : snapshot.tool === 'measure' ? 'pan' : 'select'
 }
 function changePlannerState(change: () => void) {
@@ -119,6 +131,21 @@ function togglePlannerGrid() {
 }
 function selectPlannerPallet(id: string | null) {
   changePlannerState(() => { selectedPalletId.value = id })
+}
+function movePlannerPallet(move: { id: string; left: number; top: number }) {
+  changePlannerState(() => {
+    plannerPalletGroups.value = plannerPalletGroups.value.map((pallet) => {
+      if (pallet.id !== move.id) return pallet
+      return {
+        ...pallet,
+        left: move.left,
+        top: move.top,
+        xMeters: Number((pallet.xMeters + (move.left - pallet.left) * .6).toFixed(1)),
+        yMeters: Number((pallet.yMeters + (move.top - pallet.top) * .4).toFixed(1)),
+      }
+    })
+    selectedPalletId.value = move.id
+  })
 }
 function undoPlanner() {
   const previous = plannerUndoStack.value.at(-1)
@@ -266,7 +293,9 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
           :grid-snapping="gridSnapping"
           :measurement-enabled="measurementEnabled"
           :selected-pallet-id="selectedPalletId"
+          :pallet-groups="plannerPalletGroups"
           @select-pallet="selectPlannerPallet"
+          @move-pallet="movePlannerPallet"
         />
       </div>
     </section>

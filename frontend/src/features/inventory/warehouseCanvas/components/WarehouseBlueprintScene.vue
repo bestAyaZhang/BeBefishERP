@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { warehousePlannerScene } from '../warehousePlannerScene'
 import type { PlannerPalletGroup, PlannerRect } from '../warehousePlannerScene'
 import WarehousePlannerInspector from './WarehousePlannerInspector.vue'
@@ -8,10 +8,12 @@ const props = defineProps<{
   gridSnapping: boolean
   measurementEnabled: boolean
   selectedPalletId: string | null
+  palletGroups?: readonly PlannerPalletGroup[]
 }>()
 
 const emit = defineEmits<{
   'select-pallet': [id: string | null]
+  'move-pallet': [move: { id: string; left: number; top: number }]
 }>()
 
 type RulerTickKind = 'minor' | 'meter' | 'major'
@@ -35,7 +37,22 @@ const horizontalRulerTicks = createRulerTicks(60)
 const verticalRulerTicks = createRulerTicks(40)
 const horizontalRulerLabels = horizontalRulerTicks.filter((tick) => tick.kind === 'major')
 const verticalRulerLabels = verticalRulerTicks.filter((tick) => tick.kind === 'major')
-const selectedPallet = computed(() => warehousePlannerScene.palletGroups.find((item) => item.id === props.selectedPalletId))
+const palletGroups = computed(() => props.palletGroups ?? warehousePlannerScene.palletGroups)
+const drawingBoard = ref<HTMLElement | null>(null)
+type PalletDrag = {
+  pointerId: number
+  startClientX: number
+  startClientY: number
+  boardWidth: number
+  boardHeight: number
+  pallet: PlannerPalletGroup
+  preview: { left: number; top: number }
+}
+const palletDrag = ref<PalletDrag | null>(null)
+const selectedPallet = computed(() => {
+  const pallet = palletGroups.value.find((item) => item.id === props.selectedPalletId)
+  return pallet ? displayedPallet(pallet) : undefined
+})
 
 function rectStyle(rect: PlannerRect) {
   return {
@@ -47,11 +64,18 @@ function rectStyle(rect: PlannerRect) {
 }
 
 function palletStyle(pallet: PlannerPalletGroup) {
+  const displayed = displayedPallet(pallet)
   return {
-    ...rectStyle(pallet),
+    ...rectStyle(displayed),
     '--pallet-columns': String(pallet.columns),
     '--pallet-rows': String(pallet.rows),
   }
+}
+
+function displayedPallet(pallet: PlannerPalletGroup): PlannerPalletGroup {
+  return palletDrag.value?.pallet.id === pallet.id
+    ? { ...pallet, ...palletDrag.value.preview }
+    : pallet
 }
 
 function palletTotalUnits(pallet: PlannerPalletGroup) {
@@ -59,9 +83,90 @@ function palletTotalUnits(pallet: PlannerPalletGroup) {
 }
 
 function inspectorStyle(pallet: PlannerPalletGroup) {
-  const left = Math.min(pallet.left + pallet.width + 2, 72)
-  const top = Math.max(14, pallet.top - 3)
-  return { left: `${left}%`, top: `${top}%` }
+  const horizontal = pallet.left > 65
+    ? { right: `${roundPosition(100 - pallet.left + 2)}%` }
+    : { left: `${Math.min(pallet.left + pallet.width + 2, 72)}%` }
+  const vertical = pallet.top >= 58
+    ? { bottom: '4%' }
+    : { top: `${Math.max(14, pallet.top - 3)}%` }
+  return { ...horizontal, ...vertical }
+}
+
+function roundPosition(value: number) {
+  return Number(value.toFixed(2))
+}
+
+function warehouseRightBoundary(y: number) {
+  if (y <= 10.1) return 87.44
+  if (y < 41.45) return 87.44 + (y - 10.1) / (41.45 - 10.1) * (96.08 - 87.44)
+  if (y <= 60.45) return 96.08
+  if (y < 89.9) return 96.08 - (y - 60.45) / (89.9 - 60.45) * (96.08 - 87.44)
+  return 87.44
+}
+
+function constrainedPosition(pallet: PlannerPalletGroup, left: number, top: number) {
+  if (props.gridSnapping) {
+    left = Math.round(left / (100 / 120)) * (100 / 120)
+    top = Math.round(top / (100 / 80)) * (100 / 80)
+  }
+  top = Math.min(Math.max(top, 10.1), 89.9 - pallet.height)
+  const rightBoundary = Math.min(warehouseRightBoundary(top), warehouseRightBoundary(top + pallet.height))
+  left = Math.min(Math.max(left, 6.8), rightBoundary - pallet.width)
+  return { left: roundPosition(left), top: roundPosition(top) }
+}
+
+function dragPosition(event: PointerEvent, drag: PalletDrag) {
+  return constrainedPosition(
+    drag.pallet,
+    drag.pallet.left + (event.clientX - drag.startClientX) / drag.boardWidth * 100,
+    drag.pallet.top + (event.clientY - drag.startClientY) / drag.boardHeight * 100,
+  )
+}
+
+function startPalletDrag(event: PointerEvent, pallet: PlannerPalletGroup) {
+  if (event.button !== 0) return
+  const bounds = drawingBoard.value?.getBoundingClientRect()
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0) return
+  event.preventDefault()
+  emit('select-pallet', pallet.id)
+  palletDrag.value = {
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    boardWidth: bounds.width,
+    boardHeight: bounds.height,
+    pallet: { ...pallet, contents: pallet.contents.map((item) => ({ ...item })) },
+    preview: { left: pallet.left, top: pallet.top },
+  }
+  drawingBoard.value?.setPointerCapture?.(event.pointerId)
+}
+
+function movePalletDrag(event: PointerEvent) {
+  const drag = palletDrag.value
+  if (!drag || drag.pointerId !== event.pointerId) return
+  palletDrag.value = { ...drag, preview: dragPosition(event, drag) }
+}
+
+function stopPalletDrag(event: PointerEvent) {
+  const drag = palletDrag.value
+  if (!drag || drag.pointerId !== event.pointerId) return
+  if (Math.abs(event.clientX - drag.startClientX) < 3 && Math.abs(event.clientY - drag.startClientY) < 3) {
+    palletDrag.value = null
+    drawingBoard.value?.releasePointerCapture?.(event.pointerId)
+    return
+  }
+  const position = dragPosition(event, drag)
+  if (position.left !== drag.pallet.left || position.top !== drag.pallet.top) {
+    emit('move-pallet', { id: drag.pallet.id, ...position })
+  }
+  palletDrag.value = null
+  drawingBoard.value?.releasePointerCapture?.(event.pointerId)
+}
+
+function cancelPalletDrag(event: PointerEvent) {
+  if (!palletDrag.value || palletDrag.value.pointerId !== event.pointerId) return
+  palletDrag.value = null
+  drawingBoard.value?.releasePointerCapture?.(event.pointerId)
 }
 </script>
 
@@ -115,7 +220,13 @@ function inspectorStyle(pallet: PlannerPalletGroup) {
       <span class="ruler-unit">(m)</span>
     </div>
 
-    <div class="drawing-board">
+    <div
+      ref="drawingBoard"
+      class="drawing-board"
+      @pointermove="movePalletDrag"
+      @pointerup="stopPalletDrag"
+      @pointercancel="cancelPalletDrag"
+    >
       <div class="warehouse-shell" aria-hidden="true"><div class="warehouse-interior" /></div>
 
       <article
@@ -173,16 +284,17 @@ function inspectorStyle(pallet: PlannerPalletGroup) {
       />
 
       <button
-        v-for="pallet in warehousePlannerScene.palletGroups"
+        v-for="pallet in palletGroups"
         :key="pallet.id"
         :data-testid="`planner-pallet-${pallet.id}`"
         class="pallet-group"
-        :class="{ selected: selectedPalletId === pallet.id }"
+        :class="{ selected: selectedPalletId === pallet.id, dragging: palletDrag?.pallet.id === pallet.id }"
         :data-selected="selectedPalletId === pallet.id ? 'true' : 'false'"
         :aria-pressed="selectedPalletId === pallet.id"
         :style="palletStyle(pallet)"
         type="button"
         :aria-label="`${pallet.name}，地面箱子堆砌，${pallet.contents.length} 种商品，共 ${palletTotalUnits(pallet)} 个`"
+        @pointerdown="startPalletDrag($event, pallet)"
         @click="emit('select-pallet', pallet.id)"
       >
         <span class="sr-only">{{ pallet.name }} · {{ pallet.contents.length }} 种商品 · 共 {{ palletTotalUnits(pallet) }} 个</span>
@@ -211,7 +323,7 @@ function inspectorStyle(pallet: PlannerPalletGroup) {
 
       <aside data-testid="planner-minimap" class="planner-minimap" aria-label="仓库小地图">
         <div class="minimap-shell">
-          <i v-for="pallet in warehousePlannerScene.palletGroups.slice(0, 18)" :key="pallet.id" :style="rectStyle(pallet)" />
+          <i v-for="pallet in palletGroups.slice(0, 18)" :key="pallet.id" :style="rectStyle(pallet)" />
           <span aria-hidden="true" />
         </div>
       </aside>
@@ -266,7 +378,8 @@ function inspectorStyle(pallet: PlannerPalletGroup) {
 .utility-room { position: absolute; z-index: 4; display: grid; place-content: center; gap: 4px; border: 2px solid #687585; background: rgba(245,247,249,.92); text-align: center; }.utility-room strong { font-size: 12px; }.utility-room span { color: #64748b; font-size: 10px; }
 .fire-lane { position: absolute; z-index: 4; border-inline: 1px solid #ef7868; background: repeating-linear-gradient(45deg,rgba(245,102,82,.3) 0 2px,transparent 2px 6px); transform-origin: center; }.fire-lane span { position: absolute; left: 125%; top: 45%; color: #d54734; font-size: 10px; line-height: 15px; white-space: nowrap; transform: rotate(0deg); }
 .structure-column { position: absolute; z-index: 6; width: 14px; height: 14px; border: 1px solid #46515f; background: #6b7786; box-shadow: inset 2px 2px rgba(255,255,255,.35); }
-.pallet-group { position: absolute; z-index: 8; min-height: 0; border: 1px solid #a6966b; border-radius: 1px; padding: 0; background-color: #d9c797; background-image: linear-gradient(90deg,transparent calc(100% / var(--pallet-columns) - 1px),#aa9a70 calc(100% / var(--pallet-columns) - 1px)),linear-gradient(transparent calc(100% / var(--pallet-rows) - 1px),#aa9a70 calc(100% / var(--pallet-rows) - 1px)); background-size: calc(100% / var(--pallet-columns)) 100%,100% calc(100% / var(--pallet-rows)); box-shadow: inset 0 0 0 2px rgba(255,255,255,.2),0 1px 2px rgba(37,49,77,.12); cursor: pointer; }
+.pallet-group { position: absolute; z-index: 8; min-height: 0; border: 1px solid #a6966b; border-radius: 1px; padding: 0; background-color: #d9c797; background-image: linear-gradient(90deg,transparent calc(100% / var(--pallet-columns) - 1px),#aa9a70 calc(100% / var(--pallet-columns) - 1px)),linear-gradient(transparent calc(100% / var(--pallet-rows) - 1px),#aa9a70 calc(100% / var(--pallet-rows) - 1px)); background-size: calc(100% / var(--pallet-columns)) 100%,100% calc(100% / var(--pallet-rows)); box-shadow: inset 0 0 0 2px rgba(255,255,255,.2),0 1px 2px rgba(37,49,77,.12); cursor: grab; touch-action: none; user-select: none; }
+.pallet-group.dragging { z-index: 19; cursor: grabbing; }
 .pallet-group:hover { border-color: #7c6c45; filter: brightness(1.02); }.pallet-group:focus-visible { outline: 2px solid #536dff; outline-offset: 2px; }
 .pallet-group.selected { z-index: 15; border: 2px solid #12a9ac; box-shadow: 0 0 0 1px rgba(18,169,172,.18); }
 .selection-handle { position: absolute; width: 7px; height: 7px; border: 1px solid white; background: #12a9ac; box-shadow: 0 0 0 1px #12a9ac; }
