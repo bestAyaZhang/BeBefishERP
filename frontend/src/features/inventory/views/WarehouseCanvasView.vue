@@ -18,6 +18,9 @@ const route = inject(routeLocationKey, null)
 const warehouseLimitation = computed(() => route?.query.warehouseId && route.query.warehouseId !== '1'
   ? `当前仅支持演示仓库（ID 1）；所选仓库 ID ${route.query.warehouseId} 尚未加载。`
   : '单仓库演示：保存仅在当前页面有效，刷新后重置。')
+const visibleWarehouseNotice = computed(() => route?.query.warehouseId && route.query.warehouseId !== '1'
+  ? warehouseLimitation.value
+  : '')
 const { state, activeTool, selectedAreaId, selectedBlockId, issues, searchQuery } = canvas
 const { dirty, saving, loading, canUndo, canRedo } = canvas
 const summary = computed(() => summarizeCanvas(state.value))
@@ -35,6 +38,16 @@ const plannerTool = ref<PlannerUiTool>('goods')
 const measurementEnabled = ref(false)
 const gridSnapping = ref(true)
 const selectedPalletId = ref<string | null>('pallet-c018')
+type PlannerSnapshot = {
+  tool: PlannerUiTool
+  measurementEnabled: boolean
+  gridSnapping: boolean
+  selectedPalletId: string | null
+}
+const plannerUndoStack = ref<PlannerSnapshot[]>([])
+const plannerRedoStack = ref<PlannerSnapshot[]>([])
+const plannerCanUndo = computed(() => plannerUndoStack.value.length > 0)
+const plannerCanRedo = computed(() => plannerRedoStack.value.length > 0)
 const issuesCollapsed = ref(false)
 watch(() => issues.value.length, (count, previous) => { if (count === 0 || count > previous) issuesCollapsed.value = false })
 const drawerOpen = ref(false)
@@ -68,10 +81,58 @@ watch(state, () => {
   if (deleteAreaId.value && !deletingArea.value) deleteAreaId.value = null
 })
 function clearSelection() { canvas.selectArea(null); canvas.selectBlock(null); error.value = '' }
+function capturePlannerSnapshot(): PlannerSnapshot {
+  return {
+    tool: plannerTool.value,
+    measurementEnabled: measurementEnabled.value,
+    gridSnapping: gridSnapping.value,
+    selectedPalletId: selectedPalletId.value,
+  }
+}
+function applyPlannerSnapshot(snapshot: PlannerSnapshot) {
+  plannerTool.value = snapshot.tool
+  measurementEnabled.value = snapshot.measurementEnabled
+  gridSnapping.value = snapshot.gridSnapping
+  selectedPalletId.value = snapshot.selectedPalletId
+  activeTool.value = snapshot.tool === 'zone' ? 'draw' : snapshot.tool === 'measure' ? 'pan' : 'select'
+}
+function changePlannerState(change: () => void) {
+  const before = capturePlannerSnapshot()
+  change()
+  const after = capturePlannerSnapshot()
+  if (JSON.stringify(before) === JSON.stringify(after)) return
+  plannerUndoStack.value = [...plannerUndoStack.value.slice(-49), before]
+  plannerRedoStack.value = []
+}
 function changePlannerTool(tool: PlannerUiTool) {
-  plannerTool.value = tool
-  activeTool.value = tool === 'zone' ? 'draw' : tool === 'measure' ? 'pan' : 'select'
-  if (tool === 'measure') measurementEnabled.value = true
+  changePlannerState(() => {
+    plannerTool.value = tool
+    activeTool.value = tool === 'zone' ? 'draw' : tool === 'measure' ? 'pan' : 'select'
+    if (tool === 'measure') measurementEnabled.value = true
+  })
+}
+function togglePlannerMeasurement() {
+  changePlannerState(() => { measurementEnabled.value = !measurementEnabled.value })
+}
+function togglePlannerGrid() {
+  changePlannerState(() => { gridSnapping.value = !gridSnapping.value })
+}
+function selectPlannerPallet(id: string | null) {
+  changePlannerState(() => { selectedPalletId.value = id })
+}
+function undoPlanner() {
+  const previous = plannerUndoStack.value.at(-1)
+  if (!previous) return
+  plannerRedoStack.value = [...plannerRedoStack.value, capturePlannerSnapshot()]
+  plannerUndoStack.value = plannerUndoStack.value.slice(0, -1)
+  applyPlannerSnapshot(previous)
+}
+function redoPlanner() {
+  const next = plannerRedoStack.value.at(-1)
+  if (!next) return
+  plannerUndoStack.value = [...plannerUndoStack.value, capturePlannerSnapshot()]
+  plannerRedoStack.value = plannerRedoStack.value.slice(0, -1)
+  applyPlannerSnapshot(next)
 }
 function completeUiPreview() {
   notice.value = 'UI 预览已完成，功能将在视觉确认后继续设计'
@@ -187,16 +248,17 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
     <section class="planner-prototype" data-fullscreen="true" aria-label="仓库平面规划 UI 预览">
       <WarehousePlannerChrome
         :warehouse-name="state.warehouseName"
+        :context-notice="visibleWarehouseNotice"
         :active-tool="plannerTool"
         :measurement-enabled="measurementEnabled"
         :grid-snapping="gridSnapping"
-        :can-undo="canUndo"
-        :can-redo="canRedo"
+        :can-undo="plannerCanUndo"
+        :can-redo="plannerCanRedo"
         @change-tool="changePlannerTool"
-        @toggle-measurement="measurementEnabled = !measurementEnabled"
-        @toggle-grid="gridSnapping = !gridSnapping"
-        @undo="canvas.undo"
-        @redo="canvas.redo"
+        @toggle-measurement="togglePlannerMeasurement"
+        @toggle-grid="togglePlannerGrid"
+        @undo="undoPlanner"
+        @redo="redoPlanner"
         @complete="completeUiPreview"
       />
       <div class="planner-canvas-scroll">
@@ -204,7 +266,7 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
           :grid-snapping="gridSnapping"
           :measurement-enabled="measurementEnabled"
           :selected-pallet-id="selectedPalletId"
-          @select-pallet="selectedPalletId = $event || null"
+          @select-pallet="selectPlannerPallet"
         />
       </div>
     </section>

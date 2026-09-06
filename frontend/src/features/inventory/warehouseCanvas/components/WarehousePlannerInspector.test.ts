@@ -13,6 +13,7 @@ describe('WarehousePlannerInspector', () => {
     expect(wrapper.get('[data-testid="planner-inspector-cases"]').text()).toBe('10 件 + 10 个')
     expect(wrapper.text()).toContain('32.4m')
     expect(wrapper.text()).toContain('90°')
+    expect(wrapper.get('[data-testid="planner-inspector-more"]').attributes('disabled')).toBeDefined()
   })
 
   it('emits close from its accessible dismiss action', async () => {

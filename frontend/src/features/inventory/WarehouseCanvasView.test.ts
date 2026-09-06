@@ -5,6 +5,7 @@ import WarehouseFloorCanvas from './warehouseCanvas/components/WarehouseFloorCan
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parse } from '@vue/compiler-sfc'
+import { routeLocationKey } from 'vue-router'
 
 const mounted: ReturnType<typeof mount>[] = []
 const styleElements: HTMLStyleElement[] = []
@@ -15,8 +16,11 @@ function applyPageStyles() {
   document.head.append(style)
   styleElements.push(style)
 }
-async function mountPage() {
-  const wrapper = mount(WarehouseCanvasView, { attachTo: document.body })
+async function mountPage(routeQuery: Record<string, string> = {}) {
+  const wrapper = mount(WarehouseCanvasView, {
+    attachTo: document.body,
+    global: { provide: { [routeLocationKey as symbol]: { query: routeQuery } } },
+  })
   mounted.push(wrapper)
   await flushPromises()
   return wrapper
@@ -46,6 +50,30 @@ describe('Warehouse canvas overview', () => {
 
     await wrapper.get('[data-testid="planner-complete"]').trigger('click')
     expect(wrapper.get('[role="status"]').text()).toContain('UI 预览')
+  })
+
+  it('undoes and redoes visible planner changes', async () => {
+    const wrapper = await mountPage()
+
+    expect(wrapper.get('[data-testid="planner-undo"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="planner-redo"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.get('[data-testid="planner-grid-toggle"]').trigger('click')
+    expect(wrapper.get('[data-testid="warehouse-blueprint-scene"]').attributes('data-grid-snapping')).toBe('false')
+    expect(wrapper.get('[data-testid="planner-undo"]').attributes('disabled')).toBeUndefined()
+
+    await wrapper.get('[data-testid="planner-undo"]').trigger('click')
+    expect(wrapper.get('[data-testid="warehouse-blueprint-scene"]').attributes('data-grid-snapping')).toBe('true')
+    expect(wrapper.get('[data-testid="planner-redo"]').attributes('disabled')).toBeUndefined()
+
+    await wrapper.get('[data-testid="planner-redo"]').trigger('click')
+    expect(wrapper.get('[data-testid="warehouse-blueprint-scene"]').attributes('data-grid-snapping')).toBe('false')
+  })
+
+  it('shows a visible warning when a non-demo warehouse is requested', async () => {
+    const wrapper = await mountPage({ warehouseId: '8' })
+
+    expect(wrapper.get('[data-testid="planner-warehouse-notice"]').text()).toContain('仓库 ID 8')
   })
 
   it('shows per-area SKU counts and aggregate case conversions', async () => {

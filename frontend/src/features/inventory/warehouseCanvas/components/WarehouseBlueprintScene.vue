@@ -11,7 +11,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'select-pallet': [id: string]
+  'select-pallet': [id: string | null]
 }>()
 
 const horizontalTicks = Array.from({ length: 13 }, (_, index) => index * 5)
@@ -124,6 +124,7 @@ function inspectorStyle(pallet: PlannerPalletGroup) {
         class="pallet-group"
         :class="{ selected: selectedPalletId === pallet.id }"
         :data-selected="selectedPalletId === pallet.id ? 'true' : 'false'"
+        :aria-pressed="selectedPalletId === pallet.id"
         :style="palletStyle(pallet)"
         type="button"
         :aria-label="`${pallet.name}，地面箱子堆砌，${pallet.units} 个`"
@@ -150,7 +151,7 @@ function inspectorStyle(pallet: PlannerPalletGroup) {
         class="scene-inspector"
         :style="inspectorStyle(selectedPallet)"
         :pallet="selectedPallet"
-        @close="emit('select-pallet', '')"
+        @close="emit('select-pallet', null)"
       />
 
       <aside data-testid="planner-minimap" class="planner-minimap" aria-label="仓库小地图">

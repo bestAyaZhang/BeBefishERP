@@ -13,6 +13,7 @@ export type PlannerUiTool = 'structure' | 'zone' | 'goods' | 'measure'
 
 defineProps<{
   warehouseName: string
+  contextNotice?: string
   activeTool: PlannerUiTool
   measurementEnabled: boolean
   gridSnapping: boolean
@@ -44,7 +45,10 @@ const tools: Array<{
 <template>
   <div class="planner-chrome">
     <header class="planner-header">
-      <h1 data-testid="planner-title">{{ warehouseName }} · 平面规划</h1>
+      <div class="planner-heading">
+        <h1 data-testid="planner-title">{{ warehouseName }} · 平面规划</h1>
+        <p v-if="contextNotice" data-testid="planner-warehouse-notice" role="status">{{ contextNotice }}</p>
+      </div>
       <div class="planner-actions" aria-label="规划操作">
         <button data-testid="planner-undo" type="button" aria-label="撤销" :disabled="!canUndo" @click="emit('undo')">
           <Undo2 :size="18" />
@@ -109,7 +113,9 @@ const tools: Array<{
   background: rgba(255,255,255,.96);
   box-shadow: 0 1px 7px rgba(37,49,77,.06);
 }
-.planner-header h1 { margin: 0; color: #202b43; font-size: 18px; line-height: 1; font-weight: 650; letter-spacing: .01em; }
+.planner-heading { display: flex; min-width: 0; align-items: center; gap: 12px; }
+.planner-header h1 { margin: 0; color: #202b43; font-size: 18px; line-height: 1; font-weight: 650; letter-spacing: .01em; white-space: nowrap; }
+.planner-heading p { max-width: 420px; margin: 0; overflow: hidden; border: 1px solid #f4d486; border-radius: 999px; padding: 4px 9px; background: #fff8df; color: #8a5a08; font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .planner-actions { display: flex; align-items: center; gap: 7px; }
 .planner-actions button {
   display: inline-flex;

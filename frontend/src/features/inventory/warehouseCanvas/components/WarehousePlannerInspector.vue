@@ -13,7 +13,7 @@ const emit = defineEmits<{ close: [] }>()
     <header>
       <strong>{{ pallet.name }}</strong>
       <span class="header-actions">
-        <button type="button" aria-label="更多货堆操作"><MoreHorizontal :size="17" /></button>
+        <button data-testid="planner-inspector-more" type="button" aria-label="更多货堆操作，UI 预览暂未开放" title="UI 预览暂未开放" disabled><MoreHorizontal :size="17" /></button>
         <button data-testid="planner-inspector-close" type="button" aria-label="关闭货堆属性" @click="emit('close')"><X :size="15" /></button>
       </span>
     </header>
@@ -40,6 +40,7 @@ header strong { min-width: 0; overflow: hidden; font-size: 13px; font-weight: 65
 .header-actions { display: flex; align-items: center; }
 button { display: grid; place-items: center; width: 25px; height: 25px; border: 0; border-radius: 5px; padding: 0; background: transparent; color: #64748b; cursor: pointer; }
 button:hover { background: #f1f5f9; color: #25314d; } button:focus-visible { outline: 2px solid #536dff; outline-offset: 1px; }
+button:disabled { color: #cbd5e1; cursor: not-allowed; }
 .geometry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 13px; margin: 11px 0 0; }
 .geometry-grid div { display: grid; grid-template-columns: 22px 1fr; align-items: baseline; }
 dt { color: #94a3b8; font-size: 11px; } dd { margin: 0; font: 12px/1.4 Inter,sans-serif; color: #354159; }

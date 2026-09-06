@@ -19,11 +19,16 @@ describe('WarehouseBlueprintScene', () => {
     expect(wrapper.text()).toContain('叉车通道 4.0m')
     expect(wrapper.text()).toContain('消防留空区')
     expect(wrapper.get('[data-testid="planner-pallet-pallet-c018"]').attributes('data-selected')).toBe('true')
+    expect(wrapper.get('[data-testid="planner-pallet-pallet-c018"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.get('[data-testid="planner-pallet-pallet-a01"]').attributes('aria-pressed')).toBe('false')
     expect(wrapper.find('[data-testid="planner-minimap"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="planner-coordinate-status"]').text()).toContain('比例  1:100')
 
     await wrapper.get('[data-testid="planner-pallet-pallet-a01"]').trigger('click')
     expect(wrapper.emitted('select-pallet')?.[0]).toEqual(['pallet-a01'])
+
+    await wrapper.get('[data-testid="planner-inspector-close"]').trigger('click')
+    expect(wrapper.emitted('select-pallet')?.[1]).toEqual([null])
   })
 
   it('exposes measuring and grid state without changing the warehouse fixture', async () => {
