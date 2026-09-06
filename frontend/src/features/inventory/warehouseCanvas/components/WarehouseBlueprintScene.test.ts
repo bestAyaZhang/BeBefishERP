@@ -46,4 +46,23 @@ describe('WarehouseBlueprintScene', () => {
     expect(wrapper.findAll('[data-testid^="planner-measurement-"]').length).toBeGreaterThanOrEqual(2)
     expect(wrapper.findAll('[data-testid^="planner-pallet-"]').length).toBeGreaterThanOrEqual(18)
   })
+
+  it('renders half-meter ruler ticks with distinct meter and five-meter hierarchy', () => {
+    const wrapper = mount(WarehouseBlueprintScene, {
+      props: {
+        gridSnapping: true,
+        measurementEnabled: false,
+        selectedPalletId: 'pallet-c018',
+      },
+    })
+
+    expect(wrapper.findAll('[data-testid="planner-ruler-x-tick"]')).toHaveLength(121)
+    expect(wrapper.findAll('[data-testid="planner-ruler-y-tick"]')).toHaveLength(81)
+    expect(wrapper.findAll('[data-testid="planner-ruler-x-tick"][data-tick-kind="major"]')).toHaveLength(13)
+    expect(wrapper.findAll('[data-testid="planner-ruler-y-tick"][data-tick-kind="major"]')).toHaveLength(9)
+    expect(wrapper.findAll('[data-testid="planner-ruler-x-tick"][data-tick-kind="meter"]')).toHaveLength(48)
+    expect(wrapper.findAll('[data-testid="planner-ruler-y-tick"][data-tick-kind="meter"]')).toHaveLength(32)
+    expect(wrapper.get('[data-testid="planner-ruler-x"]').text()).toContain('60')
+    expect(wrapper.get('[data-testid="planner-ruler-y"]').text()).toContain('40')
+  })
 })

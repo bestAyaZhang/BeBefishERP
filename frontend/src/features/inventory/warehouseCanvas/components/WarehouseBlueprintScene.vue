@@ -14,8 +14,27 @@ const emit = defineEmits<{
   'select-pallet': [id: string | null]
 }>()
 
-const horizontalTicks = Array.from({ length: 13 }, (_, index) => index * 5)
-const verticalTicks = Array.from({ length: 9 }, (_, index) => index * 5)
+type RulerTickKind = 'minor' | 'meter' | 'major'
+type RulerTick = {
+  edge: 'start' | 'middle' | 'end'
+  kind: RulerTickKind
+  position: number
+  value: number
+}
+
+function createRulerTicks(maxMeters: number): RulerTick[] {
+  return Array.from({ length: maxMeters * 2 + 1 }, (_, index) => ({
+    edge: index === 0 ? 'start' : index === maxMeters * 2 ? 'end' : 'middle',
+    kind: index % 10 === 0 ? 'major' : index % 2 === 0 ? 'meter' : 'minor',
+    position: index / (maxMeters * 2) * 100,
+    value: index / 2,
+  }))
+}
+
+const horizontalRulerTicks = createRulerTicks(60)
+const verticalRulerTicks = createRulerTicks(40)
+const horizontalRulerLabels = horizontalRulerTicks.filter((tick) => tick.kind === 'major')
+const verticalRulerLabels = verticalRulerTicks.filter((tick) => tick.kind === 'major')
 const selectedPallet = computed(() => warehousePlannerScene.palletGroups.find((item) => item.id === props.selectedPalletId))
 
 function rectStyle(rect: PlannerRect) {
@@ -51,14 +70,46 @@ function inspectorStyle(pallet: PlannerPalletGroup) {
     :data-grid-snapping="gridSnapping ? 'true' : 'false'"
     aria-label="一号仓平面规划画布"
   >
-    <ol class="ruler ruler-x" aria-label="横向标尺，单位米">
-      <li v-for="tick in horizontalTicks" :key="tick" :style="{ left: `${tick / 60 * 100}%` }">{{ tick }}</li>
+    <div data-testid="planner-ruler-x" class="ruler ruler-x" role="img" aria-label="横向标尺，0 至 60 米，最小刻度 0.5 米">
+      <i
+        v-for="tick in horizontalRulerTicks"
+        :key="tick.value"
+        data-testid="planner-ruler-x-tick"
+        class="ruler-tick"
+        :class="`tick-${tick.kind}`"
+        :data-tick-kind="tick.kind"
+        :style="{ left: `${tick.position}%` }"
+        aria-hidden="true"
+      />
+      <span
+        v-for="tick in horizontalRulerLabels"
+        :key="`x-label-${tick.value}`"
+        class="ruler-label"
+        :data-edge="tick.edge"
+        :style="{ left: `${tick.position}%` }"
+      >{{ tick.value }}</span>
       <span class="ruler-unit">(m)</span>
-    </ol>
-    <ol class="ruler ruler-y" aria-label="纵向标尺，单位米">
-      <li v-for="tick in verticalTicks" :key="tick" :style="{ top: `${tick / 40 * 100}%` }">{{ tick }}</li>
+    </div>
+    <div data-testid="planner-ruler-y" class="ruler ruler-y" role="img" aria-label="纵向标尺，0 至 40 米，最小刻度 0.5 米">
+      <i
+        v-for="tick in verticalRulerTicks"
+        :key="tick.value"
+        data-testid="planner-ruler-y-tick"
+        class="ruler-tick"
+        :class="`tick-${tick.kind}`"
+        :data-tick-kind="tick.kind"
+        :style="{ top: `${tick.position}%` }"
+        aria-hidden="true"
+      />
+      <span
+        v-for="tick in verticalRulerLabels"
+        :key="`y-label-${tick.value}`"
+        class="ruler-label"
+        :data-edge="tick.edge"
+        :style="{ top: `${tick.position}%` }"
+      >{{ tick.value }}</span>
       <span class="ruler-unit">(m)</span>
-    </ol>
+    </div>
 
     <div class="drawing-board">
       <div class="warehouse-shell" aria-hidden="true"><div class="warehouse-interior" /></div>
@@ -176,13 +227,25 @@ function inspectorStyle(pallet: PlannerPalletGroup) {
 .blueprint-scene { position: relative; width: 100%; min-width: 980px; height: 100%; min-height: 720px; padding: 36px 28px 28px 48px; background: #f9fbfd; color: #25314d; }
 .drawing-board { position: relative; width: 100%; height: 100%; overflow: hidden; border: 1px solid #eef2f6; background-color: #fbfcfd; background-image: linear-gradient(#e8edf3 1px, transparent 1px), linear-gradient(90deg, #e8edf3 1px, transparent 1px), linear-gradient(#f1f4f8 1px, transparent 1px), linear-gradient(90deg, #f1f4f8 1px, transparent 1px); background-size: 40px 40px, 40px 40px, 8px 8px, 8px 8px; }
 .grid-muted .drawing-board { background-image: linear-gradient(#eef2f6 1px, transparent 1px), linear-gradient(90deg, #eef2f6 1px, transparent 1px); background-size: 40px 40px; }
-.ruler { position: absolute; z-index: 2; margin: 0; padding: 0; color: #536176; font: 11px/1 Inter,sans-serif; list-style: none; }
-.ruler-x { top: 8px; left: 48px; right: 28px; height: 27px; border-bottom: 1px solid #aeb8c5; background: repeating-linear-gradient(90deg, transparent 0 calc(1.666% - 1px), #aeb8c5 calc(1.666% - 1px) 1.666%); }
-.ruler-x li { position: absolute; top: 0; transform: translateX(-50%); }
-.ruler-y { top: 36px; bottom: 28px; left: 8px; width: 39px; border-right: 1px solid #aeb8c5; background: repeating-linear-gradient(180deg, transparent 0 calc(2.5% - 1px), #aeb8c5 calc(2.5% - 1px) 2.5%); }
-.ruler-y li { position: absolute; right: 8px; transform: translateY(-50%); }
+.ruler { position: absolute; z-index: 2; color: #536176; font: 10px/1 Inter,sans-serif; }
+.ruler-x { top: 7px; left: 48px; right: 28px; height: 28px; border-bottom: 1px solid #8f9baa; }
+.ruler-y { top: 36px; bottom: 28px; left: 8px; width: 39px; border-right: 1px solid #8f9baa; }
+.ruler-tick { position: absolute; display: block; background: #98a4b2; pointer-events: none; }
+.ruler-x .ruler-tick { bottom: 0; width: 1px; height: 4px; }
+.ruler-x .tick-meter { height: 8px; background: #7f8b9a; }
+.ruler-x .tick-major { height: 14px; background: #667384; }
+.ruler-y .ruler-tick { right: 0; width: 4px; height: 1px; }
+.ruler-y .tick-meter { width: 8px; background: #7f8b9a; }
+.ruler-y .tick-major { width: 14px; background: #667384; }
+.ruler-label { position: absolute; color: #4b586b; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ruler-x .ruler-label { top: 0; transform: translateX(-50%); }
+.ruler-x .ruler-label[data-edge='start'] { transform: none; }
+.ruler-x .ruler-label[data-edge='end'] { transform: translateX(-100%); }
+.ruler-y .ruler-label { right: 20px; transform: translateY(-50%); }
+.ruler-y .ruler-label[data-edge='start'] { transform: none; }
+.ruler-y .ruler-label[data-edge='end'] { transform: translateY(-100%); }
 .ruler-unit { position: absolute; color: #64748b; }
-.ruler-x .ruler-unit { right: -25px; top: 0; }.ruler-y .ruler-unit { bottom: -18px; right: 7px; }
+.ruler-x .ruler-unit { right: -25px; top: 0; }.ruler-y .ruler-unit { bottom: -18px; right: 5px; }
 .warehouse-shell { position: absolute; clip-path: polygon(5% 8%,89% 8%,98% 41%,98% 61%,89% 92%,5% 92%); }
 .warehouse-shell { inset: 2.5% 2% 2.5% 2%; background: #566271; filter: drop-shadow(0 2px 2px rgba(37,49,77,.14)); }
 .warehouse-interior { position: absolute; inset: 0; clip-path: polygon(5.7% 8.9%,88.4% 8.9%,97.1% 41.3%,97.1% 60.7%,88.4% 91.1%,5.7% 91.1%); background: rgba(255,255,255,.92); }

@@ -258,3 +258,44 @@ Focused crops: warning x960,y408,w240,h190 on each side →480 × 190; search x5
 
 
 final result: passed
+
+---
+
+# Warehouse Planner Ruler Detail QA
+
+Source visual truth path: `C:/Users/张振亚/AppData/Local/Temp/codex-clipboard-1c340ee8-a9a7-48fd-8e45-80e65637b888.png`
+
+Implementation screenshot path: `frontend/prototype-screenshots/warehouse-planner/warehouse-planner-ui.png`
+
+Full-view comparison evidence: `frontend/prototype-screenshots/warehouse-planner/reference-and-implementation.png`
+
+Focused ruler comparison evidence: `frontend/prototype-screenshots/warehouse-planner/ruler-reference-and-implementation.png`
+
+## Capture
+
+- Browser: Codex in-app browser at `/inventory/warehouse-canvas`.
+- Source pixels: 1487 × 1058. Implementation pixels and CSS viewport: 1286 × 1147 at device scale factor 1.
+- Density normalization: the focused comparison rescales both top regions to the same 1200 px content width before cropping. The full-view comparison fits each complete image into an equal-width panel and is used only for composition, not pixel-distance claims.
+- State: ground pile C-018 selected, grid snapping on, measurement off. Measurement-on was also exercised and restored before the final capture.
+
+## Findings
+
+- No actionable P0, P1, or P2 finding remains in the ruler refinement.
+- Fonts and typography: 5 m labels use compact 10 px tabular numerals, retain the 0/60 and 0/40 endpoints, and remain readable without crowding the warehouse drawing.
+- Spacing and layout rhythm: horizontal and vertical baselines meet the drawing-board edges. Half-metre ticks are 4 px, metre ticks are 8 px, and five-metre ticks are 14 px, creating the same engineering hierarchy visible in the reference.
+- Colors and visual tokens: slate tick hierarchy and a darker hairline baseline match the existing blueprint palette without competing with selected-object teal or warehouse structure lines.
+- Image quality and asset fidelity: no raster or decorative asset was introduced for the ruler; tick marks are native UI geometry and render sharply at device scale factor 1. The source and implementation were opened together in both full and focused comparison images.
+- Copy and content: units remain `(m)` and the visible ranges remain 0–60 m horizontally and 0–40 m vertically. Accessible labels explicitly announce the range and 0.5 m minimum division.
+
+## Comparison History
+
+1. The pre-implementation regression test confirmed the old ruler exposed no intermediate tick hierarchy.
+2. The first rendered comparison after implementation showed the approved 0.5 m / 1 m / 5 m hierarchy aligned to the plan grid. No visual P0/P1/P2 fix was required, so no additional design-QA iteration was necessary.
+
+## Interaction and Console Verification
+
+- Toggling the top measurement control added the selected pile's 4.8 m and 2.4 m measurement labels; toggling again restored the final capture state.
+- The selected C-018 pile, property inspector, grid toggle, toolbar, minimap, and coordinate footer remained intact.
+- Final in-app browser console log: zero warnings and zero errors.
+
+final result: passed
