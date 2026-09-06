@@ -39,6 +39,7 @@ const notice = ref('')
 const plannerTool = ref<PlannerUiTool>('goods')
 const measurementEnabled = ref(false)
 const gridSnapping = ref(true)
+const plannerCompleted = ref(false)
 const selectedPalletId = ref<string | null>('pallet-c018')
 function clonePlannerPalletGroups(groups: readonly PlannerPalletGroup[]): PlannerPalletGroup[] {
   return groups.map((pallet) => ({
@@ -162,7 +163,10 @@ function redoPlanner() {
   applyPlannerSnapshot(next)
 }
 function completeUiPreview() {
-  notice.value = 'UI 预览已完成，功能将在视觉确认后继续设计'
+  plannerCompleted.value = !plannerCompleted.value
+  notice.value = plannerCompleted.value
+    ? '规划已完成，点击货堆查看详情'
+    : '已返回规划编辑'
 }
 function chooseArea(id: string) { error.value = ''; canvas.selectArea(id) }
 function chooseBlock(id: string) { error.value = ''; canvas.selectBlock(id) }
@@ -281,6 +285,7 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
         :grid-snapping="gridSnapping"
         :can-undo="plannerCanUndo"
         :can-redo="plannerCanRedo"
+        :completed="plannerCompleted"
         @change-tool="changePlannerTool"
         @toggle-measurement="togglePlannerMeasurement"
         @toggle-grid="togglePlannerGrid"
@@ -291,6 +296,7 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
       <div class="planner-canvas-scroll">
         <WarehouseBlueprintScene
           :grid-snapping="gridSnapping"
+          :inventory-details-visible="plannerCompleted"
           :measurement-enabled="measurementEnabled"
           :selected-pallet-id="selectedPalletId"
           :pallet-groups="plannerPalletGroups"

@@ -2,9 +2,11 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { warehousePlannerScene } from '../warehousePlannerScene'
 import type { PlannerPalletGroup, PlannerRect } from '../warehousePlannerScene'
+import WarehousePlannerInspector from './WarehousePlannerInspector.vue'
 
 const props = defineProps<{
   gridSnapping: boolean
+  inventoryDetailsVisible?: boolean
   measurementEnabled: boolean
   selectedPalletId: string | null
   palletGroups?: readonly PlannerPalletGroup[]
@@ -90,6 +92,16 @@ function displayedPallet(pallet: PlannerPalletGroup): PlannerPalletGroup {
 
 function palletTotalUnits(pallet: PlannerPalletGroup) {
   return pallet.contents.reduce((total, item) => total + item.units, 0)
+}
+
+function inspectorStyle(pallet: PlannerPalletGroup) {
+  const horizontal = pallet.left > 65
+    ? { right: `${roundPosition(100 - pallet.left + 2)}%` }
+    : { left: `${Math.min(pallet.left + pallet.width + 2, 72)}%` }
+  const vertical = pallet.top >= 58
+    ? { bottom: '4%' }
+    : { top: `${Math.max(14, pallet.top - 3)}%` }
+  return { ...horizontal, ...vertical }
 }
 
 function roundPosition(value: number) {
@@ -235,6 +247,7 @@ function schedulePalletPreview(sample: PointerSample) {
 }
 
 function startPalletDrag(event: PointerEvent, pallet: PlannerPalletGroup) {
+  if (props.inventoryDetailsVisible) return
   if (event.button !== 0) return
   const bounds = drawingBoard.value?.getBoundingClientRect()
   if (!bounds || bounds.width <= 0 || bounds.height <= 0) return
@@ -297,9 +310,10 @@ onBeforeUnmount(() => {
   <section
     data-testid="warehouse-blueprint-scene"
     class="blueprint-scene"
-    :class="{ 'grid-muted': !gridSnapping }"
+    :class="{ 'grid-muted': !gridSnapping, 'details-visible': inventoryDetailsVisible }"
     :data-measuring="measurementEnabled ? 'true' : 'false'"
     :data-grid-snapping="gridSnapping ? 'true' : 'false'"
+    :data-view-mode="inventoryDetailsVisible ? 'details' : 'planning'"
     aria-label="一号仓平面规划画布"
   >
     <div data-testid="planner-ruler-x" class="ruler ruler-x" role="img" aria-label="横向标尺，0 至 60 米，最小刻度 0.5 米">
@@ -452,6 +466,14 @@ onBeforeUnmount(() => {
         </div>
       </template>
 
+      <WarehousePlannerInspector
+        v-if="inventoryDetailsVisible && selectedPallet && !palletDrag"
+        class="scene-inspector"
+        :style="inspectorStyle(selectedPallet)"
+        :pallet="selectedPallet"
+        @close="emit('select-pallet', null)"
+      />
+
       <aside data-testid="planner-minimap" class="planner-minimap" aria-label="仓库小地图">
         <div class="minimap-shell">
           <i v-for="pallet in palletGroups.slice(0, 18)" :key="pallet.id" :style="rectStyle(pallet)" />
@@ -510,6 +532,7 @@ onBeforeUnmount(() => {
 .fire-lane { position: absolute; z-index: 4; border-inline: 1px solid #ef7868; background: repeating-linear-gradient(45deg,rgba(245,102,82,.3) 0 2px,transparent 2px 6px); transform-origin: center; }.fire-lane span { position: absolute; left: 125%; top: 45%; color: #d54734; font-size: 10px; line-height: 15px; white-space: nowrap; transform: rotate(0deg); }
 .structure-column { position: absolute; z-index: 6; width: 14px; height: 14px; border: 1px solid #46515f; background: #6b7786; box-shadow: inset 2px 2px rgba(255,255,255,.35); }
 .pallet-group { position: absolute; z-index: 8; min-height: 0; border: 1px solid #a6966b; border-radius: 1px; padding: 0; background-color: #d9c797; background-image: linear-gradient(90deg,transparent calc(100% / var(--pallet-columns) - 1px),#aa9a70 calc(100% / var(--pallet-columns) - 1px)),linear-gradient(transparent calc(100% / var(--pallet-rows) - 1px),#aa9a70 calc(100% / var(--pallet-rows) - 1px)); background-size: calc(100% / var(--pallet-columns)) 100%,100% calc(100% / var(--pallet-rows)); box-shadow: inset 0 0 0 2px rgba(255,255,255,.2),0 1px 2px rgba(37,49,77,.12); cursor: grab; touch-action: none; user-select: none; }
+.details-visible .pallet-group { cursor: pointer; }
 .pallet-group.dragging { z-index: 19; cursor: grabbing; will-change: transform; }
 .pallet-group:hover { border-color: #7c6c45; filter: brightness(1.02); }.pallet-group:focus-visible { outline: 2px solid #536dff; outline-offset: 2px; }
 .pallet-group.selected { z-index: 15; border: 2px solid #12a9ac; box-shadow: 0 0 0 1px rgba(18,169,172,.18); }
@@ -525,6 +548,7 @@ onBeforeUnmount(() => {
 .width-measure { border-top: 1px solid #12a9ac; }.height-measure { border-left: 1px solid #12a9ac; }
 .measurement span { position: absolute; padding: 2px 4px; border-radius: 3px; background: #f9ffff; white-space: nowrap; }
 .width-measure span { left: 50%; top: -17px; transform: translateX(-50%); }.height-measure span { left: 4px; top: 50%; transform: translateY(-50%); }
+.scene-inspector { position: absolute; z-index: 24; }
 .planner-minimap { position: absolute; z-index: 20; right: 16px; bottom: 17px; width: 150px; height: 112px; border: 1px solid #e1e6ec; border-radius: 7px; padding: 9px; background: rgba(255,255,255,.96); box-shadow: 0 7px 20px rgba(37,49,77,.12); }
 .minimap-shell { position: relative; width: 100%; height: 100%; clip-path: polygon(3% 5%,88% 5%,98% 36%,98% 62%,89% 95%,3% 95%); background: #f5f7f9; box-shadow: inset 0 0 0 2px #8994a1; }
 .minimap-shell i { position: absolute; display: block; background: #d8ca9f; opacity: .8; transform: scale(.9); }

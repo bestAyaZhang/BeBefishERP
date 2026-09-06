@@ -157,6 +157,7 @@ describe('WarehouseBlueprintScene', () => {
     const wrapper = mount(WarehouseBlueprintScene, {
       props: {
         gridSnapping: true,
+        inventoryDetailsVisible: false,
         measurementEnabled: false,
         selectedPalletId: 'pallet-c018',
         palletGroups: warehousePlannerScene.palletGroups,
@@ -165,6 +166,45 @@ describe('WarehouseBlueprintScene', () => {
     expect(wrapper.find('.scene-inspector').exists()).toBe(false)
     expect(wrapper.find('[data-testid="planner-inspector-product"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('SKU-FISH-500ML-蓝')
+  })
+
+  it('shows pile inventory details only in completed detail mode', async () => {
+    const wrapper = mount(WarehouseBlueprintScene, {
+      props: {
+        gridSnapping: true,
+        inventoryDetailsVisible: false,
+        measurementEnabled: false,
+        selectedPalletId: 'pallet-c018',
+        palletGroups: warehousePlannerScene.palletGroups,
+      },
+    })
+
+    expect(wrapper.find('.scene-inspector').exists()).toBe(false)
+    await wrapper.setProps({ inventoryDetailsVisible: true })
+    expect(wrapper.get('.scene-inspector').text()).toContain('深海矿物水 500ml 蓝')
+    expect(wrapper.get('.scene-inspector').text()).toContain('SKU-FISH-500ML-蓝')
+  })
+
+  it('keeps piles read-only while completed details are visible', async () => {
+    runAnimationFramesImmediately()
+    const wrapper = mount(WarehouseBlueprintScene, {
+      props: {
+        gridSnapping: true,
+        inventoryDetailsVisible: true,
+        measurementEnabled: false,
+        selectedPalletId: 'pallet-c018',
+        palletGroups: warehousePlannerScene.palletGroups,
+      },
+    })
+    const board = setDrawingBoardBounds(wrapper)
+    const pile = wrapper.get('[data-testid="planner-pallet-pallet-c018"]')
+
+    await pile.trigger('pointerdown', { button: 0, pointerId: 16, clientX: 600, clientY: 400 })
+    await board.trigger('pointermove', { pointerId: 16, clientX: 650, clientY: 400 })
+    await board.trigger('pointerup', { pointerId: 16, clientX: 650, clientY: 400 })
+
+    expect(wrapper.emitted('move-pallet')).toBeUndefined()
+    expect(wrapper.find('.scene-inspector').exists()).toBe(true)
   })
 
   it('marks both overlapping piles and returns the moved pile when the drop is rejected', async () => {

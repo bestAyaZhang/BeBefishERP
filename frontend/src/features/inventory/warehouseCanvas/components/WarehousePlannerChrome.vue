@@ -19,6 +19,7 @@ defineProps<{
   gridSnapping: boolean
   canUndo: boolean
   canRedo: boolean
+  completed?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -78,7 +79,7 @@ const tools: Array<{
           <span class="switch" aria-hidden="true"><span /></span>
         </button>
         <button data-testid="planner-complete" type="button" class="complete-button" @click="emit('complete')">
-          完成规划
+          {{ completed ? '返回规划' : '完成规划' }}
         </button>
       </div>
     </header>

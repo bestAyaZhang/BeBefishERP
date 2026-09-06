@@ -49,8 +49,14 @@ describe('Warehouse canvas overview', () => {
     expect(wrapper.get('[data-testid="warehouse-blueprint-scene"]').attributes('data-measuring')).toBe('true')
     expect(wrapper.get('[data-testid="warehouse-blueprint-scene"]').attributes('data-grid-snapping')).toBe('false')
 
+    expect(wrapper.find('.scene-inspector').exists()).toBe(false)
     await wrapper.get('[data-testid="planner-complete"]').trigger('click')
-    expect(wrapper.get('[role="status"]').text()).toContain('UI 预览')
+    expect(wrapper.get('[role="status"]').text()).toContain('点击货堆查看详情')
+    expect(wrapper.get('[data-testid="planner-complete"]').text()).toContain('返回规划')
+    expect(wrapper.get('.scene-inspector').text()).toContain('SKU-FISH-500ML-蓝')
+
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    expect(wrapper.find('.scene-inspector').exists()).toBe(false)
   })
 
   it('undoes and redoes visible planner changes', async () => {
