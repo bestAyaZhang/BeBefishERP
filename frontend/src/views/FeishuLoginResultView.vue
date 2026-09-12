@@ -61,6 +61,7 @@ function messageFor(code: string) {
 <template>
   <main class="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-[#25314d]">
     <section class="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-8 shadow-sm" data-testid="feishu-result">
+      <img src="/brand/bebefish-horizontal.svg" alt="BeBefish 公司 Logo" width="176" height="46" class="mb-6 h-auto w-44 max-w-full" />
       <div class="flex items-center gap-3">
         <LoaderCircle v-if="state === 'working'" class="h-7 w-7 animate-spin text-[#536dff]" aria-hidden="true" />
         <CheckCircle2 v-else-if="state === 'success'" class="h-7 w-7 text-emerald-600" aria-hidden="true" />

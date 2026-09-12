@@ -45,6 +45,14 @@ body {
   border-bottom: 2px solid #1f2937;
 }
 
+.sales-print-logo {
+  display: block;
+  width: 160px;
+  max-width: 100%;
+  height: auto;
+  margin-bottom: 6px;
+}
+
 .sales-print-company {
   margin: 0;
   color: #172554;
