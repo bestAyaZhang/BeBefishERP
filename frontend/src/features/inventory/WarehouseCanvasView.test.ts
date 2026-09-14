@@ -115,6 +115,45 @@ describe('Warehouse canvas overview', () => {
     expect(wrapper.get('[data-testid="inventory-detail-sku"]').text()).toContain('24 个')
   })
 
+  it('does not show a rejected allocation error after the drawer selection changes', async () => {
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['inventory:view', 'inventory:edit'], loginMethod: 'password' }
+    const structure = createWarehouseStructure()
+    const palletA03 = { ...warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-a03')!, contents: [] }
+    const palletC018 = { ...warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-c018')!, contents: [] }
+    const inventory = await createMockWarehouseInventoryService().load(8)
+    let rejectAllocation!: (reason?: unknown) => void
+    const allocateToPile = vi.fn().mockReturnValue(new Promise<typeof inventory>((_resolve, reject) => { rejectAllocation = reject }))
+    const wrapper = mount(WarehouseCanvasView, {
+      attachTo: document.body,
+      global: {
+        provide: {
+          [routeLocationKey as symbol]: { query: { warehouseId: '8' } },
+          masterdataService: { listWarehouses: vi.fn().mockResolvedValue({ records: [{ id: 8, warehouseName: '义乌备货仓', defaultWarehouse: true }], total: 1 }) },
+          warehouseLayoutService: { load: vi.fn().mockResolvedValue({ revision: 3, document: { schemaVersion: 1, structure, palletGroups: [palletA03, palletC018], completed: true } }), save: vi.fn() },
+          warehouseInventoryService: { load: vi.fn().mockResolvedValue(inventory), allocateToPile },
+        },
+      },
+    })
+    mounted.push(wrapper)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="inventory-pile-pallet-a03"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-add-sku"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-allocation-units"]').setValue('24')
+    await wrapper.get('[data-testid="inventory-allocation-form"]').trigger('submit')
+    await flushPromises()
+    expect(allocateToPile).toHaveBeenCalledOnce()
+
+    await wrapper.get('[data-testid="inventory-pile-pallet-c018"]').trigger('click')
+    await wrapper.get('[aria-label="关闭库存详情"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-pile-pallet-c018"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-add-sku"]').trigger('click')
+    rejectAllocation(new Error('分配请求已过期'))
+    await flushPromises()
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
   it('opens a real warehouse in read-only inventory detail and keeps the existing blueprint renderer', async () => {
     const structure = createWarehouseStructure()
     const pallet = { ...warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-c018')!, contents: [] }

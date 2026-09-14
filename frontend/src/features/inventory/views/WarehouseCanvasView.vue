@@ -66,6 +66,7 @@ const inventoryError = ref('')
 const canEditInventory = computed(() => currentUser.value?.permissions.includes('inventory:edit') ?? false)
 const inventoryAllocationSaving = ref(false)
 const inventoryAllocationError = ref('')
+const inventoryAllocationContextGeneration = ref(0)
 function clonePlannerPalletGroups(groups: readonly PlannerPalletGroup[]): PlannerPalletGroup[] {
   return groups.map((pallet) => ({
     ...pallet,
@@ -182,12 +183,12 @@ function togglePlannerGrid() {
 }
 function selectPlannerPallet(id: string | null) {
   selectedPalletId.value = id
-  inventoryAllocationError.value = ''
+  clearAllocationError()
   if (id && plannerCompleted.value && !props.demo) selectedZoneId.value = null
 }
 function selectPlannerZone(id: string | null) {
   selectedZoneId.value = id
-  inventoryAllocationError.value = ''
+  clearAllocationError()
   if (id && plannerCompleted.value && !props.demo) selectedPalletId.value = null
 }
 async function loadActualInventory(id = selectedWarehouseId.value) {
@@ -206,26 +207,32 @@ function selectWarehouse(id: number) {
   selectedZoneId.value = null
   actualInventory.value = null
   inventoryError.value = ''
-  inventoryAllocationError.value = ''
+  clearAllocationError()
 }
 async function allocateInventoryToPile(input: WarehousePileAllocationInput) {
   if (!selectedWarehouseId.value || !canEditInventory.value || inventoryAllocationSaving.value) return
+  const contextGeneration = inventoryAllocationContextGeneration.value
   inventoryAllocationSaving.value = true
   inventoryAllocationError.value = ''
   try {
     actualInventory.value = await inventoryReader.allocateToPile(selectedWarehouseId.value, input)
     notice.value = `已向货物堆分配 ${input.units} 个库存`
   } catch (cause) {
-    inventoryAllocationError.value = cause instanceof Error ? cause.message : 'SKU 分配失败'
-    if (inventoryAllocationError.value.includes('库存已变化')) await loadActualInventory()
+    const allocationError = cause instanceof Error ? cause.message : 'SKU 分配失败'
+    if (allocationError.includes('库存已变化')) await loadActualInventory()
+    if (contextGeneration === inventoryAllocationContextGeneration.value) inventoryAllocationError.value = allocationError
   } finally {
     inventoryAllocationSaving.value = false
   }
 }
+function clearAllocationError() {
+  inventoryAllocationContextGeneration.value += 1
+  inventoryAllocationError.value = ''
+}
 function closeInventoryDrawer() {
   selectedPalletId.value = null
   selectedZoneId.value = null
-  inventoryAllocationError.value = ''
+  clearAllocationError()
 }
 function changePlannerStructure(value: WarehouseStructure) {
   changePlannerState(() => { plannerStructure.value = cloneStructure(value) })
