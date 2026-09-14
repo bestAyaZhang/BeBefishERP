@@ -4,22 +4,30 @@ import { warehousePlannerScene } from '../warehousePlannerScene'
 import type { PlannerPalletGroup, PlannerRect } from '../warehousePlannerScene'
 import WarehousePlannerInspector from './WarehousePlannerInspector.vue'
 import WarehouseStructureLayer from './WarehouseStructureLayer.vue'
+import WarehouseZoneLayer from './WarehouseZoneLayer.vue'
 import { createWarehouseStructure, palletStructureConflicts, validatePlannerLayout } from '../warehouseStructure'
 import type { WarehouseStructure, StructureIssue } from '../warehouseStructure'
 
 const props = defineProps<{
   gridSnapping: boolean
   inventoryDetailsVisible?: boolean
+  detailMode?: boolean
   measurementEnabled: boolean
   selectedPalletId: string | null
+  selectedZoneId?: string | null
   palletGroups?: readonly PlannerPalletGroup[]
   structure?: WarehouseStructure
   structureEditing?: boolean
+  zoneEditing?: boolean
+  goodsEditing?: boolean
+  showDemoRooms?: boolean
   focusedStructureId?: string | null
 }>()
 
 const emit = defineEmits<{
   'select-pallet': [id: string | null]
+  'select-zone': [id: string | null]
+  'create-pallet': [rect: PlannerRect]
   'move-pallet': [move: { id: string; left: number; top: number }]
   'change-structure': [structure: WarehouseStructure]
   'structure-issues': [issues: StructureIssue[]]
@@ -49,6 +57,54 @@ const horizontalRulerLabels = horizontalRulerTicks.filter((tick) => tick.kind ==
 const verticalRulerLabels = verticalRulerTicks.filter((tick) => tick.kind === 'major')
 const palletGroups = computed(() => props.palletGroups ?? warehousePlannerScene.palletGroups)
 const drawingBoard = ref<HTMLElement | null>(null)
+const drawingPile = ref<{ pointerId: number; x: number; y: number; bounds: DOMRect; rect: PlannerRect } | null>(null)
+const creationMessage = ref('')
+const creationConflicts = computed(() => {
+  const rect = drawingPile.value?.rect
+  if (!rect) return []
+  return [...palletStructureConflicts(currentStructure.value, rect), ...palletGroups.value.filter(p => rect.left < p.left+p.width && rect.left+rect.width > p.left && rect.top < p.top+p.height && rect.top+rect.height > p.top).map(p => p.id)]
+})
+function creationPoint(event: PointerEvent, bounds: DOMRect) {
+  const x = (event.clientX-bounds.left)/bounds.width*100, y = (event.clientY-bounds.top)/bounds.height*100
+  return props.gridSnapping ? { x: Math.round(x*1.2)/1.2, y: Math.round(y*.8)/.8 } : { x, y }
+}
+function startPileCreation(event: PointerEvent) {
+  if (!props.goodsEditing || props.inventoryDetailsVisible || event.button !== 0 || palletDrag.value || (event.target as Element).closest('button, input, [role="button"]')) return
+  const bounds = drawingBoard.value!.getBoundingClientRect()
+  if (!bounds.width || !bounds.height) return
+  const { x, y } = creationPoint(event, bounds)
+  event.preventDefault()
+  creationMessage.value = ''
+  drawingPile.value = { pointerId: event.pointerId, x, y, bounds, rect: { left:x, top:y, width:0, height:0 } }
+  emit('select-pallet', null)
+  emit('structure-busy', true)
+  drawingBoard.value?.setPointerCapture?.(event.pointerId)
+}
+function movePileCreation(event: PointerEvent) {
+  const draft = drawingPile.value
+  if (!draft || draft.pointerId !== event.pointerId) return
+  const { x, y } = creationPoint(event, draft.bounds)
+  draft.rect = { left:Math.min(x,draft.x), top:Math.min(y,draft.y), width:Math.abs(x-draft.x), height:Math.abs(y-draft.y) }
+}
+function cancelPileCreation() {
+  if (!drawingPile.value) return
+  const id = drawingPile.value.pointerId
+  drawingPile.value = null
+  drawingBoard.value?.releasePointerCapture?.(id)
+  emit('structure-busy', false)
+}
+function finishPileCreation(event: PointerEvent) {
+  if (drawingPile.value?.pointerId !== event.pointerId) return
+  movePileCreation(event)
+  const rect = drawingPile.value!.rect
+  if (rect.width >= .833 && rect.height >= 1.249) {
+    if (creationConflicts.value.length) {
+      showCollisionFeedback(creationConflicts.value)
+      creationMessage.value = '位置重叠或超出仓库边界，请重新框选'
+    } else emit('create-pallet', { ...rect })
+  }
+  cancelPileCreation()
+}
 const initialStructure = createWarehouseStructure()
 const structurePreview = ref<WarehouseStructure | null>(null)
 const committedStructure = computed(() => props.structure ?? initialStructure)
@@ -178,6 +234,7 @@ function clearCollisionFeedback() {
 
 function showCollisionFeedback(ids: string[]) {
   clearCollisionFeedback()
+  if (!ids.length) return
   collisionFeedbackIds.value = ids
   collisionFeedbackTimer = window.setTimeout(clearCollisionFeedback, 1200)
 }
@@ -258,7 +315,7 @@ function schedulePalletPreview(sample: PointerSample) {
 }
 
 function startPalletDrag(event: PointerEvent, pallet: PlannerPalletGroup) {
-  if (props.inventoryDetailsVisible || props.structureEditing) return
+  if (props.inventoryDetailsVisible || props.structureEditing || props.zoneEditing) return
   if (event.button !== 0) return
   const bounds = drawingBoard.value?.getBoundingClientRect()
   if (!bounds || bounds.width <= 0 || bounds.height <= 0) return
@@ -315,6 +372,7 @@ function cancelPalletDrag(event: Pick<PointerEvent, 'pointerId'>) {
   drawingBoard.value?.releasePointerCapture?.(event.pointerId)
 }
 function cancelPalletWithEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape' && drawingPile.value) { event.preventDefault(); cancelPileCreation(); return }
   if(event.key !== 'Escape' || !palletDrag.value) return
   event.preventDefault()
   cancelPalletDrag({pointerId:palletDrag.value.pointerId})
@@ -332,13 +390,13 @@ onBeforeUnmount(() => {
   <section
     data-testid="warehouse-blueprint-scene"
     class="blueprint-scene"
-    :class="{ 'grid-muted': !gridSnapping, 'details-visible': inventoryDetailsVisible }"
+    :class="{ 'grid-muted': !gridSnapping, 'details-visible': inventoryDetailsVisible, 'detail-mode': detailMode }"
     :data-measuring="measurementEnabled ? 'true' : 'false'"
     :data-grid-snapping="gridSnapping ? 'true' : 'false'"
     :data-view-mode="inventoryDetailsVisible ? 'details' : 'planning'"
     aria-label="一号仓平面规划画布"
   >
-    <div data-testid="planner-ruler-x" class="ruler ruler-x" role="img" aria-label="横向标尺，0 至 60 米，最小刻度 0.5 米">
+    <div v-if="!detailMode" data-testid="planner-ruler-x" class="ruler ruler-x" role="img" aria-label="横向标尺，0 至 60 米，最小刻度 0.5 米">
       <i
         v-for="tick in horizontalRulerTicks"
         :key="tick.value"
@@ -358,7 +416,7 @@ onBeforeUnmount(() => {
       >{{ tick.value }}</span>
       <span class="ruler-unit">(m)</span>
     </div>
-    <div data-testid="planner-ruler-y" class="ruler ruler-y" role="img" aria-label="纵向标尺，0 至 40 米，最小刻度 0.5 米">
+    <div v-if="!detailMode" data-testid="planner-ruler-y" class="ruler ruler-y" role="img" aria-label="纵向标尺，0 至 40 米，最小刻度 0.5 米">
       <i
         v-for="tick in verticalRulerTicks"
         :key="tick.value"
@@ -382,58 +440,35 @@ onBeforeUnmount(() => {
     <div
       ref="drawingBoard"
       class="drawing-board"
-      @pointermove="movePalletDrag"
-      @pointerup="stopPalletDrag"
-      @pointercancel="cancelPalletDrag"
+      @pointerdown="startPileCreation"
+      @pointermove="movePalletDrag($event); movePileCreation($event)"
+      @pointerup="stopPalletDrag($event); finishPileCreation($event)"
+      @pointercancel="cancelPalletDrag($event); cancelPileCreation()"
+      @lostpointercapture="cancelPileCreation"
     >
+      <div v-if="drawingPile" data-testid="pile-creation-preview" class="pile-creation-preview" :class="{ invalid: creationConflicts.length }" :style="rectStyle(drawingPile.rect)"></div>
+      <p v-if="goodsEditing && !inventoryDetailsVisible" class="pile-creation-hint" role="status">{{ creationMessage || '在空白处按住鼠标拖动创建货物堆 · Esc 取消' }}</p>
       <WarehouseStructureLayer
+        :pallets="palletGroups"
         :structure="committedStructure" :editing="Boolean(structureEditing) && !inventoryDetailsVisible"
         :grid-snapping="gridSnapping" :issues="planningIssues.concat(collisionFeedbackIds.length ? [{id:'drop-conflict',objectIds:collisionFeedbackIds,message:'位置冲突'}] : [], palletDrag?.overlappingIds.length ? [{id:'drag-conflict',objectIds:palletDrag.overlappingIds,message:'位置冲突'}] : [])"
         :focused-id="focusedStructureId"
         @preview="structurePreview = $event" @commit="emit('change-structure', $event)" @busy="emit('structure-busy', $event)"
+        @conflict="showCollisionFeedback"
       />
 
-      <article
-        v-for="zone in warehousePlannerScene.zones"
-        :key="zone.id"
-        class="operation-zone"
-        :class="`tone-${zone.tone}`"
-        :style="rectStyle(zone)"
-      >
-        <strong>{{ zone.label }}</strong>
-        <span>{{ zone.id === 'zone-buffer' ? '待分配货物' : zone.id === 'zone-receiving' ? '入库交接' : '出库集货' }}</span>
-      </article>
+      <WarehouseZoneLayer
+        :pallets="palletGroups"
+        :structure="committedStructure" :editing="Boolean(zoneEditing) && !inventoryDetailsVisible"
+        :viewing="Boolean(detailMode)" :selected-zone-id="selectedZoneId"
+        :grid-snapping="gridSnapping" :focused-id="focusedStructureId"
+        :issues="planningIssues.concat(collisionFeedbackIds.length ? [{ id: 'drop-conflict', objectIds: collisionFeedbackIds, message: '位置冲突' }] : [], palletDrag?.overlappingIds.length ? [{ id: 'drag-conflict', objectIds: palletDrag.overlappingIds, message: '位置冲突' }] : [])"
+        @preview="structurePreview = $event" @commit="emit('change-structure', $event)" @busy="emit('structure-busy', $event)" @conflict="showCollisionFeedback" @select="emit('select-zone', $event)"
+      />
 
-      <div
-        v-for="aisle in warehousePlannerScene.aisles"
-        :key="aisle.id"
-        class="forklift-aisle"
-        :class="aisle.direction"
-        :style="rectStyle(aisle)"
-      >
-        <span class="aisle-arrow" aria-hidden="true">←</span>
-        <strong>{{ aisle.label }}</strong>
-        <span class="aisle-arrow" aria-hidden="true">→</span>
-      </div>
-
-      <article v-for="room in warehousePlannerScene.rooms" :key="room.id" class="utility-room" :style="rectStyle(room)">
+      <article v-for="room in (showDemoRooms ? warehousePlannerScene.rooms : [])" :key="room.id" class="utility-room" :style="rectStyle(room)">
         <strong>{{ room.label }}</strong><span>{{ room.detail }}</span>
       </article>
-
-      <div
-        v-for="lane in warehousePlannerScene.fireLanes"
-        :key="lane.id"
-        class="fire-lane"
-        :style="{ ...rectStyle(lane), transform: `rotate(${lane.rotation}deg)` }"
-      ><span>消防留空区<br />宽 2.0m</span></div>
-
-      <i
-        v-for="column in warehousePlannerScene.columns"
-        :key="column.id"
-        class="structure-column"
-        :style="{ left: `${column.left}%`, top: `${column.top}%` }"
-        aria-hidden="true"
-      />
 
       <button
         v-for="pallet in palletGroups"
@@ -451,7 +486,7 @@ onBeforeUnmount(() => {
         @click="emit('select-pallet', pallet.id)"
       >
         <span class="sr-only">{{ pallet.name }} · {{ pallet.contents.length }} 种商品 · 共 {{ palletTotalUnits(pallet) }} 个</span>
-        <template v-if="selectedPalletId === pallet.id && !structureEditing && !inventoryDetailsVisible">
+        <template v-if="selectedPalletId === pallet.id && !structureEditing && !zoneEditing && !inventoryDetailsVisible">
           <i v-for="handle in 8" :key="handle" class="selection-handle" :class="`handle-${handle}`" aria-hidden="true" />
           <i class="rotation-handle" aria-hidden="true">↻</i>
         </template>
@@ -483,22 +518,22 @@ onBeforeUnmount(() => {
       </template>
 
       <WarehousePlannerInspector
-        v-if="inventoryDetailsVisible && selectedPallet && !palletDrag"
+        v-if="inventoryDetailsVisible && !detailMode && selectedPallet && !palletDrag"
         class="scene-inspector"
         :style="inspectorStyle(selectedPallet)"
         :pallet="selectedPallet"
         @close="emit('select-pallet', null)"
       />
 
-      <aside data-testid="planner-minimap" class="planner-minimap" aria-label="仓库小地图">
+      <aside v-if="!detailMode" data-testid="planner-minimap" class="planner-minimap" aria-label="仓库小地图">
         <div class="minimap-shell">
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon :points="minimapOutline" fill="#f0f3f6" stroke="#8994a1" stroke-width="1.5" /></svg>
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon :points="minimapOutline" fill="#f0f3f6" stroke="#8994a1" stroke-width="1.5" /><rect v-for="zone in currentStructure.zones" :key="zone.id" :x="zone.left" :y="zone.top" :width="zone.width" :height="zone.height" :fill="{ green: '#b8d9c8', blue: '#bbcdef', amber: '#e1d2ac', purple: '#d6c3e8' }[zone.tone]" /><rect v-for="lift in currentStructure.elevators" :key="lift.id" :x="lift.left" :y="lift.top" :width="lift.width" :height="lift.height" fill="#819ab5" /><rect v-for="column in currentStructure.columns" :key="column.id" :x="column.left" :y="column.top" :width="column.width" :height="column.height" fill="#566271" /></svg>
           <i v-for="pallet in palletGroups" :key="pallet.id" :style="rectStyle(pallet)" />
           <span aria-hidden="true" />
         </div>
       </aside>
     </div>
-    <footer data-testid="planner-coordinate-status" class="coordinate-status">
+    <footer v-if="!detailMode" data-testid="planner-coordinate-status" class="coordinate-status">
       <span>X&nbsp; {{ selectedPallet?.xMeters ?? 32.4 }}m</span>
       <span>Y&nbsp; {{ selectedPallet?.yMeters ?? 21.8 }}m</span>
       <span class="status-divider" aria-hidden="true" />
@@ -510,6 +545,11 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.pile-creation-preview {position:absolute;z-index:30;border:1px solid #536dff;background:#536dff18;pointer-events:none;}
+.pile-creation-preview.invalid {border-color:#dc3545;background:#dc354520;}
+.pile-creation-hint {position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:30;margin:0;padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;background:#ffffffed;color:#64748b;font-size:12px;pointer-events:none;white-space:nowrap;}
+.blueprint-scene.detail-mode { min-width: 760px; min-height: 560px; padding: 16px; background: #f7f9fc; }
+
 .blueprint-scene { position: relative; width: 100%; min-width: 980px; height: 100%; min-height: 720px; padding: 36px 28px 28px 48px; background: #f9fbfd; color: #25314d; }
 .drawing-board { position: relative; width: 100%; height: 100%; overflow: hidden; border: 1px solid #eef2f6; background-color: #fbfcfd; background-image: linear-gradient(#e8edf3 1px, transparent 1px), linear-gradient(90deg, #e8edf3 1px, transparent 1px), linear-gradient(#f1f4f8 1px, transparent 1px), linear-gradient(90deg, #f1f4f8 1px, transparent 1px); background-size: 40px 40px, 40px 40px, 8px 8px, 8px 8px; }
 .grid-muted .drawing-board { background-image: linear-gradient(#eef2f6 1px, transparent 1px), linear-gradient(90deg, #eef2f6 1px, transparent 1px); background-size: 40px 40px; }

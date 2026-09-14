@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import WarehouseBlueprintScene from './WarehouseBlueprintScene.vue'
 import { warehousePlannerScene } from '../warehousePlannerScene'
+import { createWarehouseStructure } from '../warehouseStructure'
 
 function setDrawingBoardBounds(wrapper: ReturnType<typeof mount>) {
   const board = wrapper.get('.drawing-board')
@@ -44,6 +45,117 @@ afterEach(() => {
 })
 
 describe('WarehouseBlueprintScene', () => {
+  it('reuses the saved blueprint in detail mode without editing rulers and emits zone selection', async () => {
+    const structure = createWarehouseStructure()
+    const wrapper = mount(WarehouseBlueprintScene, {
+      props: {
+        gridSnapping: true,
+        measurementEnabled: false,
+        selectedPalletId: null,
+        selectedZoneId: null,
+        detailMode: true,
+        inventoryDetailsVisible: true,
+        palletGroups: warehousePlannerScene.palletGroups,
+        structure,
+      },
+    })
+
+    expect(wrapper.find('[data-testid="planner-ruler-x"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="planner-ruler-y"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="planner-minimap"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="planner-coordinate-status"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="planner-pallet-pallet-c018"]').exists()).toBe(true)
+    expect(wrapper.find('.scene-inspector').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="planner-zone-zone-receiving"]').trigger('click')
+    expect(wrapper.emitted('select-zone')?.[0]).toEqual(['zone-receiving'])
+  })
+
+  it('creates a pile by reverse dragging and rejects overlapping and outside rectangles', async () => {
+    const pile = { ...warehousePlannerScene.palletGroups[0]!, left:40, top:45, width:5, height:5 }
+    const structure = { ...createWarehouseStructure(), partitions:[], doors:[], elevators:[], columns:[], zones:[] }
+    const wrapper = mount(WarehouseBlueprintScene, { props: { gridSnapping:false, measurementEnabled:false, selectedPalletId:null, goodsEditing:true, palletGroups:[pile], structure } })
+    try {
+      const board = setDrawingBoardBounds(wrapper)
+      await board.trigger('pointerdown',{button:0,pointerId:90,clientX:600,clientY:480})
+      await board.trigger('pointermove',{pointerId:90,clientX:500,clientY:400})
+      expect(wrapper.get('[data-testid="pile-creation-preview"]').classes()).not.toContain('invalid')
+      await board.trigger('pointerup',{pointerId:90,clientX:500,clientY:400})
+      expect(wrapper.emitted('create-pallet')?.[0]).toEqual([{left:50,top:50,width:10,height:10}])
+      await board.trigger('pointerdown',{button:0,pointerId:91,clientX:390,clientY:350})
+      await board.trigger('pointermove',{pointerId:91,clientX:460,clientY:410})
+      expect(wrapper.get('[data-testid="pile-creation-preview"]').classes()).toContain('invalid')
+      await board.trigger('pointerup',{pointerId:91,clientX:460,clientY:410})
+      expect(wrapper.emitted('create-pallet')).toHaveLength(1)
+      await board.trigger('pointerdown',{button:0,pointerId:92,clientX:0,clientY:0})
+      await board.trigger('pointerup',{pointerId:92,clientX:100,clientY:80})
+      expect(wrapper.emitted('create-pallet')).toHaveLength(1)
+      await board.trigger('pointerdown',{button:0,pointerId:93,clientX:500,clientY:400})
+      window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))
+      await board.trigger('pointerup',{pointerId:93,clientX:600,clientY:480})
+      expect(wrapper.emitted('create-pallet')).toHaveLength(1)
+    } finally { wrapper.unmount() }
+  })
+  it.each(['aisle', 'forklift', 'fire'] as const)('marks a pile and %s passage during collision and rejects the drop', async kind => {
+    runAnimationFramesImmediately()
+    const pile = { ...warehousePlannerScene.palletGroups[0]!, left: 40, top: 45, width: 5, height: 5 }
+    const wrapper = mount(WarehouseBlueprintScene, { props: {
+      gridSnapping: false, measurementEnabled: false, selectedPalletId: pile.id, palletGroups: [pile],
+      structure: { ...createWarehouseStructure(), zones: [{ id: 'route', label: '通道', tone: 'blue', kind, left: 60, top: 45, width: 5, height: 5 }] },
+    } })
+    try {
+      const board = setDrawingBoardBounds(wrapper)
+      const moving = wrapper.get(`[data-testid="planner-pallet-${pile.id}"]`)
+      const route = wrapper.get('[data-testid="planner-zone-route"]')
+      const original = moving.attributes('style')
+      await moving.trigger('pointerdown', { button: 0, pointerId: 60, clientX: 425, clientY: 380 })
+      await board.trigger('pointermove', { pointerId: 60, clientX: 625, clientY: 380 })
+      expect(moving.classes()).toContain('overlapping')
+      expect(route.classes()).toContain('invalid')
+      await board.trigger('pointerup', { pointerId: 60, clientX: 625, clientY: 380 })
+      expect(wrapper.emitted('move-pallet')).toBeUndefined()
+      expect(moving.attributes('style')).toBe(original)
+      expect(route.classes()).toContain('invalid')
+    } finally { wrapper.unmount() }
+  })
+  it('keeps every collided object highlighted briefly after a rejected elevator drop', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(WarehouseBlueprintScene, {
+      props: {
+        gridSnapping: false, measurementEnabled: false, selectedPalletId: null, structureEditing: true,
+        structure: { ...createWarehouseStructure(), zones: [], elevators: [{ id: 'lift', left: 40, top: 15, width: 5, height: 7.5 }] },
+        palletGroups: [
+          { ...warehousePlannerScene.palletGroups[0]!, id: 'pile-left', left: 40, top: 30, width: 5, height: 7.5 },
+          { ...warehousePlannerScene.palletGroups[0]!, id: 'pile-right', left: 45, top: 30, width: 5, height: 7.5 },
+        ],
+      },
+    })
+    try {
+      const svg = wrapper.get('svg.structure-svg')
+      Object.defineProperty(svg.element, 'getBoundingClientRect', { value: () => ({ left: 0, top: 0, width: 1000, height: 800 }) })
+      const lift = wrapper.get('[data-testid="planner-elevator-lift"]')
+      await lift.trigger('pointerdown', { button: 0, pointerId: 31, clientX: 425, clientY: 150 })
+      await svg.trigger('pointerup', { pointerId: 31, clientX: 450, clientY: 270 })
+
+      expect(wrapper.emitted('change-structure')).toBeUndefined()
+      expect(lift.attributes('transform')).toBe('translate(240,60)')
+      expect(lift.classes()).toContain('invalid')
+      for (const id of ['pile-left', 'pile-right']) {
+        expect(wrapper.get(`[data-testid="planner-pallet-${id}"]`).classes()).toContain('overlapping')
+      }
+      expect(wrapper.emitted('structure-issues')?.at(-1)).toEqual([[]])
+      await vi.advanceTimersByTimeAsync(800)
+      expect(lift.classes()).toContain('invalid')
+      await vi.advanceTimersByTimeAsync(500)
+      expect(lift.classes()).not.toContain('invalid')
+      for (const id of ['pile-left', 'pile-right']) {
+        expect(wrapper.get(`[data-testid="planner-pallet-${id}"]`).classes()).not.toContain('overlapping')
+      }
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
   it('renders the reference layers and selects floor-stacked goods', async () => {
     const wrapper = mount(WarehouseBlueprintScene, {
       props: {
@@ -57,7 +169,7 @@ describe('WarehouseBlueprintScene', () => {
     expect(wrapper.text()).toContain('收货区')
     expect(wrapper.text()).toContain('暂存区')
     expect(wrapper.text()).toContain('发货区')
-    expect(wrapper.text()).toContain('叉车通道 4.0m')
+    expect(wrapper.get('[data-testid="planner-zone-aisle-top"]').text()).toContain('叉车通道 2.0m')
     expect(wrapper.text()).toContain('消防留空区')
     expect(wrapper.get('[data-testid="planner-pallet-pallet-c018"]').attributes('data-selected')).toBe('true')
     expect(wrapper.get('[data-testid="planner-pallet-pallet-c018"]').attributes('aria-pressed')).toBe('true')
@@ -108,6 +220,7 @@ describe('WarehouseBlueprintScene', () => {
   it('keeps utility rooms inside the lower warehouse wall', () => {
     const wrapper = mount(WarehouseBlueprintScene, {
       props: {
+        showDemoRooms: true,
         gridSnapping: true,
         measurementEnabled: false,
         selectedPalletId: 'pallet-c018',

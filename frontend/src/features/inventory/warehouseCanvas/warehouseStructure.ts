@@ -1,11 +1,18 @@
-import type { PlannerRect, PlannerPalletGroup } from './warehousePlannerScene'
+import { warehousePlannerScene } from './warehousePlannerScene'
+import type { PlannerRect, PlannerPalletGroup, PlannerZone } from './warehousePlannerScene'
+import { isPassage } from './warehousePassages'
 
 export type StructurePoint = { x: number; y: number }
 export type WallAttachment = { wallId: string; segmentId: string; t: number }
 export type StructureNode = StructurePoint & { id: string; attachment?: WallAttachment }
 export type StructureWall = { id: string; closed: boolean; nodes: StructureNode[] }
 export type StructureDoor = { id: string; kind: 'loading' | 'ordinary'; width: number; attachment: WallAttachment | null; position: StructurePoint }
-export type WarehouseStructure = { outline: StructureWall; partitions: StructureWall[]; doors: StructureDoor[] }
+export type StructureElevator = PlannerRect & { id: string }
+export type StructureColumn = PlannerRect & { id: string }
+export type WarehouseStructure = { outline: StructureWall; partitions: StructureWall[]; doors: StructureDoor[]; elevators?: StructureElevator[]; columns?: StructureColumn[]; zones?: PlannerZone[] }
+export function rectanglesOverlap(a: PlannerRect, b: PlannerRect): boolean {
+  return a.left < b.left+b.width-EPS && a.left+a.width > b.left+EPS && a.top < b.top+b.height-EPS && a.top+a.height > b.top+EPS
+}
 export type StructureSegment = { id: string; wallId: string; a: StructureNode; b: StructureNode }
 export type StructureIssue = { id: string; objectIds: string[]; message: string }
 const EPS = 1e-7
@@ -99,7 +106,7 @@ export function solidWallSegments(s: WarehouseStructure): StructureSegment[] {
 function segmentDistance(a: StructurePoint, b: StructurePoint, c: StructurePoint, d: StructurePoint) {
   return segmentsIntersect(a, b, c, d) ? 0 : Math.min(project(a, c, d).distance, project(b, c, d).distance, project(c, a, b).distance, project(d, a, b).distance)
 }
-export function palletStructureConflicts(s: WarehouseStructure, r: PlannerRect): string[] {
+function rectangleWallConflicts(s: WarehouseStructure, r: PlannerRect): string[] {
   const points = [{ x: r.left, y: r.top }, { x: r.left + r.width, y: r.top }, { x: r.left + r.width, y: r.top + r.height }, { x: r.left, y: r.top + r.height }]
   const edges = points.map((a, i) => [a, points[(i + 1) % 4]!] as const)
   const ids = new Set<string>()
@@ -114,6 +121,12 @@ export function palletStructureConflicts(s: WarehouseStructure, r: PlannerRect):
     if (inRect(seg.a) || inRect(seg.b) || edges.some(([a, b]) => segmentDistance(a, b, seg.a, seg.b) < WALL_HALF_WIDTH - EPS)) ids.add(seg.wallId)
   }
   return [...ids]
+}
+function rectangleStructureConflicts(s: WarehouseStructure, r: PlannerRect): string[] {
+  return [...rectangleWallConflicts(s,r), ...(s.elevators ?? []).filter((lift) => rectanglesOverlap(lift,r)).map((lift) => lift.id)]
+}
+export function palletStructureConflicts(s: WarehouseStructure, r: PlannerRect): string[] {
+  return [...rectangleStructureConflicts(s, r), ...(s.columns ?? []).filter(column => rectanglesOverlap(column, r)).map(column => column.id), ...(s.zones ?? []).filter(zone => isPassage(zone) && rectanglesOverlap(zone, r)).map(zone => zone.id)]
 }
 export function validateStructure(s: WarehouseStructure): StructureIssue[] {
   const issues: StructureIssue[] = []
@@ -149,6 +162,35 @@ export function validateStructure(s: WarehouseStructure): StructureIssue[] {
       if (distance(doorGeometry(s, door).center, doorGeometry(s, other).center) < (door.width + other.width) / 2 - EPS) add(`doors:${door.id}:${other.id}`, [door.id, other.id], '两个门的开口重叠')
     }
   }
+  for (const lift of s.elevators ?? []) {
+    if (![lift.left,lift.top,lift.width,lift.height].every(Number.isFinite) || lift.width <= 0 || lift.height <= 0) {
+      add(`elevator-invalid:${lift.id}`, [lift.id], '电梯占地尺寸无效')
+      continue
+    }
+    const conflicts=[...rectangleWallConflicts(s,lift), ...(s.columns ?? []).filter(column => rectanglesOverlap(column, lift)).map(column => column.id)]
+    if(conflicts.length) add(`elevator-position:${lift.id}`,[lift.id,...conflicts],conflicts.includes(s.outline.id)?'电梯超出仓库边界':(s.columns ?? []).some(column => conflicts.includes(column.id))?'电梯与柱子重叠':'电梯与隔墙重叠')
+    for(const other of s.elevators ?? []) if(other.id>lift.id && rectanglesOverlap(lift,other)) add(`elevators:${lift.id}:${other.id}`,[lift.id,other.id],'两部电梯重叠')
+  }
+  for (const column of s.columns ?? []) {
+    if (![column.left,column.top,column.width,column.height].every(Number.isFinite) || column.width <= 0 || column.height <= 0) {
+      add(`column-invalid:${column.id}`, [column.id], '柱子占地尺寸无效')
+      continue
+    }
+    const conflicts=rectangleWallConflicts(s,column)
+    if(conflicts.length) add(`column-position:${column.id}`,[column.id,...conflicts],conflicts.includes(s.outline.id)?'柱子超出仓库边界':'柱子与隔墙重叠')
+    for(const other of s.columns ?? []) if(other.id>column.id && rectanglesOverlap(column,other)) add(`columns:${column.id}:${other.id}`,[column.id,other.id],'两根柱子重叠')
+  }
+  for (const zone of s.zones ?? []) {
+    if (![zone.left, zone.top, zone.width, zone.height].every(Number.isFinite) || zone.width <= 0 || zone.height <= 0) {
+      add(`zone-invalid:${zone.id}`, [zone.id], '区域尺寸无效')
+      continue
+    }
+    const conflicts = [...rectangleStructureConflicts(s, zone), ...(isPassage(zone) ? (s.columns ?? []).filter(column => rectanglesOverlap(column, zone)).map(column => column.id) : [])]
+    if (conflicts.length) add(`zone-position:${zone.id}`, [zone.id, ...conflicts], `${zone.label}${conflicts.includes(s.outline.id) ? '超出仓库边界' : (s.elevators ?? []).some(e => conflicts.includes(e.id)) ? '与电梯重叠' : (s.columns ?? []).some(column => conflicts.includes(column.id)) ? '与柱子重叠' : '与隔墙重叠'}`)
+    for (const other of s.zones ?? []) {
+      if (other.id > zone.id && !(isPassage(zone) && isPassage(other)) && rectanglesOverlap(zone, other)) add(`zones:${zone.id}:${other.id}`, [zone.id, other.id], `${zone.label}与${other.label}重叠`)
+    }
+  }
   return issues
 }
 export function updateAttachments(s: WarehouseStructure): WarehouseStructure {
@@ -164,7 +206,8 @@ export function validatePlannerLayout(s: WarehouseStructure, pallets: readonly P
   const result = validateStructure(s)
   for (const pallet of pallets) {
     const conflicts = palletStructureConflicts(s, pallet)
-    if (conflicts.length) result.push({id:`pallet-structure:${pallet.id}`,objectIds:[pallet.id,...conflicts],message:`${pallet.name}${conflicts.includes(s.outline.id)?'超出仓库边界':'与隔墙重叠'}`})
+    const passage = (s.zones ?? []).find(zone => isPassage(zone) && conflicts.includes(zone.id))
+    if (conflicts.length) result.push({id:`pallet-structure:${pallet.id}`,objectIds:[pallet.id,...conflicts],message:`${pallet.name}${conflicts.includes(s.outline.id)?'超出仓库边界':(s.elevators??[]).some(lift=>conflicts.includes(lift.id))?'与电梯重叠':(s.columns??[]).some(column=>conflicts.includes(column.id))?'与柱子重叠':passage ? passage.kind === 'fire' ? '占用消防留空区' : '占用通道' : '与隔墙重叠'}`})
   }
   for(let i=0;i<pallets.length;i++) for(let j=i+1;j<pallets.length;j++) {
     const a=pallets[i]!,b=pallets[j]!
@@ -206,7 +249,7 @@ export function removeStructureNode(s: WarehouseStructure, wallId: string, nodeI
 export function createWarehouseStructure(): WarehouseStructure {
   const outline: StructureWall = { id: 'outline', closed: true, nodes: [[6.3,9.5],[88,9.5],[96.7,41.5],[96.7,60.5],[90.5,90.5],[6.3,90.5]].map(([x,y], i) => ({ id: `outer-${i}`, x: x!, y: y! })) }
   const partition = (id: string, points: number[][]): StructureWall => ({ id, closed: false, nodes: points.map(([x,y], i) => ({ id: `${id}-${i}`, x: x!, y: y! })) })
-  const s: WarehouseStructure = { outline, partitions: [partition('room-top', [[6.3,79.9],[36.8,79.9],[36.8,90.5]]), partition('room-divider', [[19.8,79.9],[19.8,90.5]])], doors: [] }
+  const s: WarehouseStructure = { outline, partitions: [partition('room-top', [[6.3,79.9],[36.8,79.9],[36.8,90.5]]), partition('room-divider', [[19.8,79.9],[19.8,90.5]])], doors: [], elevators: [], columns: warehousePlannerScene.columns.map(column => ({ id: column.id, left: column.left - .5, top: column.top - .75, width: 1, height: 1.5 })), zones: [...warehousePlannerScene.zones, ...warehousePlannerScene.passages].map(zone => ({ ...zone })) }
   for (const wall of s.partitions) for (const node of wall.nodes) {
     const seg = structureSegments(s).find((seg) => seg.wallId !== wall.id && [outline, ...s.partitions].findIndex((w) => w.id === seg.wallId) < [outline, ...s.partitions].findIndex((w) => w.id === wall.id) && project(node, seg.a, seg.b).distance < EPS)
     if (seg) node.attachment = { wallId: seg.wallId, segmentId: seg.id, t: project(node, seg.a, seg.b).t }

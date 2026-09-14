@@ -49,9 +49,15 @@ const tools: Array<{
   <div class="planner-chrome">
     <header class="planner-header">
       <div class="planner-heading">
-        <h1 data-testid="planner-title">{{ warehouseName }} · 平面规划</h1>
+        <h1 data-testid="planner-title">{{ warehouseName }} · {{ completed ? '画布查看' : '平面规划' }}</h1>
         <p v-if="contextNotice" data-testid="planner-warehouse-notice" role="status">{{ contextNotice }}</p>
       </div>
+      <nav v-show="!completed" class="planner-tool-rail" aria-label="仓库规划工具">
+        <button v-for="tool in tools" :key="tool.id" :data-testid="`planner-tool-${tool.id}`" type="button" :aria-pressed="activeTool === tool.id" :disabled="completed" @click="emit('change-tool', tool.id)">
+          <component :is="tool.icon" :size="18" stroke-width="1.8" />
+          <span>{{ tool.label }}</span>
+        </button>
+      </nav>
       <div class="planner-actions" aria-label="规划操作">
         <button data-testid="planner-undo" type="button" aria-label="撤销" :disabled="!canUndo" @click="emit('undo')">
           <Undo2 :size="18" />
@@ -81,25 +87,11 @@ const tools: Array<{
           <span class="switch" aria-hidden="true"><span /></span>
         </button>
         <button data-testid="planner-complete" type="button" class="complete-button" :disabled="completionBlocked" :title="completionBlocked ? completionReason : undefined" @click="emit('complete')">
-          {{ completed ? '返回规划' : '完成规划' }}
+          {{ completed ? '修改规划' : '完成规划' }}
         </button>
       </div>
     </header>
 
-    <nav class="planner-tool-rail" aria-label="仓库规划工具">
-      <button
-        v-for="tool in tools"
-        :key="tool.id"
-        :data-testid="`planner-tool-${tool.id}`"
-        type="button"
-        :aria-pressed="activeTool === tool.id"
-        :disabled="completed"
-        @click="emit('change-tool', tool.id)"
-      >
-        <component :is="tool.icon" :size="23" stroke-width="1.8" />
-        <span>{{ tool.label }}</span>
-      </button>
-    </nav>
   </div>
 </template>
 
@@ -112,6 +104,8 @@ const tools: Array<{
   align-items: center;
   justify-content: space-between;
   height: 56px;
+  gap: 16px;
+  overflow-x: auto;
   padding: 0 18px 0 22px;
   border-bottom: 1px solid #e2e8f0;
   background: rgba(255,255,255,.96);
@@ -120,7 +114,7 @@ const tools: Array<{
 .planner-heading { display: flex; min-width: 0; align-items: center; gap: 12px; }
 .planner-header h1 { margin: 0; color: #202b43; font-size: 18px; line-height: 1; font-weight: 650; letter-spacing: .01em; white-space: nowrap; }
 .planner-heading p { max-width: 420px; margin: 0; overflow: hidden; border: 1px solid #f4d486; border-radius: 999px; padding: 4px 9px; background: #fff8df; color: #8a5a08; font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.planner-actions { display: flex; align-items: center; gap: 7px; }
+.planner-actions { display: flex; flex-shrink: 0; align-items: center; gap: 7px; margin-left:auto; }
 .planner-actions button {
   display: inline-flex;
   align-items: center;
@@ -148,23 +142,22 @@ button[aria-pressed="true"] .switch span { transform: translateX(14px); }
 .planner-actions .complete-button:disabled {background:#cbd5e1;color:#64748b;box-shadow:none;cursor:not-allowed;}
 .planner-tool-rail button:disabled {opacity:.45;cursor:default;}
 .planner-tool-rail {
-  position: absolute;
-  z-index: 35;
-  top: 70px;
-  left: 15px;
-  display: grid;
-  width: 64px;
-  padding: 7px 5px;
-  border: 1px solid #e7ebf1;
-  border-radius: 9px;
-  background: rgba(255,255,255,.97);
-  box-shadow: 0 8px 24px rgba(37,49,77,.1);
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 7px;
+  background: #f6f8fb;
 }
 .planner-tool-rail button {
-  display: grid;
-  place-items: center;
-  gap: 3px;
-  min-height: 70px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 10px;
+  white-space: nowrap;
   border: 0;
   border-radius: 7px;
   background: transparent;

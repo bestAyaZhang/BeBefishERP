@@ -6,10 +6,15 @@ export type PlannerRect = {
 }
 
 export type PlannerDoor = PlannerRect & { id: string; label: string; widthMeters: number }
-export type PlannerZone = PlannerRect & { id: string; label: string; tone: 'green' | 'blue' }
-export type PlannerAisle = PlannerRect & { id: string; label: string; direction: 'horizontal' | 'vertical' }
+export type PlannerZoneKind = 'area' | 'aisle' | 'forklift' | 'fire'
+export type PlannerZone = PlannerRect & {
+  id: string; label: string; tone: 'green' | 'blue' | 'amber' | 'purple'
+  detail?: string
+  kind?: PlannerZoneKind
+  axis?: 'horizontal' | 'vertical'
+  traffic?: 'both' | 'forward' | 'backward'
+}
 export type PlannerRoom = PlannerRect & { id: string; label: string; detail: string }
-export type PlannerFireLane = PlannerRect & { id: string; rotation: number }
 export type PlannerColumn = { id: string; left: number; top: number }
 export type PlannerPalletContent = {
   productName: string
@@ -72,26 +77,25 @@ export const warehousePlannerScene = {
     { id: 'door-3', label: '3号装卸门', widthMeters: 4, left: 75, top: 4, width: 8, height: 7 },
   ] satisfies PlannerDoor[],
   zones: [
-    { id: 'zone-receiving', label: '收货区', tone: 'green', left: 10, top: 13, width: 25, height: 15 },
-    { id: 'zone-buffer', label: '暂存区', tone: 'blue', left: 40, top: 13, width: 23, height: 15 },
-    { id: 'zone-shipping', label: '发货区', tone: 'green', left: 68, top: 13, width: 25, height: 15 },
+    { id: 'zone-receiving', label: '收货区', detail: '入库交接', tone: 'green', left: 10, top: 13, width: 25, height: 15 },
+    { id: 'zone-buffer', label: '暂存区', detail: '待分配货物', tone: 'blue', left: 40, top: 13, width: 23, height: 15 },
+    { id: 'zone-shipping', label: '发货区', detail: '出库集货', tone: 'green', left: 68, top: 13, width: 20, height: 15 },
   ] satisfies PlannerZone[],
-  aisles: [
-    { id: 'aisle-top', label: '叉车通道 4.0m', direction: 'horizontal', left: 11, top: 30, width: 81, height: 5 },
-    { id: 'aisle-west', label: '叉车通道 4.0m', direction: 'vertical', left: 25, top: 38, width: 5, height: 43 },
-    { id: 'aisle-center', label: '叉车通道 4.0m', direction: 'vertical', left: 48, top: 38, width: 5, height: 43 },
-    { id: 'aisle-east', label: '叉车通道 4.0m', direction: 'vertical', left: 76, top: 38, width: 5, height: 43 },
-  ] satisfies PlannerAisle[],
+  // Demonstration geometry only: widths are derived from the footprint, not safety standards.
+  passages: [
+    { id: 'aisle-top', label: '叉车通道', kind: 'forklift', tone: 'blue', axis: 'horizontal', traffic: 'both', left: 11, top: 30, width: 81, height: 5 },
+    { id: 'aisle-west', label: '叉车通道', kind: 'forklift', tone: 'blue', axis: 'vertical', traffic: 'both', left: 25, top: 35, width: 5, height: 43.5 },
+    { id: 'aisle-center', label: '叉车通道', kind: 'forklift', tone: 'blue', axis: 'vertical', traffic: 'both', left: 48, top: 35, width: 5, height: 50 },
+    { id: 'aisle-east', label: '叉车通道', kind: 'forklift', tone: 'blue', axis: 'vertical', traffic: 'both', left: 78, top: 35, width: 4, height: 50 },
+    { id: 'fire-upper', label: '消防留空区', kind: 'fire', tone: 'amber', axis: 'vertical', left: 94, top: 42, width: 1 / .6, height: 16 },
+    { id: 'fire-lower', label: '消防留空区', kind: 'fire', tone: 'amber', axis: 'vertical', left: 93, top: 60, width: 1 / .6, height: 7 },
+  ] satisfies PlannerZone[],
   rooms: [
     { id: 'room-equipment', label: '设备间', detail: '6.0 × 4.0m', left: 6.8, top: 79.9, width: 13, height: 10 },
     { id: 'room-office', label: '办公区', detail: '8.0 × 4.0m', left: 19.8, top: 79.9, width: 17, height: 10 },
   ] satisfies PlannerRoom[],
-  fireLanes: [
-    { id: 'fire-upper', left: 92.5, top: 12, width: 3, height: 25, rotation: -13 },
-    { id: 'fire-lower', left: 91.5, top: 64, width: 3, height: 27, rotation: 13 },
-  ] satisfies PlannerFireLane[],
   columns: [
-    [17,37],[36,37],[55,37],[84,37],[17,60],[36,60],[55,60],[72,60],[86,60],
+    [17,37],[36,37],[55,37],[84,37],[17,60],[36,60],[55,60],[70.75,60],[86,56.25],
   ].map(([left, top], index) => ({ id: `column-${index + 1}`, left, top })) satisfies PlannerColumn[],
   palletGroups: [
     pallet('pallet-a01', 10.5, 38, 6, 7, 3, 2),
