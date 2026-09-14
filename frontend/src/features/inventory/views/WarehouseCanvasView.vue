@@ -182,48 +182,65 @@ function togglePlannerGrid() {
   changePlannerState(() => { gridSnapping.value = !gridSnapping.value })
 }
 function selectPlannerPallet(id: string | null) {
+  const contextChanged = selectedPalletId.value !== id || (id !== null && selectedZoneId.value !== null)
   selectedPalletId.value = id
-  clearAllocationError()
+  if (contextChanged) clearAllocationError()
   if (id && plannerCompleted.value && !props.demo) selectedZoneId.value = null
 }
 function selectPlannerZone(id: string | null) {
+  const contextChanged = selectedZoneId.value !== id || (id !== null && selectedPalletId.value !== null)
   selectedZoneId.value = id
-  clearAllocationError()
+  if (contextChanged) clearAllocationError()
   if (id && plannerCompleted.value && !props.demo) selectedPalletId.value = null
 }
 async function loadActualInventory(id = selectedWarehouseId.value) {
   if (!id || props.demo) return
   inventoryLoading.value = true
   inventoryError.value = ''
-  try { actualInventory.value = await inventoryReader.load(id) }
+  try {
+    const inventory = await inventoryReader.load(id)
+    if (selectedWarehouseId.value === id) actualInventory.value = inventory
+  }
   catch (cause) {
-    actualInventory.value = null
-    inventoryError.value = cause instanceof Error ? cause.message : '实际库存加载失败'
-  } finally { inventoryLoading.value = false }
+    if (selectedWarehouseId.value === id) {
+      actualInventory.value = null
+      inventoryError.value = cause instanceof Error ? cause.message : '实际库存加载失败'
+    }
+  } finally {
+    if (selectedWarehouseId.value === id) inventoryLoading.value = false
+  }
 }
 function selectWarehouse(id: number) {
+  const contextChanged = selectedWarehouseId.value !== id || selectedPalletId.value !== null || selectedZoneId.value !== null
   selectedWarehouseId.value = id
   selectedPalletId.value = null
   selectedZoneId.value = null
   actualInventory.value = null
   inventoryError.value = ''
-  clearAllocationError()
+  if (contextChanged) clearAllocationError()
 }
 async function allocateInventoryToPile(input: WarehousePileAllocationInput) {
-  if (!selectedWarehouseId.value || !canEditInventory.value || inventoryAllocationSaving.value) return
+  const warehouseId = selectedWarehouseId.value
+  if (!warehouseId || !canEditInventory.value || inventoryAllocationSaving.value) return
   const contextGeneration = inventoryAllocationContextGeneration.value
   inventoryAllocationSaving.value = true
   inventoryAllocationError.value = ''
   try {
-    actualInventory.value = await inventoryReader.allocateToPile(selectedWarehouseId.value, input)
-    notice.value = `已向货物堆分配 ${input.units} 个库存`
+    const inventory = await inventoryReader.allocateToPile(warehouseId, input)
+    if (isCurrentAllocationContext(warehouseId, contextGeneration)) {
+      actualInventory.value = inventory
+      notice.value = `已向货物堆分配 ${input.units} 个库存`
+    }
   } catch (cause) {
     const allocationError = cause instanceof Error ? cause.message : 'SKU 分配失败'
-    if (allocationError.includes('库存已变化')) await loadActualInventory()
-    if (contextGeneration === inventoryAllocationContextGeneration.value) inventoryAllocationError.value = allocationError
+    if (allocationError.includes('库存已变化') && isCurrentAllocationContext(warehouseId, contextGeneration)) await loadActualInventory(warehouseId)
+    if (isCurrentAllocationContext(warehouseId, contextGeneration)) inventoryAllocationError.value = allocationError
   } finally {
     inventoryAllocationSaving.value = false
   }
+}
+function isCurrentAllocationContext(warehouseId: number, contextGeneration: number) {
+  return selectedWarehouseId.value === warehouseId && inventoryAllocationContextGeneration.value === contextGeneration
 }
 function clearAllocationError() {
   inventoryAllocationContextGeneration.value += 1

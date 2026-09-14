@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseCanvasView from './views/WarehouseCanvasView.vue'
 import WarehouseFloorCanvas from './warehouseCanvas/components/WarehouseFloorCanvas.vue'
 import WarehouseBlueprintScene from './warehouseCanvas/components/WarehouseBlueprintScene.vue'
+import WarehouseLayoutControls from './warehouseCanvas/components/WarehouseLayoutControls.vue'
 import { createWarehouseStructure, moveStructureNode } from './warehouseCanvas/warehouseStructure'
 import { warehousePlannerScene } from './warehouseCanvas/warehousePlannerScene'
 import { createMockWarehouseInventoryService } from './warehouseCanvas/warehouseInventoryService'
@@ -152,6 +153,81 @@ describe('Warehouse canvas overview', () => {
     await flushPromises()
 
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it('shows a rejected allocation error after reselecting the same pile', async () => {
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['inventory:view', 'inventory:edit'], loginMethod: 'password' }
+    const structure = createWarehouseStructure()
+    const palletA03 = { ...warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-a03')!, contents: [] }
+    const inventory = await createMockWarehouseInventoryService().load(8)
+    let rejectAllocation!: (reason?: unknown) => void
+    const allocateToPile = vi.fn().mockReturnValue(new Promise<typeof inventory>((_resolve, reject) => { rejectAllocation = reject }))
+    const wrapper = mount(WarehouseCanvasView, {
+      attachTo: document.body,
+      global: {
+        provide: {
+          [routeLocationKey as symbol]: { query: { warehouseId: '8' } },
+          masterdataService: { listWarehouses: vi.fn().mockResolvedValue({ records: [{ id: 8, warehouseName: '义乌备货仓', defaultWarehouse: true }], total: 1 }) },
+          warehouseLayoutService: { load: vi.fn().mockResolvedValue({ revision: 3, document: { schemaVersion: 1, structure, palletGroups: [palletA03], completed: true } }), save: vi.fn() },
+          warehouseInventoryService: { load: vi.fn().mockResolvedValue(inventory), allocateToPile },
+        },
+      },
+    })
+    mounted.push(wrapper)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="inventory-pile-pallet-a03"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-add-sku"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-allocation-units"]').setValue('24')
+    await wrapper.get('[data-testid="inventory-allocation-form"]').trigger('submit')
+    await flushPromises()
+    await wrapper.get('[data-testid="inventory-pile-pallet-a03"]').trigger('click')
+    rejectAllocation(new Error('分配失败，请重试'))
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('分配失败，请重试')
+  })
+
+  it('does not replace warehouse B inventory when warehouse A allocation resolves late', async () => {
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['inventory:view', 'inventory:edit'], loginMethod: 'password' }
+    const structure = createWarehouseStructure()
+    const palletA03 = { ...warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-a03')!, contents: [] }
+    const palletC018 = { ...warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-c018')!, contents: [] }
+    const inventoryA = await createMockWarehouseInventoryService().load(8)
+    const inventoryB = { warehouseId: 9, totalUnits: 7, skuCount: 1, placedUnits: 7, unallocatedUnits: 0, updatedAt: null, allocations: [{ zoneId: null, palletId: 'pallet-c018', skuId: 104, skuCode: 'SKU-B', productName: 'B 仓商品', skuName: null, specification: null, unitsPerCase: null, units: 7 }] }
+    let resolveAllocation!: (value: typeof inventoryA) => void
+    const allocateToPile = vi.fn().mockReturnValue(new Promise<typeof inventoryA>((resolve) => { resolveAllocation = resolve }))
+    const wrapper = mount(WarehouseCanvasView, {
+      attachTo: document.body,
+      global: {
+        provide: {
+          [routeLocationKey as symbol]: { query: { warehouseId: '8' } },
+          masterdataService: { listWarehouses: vi.fn().mockResolvedValue({ records: [{ id: 8, warehouseName: 'A 仓', defaultWarehouse: true }, { id: 9, warehouseName: 'B 仓', defaultWarehouse: false }], total: 2 }) },
+          warehouseLayoutService: { load: vi.fn().mockResolvedValue({ revision: 3, document: { schemaVersion: 1, structure, palletGroups: [palletA03], completed: true } }), save: vi.fn() },
+          warehouseInventoryService: { load: vi.fn((warehouseId: number) => Promise.resolve(warehouseId === 9 ? inventoryB : inventoryA)), allocateToPile },
+        },
+      },
+    })
+    mounted.push(wrapper)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="inventory-pile-pallet-a03"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-add-sku"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-allocation-units"]').setValue('24')
+    await wrapper.get('[data-testid="inventory-allocation-form"]').trigger('submit')
+    await flushPromises()
+
+    const controls = wrapper.getComponent(WarehouseLayoutControls)
+    controls.vm.$emit('warehouse', 9)
+    controls.vm.$emit('loaded', { schemaVersion: 1, structure, palletGroups: [palletC018], completed: true })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="inventory-total-units"]').text()).toBe('7')
+
+    resolveAllocation(inventoryA)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="inventory-total-units"]').text()).toBe('7')
+    expect(wrapper.find('.planner-toast').exists()).toBe(false)
   })
 
   it('opens a real warehouse in read-only inventory detail and keeps the existing blueprint renderer', async () => {
