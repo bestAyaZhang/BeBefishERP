@@ -1,16 +1,21 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WarehouseCanvasView from './views/WarehouseCanvasView.vue'
 import WarehouseFloorCanvas from './warehouseCanvas/components/WarehouseFloorCanvas.vue'
 import WarehouseBlueprintScene from './warehouseCanvas/components/WarehouseBlueprintScene.vue'
 import { createWarehouseStructure, moveStructureNode } from './warehouseCanvas/warehouseStructure'
+import { warehousePlannerScene } from './warehouseCanvas/warehousePlannerScene'
+import { createMockWarehouseInventoryService } from './warehouseCanvas/warehouseInventoryService'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parse } from '@vue/compiler-sfc'
 import { routeLocationKey } from 'vue-router'
+import { currentUser } from '../../services/authSession'
+import type { LoginResult } from '../../types/auth'
 
 const mounted: ReturnType<typeof mount>[] = []
 const styleElements: HTMLStyleElement[] = []
+let previousCurrentUser: LoginResult | null
 function applyPageStyles() {
   const { descriptor } = parse(readFileSync(resolve(process.cwd(), 'src/features/inventory/views/WarehouseCanvasView.vue'), 'utf8'))
   const style = document.createElement('style')
@@ -20,6 +25,7 @@ function applyPageStyles() {
 }
 async function mountPage(routeQuery: Record<string, string> = {}) {
   const wrapper = mount(WarehouseCanvasView, {
+    props: { demo:true },
     attachTo: document.body,
     global: { provide: { [routeLocationKey as symbol]: { query: routeQuery } } },
   })
@@ -27,7 +33,12 @@ async function mountPage(routeQuery: Record<string, string> = {}) {
   await flushPromises()
   return wrapper
 }
-afterEach(() => { mounted.splice(0).forEach((wrapper) => wrapper.unmount()); styleElements.splice(0).forEach((style) => style.remove()) })
+beforeEach(() => { previousCurrentUser = currentUser.value })
+afterEach(() => {
+  currentUser.value = previousCurrentUser
+  mounted.splice(0).forEach((wrapper) => wrapper.unmount())
+  styleElements.splice(0).forEach((style) => style.remove())
+})
 type Page = Awaited<ReturnType<typeof mountPage>>
 function floor(wrapper: Page) { return wrapper.getComponent(WarehouseFloorCanvas) }
 async function selectBlock(wrapper: Page, id = 'block-blue-a') { floor(wrapper).vm.$emit('select-block', id); await flushPromises() }
@@ -35,6 +46,249 @@ async function selectArea(wrapper: Page, id = 'area-a') { floor(wrapper).vm.$emi
 function selectedBlock(wrapper: Page) { return floor(wrapper).props('state').blocks.find((block) => block.id === floor(wrapper).props('selectedBlockId')) }
 
 describe('Warehouse canvas overview', () => {
+  it('shows pile allocation controls only to inventory editors', async () => {
+    const structure = createWarehouseStructure()
+    const pallet = { ...warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-c018')!, contents: [] }
+    const inventory = await createMockWarehouseInventoryService().load(8)
+    const provide = {
+      [routeLocationKey as symbol]: { query: { warehouseId: '8' } },
+      masterdataService: { listWarehouses: vi.fn().mockResolvedValue({ records: [{ id: 8, warehouseName: '义乌备货仓', defaultWarehouse: true }], total: 1 }) },
+      warehouseLayoutService: { load: vi.fn().mockResolvedValue({ revision: 3, document: { schemaVersion: 1, structure, palletGroups: [pallet], completed: true } }), save: vi.fn() },
+      warehouseInventoryService: { load: vi.fn().mockResolvedValue(inventory) },
+    }
+
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['inventory:view'], loginMethod: 'password' }
+    const viewOnly = mount(WarehouseCanvasView, { attachTo: document.body, global: { provide } })
+    mounted.push(viewOnly)
+    await flushPromises()
+    await viewOnly.get('[data-testid="inventory-pile-pallet-c018"]').trigger('click')
+    expect(viewOnly.find('[data-testid="inventory-add-sku"]').exists()).toBe(false)
+
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['inventory:view', 'inventory:edit'], loginMethod: 'password' }
+    const editable = mount(WarehouseCanvasView, { attachTo: document.body, global: { provide } })
+    mounted.push(editable)
+    await flushPromises()
+    await editable.get('[data-testid="inventory-pile-pallet-c018"]').trigger('click')
+    expect(editable.find('[data-testid="inventory-add-sku"]').exists()).toBe(true)
+  })
+
+  it('replaces the displayed inventory with the authoritative allocation layout', async () => {
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['inventory:view', 'inventory:edit'], loginMethod: 'password' }
+    const structure = createWarehouseStructure()
+    const palletC018 = { ...warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-c018')!, contents: [] }
+    const palletA03 = { ...warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-a03')!, contents: [] }
+    const initialInventory = await createMockWarehouseInventoryService().load(8)
+    const unallocated = initialInventory.allocations.find(item => item.palletId === 'UNALLOCATED' && item.skuId === 104)!
+    const updatedInventory = {
+      ...initialInventory,
+      placedUnits: initialInventory.placedUnits + 24,
+      unallocatedUnits: initialInventory.unallocatedUnits - 24,
+      allocations: [
+        ...initialInventory.allocations.map(item => item === unallocated ? { ...item, units: item.units - 24 } : item),
+        { ...unallocated, zoneId: null, palletId: 'pallet-a03', units: 24 },
+      ],
+    }
+    const allocateToPile = vi.fn().mockResolvedValue(updatedInventory)
+    const wrapper = mount(WarehouseCanvasView, {
+      attachTo: document.body,
+      global: {
+        provide: {
+          [routeLocationKey as symbol]: { query: { warehouseId: '8' } },
+          masterdataService: { listWarehouses: vi.fn().mockResolvedValue({ records: [{ id: 8, warehouseName: '义乌备货仓', defaultWarehouse: true }], total: 1 }) },
+          warehouseLayoutService: { load: vi.fn().mockResolvedValue({ revision: 3, document: { schemaVersion: 1, structure, palletGroups: [palletC018, palletA03], completed: true } }), save: vi.fn() },
+          warehouseInventoryService: { load: vi.fn().mockResolvedValue(initialInventory), allocateToPile },
+        },
+      },
+    })
+    mounted.push(wrapper)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="inventory-pile-pallet-a03"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-add-sku"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-allocation-units"]').setValue('24')
+    await wrapper.get('[data-testid="inventory-allocation-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(allocateToPile).toHaveBeenCalledWith(8, { palletId: 'pallet-a03', skuId: 104, units: 24 })
+    expect(wrapper.get('[data-testid="inventory-pile-pallet-a03"]').text()).toContain('1种 SKU · 24个')
+    expect(wrapper.get('[data-testid="inventory-detail-title"]').text()).toContain('A03')
+    expect(wrapper.get('[data-testid="inventory-detail-sku"]').text()).toContain('24 个')
+  })
+
+  it('opens a real warehouse in read-only inventory detail and keeps the existing blueprint renderer', async () => {
+    const structure = createWarehouseStructure()
+    const pallet = { ...warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-c018')!, contents: [] }
+    const inventory = await createMockWarehouseInventoryService().load(8)
+    const wrapper = mount(WarehouseCanvasView, {
+      attachTo: document.body,
+      global: {
+        provide: {
+          [routeLocationKey as symbol]: { query: { warehouseId: '8' } },
+          masterdataService: { listWarehouses: vi.fn().mockResolvedValue({ records: [{ id: 8, warehouseName: '义乌备货仓', defaultWarehouse: true }], total: 1 }) },
+          warehouseLayoutService: { load: vi.fn().mockResolvedValue({ revision: 3, document: { schemaVersion: 1, structure, palletGroups: [pallet], completed: true } }), save: vi.fn() },
+          warehouseInventoryService: { load: vi.fn().mockResolvedValue(inventory) },
+        },
+      },
+    })
+    mounted.push(wrapper)
+    await flushPromises()
+
+    expect(wrapper.find('.inventory-sidebar').exists()).toBe(true)
+    expect(wrapper.getComponent(WarehouseBlueprintScene).props('detailMode')).toBe(true)
+    expect(wrapper.find('[data-testid="planner-ruler-x"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="planner-pallet-pallet-c018"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="inventory-pile-pallet-c018"]').trigger('click')
+    expect(wrapper.get('[data-testid="inventory-detail-title"]').text()).toContain('C-018')
+    expect(wrapper.findAll('[data-testid="inventory-detail-sku"]')).toHaveLength(3)
+    await wrapper.get('[aria-label="关闭库存详情"]').trigger('click')
+
+    await wrapper.get('[data-testid="planner-pallet-pallet-c018"]').trigger('click')
+    expect(wrapper.get('[data-testid="inventory-detail-title"]').text()).toContain('C-018')
+    expect(wrapper.findAll('[data-testid="inventory-detail-sku"]')).toHaveLength(3)
+
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    expect(wrapper.find('.inventory-sidebar').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="planner-ruler-x"]').exists()).toBe(true)
+  })
+
+  it('forces an unplanned warehouse into planning before loading inventory detail', async () => {
+    const inventoryLoad = vi.fn()
+    const wrapper = mount(WarehouseCanvasView, {
+      attachTo: document.body,
+      global: {
+        provide: {
+          [routeLocationKey as symbol]: { query: { warehouseId: '8' } },
+          masterdataService: { listWarehouses: vi.fn().mockResolvedValue({ records: [{ id: 8, warehouseName: '杭州主仓', defaultWarehouse: true }], total: 1 }) },
+          warehouseLayoutService: { load: vi.fn().mockResolvedValue({ revision: 0, document: null }), save: vi.fn() },
+          warehouseInventoryService: { load: inventoryLoad },
+        },
+      },
+    })
+    mounted.push(wrapper)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="planner-title"]').text()).toBe('杭州主仓 · 平面规划')
+    expect(wrapper.get('[data-testid="planner-warehouse-notice"]').text()).toContain('尚未规划，请先完成仓库布局规划')
+    expect(wrapper.getComponent(WarehouseBlueprintScene).props('detailMode')).toBe(false)
+    expect(wrapper.getComponent(WarehouseBlueprintScene).props('structureEditing')).toBe(true)
+    expect(wrapper.find('.inventory-sidebar').exists()).toBe(false)
+    expect(inventoryLoad).not.toHaveBeenCalled()
+  })
+
+  it('starts with a blank warehouse even on an old preview URL', async () => {
+    const wrapper = mount(WarehouseCanvasView, { global:{provide:{[routeLocationKey as symbol]:{query:{preview:'drag-layer-v1'}}}} })
+    mounted.push(wrapper)
+    await flushPromises()
+    const scene = wrapper.getComponent(WarehouseBlueprintScene)
+    expect(scene.props('palletGroups')).toEqual([])
+    expect(scene.props('structure')?.outline.nodes).toEqual([])
+    expect(scene.props('structure')?.zones).toEqual([])
+    expect(scene.props('structure')?.columns).toEqual([])
+    expect(scene.props('structureEditing')).toBe(false)
+    expect(wrapper.findAll('.utility-room')).toHaveLength(0)
+    expect(wrapper.get('[data-testid="planner-title"]').text()).toBe('仓库 · 画布查看')
+  })
+  it('undoes passage width edits and deletion without changing goods', async () => {
+    const wrapper = await mountPage()
+    const scene = wrapper.getComponent(WarehouseBlueprintScene)
+    const goodsBefore = JSON.stringify(scene.props('palletGroups'))
+    await wrapper.get('[data-testid="planner-tool-zone"]').trigger('click')
+    await wrapper.get('[data-testid="planner-zone-aisle-top"]').trigger('keydown', { key: 'Enter' })
+    await wrapper.get('[data-testid="zone-edit"]').trigger('click')
+    await wrapper.get('[data-testid="passage-width"]').setValue('2.5')
+    await wrapper.get('[data-testid="zone-save"]').trigger('submit')
+    expect(wrapper.get('[data-testid="planner-zone-aisle-top"]').text()).toContain('2.5m')
+    await wrapper.get('[data-testid="planner-undo"]').trigger('click')
+    expect(wrapper.get('[data-testid="planner-zone-aisle-top"]').text()).toContain('2.0m')
+    await wrapper.get('[data-testid="planner-redo"]').trigger('click')
+    expect(wrapper.get('[data-testid="planner-zone-aisle-top"]').text()).toContain('2.5m')
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    expect(wrapper.find('[data-testid="zone-edit"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="planner-zone-aisle-top"]').attributes('tabindex')).toBe('-1')
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    await wrapper.get('[data-testid="zone-delete"]').trigger('click')
+    expect(wrapper.find('[data-testid="planner-zone-aisle-top"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="planner-undo"]').trigger('click')
+    expect(wrapper.get('[data-testid="planner-zone-aisle-top"]').text()).toContain('2.5m')
+    expect(JSON.stringify(scene.props('palletGroups'))).toBe(goodsBefore)
+  })
+  it('records a drawn zone once, restores it with redo, and retains it after completion', async () => {
+    const wrapper = await mountPage()
+    const scene = wrapper.getComponent(WarehouseBlueprintScene)
+    const goodsBefore = JSON.stringify(scene.props('palletGroups'))
+    const initialZoneCount = scene.props('structure')!.zones!.length
+    await wrapper.get('[data-testid="planner-tool-zone"]').trigger('click')
+    expect(wrapper.find('[data-testid="zone-tool-draw"]').exists()).toBe(true)
+    const svg = wrapper.get('[data-testid="zone-canvas"]')
+    Object.defineProperty(svg.element, 'getBoundingClientRect', { value: () => ({ left: 0, top: 0, width: 1000, height: 800 }) })
+    await svg.trigger('pointerdown', { button: 0, pointerId: 40, clientX: 400, clientY: 320 })
+    expect(wrapper.get('[data-testid="planner-complete"]').attributes('disabled')).toBeDefined()
+    await svg.trigger('pointerup', { pointerId: 40, clientX: 470, clientY: 400 })
+    expect(wrapper.get('[data-testid="planner-complete"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="zone-name"]').setValue('混放区 A+B')
+    await wrapper.get('[data-testid="zone-save"]').trigger('submit')
+    expect(scene.props('structure')!.zones).toHaveLength(initialZoneCount + 1)
+    await wrapper.get('[data-testid="planner-undo"]').trigger('click')
+    expect(scene.props('structure')!.zones).toHaveLength(initialZoneCount)
+    expect(wrapper.get('[data-testid="planner-undo"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="planner-redo"]').trigger('click')
+    expect(scene.props('structure')!.zones!.at(-1)!.label).toBe('混放区 A+B')
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    expect(wrapper.find('[data-testid="zone-tool-draw"]').exists()).toBe(false)
+    expect(scene.text()).toContain('混放区 A+B')
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    expect(wrapper.find('[data-testid="zone-tool-draw"]').exists()).toBe(true)
+    expect(JSON.stringify(scene.props('palletGroups'))).toBe(goodsBefore)
+  })
+  it('retains elevators as read-only structures after completing the plan', async () => {
+    const wrapper = await mountPage()
+    const scene = wrapper.getComponent(WarehouseBlueprintScene)
+    const layout = { ...createWarehouseStructure(), elevators: [{ id: 'lift-readonly', left: 40, top: 82, width: 5, height: 7.5 }] }
+    scene.vm.$emit('change-structure', layout)
+    await flushPromises()
+    await wrapper.get('[data-testid="planner-tool-structure"]').trigger('click')
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    const lift = wrapper.get('[data-testid="planner-elevator-lift-readonly"]')
+    expect(lift.attributes('tabindex')).toBe('-1')
+    expect(wrapper.find('[data-testid="structure-tool-elevator"]').exists()).toBe(false)
+    await lift.trigger('pointerdown', { button: 0, pointerId: 32, clientX: 425, clientY: 150 })
+    await wrapper.get('svg.structure-svg').trigger('pointerup', { pointerId: 32, clientX: 525, clientY: 150 })
+    expect(scene.emitted('change-structure')).toHaveLength(1)
+    expect(scene.props('structure')).toEqual(layout)
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    expect(wrapper.get('[data-testid="planner-elevator-lift-readonly"]').attributes('tabindex')).toBe('0')
+    expect(wrapper.find('[data-testid="structure-tool-elevator"]').exists()).toBe(true)
+  })
+  it('undoes a column addition and keeps columns read-only after completing the plan', async () => {
+    const wrapper = await mountPage()
+    const scene = wrapper.getComponent(WarehouseBlueprintScene)
+    const before = createWarehouseStructure()
+    const next = { ...before, columns: [...before.columns!, { id: 'column-history', left: 40, top: 15, width: 1, height: 1.5 }] }
+    scene.vm.$emit('change-structure', next)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="planner-column-column-history"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="planner-undo"]').trigger('click')
+    expect(scene.props('structure')).toEqual(before)
+    await wrapper.get('[data-testid="planner-redo"]').trigger('click')
+    expect(scene.props('structure')).toEqual(next)
+    await wrapper.get('[data-testid="planner-tool-structure"]').trigger('click')
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    expect(wrapper.get('[data-testid="planner-column-column-history"]').attributes('tabindex')).toBe('-1')
+    expect(wrapper.find('[data-testid="structure-tool-column"]').exists()).toBe(false)
+  })
+
+  it('undoes and redoes an elevator without losing the surrounding structure',async()=>{
+    const wrapper=await mountPage(),scene=wrapper.getComponent(WarehouseBlueprintScene)
+    const before=createWarehouseStructure(),next={...before,elevators:[{id:'lift-test',left:40,top:15,width:5,height:7.5}]}
+    scene.vm.$emit('change-structure',next)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="planner-elevator-lift-test"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="planner-undo"]').trigger('click')
+    expect(scene.props('structure')).toEqual(before)
+    await wrapper.get('[data-testid="planner-redo"]').trigger('click')
+    expect(scene.props('structure')).toEqual(next)
+  })
   it('includes wall and door geometry in the same undo history and blocks invalid completion', async () => {
     const wrapper = await mountPage()
     const scene = wrapper.getComponent(WarehouseBlueprintScene)
@@ -74,7 +328,7 @@ describe('Warehouse canvas overview', () => {
 
     expect(wrapper.get('[data-testid="planner-title"]').text()).toContain('一号仓 · 平面规划')
     expect(getComputedStyle(wrapper.get('[data-testid="warehouse-canvas-view"]').element).height).toBe('100%')
-    expect(wrapper.get('.planner-prototype').attributes('data-fullscreen')).toBe('true')
+    expect(wrapper.get('.planner-prototype').attributes('data-fullscreen')).toBe('false')
     expect(getComputedStyle(wrapper.get('.planner-prototype').element).height).toBe('100%')
     expect(wrapper.get('[data-testid="planner-tool-goods"]').attributes('aria-pressed')).toBe('true')
 
@@ -86,7 +340,7 @@ describe('Warehouse canvas overview', () => {
     expect(wrapper.find('.scene-inspector').exists()).toBe(false)
     await wrapper.get('[data-testid="planner-complete"]').trigger('click')
     expect(wrapper.get('[role="status"]').text()).toContain('点击货堆查看详情')
-    expect(wrapper.get('[data-testid="planner-complete"]').text()).toContain('返回规划')
+    expect(wrapper.get('[data-testid="planner-complete"]').text()).toContain('修改规划')
     expect(wrapper.get('.scene-inspector').text()).toContain('SKU-FISH-500ML-蓝')
 
     await wrapper.get('[data-testid="planner-complete"]').trigger('click')

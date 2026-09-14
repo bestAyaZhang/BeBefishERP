@@ -6,6 +6,12 @@ import AccessibleDialog from '../../../components/AccessibleDialog.vue'
 import WarehouseFloorCanvas from '../warehouseCanvas/components/WarehouseFloorCanvas.vue'
 import WarehouseBlueprintScene from '../warehouseCanvas/components/WarehouseBlueprintScene.vue'
 import WarehousePlannerChrome from '../warehouseCanvas/components/WarehousePlannerChrome.vue'
+import WarehouseLayoutControls from '../warehouseCanvas/components/WarehouseLayoutControls.vue'
+import WarehouseInventorySidebar from '../warehouseCanvas/components/WarehouseInventorySidebar.vue'
+import WarehouseInventoryDrawer from '../warehouseCanvas/components/WarehouseInventoryDrawer.vue'
+import { warehouseInventoryService } from '../warehouseCanvas/warehouseInventoryService'
+import type { WarehouseInventoryLayout, WarehouseInventoryService, WarehousePileAllocationInput } from '../warehouseCanvas/warehouseInventoryService'
+import type { WarehouseLayoutDocument } from '../warehouseCanvas/warehouseLayoutService'
 import type { PlannerUiTool } from '../warehouseCanvas/components/WarehousePlannerChrome.vue'
 import WarehouseProductDrawer from '../warehouseCanvas/components/WarehouseProductDrawer.vue'
 import WarehouseObjectPanel from '../warehouseCanvas/components/WarehouseObjectPanel.vue'
@@ -13,12 +19,15 @@ import { useWarehouseCanvas } from '../warehouseCanvas/useWarehouseCanvas'
 import { findOpenPosition, formatCaseBreakdown, summarizeCanvas } from '../warehouseCanvas/warehouseCanvasModel'
 import type { CanvasRect } from '../warehouseCanvas/types'
 import { warehousePlannerScene } from '../warehouseCanvas/warehousePlannerScene'
-import type { PlannerPalletGroup } from '../warehouseCanvas/warehousePlannerScene'
+import type { PlannerPalletGroup, PlannerRect } from '../warehouseCanvas/warehousePlannerScene'
 import { cloneStructure, createWarehouseStructure, validatePlannerLayout } from '../warehouseCanvas/warehouseStructure'
 import type { WarehouseStructure, StructureIssue } from '../warehouseCanvas/warehouseStructure'
+import { currentUser } from '../../../services/authSession'
 
+const props = defineProps<{ demo?: boolean }>()
 const canvas = useWarehouseCanvas()
 const route = inject(routeLocationKey, null)
+const inventoryReader = inject<WarehouseInventoryService>('warehouseInventoryService', warehouseInventoryService)
 const warehouseLimitation = computed(() => route?.query.warehouseId && route.query.warehouseId !== '1'
   ? `当前仅支持演示仓库（ID 1）；所选仓库 ID ${route.query.warehouseId} 尚未加载。`
   : '单仓库演示：保存仅在当前页面有效，刷新后重置。')
@@ -38,23 +47,55 @@ const pendingArea = ref<CanvasRect | null>(null)
 const areaName = ref('D-01')
 const error = ref('')
 const notice = ref('')
-const plannerTool = ref<PlannerUiTool>('goods')
+const plannerTool = ref<PlannerUiTool>(props.demo ? 'goods' : 'structure')
 const measurementEnabled = ref(false)
 const gridSnapping = ref(true)
-const plannerCompleted = ref(false)
-const plannerStructure = ref(createWarehouseStructure())
+const plannerCompleted = ref(!props.demo)
+const planningRequired = ref(false)
+const plannerStructure = ref<WarehouseStructure>(props.demo ? createWarehouseStructure() : { outline:{id:'outline',closed:true,nodes:[]}, partitions:[], doors:[], elevators:[], columns:[], zones:[] })
 const plannerStructureIssues = ref<StructureIssue[]>([])
 const plannerStructureBusy = ref(false)
 const plannerIssuesOpen = ref(false)
 const focusedStructureId = ref<string | null>(null)
-const selectedPalletId = ref<string | null>('pallet-c018')
+const selectedPalletId = ref<string | null>(props.demo ? 'pallet-c018' : null)
+const selectedZoneId = ref<string | null>(null)
+const selectedWarehouseId = ref<number | null>(null)
+const actualInventory = ref<WarehouseInventoryLayout | null>(null)
+const inventoryLoading = ref(false)
+const inventoryError = ref('')
+const canEditInventory = computed(() => currentUser.value?.permissions.includes('inventory:edit') ?? false)
+const inventoryAllocationSaving = ref(false)
+const inventoryAllocationError = ref('')
 function clonePlannerPalletGroups(groups: readonly PlannerPalletGroup[]): PlannerPalletGroup[] {
   return groups.map((pallet) => ({
     ...pallet,
     contents: pallet.contents.map((item) => ({ ...item })),
   }))
 }
-const plannerPalletGroups = ref<PlannerPalletGroup[]>(clonePlannerPalletGroups(warehousePlannerScene.palletGroups))
+const plannerPalletGroups = ref<PlannerPalletGroup[]>(props.demo ? clonePlannerPalletGroups(warehousePlannerScene.palletGroups) : [])
+const layoutControls = ref<InstanceType<typeof WarehouseLayoutControls>>()
+const layoutReady = ref(Boolean(props.demo))
+const layoutSaving = ref(false)
+const actualWarehouseName = ref('仓库')
+const selectedPlannerPallet = computed(() => plannerPalletGroups.value.find(item => item.id === selectedPalletId.value) ?? null)
+const selectedPlannerZone = computed(() => plannerStructure.value.zones?.find(item => item.id === selectedZoneId.value) ?? null)
+const plannerContextNotice = computed(() => props.demo
+  ? visibleWarehouseNotice.value
+  : planningRequired.value ? '该仓库尚未规划，请先完成仓库布局规划。' : '')
+const layoutDocument = computed<WarehouseLayoutDocument>(() => ({schemaVersion:1,structure:plannerStructure.value,palletGroups:plannerPalletGroups.value,completed:plannerCompleted.value}))
+function loadPlannerDocument(document:WarehouseLayoutDocument) {
+  plannerStructure.value = cloneStructure(document.structure)
+  plannerPalletGroups.value = clonePlannerPalletGroups(document.palletGroups)
+  const hasCompletedLayout = document.completed && document.structure.outline.closed && document.structure.outline.nodes.length >= 3
+  plannerCompleted.value = hasCompletedLayout
+  planningRequired.value = !hasCompletedLayout
+  selectedPalletId.value = null
+  selectedZoneId.value = null
+  plannerUndoStack.value = []; plannerRedoStack.value = []
+  plannerTool.value = 'structure'
+  plannerStructureIssues.value = validatePlannerLayout(plannerStructure.value,plannerPalletGroups.value)
+  if (hasCompletedLayout) void loadActualInventory()
+}
 type PlannerSnapshot = {
   tool: PlannerUiTool
   measurementEnabled: boolean
@@ -141,17 +182,63 @@ function togglePlannerGrid() {
 }
 function selectPlannerPallet(id: string | null) {
   selectedPalletId.value = id
+  inventoryAllocationError.value = ''
+  if (id && plannerCompleted.value && !props.demo) selectedZoneId.value = null
+}
+function selectPlannerZone(id: string | null) {
+  selectedZoneId.value = id
+  inventoryAllocationError.value = ''
+  if (id && plannerCompleted.value && !props.demo) selectedPalletId.value = null
+}
+async function loadActualInventory(id = selectedWarehouseId.value) {
+  if (!id || props.demo) return
+  inventoryLoading.value = true
+  inventoryError.value = ''
+  try { actualInventory.value = await inventoryReader.load(id) }
+  catch (cause) {
+    actualInventory.value = null
+    inventoryError.value = cause instanceof Error ? cause.message : '实际库存加载失败'
+  } finally { inventoryLoading.value = false }
+}
+function selectWarehouse(id: number) {
+  selectedWarehouseId.value = id
+  selectedPalletId.value = null
+  selectedZoneId.value = null
+  actualInventory.value = null
+  inventoryError.value = ''
+  inventoryAllocationError.value = ''
+}
+async function allocateInventoryToPile(input: WarehousePileAllocationInput) {
+  if (!selectedWarehouseId.value || !canEditInventory.value || inventoryAllocationSaving.value) return
+  inventoryAllocationSaving.value = true
+  inventoryAllocationError.value = ''
+  try {
+    actualInventory.value = await inventoryReader.allocateToPile(selectedWarehouseId.value, input)
+    notice.value = `已向货物堆分配 ${input.units} 个库存`
+  } catch (cause) {
+    inventoryAllocationError.value = cause instanceof Error ? cause.message : 'SKU 分配失败'
+    if (inventoryAllocationError.value.includes('库存已变化')) await loadActualInventory()
+  } finally {
+    inventoryAllocationSaving.value = false
+  }
+}
+function closeInventoryDrawer() {
+  selectedPalletId.value = null
+  selectedZoneId.value = null
+  inventoryAllocationError.value = ''
 }
 function changePlannerStructure(value: WarehouseStructure) {
   changePlannerState(() => { plannerStructure.value = cloneStructure(value) })
 }
 async function locatePlannerIssue(issue: StructureIssue) {
   const pile = plannerPalletGroups.value.find((p) => issue.objectIds.includes(p.id))
+  const zone = plannerStructure.value.zones?.find(item => issue.objectIds.includes(item.id))
   if (pile) { plannerTool.value='goods'; selectedPalletId.value=pile.id }
+  else if (zone) { plannerTool.value='zone'; focusedStructureId.value=null; await nextTick(); focusedStructureId.value=zone.id }
   else { plannerTool.value='structure'; focusedStructureId.value=null; await nextTick(); focusedStructureId.value=issue.objectIds[0] ?? null }
   await nextTick()
   const root = document.querySelector('[data-testid="warehouse-blueprint-scene"]')
-  const target = pile ? [...(root?.querySelectorAll<HTMLElement>('[data-testid^="planner-pallet-"]') ?? [])].find((e)=>e.dataset.testid===`planner-pallet-${pile.id}`) : root?.querySelector('.structure-toolbar')
+  const target = pile ? [...(root?.querySelectorAll<HTMLElement>('[data-testid^="planner-pallet-"]') ?? [])].find((e)=>e.dataset.testid===`planner-pallet-${pile.id}`) : root?.querySelector(zone ? '.zone-toolbar' : '.structure-toolbar')
   target?.scrollIntoView?.({block:'nearest',inline:'nearest'})
   if (pile) (target as HTMLElement | undefined)?.focus?.({preventScroll:true})
 }
@@ -170,6 +257,16 @@ function movePlannerPallet(move: { id: string; left: number; top: number }) {
     selectedPalletId.value = move.id
   })
 }
+function createPlannerPallet(rect: PlannerRect) {
+  if (plannerCompleted.value || plannerTool.value !== 'goods') return
+  const id = `pallet-${crypto.randomUUID()}`
+  let number = plannerPalletGroups.value.length + 1
+  while (plannerPalletGroups.value.some(p => p.code === `P${String(number).padStart(3,'0')}`)) number++
+  const code = `P${String(number).padStart(3,'0')}`
+  const pallet: PlannerPalletGroup = { ...rect, id, code, name:`地面货堆 ${code}`, columns:Math.max(1,Math.round(rect.width*.6)), rows:Math.max(1,Math.round(rect.height*.4)), xMeters:rect.left*.6, yMeters:rect.top*.4, lengthMeters:rect.width*.6, widthMeters:rect.height*.4, rotation:0, contents:[] }
+  if (validatePlannerLayout(plannerStructure.value,[...plannerPalletGroups.value,pallet]).some(issue => issue.objectIds.includes(id))) return
+  changePlannerState(() => { plannerPalletGroups.value = [...plannerPalletGroups.value,pallet]; selectedPalletId.value = id })
+}
 function undoPlanner() {
   if (plannerCompleted.value || plannerStructureBusy.value) return
   const previous = plannerUndoStack.value.at(-1)
@@ -186,12 +283,27 @@ function redoPlanner() {
   plannerRedoStack.value = plannerRedoStack.value.slice(0, -1)
   applyPlannerSnapshot(next)
 }
-function completeUiPreview() {
+async function completeUiPreview() {
+  if (!layoutReady.value || layoutSaving.value) return
   if (!plannerCompleted.value) {
     plannerStructureIssues.value=validatePlannerLayout(plannerStructure.value,plannerPalletGroups.value)
     if (plannerStructureBusy.value || plannerStructureIssues.value.length) { plannerIssuesOpen.value=true;return }
   }
+  if (!props.demo && !plannerCompleted.value) {
+    layoutSaving.value = true
+    try {
+      if (!await layoutControls.value?.saveDocument({...layoutDocument.value,completed:true})) return
+    } finally { layoutSaving.value = false }
+  }
   plannerCompleted.value = !plannerCompleted.value
+  if (plannerCompleted.value) {
+    planningRequired.value = false
+    void loadActualInventory()
+  }
+  if (!props.demo) {
+    selectedPalletId.value = null
+    selectedZoneId.value = null
+  }
   notice.value = plannerCompleted.value
     ? '规划已完成，点击货堆查看详情'
     : '已返回规划编辑'
@@ -299,22 +411,22 @@ function addProduct(input: { skuId: number; areaId: string; units: number }) {
     notice.value = `已将产品放入 ${area.name}`
   })
 }
-onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value = cause instanceof Error ? cause.message : '加载失败' } })
+onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } catch (cause) { error.value = cause instanceof Error ? cause.message : '加载失败' } })
 </script>
 
 <template>
   <main data-testid="warehouse-canvas-view" class="warehouse-page">
-    <section class="planner-prototype" data-fullscreen="true" aria-label="仓库平面规划 UI 预览">
+    <section class="planner-prototype" data-fullscreen="false" aria-label="仓库平面规划">
       <WarehousePlannerChrome
-        :warehouse-name="state.warehouseName"
-        :context-notice="visibleWarehouseNotice"
+        :warehouse-name="props.demo ? state.warehouseName : actualWarehouseName"
+        :context-notice="plannerContextNotice"
         :active-tool="plannerTool"
         :measurement-enabled="measurementEnabled"
         :grid-snapping="gridSnapping"
-        :can-undo="plannerCanUndo && !plannerCompleted && !plannerStructureBusy"
-        :can-redo="plannerCanRedo && !plannerCompleted && !plannerStructureBusy"
+        :can-undo="layoutReady && !layoutSaving && plannerCanUndo && !plannerCompleted && !plannerStructureBusy"
+        :can-redo="layoutReady && !layoutSaving && plannerCanRedo && !plannerCompleted && !plannerStructureBusy"
         :completed="plannerCompleted"
-        :completion-blocked="!plannerCompleted && (plannerStructureBusy || plannerStructureIssues.length > 0)"
+        :completion-blocked="!layoutReady || layoutSaving || (!plannerCompleted && (plannerStructureBusy || plannerStructureIssues.length > 0))"
         :completion-reason="plannerStructureBusy ? '请先结束当前操作' : `请先处理 ${plannerStructureIssues.length} 个规划问题`"
         @change-tool="changePlannerTool"
         @toggle-measurement="togglePlannerMeasurement"
@@ -323,24 +435,57 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
         @redo="redoPlanner"
         @complete="completeUiPreview"
       />
-      <div class="planner-canvas-scroll">
+      <WarehouseLayoutControls v-if="!props.demo" ref="layoutControls" :document="layoutDocument" :viewing="plannerCompleted" :busy="plannerStructureBusy" @loaded="loadPlannerDocument" @name="actualWarehouseName = $event" @available="layoutReady = $event" @warehouse="selectWarehouse" />
+      <div class="planner-canvas-scroll" :class="{'with-layout-controls':!props.demo,'detail-layout':!props.demo && plannerCompleted}" :inert="!layoutReady || layoutSaving || undefined">
+      <WarehouseInventorySidebar
+        v-if="!props.demo && plannerCompleted"
+        :inventory="actualInventory"
+        :pallet-groups="plannerPalletGroups"
+        :loading="inventoryLoading"
+        :error="inventoryError"
+        :selected-pallet-id="selectedPalletId"
+        @select-pallet="selectPlannerPallet"
+        @retry="loadActualInventory()"
+      />
+        <div class="planner-scene-host">
         <WarehouseBlueprintScene
+          :show-demo-rooms="Boolean(props.demo)"
           :grid-snapping="gridSnapping"
           :inventory-details-visible="plannerCompleted"
+          :detail-mode="!props.demo && plannerCompleted"
           :measurement-enabled="measurementEnabled"
           :selected-pallet-id="selectedPalletId"
+          :selected-zone-id="selectedZoneId"
           :pallet-groups="plannerPalletGroups"
           :structure="plannerStructure"
           :structure-editing="plannerTool === 'structure' && !plannerCompleted"
+          :zone-editing="plannerTool === 'zone' && !plannerCompleted"
+          :goods-editing="plannerTool === 'goods' && !plannerCompleted"
           :focused-structure-id="focusedStructureId"
           @change-structure="changePlannerStructure"
           @structure-issues="plannerStructureIssues = $event"
           @structure-busy="plannerStructureBusy = $event"
           @select-pallet="selectPlannerPallet"
+          @select-zone="selectPlannerZone"
           @move-pallet="movePlannerPallet"
+          @create-pallet="createPlannerPallet"
         />
+        <WarehouseInventoryDrawer
+          v-if="!props.demo"
+          :open="plannerCompleted && Boolean(selectedPalletId || selectedZoneId)"
+          :inventory="actualInventory"
+          :pallet="selectedPlannerPallet"
+          :zone="selectedPlannerZone"
+          :zone-ids="(plannerStructure.zones ?? []).filter(item => !item.kind).map(item => item.id)"
+          :can-edit="canEditInventory"
+          :saving="inventoryAllocationSaving"
+          :allocation-error="inventoryAllocationError"
+          @close="closeInventoryDrawer"
+          @allocate="allocateInventoryToPile"
+        />
+        </div>
       </div>
-      <aside v-if="plannerStructureIssues.length && !plannerCompleted" class="planner-structure-issues" aria-label="规划问题">
+      <aside v-if="plannerStructureIssues.length && plannerStructure.outline.nodes.length && !plannerCompleted" class="planner-structure-issues" aria-label="规划问题">
         <button class="structure-issues-toggle" data-testid="planner-structure-issues-toggle" :aria-expanded="plannerIssuesOpen" @click="plannerIssuesOpen = !plannerIssuesOpen"><TriangleAlert :size="16" />{{ plannerStructureIssues.length }} 个规划问题 · {{ plannerIssuesOpen ? '收起' : '查看' }}</button>
         <div v-if="plannerIssuesOpen" class="structure-issue-items">
           <div v-for="issue in plannerStructureIssues" :key="issue.id"><span>{{ issue.message }}</span><button @click="locatePlannerIssue(issue)">定位</button></div>
@@ -348,7 +493,7 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
       </aside>
     </section>
     <p v-if="notice" role="status" class="planner-toast">{{ notice }}</p>
-    <section class="legacy-editor" aria-hidden="true">
+    <section v-if="props.demo" class="legacy-editor" aria-hidden="true">
     <header class="page-header">
       <div><h1>仓库画布 <span class="area-badge">{{ state.areas.length }} 个区域</span></h1><p>绘制区域并放入 SKU；库存仅以“个”为权威值。</p></div>
       <button data-testid="add-warehouse-product" class="primary" @click="openProduct()"><Plus :size="16" />添加产品</button>
@@ -452,9 +597,12 @@ onMounted(async () => { try { await canvas.load(1) } catch (cause) { error.value
 .structure-issue-items>div {display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #f1f5f9;font-size:12px;}
 .structure-issue-items>div>span {flex:1;}
 .structure-issue-items button {border:0;border-radius:4px;padding:5px 8px;background:#eef2ff;color:#4663ee;cursor:pointer;white-space:nowrap;font:inherit;}
-.warehouse-page { position:relative; height:100%; min-height:760px; background:#F6F7FB; color:#25314D; padding:0; font-family:'Noto Sans SC Variable',Inter,sans-serif; font-size:12px; }
-.planner-prototype { position:relative; height:100%; min-height:760px; overflow:hidden; background:#f9fbfd; }
+.warehouse-page { position:relative; height:100%; min-height:0; min-width:0; overflow:hidden; background:#F6F7FB; color:#25314D; padding:0; font-family:'Noto Sans SC Variable',Inter,sans-serif; font-size:12px; }
+.planner-prototype { position:relative; height:100%; min-height:0; overflow:hidden; background:#f9fbfd; }
 .planner-canvas-scroll { height:calc(100% - 56px); overflow:auto; }
+.planner-canvas-scroll.with-layout-controls {height:calc(100% - 100px);}
+.planner-canvas-scroll.detail-layout {display:flex;overflow:hidden;background:#f7f9fc;}
+.planner-scene-host {position:relative;flex:1;min-width:0;height:100%;overflow:auto;}
 .legacy-editor { display:none; }
 .warehouse-page > p[role="status"] { position:fixed; z-index:55; bottom:18px; left:50%; margin:0; padding:9px 14px; border:1px solid #d8e0e8; border-radius:8px; background:#fff; color:#354159; box-shadow:0 8px 24px #25314d20; transform:translateX(-50%); }
 .page-header,.summary,h1,h2 { display:flex; align-items:center; gap:12px; }
