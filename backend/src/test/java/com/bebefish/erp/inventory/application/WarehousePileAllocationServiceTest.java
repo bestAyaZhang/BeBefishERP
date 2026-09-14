@@ -2,6 +2,9 @@ package com.bebefish.erp.inventory.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 
 import com.bebefish.erp.common.api.BusinessException;
 import java.math.BigDecimal;
@@ -10,15 +13,20 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentMatchers;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
@@ -31,6 +39,9 @@ class WarehousePileAllocationServiceTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @SpyBean
+    private NamedParameterJdbcTemplate namedJdbc;
 
     private long warehouseId;
     private long skuId;
@@ -196,6 +207,51 @@ class WarehousePileAllocationServiceTest {
         assertThat(balance()).isEqualByComparingTo("100");
     }
 
+    @Test
+    void laterConcurrentResponseIncludesTheAllocationCommittedWhileWaitingForTheBalanceLock()
+            throws Exception {
+        var layoutReads = new CountDownLatch(2);
+        synchronizeLayoutReads(layoutReads);
+        var ready = new CountDownLatch(2);
+        var start = new CountDownLatch(1);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<WarehouseInventoryLayoutView> first = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                return service.allocate(warehouseId,
+                        new WarehousePileAllocationService.Command("pallet-c018", skuId, 30));
+            });
+            Future<WarehouseInventoryLayoutView> second = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                return service.allocate(warehouseId,
+                        new WarehousePileAllocationService.Command("pallet-c019", skuId, 40));
+            });
+            ready.await();
+            start.countDown();
+
+            assertThat(java.util.List.of(getView(first), getView(second)))
+                    .anySatisfy(view -> {
+                        assertThat(view.totalUnits()).isEqualByComparingTo("100");
+                        assertThat(view.placedUnits()).isEqualByComparingTo("70");
+                        assertThat(view.unallocatedUnits()).isEqualByComparingTo("30");
+                        assertThat(view.allocations()).anySatisfy(item -> {
+                            assertThat(item.palletId()).isEqualTo("pallet-c018");
+                            assertThat(item.units()).isEqualByComparingTo("30");
+                        });
+                        assertThat(view.allocations()).anySatisfy(item -> {
+                            assertThat(item.palletId()).isEqualTo("pallet-c019");
+                            assertThat(item.units()).isEqualByComparingTo("40");
+                        });
+                    });
+        }
+
+        assertThat(balance()).isEqualByComparingTo("100");
+        assertThat(placed()).isEqualByComparingTo("70");
+        assertThat(quantity("UNALLOCATED")).isEqualByComparingTo("30");
+    }
+
     private AllocationResult allocateConcurrently(CountDownLatch ready, CountDownLatch start) {
         ready.countDown();
         try {
@@ -222,6 +278,32 @@ class WarehousePileAllocationServiceTest {
         }
     }
 
+    private WarehouseInventoryLayoutView getView(Future<WarehouseInventoryLayoutView> future) {
+        try {
+            return future.get();
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(error);
+        } catch (ExecutionException error) {
+            throw new AssertionError(error.getCause());
+        }
+    }
+
+    private void synchronizeLayoutReads(CountDownLatch layoutReads) {
+        doAnswer(invocation -> {
+            var result = invocation.callRealMethod();
+            if (invocation.<String>getArgument(0).contains("select layout_json")) {
+                layoutReads.countDown();
+                if (!layoutReads.await(10, TimeUnit.SECONDS)) {
+                    throw new AssertionError("Both allocation transactions did not read the layout");
+                }
+            }
+            return result;
+        }).when(namedJdbc).query(
+                anyString(), anyMap(), ArgumentMatchers.<RowMapper<Object>>any()
+        );
+    }
+
     private BigDecimal quantity(String palletId) {
         return jdbc.queryForObject("""
                 select quantity from inventory_location_balance
@@ -232,6 +314,13 @@ class WarehousePileAllocationServiceTest {
     private BigDecimal balance() {
         return jdbc.queryForObject("""
                 select quantity from inventory_balance where warehouse_id = ? and sku_id = ?
+                """, BigDecimal.class, warehouseId, skuId);
+    }
+
+    private BigDecimal placed() {
+        return jdbc.queryForObject("""
+                select coalesce(sum(quantity), 0) from inventory_location_balance
+                where warehouse_id = ? and sku_id = ? and pallet_id <> 'UNALLOCATED'
                 """, BigDecimal.class, warehouseId, skuId);
     }
 
@@ -250,7 +339,10 @@ class WarehousePileAllocationServiceTest {
                 ? ",{\"id\":\"zone-storage\",\"left\":10,\"top\":10,\"width\":30,\"height\":30}"
                 : "";
         var pile = includePile
-                ? "{\"id\":\"pallet-c018\",\"left\":20,\"top\":20,\"width\":4,\"height\":4}"
+                ? """
+                  {"id":"pallet-c018","left":20,"top":20,"width":4,"height":4},
+                  {"id":"pallet-c019","left":30,"top":20,"width":4,"height":4}
+                  """
                 : "";
         return """
                 {"schemaVersion":1,"structure":{"outline":{"nodes":[]},"partitions":[],"doors":[],
