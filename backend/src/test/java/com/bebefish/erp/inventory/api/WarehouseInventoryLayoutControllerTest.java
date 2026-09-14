@@ -108,6 +108,8 @@ class WarehouseInventoryLayoutControllerTest {
 
     private static Stream<Arguments> invalidRequests() {
         return Stream.of(
+                Arguments.of("fractional sku id",
+                        "{\"palletId\":\"pallet-c018\",\"skuId\":%d.5,\"units\":24}"),
                 Arguments.of("fractional units",
                         "{\"palletId\":\"pallet-c018\",\"skuId\":%d,\"units\":1.5}"),
                 Arguments.of("zero units",

@@ -12,14 +12,14 @@ import java.io.IOException;
 
 public record AllocatePileInventoryRequest(
         @NotBlank String palletId,
-        @Positive long skuId,
-        @Positive @JsonDeserialize(using = WholeUnitsDeserializer.class) long units
+        @Positive @JsonDeserialize(using = WholeNumberDeserializer.class) long skuId,
+        @Positive @JsonDeserialize(using = WholeNumberDeserializer.class) long units
 ) {
     WarehousePileAllocationService.Command toCommand() {
         return new WarehousePileAllocationService.Command(palletId.trim(), skuId, units);
     }
 
-    public static final class WholeUnitsDeserializer extends JsonDeserializer<Long> {
+    public static final class WholeNumberDeserializer extends JsonDeserializer<Long> {
         @Override
         public Long deserialize(JsonParser parser, DeserializationContext context) throws IOException {
             return parser.currentToken() == JsonToken.VALUE_NUMBER_INT ? parser.getLongValue() : 0L;
