@@ -64,8 +64,15 @@ public class WarehousePileAllocationService {
     }
 
     private PileTarget loadCompletedPile(long warehouseId, String palletId) {
+        // Match WarehouseLayoutService.save: warehouse first, then layout, then inventory.
+        // The warehouse row also serializes the first layout insert.
+        var warehouses = jdbc.query("select id from warehouse where id = :warehouseId for update",
+                Map.of("warehouseId", warehouseId), (rs, rowNum) -> rs.getLong("id"));
+        if (warehouses.isEmpty()) {
+            throw new BusinessException("WAREHOUSE_NOT_FOUND", HttpStatus.NOT_FOUND, "仓库不存在");
+        }
         var layouts = jdbc.query(
-                "select layout_json from warehouse_layout where warehouse_id = :warehouseId",
+                "select layout_json from warehouse_layout where warehouse_id = :warehouseId for update",
                 Map.of("warehouseId", warehouseId),
                 (rs, rowNum) -> rs.getString("layout_json")
         );

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Box, Layers3, MapPin, PackageOpen, X } from 'lucide-vue-next'
 import type { PlannerPalletGroup, PlannerZone } from '../warehousePlannerScene'
 import type { WarehouseInventoryAllocation, WarehouseInventoryLayout } from '../warehouseInventoryService'
@@ -13,10 +13,12 @@ const props = withDefaults(defineProps<{
   canEdit?: boolean
   saving?: boolean
   allocationError?: string
+  allocationSuccessGeneration?: number
 }>(), {
   canEdit: false,
   saving: false,
   allocationError: '',
+  allocationSuccessGeneration: 0,
 })
 const emit = defineEmits<{
   close: []
@@ -26,6 +28,14 @@ const number = new Intl.NumberFormat('zh-CN')
 const addingSku = ref(false)
 const selectedSkuId = ref<number | null>(null)
 const allocationUnits = ref('')
+watch(
+  [() => props.open, () => props.pallet?.id, () => props.inventory?.warehouseId, () => props.allocationSuccessGeneration],
+  () => {
+    addingSku.value = false
+    selectedSkuId.value = null
+    allocationUnits.value = ''
+  },
+)
 
 const title = computed(() => props.pallet?.name ?? props.zone?.label ?? (props.open ? '待分配库存' : '库存详情'))
 const source = computed(() => {

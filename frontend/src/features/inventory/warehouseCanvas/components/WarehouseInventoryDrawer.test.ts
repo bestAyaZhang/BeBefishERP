@@ -112,4 +112,35 @@ describe('WarehouseInventoryDrawer', () => {
     expect(wrapper.get('[data-testid="inventory-add-sku"]').attributes('disabled')).toBeDefined()
     expect(wrapper.text()).toContain('暂无待分配库存')
   })
+
+  it.each(['success', 'close', 'pile'])('resets form and quantity on %s', async action => {
+    const inventory = await createMockWarehouseInventoryService().load(8)
+    const pallet = warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-a03')!
+    const wrapper = mount(WarehouseInventoryDrawer, {
+      props: { inventory, pallet, zone: null, open: true, canEdit: true },
+    })
+    await wrapper.get('[data-testid="inventory-add-sku"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-allocation-units"]').setValue('24')
+    if (action === 'success') await wrapper.setProps({ allocationSuccessGeneration: 1 })
+    else if (action === 'close') {
+      await wrapper.setProps({ open: false })
+      await wrapper.setProps({ open: true })
+    } else await wrapper.setProps({ pallet: warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-c018')! })
+
+    expect(wrapper.find('[data-testid="inventory-allocation-form"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="inventory-add-sku"]').trigger('click')
+    expect((wrapper.get('[data-testid="inventory-allocation-units"]').element as HTMLInputElement).value).toBe('')
+  })
+
+  it('preserves quantity and form for a failed request in the same context', async () => {
+    const inventory = await createMockWarehouseInventoryService().load(8)
+    const pallet = warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-a03')!
+    const wrapper = mount(WarehouseInventoryDrawer, { props: { inventory, pallet, zone: null, open: true, canEdit: true } })
+    await wrapper.get('[data-testid="inventory-add-sku"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-allocation-units"]').setValue('24')
+    await wrapper.setProps({ saving: true })
+    await wrapper.setProps({ saving: false, allocationError: '分配失败，请重试' })
+    expect((wrapper.get('[data-testid="inventory-allocation-units"]').element as HTMLInputElement).value).toBe('24')
+    expect(wrapper.get('[role="alert"]').text()).toContain('分配失败，请重试')
+  })
 })

@@ -114,6 +114,41 @@ describe('Warehouse canvas overview', () => {
     expect(wrapper.get('[data-testid="inventory-pile-pallet-a03"]').text()).toContain('1种 SKU · 24个')
     expect(wrapper.get('[data-testid="inventory-detail-title"]').text()).toContain('A03')
     expect(wrapper.get('[data-testid="inventory-detail-sku"]').text()).toContain('24 个')
+    expect(wrapper.find('[data-testid="inventory-allocation-form"]').exists()).toBe(false)
+  })
+
+  it.each(['switch', 'close'])('synchronizes successful allocation after drawer %s within the same warehouse', async action => {
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['inventory:view', 'inventory:edit'], loginMethod: 'password' }
+    const structure = createWarehouseStructure()
+    const pallets = warehousePlannerScene.palletGroups.filter(item => ['pallet-a03', 'pallet-c018'].includes(item.id))
+    const service = createMockWarehouseInventoryService()
+    const initial = await service.load(8)
+    const updated = await service.allocateToPile(8, { palletId: 'pallet-a03', skuId: 104, units: 24 })
+    let resolveAllocation!: (value: typeof initial) => void
+    const wrapper = mount(WarehouseCanvasView, {
+      global: { provide: {
+        [routeLocationKey as symbol]: { query: { warehouseId: '8' } },
+        masterdataService: { listWarehouses: vi.fn().mockResolvedValue({ records: [{ id: 8, warehouseName: '仓库', defaultWarehouse: true }], total: 1 }) },
+        warehouseLayoutService: { load: vi.fn().mockResolvedValue({ revision: 3, document: { schemaVersion: 1, structure, palletGroups: pallets, completed: true } }), save: vi.fn() },
+        warehouseInventoryService: { load: vi.fn().mockResolvedValue(initial), allocateToPile: () => new Promise<typeof initial>(resolve => { resolveAllocation = resolve }) },
+      } },
+    })
+    mounted.push(wrapper)
+    await flushPromises()
+    await wrapper.get('[data-testid="inventory-pile-pallet-a03"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-add-sku"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-allocation-units"]').setValue('24')
+    await wrapper.get('[data-testid="inventory-allocation-form"]').trigger('submit')
+    if (action === 'switch') await wrapper.get('[data-testid="inventory-pile-pallet-c018"]').trigger('click')
+    else await wrapper.get('[aria-label="关闭库存详情"]').trigger('click')
+    resolveAllocation(updated)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="inventory-pile-pallet-a03"]').text()).toContain('1种 SKU · 24个')
+    expect(wrapper.find('.planner-toast').exists()).toBe(false)
+    await wrapper.get('[data-testid="inventory-pile-pallet-a03"]').trigger('click')
+    expect(wrapper.get('[data-testid="inventory-detail-sku"]').text()).toContain('24 个')
+    expect(wrapper.find('[data-testid="inventory-allocation-form"]').exists()).toBe(false)
   })
 
   it('does not show a rejected allocation error after the drawer selection changes', async () => {

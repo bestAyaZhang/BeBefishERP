@@ -67,6 +67,7 @@ const canEditInventory = computed(() => currentUser.value?.permissions.includes(
 const inventoryAllocationSaving = ref(false)
 const inventoryAllocationError = ref('')
 const inventoryAllocationContextGeneration = ref(0)
+const inventoryAllocationSuccessGeneration = ref(0)
 function clonePlannerPalletGroups(groups: readonly PlannerPalletGroup[]): PlannerPalletGroup[] {
   return groups.map((pallet) => ({
     ...pallet,
@@ -227,8 +228,9 @@ async function allocateInventoryToPile(input: WarehousePileAllocationInput) {
   inventoryAllocationError.value = ''
   try {
     const inventory = await inventoryReader.allocateToPile(warehouseId, input)
+    if (selectedWarehouseId.value === warehouseId) actualInventory.value = inventory
     if (isCurrentAllocationContext(warehouseId, contextGeneration)) {
-      actualInventory.value = inventory
+      inventoryAllocationSuccessGeneration.value += 1
       notice.value = `已向货物堆分配 ${input.units} 个库存`
     }
   } catch (cause) {
@@ -504,6 +506,7 @@ onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } ca
           :can-edit="canEditInventory"
           :saving="inventoryAllocationSaving"
           :allocation-error="inventoryAllocationError"
+          :allocation-success-generation="inventoryAllocationSuccessGeneration"
           @close="closeInventoryDrawer"
           @allocate="allocateInventoryToPile"
         />

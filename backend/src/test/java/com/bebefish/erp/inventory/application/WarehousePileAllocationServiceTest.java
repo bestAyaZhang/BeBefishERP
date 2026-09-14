@@ -7,6 +7,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 
 import com.bebefish.erp.common.api.BusinessException;
+import com.bebefish.erp.masterdata.application.WarehouseLayoutService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -14,6 +16,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +31,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -36,6 +41,18 @@ class WarehousePileAllocationServiceTest {
 
     @Autowired
     private WarehousePileAllocationService service;
+
+    @Autowired
+    private InventoryService inventoryService;
+
+    @Autowired
+    private WarehouseLayoutService layoutService;
+
+    @Autowired
+    private ObjectMapper mapper;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -72,6 +89,7 @@ class WarehousePileAllocationServiceTest {
 
     @AfterEach
     void tearDown() {
+        jdbc.update("delete from inventory_ledger where warehouse_id = ?", warehouseId);
         jdbc.update("delete from inventory_location_balance where warehouse_id = ?", warehouseId);
         jdbc.update("delete from inventory_balance where warehouse_id = ?", warehouseId);
         jdbc.update("delete from warehouse_layout where warehouse_id = ?", warehouseId);
@@ -111,6 +129,91 @@ class WarehousePileAllocationServiceTest {
         assertThat(quantity("pallet-c018")).isEqualByComparingTo("30");
         assertThat(quantity("UNALLOCATED")).isEqualByComparingTo("70");
         assertThat(balance()).isEqualByComparingTo("100");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void stockDecreaseConsumesOnlyUnallocatedAvailability(boolean adjustment) {
+        service.allocate(warehouseId, new WarehousePileAllocationService.Command("pallet-c018", skuId, 80));
+        var source = new InventorySource(adjustment ? "adjustment" : "sales", warehouseId, "OUT-" + warehouseId);
+        if (adjustment) inventoryService.adjust(warehouseId,
+                java.util.List.of(new InventoryChange(skuId, new BigDecimal("-20"))), source, "13800138000");
+        else inventoryService.decrease(warehouseId,
+                java.util.List.of(new InventoryChange(skuId, new BigDecimal("20"))), source, "13800138000");
+        assertThat(balance()).isEqualByComparingTo("80");
+        assertThat(placed()).isEqualByComparingTo("80");
+
+        assertThatThrownBy(() -> {
+            if (adjustment) inventoryService.adjust(warehouseId,
+                    java.util.List.of(new InventoryChange(skuId, BigDecimal.ONE.negate())), source, "13800138000");
+            else inventoryService.decrease(warehouseId,
+                    java.util.List.of(new InventoryChange(skuId, BigDecimal.ONE)), source, "13800138000");
+        }).isInstanceOfSatisfying(BusinessException.class,
+                error -> assertThat(error.code()).isEqualTo("INVENTORY_ALLOCATED_TO_PILES"));
+        assertThat(balance()).isEqualByComparingTo("80");
+        assertThat(quantity("pallet-c018")).isEqualByComparingTo("80");
+        assertThat(jdbc.queryForObject("select count(*) from inventory_ledger where warehouse_id = ?",
+                Long.class, warehouseId)).isEqualTo(1);
+    }
+
+    @Test
+    void decreasesOrdinaryStockWithoutLocationRows() {
+        jdbc.update("delete from inventory_location_balance where warehouse_id = ?", warehouseId);
+        inventoryService.decrease(warehouseId, java.util.List.of(new InventoryChange(skuId, new BigDecimal("100"))),
+                new InventorySource("sales", warehouseId, "OUT-" + warehouseId), "13800138000");
+        assertThat(balance()).isEqualByComparingTo("0");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void allocationWaitsForLayoutSaveAndValidatesItsCommittedGeometry(boolean removePile) throws Exception {
+        var savedButUncommitted = new CountDownLatch(1);
+        var commitLayout = new CountDownLatch(1);
+        var allocationStarted = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            var sql = invocation.<String>getArgument(0);
+            if (sql.contains("from warehouse ") || sql.contains("select layout_json")) allocationStarted.countDown();
+            return invocation.callRealMethod();
+        }).when(namedJdbc).query(anyString(), anyMap(), ArgumentMatchers.<RowMapper<Object>>any());
+        var changedDocument = mapper.readTree(layoutJson(true, !removePile, true));
+        if (!removePile) ((com.fasterxml.jackson.databind.node.ObjectNode) changedDocument.path("palletGroups").get(0)).put("left", 200);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var save = executor.submit(() -> new TransactionTemplate(transactionManager).execute(status -> {
+                layoutService.save(warehouseId, new WarehouseLayoutService.Layout(1, changedDocument));
+                savedButUncommitted.countDown();
+                try {
+                    if (!commitLayout.await(10, TimeUnit.SECONDS)) throw new AssertionError("Layout transaction not released");
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(error);
+                }
+                return null;
+            }));
+            assertThat(savedButUncommitted.await(10, TimeUnit.SECONDS)).isTrue();
+            var allocation = executor.submit(() -> service.allocate(warehouseId,
+                    new WarehousePileAllocationService.Command("pallet-c018", skuId, 24)));
+            assertThat(allocationStarted.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> allocation.get(300, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            commitLayout.countDown();
+            save.get(10, TimeUnit.SECONDS);
+            if (removePile) {
+                assertThatThrownBy(() -> allocation.get(10, TimeUnit.SECONDS))
+                        .isInstanceOfSatisfying(ExecutionException.class, error ->
+                                assertThat(error.getCause()).isInstanceOfSatisfying(BusinessException.class,
+                                        business -> assertThat(business.code()).isEqualTo("PALLET_NOT_FOUND")));
+                assertThat(placed()).isEqualByComparingTo("0");
+            } else {
+                assertThat(allocation.get(10, TimeUnit.SECONDS).allocations())
+                        .filteredOn(item -> item.palletId().equals("pallet-c018"))
+                        .singleElement().satisfies(item -> assertThat(item.zoneId()).isNull());
+                assertThat(placed()).isEqualByComparingTo("24");
+            }
+        } finally {
+            commitLayout.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+        }
     }
 
     @ParameterizedTest
@@ -210,8 +313,8 @@ class WarehousePileAllocationServiceTest {
     @Test
     void laterConcurrentResponseIncludesTheAllocationCommittedWhileWaitingForTheBalanceLock()
             throws Exception {
-        var layoutReads = new CountDownLatch(2);
-        synchronizeLayoutReads(layoutReads);
+        var warehouseLockAttempts = new CountDownLatch(2);
+        synchronizeWarehouseLockAttempts(warehouseLockAttempts);
         var ready = new CountDownLatch(2);
         var start = new CountDownLatch(1);
 
@@ -289,16 +392,15 @@ class WarehousePileAllocationServiceTest {
         }
     }
 
-    private void synchronizeLayoutReads(CountDownLatch layoutReads) {
+    private void synchronizeWarehouseLockAttempts(CountDownLatch warehouseLockAttempts) {
         doAnswer(invocation -> {
-            var result = invocation.callRealMethod();
-            if (invocation.<String>getArgument(0).contains("select layout_json")) {
-                layoutReads.countDown();
-                if (!layoutReads.await(10, TimeUnit.SECONDS)) {
-                    throw new AssertionError("Both allocation transactions did not read the layout");
+            if (invocation.<String>getArgument(0).contains("from warehouse ")) {
+                warehouseLockAttempts.countDown();
+                if (!warehouseLockAttempts.await(10, TimeUnit.SECONDS)) {
+                    throw new AssertionError("Both allocation transactions did not attempt the warehouse lock");
                 }
             }
-            return result;
+            return invocation.callRealMethod();
         }).when(namedJdbc).query(
                 anyString(), anyMap(), ArgumentMatchers.<RowMapper<Object>>any()
         );
