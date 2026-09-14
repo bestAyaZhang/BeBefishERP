@@ -73,7 +73,7 @@ function toggleGroup(item: SidebarNavigationItem) {
 <template>
   <nav data-testid="erp-sidebar" class="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white" aria-label="主导航">
     <div data-testid="erp-sidebar-brand" class="flex h-[88px] shrink-0 items-center gap-3 border-b border-slate-100 px-5">
-      <div data-testid="erp-sidebar-logo" class="flex h-10 w-10 items-center justify-center rounded-lg bg-[#536dff] text-sm font-black text-white">B</div>
+      <img data-testid="erp-sidebar-logo" src="/brand/bebefish-mark.svg" alt="BeBefish 公司 Logo" width="40" height="40" class="h-10 w-10 shrink-0 rounded-lg object-contain" />
       <div class="min-w-0"><p class="truncate text-sm font-bold">BeBefish ERP</p><p class="text-xs font-medium text-slate-400">主数据运营中心</p></div>
     </div>
     <div data-testid="erp-sidebar-menu" class="flex-1 overflow-y-auto px-4 py-6">
