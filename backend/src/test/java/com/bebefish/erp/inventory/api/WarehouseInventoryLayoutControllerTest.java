@@ -93,7 +93,7 @@ class WarehouseInventoryLayoutControllerTest {
                 .andExpect(jsonPath("$.data.totalUnits").value(100))
                 .andExpect(jsonPath("$.data.placedUnits").value(24))
                 .andExpect(jsonPath("$.data.allocations[?(@.palletId == 'pallet-c018' && @.skuId == %d)].units"
-                        .formatted(skuId), hasItem(24)));
+                        .formatted(skuId), hasItem(24.0)));
     }
 
     @ParameterizedTest(name = "rejects invalid pile allocation request: {0}")
