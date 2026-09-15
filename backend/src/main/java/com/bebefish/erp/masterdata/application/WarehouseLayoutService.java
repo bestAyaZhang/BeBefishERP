@@ -3,6 +3,7 @@ package com.bebefish.erp.masterdata.application;
 import com.bebefish.erp.common.api.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -24,11 +25,13 @@ public class WarehouseLayoutService {
     @Transactional(readOnly = true)
     public Layout load(long id) {
         warehouses.get(id);
-        return read(id);
+        return read(id, false);
     }
 
-    private Layout read(long id) {
-        var rows = jdbc.query("SELECT revision, layout_json FROM warehouse_layout WHERE warehouse_id = ?",
+    private Layout read(long id, boolean forUpdate) {
+        var sql = "SELECT revision, layout_json FROM warehouse_layout WHERE warehouse_id = ?"
+                + (forUpdate ? " FOR UPDATE" : "");
+        var rows = jdbc.query(sql,
             (rs, row) -> {
                 try { return new Layout(rs.getLong(1), mapper.readTree(rs.getString(2))); }
                 catch (java.io.IOException e) { throw new IllegalStateException("Invalid stored warehouse layout", e); }
@@ -42,9 +45,14 @@ public class WarehouseLayoutService {
         validate(value);
         // Serialize first writes as well as updates against the warehouse row.
         jdbc.queryForObject("SELECT id FROM warehouse WHERE id = ? FOR UPDATE", Long.class, id);
-        var existing = read(id);
+        Layout existing;
+        try {
+            existing = read(id, true);
+        } catch (CannotAcquireLockException error) {
+            throw layoutConflict();
+        }
         if (existing.revision() != value.revision()) {
-            throw new BusinessException("LAYOUT_CONFLICT", HttpStatus.CONFLICT, "规划已被其他人修改，请刷新后再保存");
+            throw layoutConflict();
         }
         long revision = existing.revision() + 1;
         if (existing.revision() == 0) {
@@ -53,6 +61,10 @@ public class WarehouseLayoutService {
             jdbc.update("UPDATE warehouse_layout SET revision = ?, layout_json = ?, updated_at = CURRENT_TIMESTAMP WHERE warehouse_id = ?", revision, value.document().toString(), id);
         }
         return new Layout(revision, value.document());
+    }
+
+    private BusinessException layoutConflict() {
+        return new BusinessException("LAYOUT_CONFLICT", HttpStatus.CONFLICT, "规划已被其他人修改，请刷新后再保存");
     }
 
     static void validate(Layout value) {
