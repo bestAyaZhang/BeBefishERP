@@ -102,8 +102,11 @@ describe('ShipmentFormView', () => {
     wrapper.unmount();
   });
 
-  it('keeps the saved shipment and routes to edit when ordering fails', async () => {
+  it('keeps the saved shipment, refreshes logistics state and locks key fields when ordering fails', async () => {
     service.placeLogisticsOrder.mockRejectedValue(new Error('安能暂时不可用'));
+    service.get.mockResolvedValue(shipment({ version: 1 }));
+    service.getLogisticsOrder.mockResolvedValue({ shipmentId: 18, orderNo: 'BF018', state: 'processing', trackingNo: '',
+      childTrackingNos: '', message: '提交中', updatedAt: '2026-09-24T10:00:00', testEnvironment: false });
     const { wrapper, router } = await render();
     await fillRequired(wrapper);
     await wrapper.get('[data-testid="ane-cargo-name"]').setValue('水族用品');
@@ -111,8 +114,11 @@ describe('ShipmentFormView', () => {
     await wrapper.get('[data-testid="ane-volume"]').setValue('0.12');
     await wrapper.get('[data-testid="shipment-save-and-order"]').trigger('click'); await flushPromises();
     expect(service.create).toHaveBeenCalledTimes(1);
+    expect(service.get).toHaveBeenCalledWith(18);
+    expect(service.getLogisticsOrder).toHaveBeenCalledWith(18);
     expect(router.currentRoute.value).toMatchObject({ name: 'shipping-edit', params: { id: '18' } });
     expect(wrapper.get('[role="alert"]').text()).toContain('发货单已保存');
+    expect(wrapper.get('[data-testid="shipment-platform"]').attributes('disabled')).toBeDefined();
     wrapper.unmount();
   });
 

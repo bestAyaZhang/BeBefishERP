@@ -125,6 +125,18 @@ async function persist(andOrder: boolean) {
       }
     } catch (cause) {
       error.value = `发货单已保存，但安能下单失败：${cause instanceof Error ? cause.message : '请稍后重试'}`;
+      try {
+        const [latest, latestOrder] = await Promise.all([
+          shippingService.get(saved.id),
+          shippingService.getLogisticsOrder(saved.id).catch(() => null)
+        ]);
+        shipment.value = latest;
+        form.value = formFromShipment(latest);
+        status.value = latest.content.status;
+        existingOrder.value = latestOrder;
+      } catch {
+        // Keep the saved values on screen when the backend itself is temporarily unreachable.
+      }
       await router.replace({ name: 'shipping-edit', params: { id: String(saved.id) } });
     }
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '保存失败，请重试'; }
