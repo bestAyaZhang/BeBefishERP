@@ -191,8 +191,7 @@ class ShipmentControllerTest {
 
     @Test
     void logisticsOrderRequiresBothViewAndOrderPermissions() throws Exception {
-        var input = new PlaceAneOrderRequest(0L, "浙江省", "杭州市", "萧山区", "示例路1号", java.math.BigDecimal.TEN,
-                java.math.BigDecimal.ONE, 1, "收纳盒", "纸箱", 524, 180, 102, "");
+        var input = new PlaceAneOrderRequest(0L);
         var json = mapper.writeValueAsString(input);
         login("查看人", "shipping:view");
         mvc.perform(post("/api/shipments/17/logistics-order").contentType(APPLICATION_JSON).content(json)).andExpect(status().isForbidden());

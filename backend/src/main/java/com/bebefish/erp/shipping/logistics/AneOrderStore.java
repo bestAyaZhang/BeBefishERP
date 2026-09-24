@@ -28,7 +28,7 @@ public class AneOrderStore {
 
     // Commit a durable reservation before making any remote request; the network call is outside this transaction.
     @Transactional
-    public Claim claim(long id, PlaceAneOrderRequest input, String operator) {
+    public Claim claim(long id, long expectedVersion, String operator) {
         var ids = jdbc.queryForList("select id from shipment where id=:id for update", Map.of("id", id), Long.class);
         if (ids.isEmpty()) throw new BusinessException("SHIPMENT_NOT_FOUND", HttpStatus.NOT_FOUND, "发货单不存在");
         var shipment = shipments.findById(id).orElseThrow();
@@ -36,7 +36,7 @@ public class AneOrderStore {
         if (existing.isPresent() && !"rejected".equals(existing.get().state())) return new Claim(shipment, existing.get().orderNo(), existing.get());
         if (existing.isPresent() && existing.get().testEnvironment() != config.testEnvironment())
             throw new BusinessException("LOGISTICS_ENVIRONMENT_CHANGED", HttpStatus.CONFLICT, "此发货单已在其他物流环境尝试下单，请新建发货单后再提交");
-        if (shipment.version() != input.version()) throw new BusinessException("SHIPMENT_VERSION_CONFLICT", HttpStatus.CONFLICT, "发货单已更新，请重新打开下单窗口");
+        if (shipment.version() != expectedVersion) throw new BusinessException("SHIPMENT_VERSION_CONFLICT", HttpStatus.CONFLICT, "发货单已更新，请重新打开下单窗口");
         var content = shipment.content();
         if (!content.trackingNo().isBlank()) throw new BusinessException("SHIPMENT_ALREADY_TRACKED", HttpStatus.CONFLICT, "已填写物流单号，请先核实已有运单，不能重复下单");
         if (content.recipientName().length() > 30 || content.recipientPhone().length() > 30)
@@ -45,7 +45,7 @@ public class AneOrderStore {
             throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "当前物流公司不是安能，请先修改发货单的物流公司");
         String orderNo = existing.map(LogisticsOrder::orderNo).orElseGet(() -> "BF" + UUID.nameUUIDFromBytes(shipment.shipmentNo().getBytes(StandardCharsets.UTF_8)).toString().replace("-", "").substring(0, 28));
         String snapshot;
-        try { snapshot = mapper.writeValueAsString(Map.of("shipment", content, "details", input)); }
+        try { snapshot = mapper.writeValueAsString(content); }
         catch (JsonProcessingException failure) { throw new IllegalStateException("无法保存物流下单资料", failure); }
         var params = new MapSqlParameterSource("id", id).addValue("orderNo", orderNo).addValue("snapshot", snapshot).addValue("operator", operator).addValue("testEnvironment", config.testEnvironment());
         jdbc.update("""
@@ -60,12 +60,15 @@ public class AneOrderStore {
     }
 
     @Transactional
-    public LogisticsOrder finish(long id, PlaceAneOrderRequest input, AneOrderResult result, String operator) {
+    public LogisticsOrder finish(long id, AneOrderResult result, String operator) {
         var params = new MapSqlParameterSource("id", id).addValue("state", result.state()).addValue("tracking", result.trackingNo())
-                .addValue("children", result.childTrackingNos()).addValue("message", result.message()).addValue("operator", operator)
-                .addValue("weight", input.weight()).addValue("address", input.province().strip()+input.city().strip()+input.county().strip()+input.address().strip());
+                .addValue("children", result.childTrackingNos()).addValue("message", result.message()).addValue("operator", operator);
         // Keep the lock order consistent with claim/update: shipment first, logistics order second.
         jdbc.queryForList("select id from shipment where id=:id for update", params, Long.class);
+        var shipment = shipments.findById(id).orElseThrow(() ->
+                new BusinessException("SHIPMENT_NOT_FOUND", HttpStatus.NOT_FOUND, "发货单不存在"));
+        params.addValue("weight", shipment.content().orderDraft().weight())
+                .addValue("address", shipment.content().recipientFullAddress());
         var original = find(id).orElseThrow();
         int changed = jdbc.update("""
                 update shipment_logistics_order set state=:state, tracking_no=:tracking, child_tracking_nos=:children,
