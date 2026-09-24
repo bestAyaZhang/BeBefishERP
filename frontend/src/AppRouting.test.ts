@@ -184,6 +184,27 @@ describe('application routes', () => {
     expect(wrapper.find('[data-testid="sales-create-page"]').exists()).toBe(true);
   });
 
+  it('renders the protected shipping detail route inside the ERP shell', async () => {
+    saveCurrentUser({ accessToken: 'test-token', mobile: null, displayName: '查看人', roles: [],
+      permissions: ['shipping:view'], loginMethod: 'feishu' });
+    await router.push('/shipping/8');
+    await router.isReady();
+    wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe('shipping-detail');
+    expect(wrapper.find('[data-testid="erp-shell"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="shipment-detail-page"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('发货单详情');
+  });
+
+  it('redirects the shipping detail route without shipping view permission', async () => {
+    saveCurrentUser({ accessToken: 'test-token', mobile: null, roles: [], permissions: ['dashboard:view'], loginMethod: 'feishu' });
+    await router.push('/workbench');
+    await router.push('/shipping/8');
+    expect(router.currentRoute.value.name).toBe('workbench');
+  });
+
   it('updates the shared workspace content when navigating from dashboard to products', async () => {
     await router.push('/workbench');
     await router.isReady();

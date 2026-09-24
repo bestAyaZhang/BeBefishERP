@@ -61,6 +61,8 @@ const placeholderPages: RouteRecordRaw[] = [
   { path: 'sales/create', name: 'sales-create', component: () => import('../features/sales/SalesCreateView.vue') },
   { path: 'sales/orders/:id', name: 'sales-order-detail', component: () => import('../features/sales/SalesOrderDetailView.vue'), props: (route) => ({ orderId: Number(route.params.id) }) },
   { path: 'sales/orders', name: 'sales-orders', component: () => import('../features/sales/SalesOrdersView.vue') },
+  { path: 'shipping/list', name: 'shipping-list', component: () => import('../features/shipping/ShipmentListView.vue'), meta: { requiredPermission: 'shipping:view' } },
+  { path: 'shipping/:id', name: 'shipping-detail', component: () => import('../features/shipping/ShipmentDetailView.vue'), meta: { requiredPermission: 'shipping:view' } },
   { path: 'finance/receipts', name: 'receipts', component: () => import('../views/PlaceholderView.vue'), props: { title: '收款记录' } },
   { path: 'finance/receivables', name: 'receivables', component: () => import('../views/PlaceholderView.vue'), props: { title: '欠款应收' } }
 ];

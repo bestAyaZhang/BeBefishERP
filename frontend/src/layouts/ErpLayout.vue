@@ -48,6 +48,8 @@ const pageHeaders: Record<string, PageHeader> = {
   'organization-permissions': { group: '权限管理', groupRoute: 'organization-permissions', title: '权限管理', titleRoute: 'organization-permissions' },
   'sales-create': { group: 'Sales', groupRoute: 'sales-orders', title: 'Create Order', titleRoute: 'sales-create' },
   'sales-orders': { group: 'Sales', groupRoute: 'sales-orders', title: 'Orders', titleRoute: 'sales-orders' },
+  'shipping-list': { group: '发货管理', groupRoute: 'shipping-list', title: '发货列表', titleRoute: 'shipping-list' },
+  'shipping-detail': { group: '发货管理', groupRoute: 'shipping-list', title: '发货单详情', titleRoute: 'shipping-detail' },
   receipts: { group: 'Finance', groupRoute: 'receipts', title: 'Receipts', titleRoute: 'receipts' },
   receivables: { group: 'Finance', groupRoute: 'receipts', title: 'Receivables', titleRoute: 'receivables' }
 };
