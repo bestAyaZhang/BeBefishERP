@@ -49,6 +49,8 @@ const pageHeaders: Record<string, PageHeader> = {
   'sales-create': { group: 'Sales', groupRoute: 'sales-orders', title: 'Create Order', titleRoute: 'sales-create' },
   'sales-orders': { group: 'Sales', groupRoute: 'sales-orders', title: 'Orders', titleRoute: 'sales-orders' },
   'shipping-list': { group: '发货管理', groupRoute: 'shipping-list', title: '发货列表', titleRoute: 'shipping-list' },
+  'shipping-new': { group: '发货管理', groupRoute: 'shipping-list', title: '新建发货单', titleRoute: 'shipping-new' },
+  'shipping-edit': { group: '发货管理', groupRoute: 'shipping-list', title: '编辑发货单', titleRoute: 'shipping-edit' },
   'shipping-detail': { group: '发货管理', groupRoute: 'shipping-list', title: '发货单详情', titleRoute: 'shipping-detail' },
   receipts: { group: 'Finance', groupRoute: 'receipts', title: 'Receipts', titleRoute: 'receipts' },
   receivables: { group: 'Finance', groupRoute: 'receipts', title: 'Receivables', titleRoute: 'receivables' }

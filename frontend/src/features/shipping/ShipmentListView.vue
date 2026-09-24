@@ -16,6 +16,7 @@ const summaryError = ref('');
 const summary = ref<ShipmentSummary>({ todayCount: 0, unfinishedCount: 0, completedCount: 0, outOfStockCount: 0, partiallyShippedCount: 0 });
 const query = reactive<ShipmentQuery>({ page: 1, size: 20, keyword: '', status: '', dateFrom: todayDate(), dateTo: todayDate(), platform: '', incompleteOnly: false });
 const canCreate = computed(() => currentUser.value?.permissions.includes('shipping:create'));
+const canEdit = computed(() => currentUser.value?.permissions.includes('shipping:edit'));
 const pages = computed(() => Math.max(1, Math.ceil(total.value / query.size)));
 let listRequest = 0;
 let summaryRequest = 0;
@@ -48,6 +49,7 @@ function reset() { Object.assign(query, { page: 1, keyword: '', status: '', date
 function pageTo(page: number) { query.page = page; void load(); }
 function maskPhone(value: string) { return /^\d{11}$/.test(value) ? `${value.slice(0, 3)}****${value.slice(-4)}` : value; }
 function openDetail(id: number) { return router.push({ name: 'shipping-detail', params: { id: String(id) } }); }
+function openEdit(id: number) { return router.push({ name: 'shipping-edit', params: { id: String(id) } }); }
 function openCreate() { return router.push({ name: 'shipping-new' }); }
 
 onMounted(() => { void loadSummary(); void load(); });
@@ -100,7 +102,7 @@ onBeforeUnmount(() => { listRequest++; summaryRequest++; });
             <td class="table-cell whitespace-nowrap"><p>{{ row.content.orderDraft.weight == null ? '未填写' : `${row.content.orderDraft.weight} kg` }}</p><p class="mt-1 text-xs text-slate-400">{{ freightText(row.content.estimatedFreight) }}</p></td>
             <td class="table-cell"><span class="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium" :class="shipmentStatus(row.content.status).tone">{{ shipmentStatus(row.content.status).label }}</span></td>
             <td class="table-cell"><p class="max-w-36 break-words text-slate-700">{{ row.content.preparers.join('、') || '未指定' }}</p><p class="mt-1 text-xs text-slate-400">{{ row.content.orderer || '—' }}</p></td>
-            <td class="table-cell text-right"><button :data-testid="`shipment-detail-${row.id}`" type="button" class="font-medium text-[#536dff]" @click="openDetail(row.id)">查看详情</button></td>
+            <td class="table-cell whitespace-nowrap text-right"><button :data-testid="`shipment-detail-${row.id}`" type="button" class="font-medium text-[#536dff]" @click="openDetail(row.id)">查看详情</button><button v-if="canEdit" :data-testid="`shipment-edit-${row.id}`" type="button" class="ml-3 font-medium text-[#536dff]" @click="openEdit(row.id)">编辑</button></td>
           </tr></tbody>
         </table>
       </div>

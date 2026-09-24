@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, Box, MapPin, PackageCheck, RefreshCw, Truck } from 'lucide-vue-next';
 import { shippingService } from './shippingService';
+import { currentUser } from '../../services/authSession';
 import { freightText, logisticsStateLabel, recipientFullAddress, shipmentStatus,
   type LogisticsOrder, type Shipment } from './types';
 
@@ -12,6 +13,8 @@ const shipment = ref<Shipment | null>(null);
 const order = ref<LogisticsOrder | null>(null);
 const loading = ref(false);
 const error = ref('');
+const canEdit = computed(() => currentUser.value?.permissions.includes('shipping:edit'));
+const editLabel = computed(() => order.value && order.value.state !== 'rejected' ? '编辑发货单' : '编辑并下单');
 let generation = 0;
 
 async function load() {
@@ -28,6 +31,7 @@ async function load() {
   finally { if (request === generation) loading.value = false; }
 }
 function back() { return router.push({ name: 'shipping-list' }); }
+function edit() { return router.push({ name: 'shipping-edit', params: { id: String(shipment.value?.id) } }); }
 onMounted(load);
 onBeforeUnmount(() => { generation++; });
 </script>
@@ -36,6 +40,7 @@ onBeforeUnmount(() => { generation++; });
   <section data-testid="shipment-detail-page" class="mx-auto w-full max-w-[1500px] space-y-5 pb-8">
     <header class="flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-3"><button data-testid="shipment-back-list" type="button" class="rounded-lg border border-slate-200 bg-white p-2 text-slate-500" @click="back"><ArrowLeft :size="18" /></button><div><h1 class="text-2xl font-bold text-[#25314d]">发货单详情</h1><p class="mt-1 text-sm text-slate-500">{{ shipment?.shipmentNo || '查看发货资料与物流进度' }}</p></div></div>
+      <button v-if="shipment && canEdit" data-testid="shipment-detail-edit" type="button" class="rounded-lg bg-[#536dff] px-5 py-2.5 text-sm font-semibold text-white" @click="edit">{{ editLabel }}</button>
     </header>
     <div v-if="loading" role="status" class="rounded-xl border border-slate-200 bg-white py-24 text-center text-sm text-slate-500">正在加载发货单…</div>
     <div v-else-if="error" data-testid="shipment-detail-error" role="alert" class="rounded-xl border border-rose-100 bg-white py-20 text-center"><p class="text-sm text-rose-600">{{ error }}</p><button data-testid="shipment-detail-retry" type="button" class="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 px-5 py-2 text-sm text-[#536dff]" @click="load"><RefreshCw :size="15" />重新加载</button></div>

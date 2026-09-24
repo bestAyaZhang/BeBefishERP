@@ -205,6 +205,28 @@ describe('application routes', () => {
     expect(router.currentRoute.value.name).toBe('workbench');
   });
 
+  it('protects the routed shipping create and edit forms with their own permissions', async () => {
+    saveCurrentUser({ accessToken: 'test-token', mobile: null, displayName: '录入人', roles: [],
+      permissions: ['shipping:view', 'shipping:create', 'shipping:edit'], loginMethod: 'feishu' });
+    await router.push('/shipping/new');
+    wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('shipping-new');
+    expect(wrapper.find('[data-testid="shipment-form-page"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('新建发货单');
+
+    await router.push('/shipping/18/edit');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('shipping-edit');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('编辑发货单');
+
+    wrapper.unmount(); wrapper = null;
+    saveCurrentUser({ accessToken: 'test-token', mobile: null, roles: [], permissions: ['shipping:view'], loginMethod: 'feishu' });
+    await router.push('/workbench');
+    await router.push('/shipping/new');
+    expect(router.currentRoute.value.name).toBe('workbench');
+  });
+
   it('updates the shared workspace content when navigating from dashboard to products', async () => {
     await router.push('/workbench');
     await router.isReady();
