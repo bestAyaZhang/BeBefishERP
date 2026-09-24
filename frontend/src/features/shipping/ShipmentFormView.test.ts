@@ -98,7 +98,7 @@ describe('ShipmentFormView', () => {
       permissions: ['shipping:view', 'shipping:create'], loginMethod: 'feishu' });
     const { wrapper } = await render();
     expect(wrapper.find('[data-testid="shipment-save-and-order"]').exists()).toBe(false);
-    expect(wrapper.get('[data-testid="shipment-save-only"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="shipment-save-only"]').exists()).toBe(true);
     wrapper.unmount();
   });
 
