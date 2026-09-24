@@ -9,6 +9,7 @@ export type SidebarIconName =
   | 'organization'
   | 'permission'
   | 'sales-orders'
+  | 'shipping'
   | 'finance';
 
 export type WorkspaceIconName = 'dashboard' | 'product' | 'tasks' | 'inventory' | 'purchase' | 'sales' | 'calendar' | 'messages';

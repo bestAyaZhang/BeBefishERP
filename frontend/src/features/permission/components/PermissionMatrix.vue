@@ -4,7 +4,7 @@ import type { PermissionAction, PermissionModule } from '../types';
 
 const actions: { key: PermissionAction; label: string }[] = [
   { key: 'view', label: '查看' }, { key: 'create', label: '新增' }, { key: 'edit', label: '编辑' },
-  { key: 'delete', label: '删除' }, { key: 'approve', label: '审核' }, { key: 'export', label: '导出' }, { key: 'sync', label: '同步' }
+  { key: 'delete', label: '删除' }, { key: 'approve', label: '审核' }, { key: 'export', label: '导出' }, { key: 'sync', label: '同步' }, { key: 'order', label: '物流下单' }
 ];
 const props = defineProps<{ modules: PermissionModule[]; modelValue: string[]; readonly: boolean }>();
 const emit = defineEmits<{ 'update:modelValue': [codes: string[]] }>();

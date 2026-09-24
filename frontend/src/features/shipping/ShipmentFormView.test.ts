@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
 import ShipmentFormView from './ShipmentFormView.vue';
 import type { Shipment } from './types';
 
@@ -46,6 +47,10 @@ async function fillRequired(wrapper: ReturnType<typeof mount>) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
+  clearCurrentUser();
+  saveCurrentUser({ accessToken: 'test', mobile: null, displayName: '李主管', roles: [],
+    permissions: ['shipping:view', 'shipping:create', 'shipping:edit', 'shipping:order'], loginMethod: 'feishu' });
   service.formOptions.mockReset().mockResolvedValue({ shopNames: ['贝贝鱼淘宝旗舰店'], preparers: [
     { employeeId: 1, employeeName: '小周' }, { employeeId: 2, employeeName: '阿杰' }] });
   service.logisticsAvailability.mockReset().mockResolvedValue({ available: true, testEnvironment: false, message: '安能物流下单服务已配置' });
@@ -56,6 +61,8 @@ beforeEach(() => {
   service.placeLogisticsOrder.mockReset().mockResolvedValue({ shipmentId: 18, orderNo: 'BF018', state: 'succeeded',
     trackingNo: 'ANE202609180018', childTrackingNos: '', message: '成功', updatedAt: '2026-09-24T10:00:00', testEnvironment: false });
 });
+
+afterEach(clearCurrentUser);
 
 describe('ShipmentFormView', () => {
   it('keeps server fields hidden, recognizes inline and saves the full-width form', async () => {
@@ -83,6 +90,15 @@ describe('ShipmentFormView', () => {
     expect(service.create).toHaveBeenCalledTimes(1);
     expect(service.placeLogisticsOrder).toHaveBeenCalledWith(18, { version: 0 });
     expect(wrapper.get('[role="dialog"]').text()).toContain('ANE202609180018');
+    wrapper.unmount();
+  });
+
+  it('hides the logistics order action without shipping:order permission', async () => {
+    saveCurrentUser({ accessToken: 'test', mobile: null, displayName: '录入人', roles: [],
+      permissions: ['shipping:view', 'shipping:create'], loginMethod: 'feishu' });
+    const { wrapper } = await render();
+    expect(wrapper.find('[data-testid="shipment-save-and-order"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="shipment-save-only"]').exists()).toBe(true);
     wrapper.unmount();
   });
 

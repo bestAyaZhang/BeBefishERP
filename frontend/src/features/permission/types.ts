@@ -1,4 +1,4 @@
-export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export' | 'sync';
+export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export' | 'sync' | 'order';
 export type PermissionDataScope = 'company' | 'department-and-descendants' | 'department' | 'self';
 export type PermissionRoleStatus = 'enabled' | 'disabled';
 export type PermissionRoleKind = 'system' | 'custom';

@@ -32,6 +32,12 @@ const mockNavigationCatalog: NavigationCatalog = {
     { id: 'permissions', label: '权限管理', icon: 'permission', routeName: 'organization-permissions', permission: 'system:role:view' },
     { id: 'sales-orders', label: '销售单据', icon: 'sales-orders', routeName: 'sales-orders', permission: 'sales:view' },
     {
+      id: 'shipping',
+      label: '发货管理',
+      icon: 'shipping',
+      children: [{ label: '发货列表', routeName: 'shipping-list', permission: 'shipping:view' }]
+    },
+    {
       id: 'finance',
       label: '财务管理',
       icon: 'finance',
