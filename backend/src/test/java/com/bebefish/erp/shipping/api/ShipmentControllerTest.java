@@ -3,6 +3,7 @@ package com.bebefish.erp.shipping.api;
 import com.bebefish.erp.common.api.GlobalExceptionHandler;
 import com.bebefish.erp.common.security.ErpPrincipal;
 import com.bebefish.erp.shipping.application.ShipmentService;
+import com.bebefish.erp.shipping.application.ShippingFormOptionsService;
 import com.bebefish.erp.shipping.domain.*;
 import com.bebefish.erp.shipping.logistics.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -38,6 +39,7 @@ class ShipmentControllerTest {
     private AnnotationConfigApplicationContext context;
     private MockMvc mvc;
     private ShipmentRepository repository;
+    private ShippingFormOptionsService optionsService;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules()
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
@@ -50,7 +52,10 @@ class ShipmentControllerTest {
         @Bean ShipmentService service(ShipmentRepository repository, Clock clock, ShipmentEditPolicy policy) {
             return new ShipmentService(repository, Validation.buildDefaultValidatorFactory().getValidator(), clock, policy);
         }
-        @Bean ShipmentController controller(ShipmentService service) { return new ShipmentController(service); }
+        @Bean ShippingFormOptionsService optionsService() { return mock(ShippingFormOptionsService.class); }
+        @Bean ShipmentController controller(ShipmentService service, ShippingFormOptionsService optionsService) {
+            return new ShipmentController(service, optionsService);
+        }
         @Bean AneOrderService logisticsService() { return mock(AneOrderService.class); }
         @Bean LogisticsOrderController logisticsController(AneOrderService logistics, ShipmentService service) {
             return new LogisticsOrderController(logistics, service);
@@ -61,6 +66,7 @@ class ShipmentControllerTest {
     void setup() {
         context = new AnnotationConfigApplicationContext(Config.class);
         repository = context.getBean(ShipmentRepository.class);
+        optionsService = context.getBean(ShippingFormOptionsService.class);
         mvc = MockMvcBuilders.standaloneSetup(context.getBean(ShipmentController.class), context.getBean(LogisticsOrderController.class))
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(mapper))
@@ -150,6 +156,37 @@ class ShipmentControllerTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.records").isArray());
         verify(repository).findAll(eq(new ShipmentQuery("收件人", null, LocalDate.of(2026,9,1), null, "淘宝", true)),
                 eq(org.springframework.data.domain.PageRequest.of(1,20)));
+    }
+
+    @Test
+    void viewPermissionCanLoadSummaryAndNarrowFormOptions() throws Exception {
+        login("查看人", "shipping:view");
+        when(repository.summary(LocalDate.of(2026, 9, 24)))
+                .thenReturn(new ShipmentSummary(7, 3, 2, 1, 1));
+        when(optionsService.options()).thenReturn(new ShippingFormOptions(
+                List.of("贝贝鱼淘宝旗舰店"),
+                List.of(new ShippingFormOptions.PreparerOption(9, "小周"))));
+
+        mvc.perform(get("/api/shipments/summary").param("date", "2026-09-24"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.todayCount").value(7))
+                .andExpect(jsonPath("$.data.outOfStockCount").value(1))
+                .andExpect(jsonPath("$.data.partiallyShippedCount").value(1));
+        mvc.perform(get("/api/shipments/form-options"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.shopNames[0]").value("贝贝鱼淘宝旗舰店"))
+                .andExpect(jsonPath("$.data.preparers[0].employeeName").value("小周"));
+    }
+
+    @Test
+    void summaryAndFormOptionsRequireViewPermission() throws Exception {
+        login("录入人", "shipping:create");
+        mvc.perform(get("/api/shipments/summary").param("date", "2026-09-24"))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/shipments/form-options"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(optionsService);
+        verifyNoInteractions(repository);
     }
 
     @Test

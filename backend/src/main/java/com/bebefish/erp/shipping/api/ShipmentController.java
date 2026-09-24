@@ -3,6 +3,7 @@ package com.bebefish.erp.shipping.api;
 import com.bebefish.erp.common.api.*;
 import com.bebefish.erp.common.security.ErpPrincipal;
 import com.bebefish.erp.shipping.application.ShipmentService;
+import com.bebefish.erp.shipping.application.ShippingFormOptionsService;
 import com.bebefish.erp.shipping.domain.*;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
@@ -15,7 +16,11 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/shipments")
 public class ShipmentController {
     private final ShipmentService service;
-    public ShipmentController(ShipmentService service) { this.service = service; }
+    private final ShippingFormOptionsService optionsService;
+    public ShipmentController(ShipmentService service, ShippingFormOptionsService optionsService) {
+        this.service = service;
+        this.optionsService = optionsService;
+    }
 
     @GetMapping
     @PreAuthorize("hasAuthority('shipping:view')")
@@ -25,6 +30,18 @@ public class ShipmentController {
             @RequestParam(required = false) LocalDate dateFrom, @RequestParam(required = false) LocalDate dateTo,
             @RequestParam(required = false) String platform, @RequestParam(defaultValue = "false") boolean incompleteOnly) {
         return ApiResponse.success(PageResponse.from(service.list(new ShipmentQuery(keyword, status, dateFrom, dateTo, platform, incompleteOnly), page, size)));
+    }
+
+    @GetMapping("/summary")
+    @PreAuthorize("hasAuthority('shipping:view')")
+    public ApiResponse<ShipmentSummary> summary(@RequestParam(required = false) LocalDate date) {
+        return ApiResponse.success(service.summary(date));
+    }
+
+    @GetMapping("/form-options")
+    @PreAuthorize("hasAuthority('shipping:view')")
+    public ApiResponse<ShippingFormOptions> formOptions() {
+        return ApiResponse.success(optionsService.options());
     }
 
     @GetMapping("/{id}")

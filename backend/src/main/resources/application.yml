@@ -14,6 +14,22 @@ spring:
       ddl-auto: validate
     open-in-view: false
 erp:
+  shipping:
+    shop-names: ${ERP_SHIPPING_SHOP_NAMES:贝贝鱼淘宝旗舰店}
+    ane:
+      enabled: ${ERP_ANE_ENABLED:false}
+      order-url: ${ERP_ANE_ORDER_URL:https://opc.test.ane56.com/aneop/opwb/lb/new}
+      code: ${ERP_ANE_CODE:}
+      app-key: ${ERP_ANE_APP_KEY:}
+      customer-code: ${ERP_ANE_CUSTOMER_CODE:}
+      customer-pass: ${ERP_ANE_CUSTOMER_PASS:}
+      dict-id: ${ERP_ANE_DICT_ID:}
+      sender-name: ${ERP_ANE_SENDER_NAME:}
+      sender-phone: ${ERP_ANE_SENDER_PHONE:}
+      sender-province: ${ERP_ANE_SENDER_PROVINCE:}
+      sender-city: ${ERP_ANE_SENDER_CITY:}
+      sender-county: ${ERP_ANE_SENDER_COUNTY:}
+      sender-address: ${ERP_ANE_SENDER_ADDRESS:}
   auth:
     session-ttl: ${ERP_AUTH_SESSION_TTL:PT12H}
     ticket-ttl: ${ERP_AUTH_TICKET_TTL:PT60S}

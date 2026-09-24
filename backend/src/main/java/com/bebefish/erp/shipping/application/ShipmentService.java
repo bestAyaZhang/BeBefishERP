@@ -72,6 +72,11 @@ public class ShipmentService {
         return repository.findAll(query, PageRequest.of(page - 1, size));
     }
 
+    @Transactional(readOnly = true)
+    public ShipmentSummary summary(LocalDate date) {
+        return repository.summary(date == null ? LocalDate.now(clock) : date);
+    }
+
     private ShipmentFormInput validate(ShipmentFormInput input) {
         if (input == null) throw invalid("请填写发货资料");
         var normalized = input.normalized();

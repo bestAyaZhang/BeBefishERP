@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -109,6 +110,20 @@ public class JdbcShipmentRepository implements ShipmentRepository {
         var records = jdbc.query("select * from shipment" + where
                 + " order by shipment_date desc, id desc limit :limit offset :offset", params, this::map);
         return new PageImpl<>(records, pageable, total == null ? 0 : total);
+    }
+
+    @Override
+    public ShipmentSummary summary(LocalDate date) {
+        return jdbc.queryForObject("""
+                select count(*) today_count,
+                       coalesce(sum(status = 'unfinished'), 0) unfinished_count,
+                       coalesce(sum(status = 'completed'), 0) completed_count,
+                       coalesce(sum(status = 'out_of_stock'), 0) out_of_stock_count,
+                       coalesce(sum(status = 'partially_shipped'), 0) partially_shipped_count
+                from shipment where shipment_date=:date
+                """, Map.of("date", date), (rs, row) -> new ShipmentSummary(
+                rs.getLong("today_count"), rs.getLong("unfinished_count"), rs.getLong("completed_count"),
+                rs.getLong("out_of_stock_count"), rs.getLong("partially_shipped_count")));
     }
 
     @Override
