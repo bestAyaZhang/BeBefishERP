@@ -46,7 +46,6 @@ describe('SidebarNav', () => {
       '分类管理',
       '客户管理',
       '供应商管理',
-      '仓库管理',
       '库存管理',
       '销售单据',
       '财务管理',
@@ -98,16 +97,18 @@ describe('SidebarNav', () => {
     expect(wrapper.get('a[href="/organization/permissions"]').classes()).not.toContain('ml-6');
   });
 
-  it('shows the warehouse canvas first in the inventory submenu', () => {
+  it('shows warehouse management in the inventory submenu without a standalone canvas entry', () => {
+    storeCurrentUser(['inventory:view']);
     const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
 
-    const inventoryLinks = wrapper.findAll('a').filter((link) => link.attributes('href')?.startsWith('/inventory/'));
-    expect(inventoryLinks.map((link) => link.text())).toEqual([
-      '仓库画布',
+    expect(wrapper.text()).toContain('库存管理');
+    expect(wrapper.get('a[href="/warehouses"]').text()).toBe('仓库管理');
+    expect(wrapper.findAll('a').map((link) => link.text())).toEqual([
+      '仓库管理',
       '库存余额',
-      '库存流水',
-      '库存调整'
+      '库存流水'
     ]);
+    expect(wrapper.text()).not.toContain('仓库画布');
   });
 
   it('uses the full-height ERP navigation structure without a card shell', () => {

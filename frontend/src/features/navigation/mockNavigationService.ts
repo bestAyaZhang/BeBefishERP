@@ -7,7 +7,6 @@ const mockNavigationCatalog: NavigationCatalog = {
     { id: 'categories', label: '分类管理', icon: 'category', routeName: 'categories', permission: 'masterdata:view' },
     { id: 'customers', label: '客户管理', icon: 'customer', routeName: 'customers', permission: 'masterdata:view' },
     { id: 'suppliers', label: '供应商管理', icon: 'supplier', routeName: 'suppliers', permission: 'masterdata:view' },
-    { id: 'warehouses', label: '仓库管理', icon: 'warehouse', routeName: 'warehouses', permission: 'masterdata:view' },
     {
       id: 'shipping',
       label: '发货管理',
@@ -19,7 +18,7 @@ const mockNavigationCatalog: NavigationCatalog = {
       label: '库存管理',
       icon: 'inventory',
       children: [
-        { label: '仓库画布', routeName: 'warehouse-canvas', permission: 'inventory:view' },
+        { label: '仓库管理', routeName: 'warehouses', permission: 'inventory:view' },
         { label: '库存余额', routeName: 'inventory-balances', permission: 'inventory:view' },
         { label: '库存流水', routeName: 'inventory-ledger', permission: 'inventory:view' },
         { label: '库存调整', routeName: 'inventory-adjustments', permission: 'inventory:adjust' }
