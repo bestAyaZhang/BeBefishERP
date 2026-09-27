@@ -106,8 +106,16 @@ describe('SidebarNav', () => {
       '仓库画布',
       '库存余额',
       '库存流水',
-      '库存调整'
+      '库存调整',
+      '库存盘点'
     ]);
+  });
+
+  it('shows inventory stocktake for users allowed to view inventory', () => {
+    storeCurrentUser(['inventory:view']);
+    const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
+
+    expect(wrapper.get('a[href="/inventory/stocktakes"]').text()).toBe('库存盘点');
   });
 
   it('uses the full-height ERP navigation structure without a card shell', () => {
