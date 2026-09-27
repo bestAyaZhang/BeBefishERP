@@ -10,7 +10,7 @@
 
 ## 当前阶段
 
-当前已完成后台主页、商品模块以及持久化身份认证与权限管理；本地联调设置 `VITE_DATA_SOURCE=real` 后使用真实 API。
+当前已完成后台主页、商品模块以及持久化身份认证与权限管理；本地开发默认优先使用真实 API 和本地数据库，接口不可用时允许只读 Mock 降级。
 
 已落地：
 
@@ -96,7 +96,8 @@ http://localhost:8080
 ```powershell
 cd frontend
 npm install
-$env:VITE_DATA_SOURCE = 'real'
+$env:VITE_RUNTIME_ENV = 'local'
+$env:VITE_DATA_SOURCE = 'auto'
 npm run dev
 ```
 
@@ -106,10 +107,16 @@ npm run dev
 http://localhost:5173
 ```
 
-前端测试和构建：
+开发环境 `auto` 模式先访问本地后端；仅在网络不可达或后端明确返回“接口不存在”/未实现时，读取操作才降级为 Mock。真实接口返回空列表、登录或权限失败、业务错误及写入失败都不会降级。也可以显式设置 `VITE_DATA_SOURCE=real` 禁止降级，或在纯界面开发时设置 `mock`。Mock 数据不会写入数据库。
 
-```bash
+后端在 Flyway 迁移前校验数据库目标。未设置 Profile 时按 `local` 处理，使用 `ERP_DB_*`，只允许连接本机非测试数据库；本地测试设置 `SPRING_PROFILES_ACTIVE=test`，使用独立的 `ERP_TEST_DB_*`，数据库必须位于本机且库名以 `_test` 结尾。线上设置 `SPRING_PROFILES_ACTIVE=prod`，使用独立的 `ERP_PROD_DB_*`，同时配置 `ERP_PROD_DB_HOST`、`ERP_PROD_DB_NAME` 为实际线上库的主机和库名；连接目标必须精确匹配且不能是回环地址。测试和线上前端分别设置 `VITE_RUNTIME_ENV=test`、`VITE_RUNTIME_ENV=prod`，并统一设置 `VITE_DATA_SOURCE=real`，禁止 Mock 或自动降级。生产构建也要求 `test` 或 `prod` 运行环境。`SPRING_PROFILES_ACTIVE` 与数据库凭据须在启动进程的环境变量中设置；根目录 `.env.example` 只是模板。
+
+前端测试和测试环境构建：
+
+```powershell
 npm run test:run
+$env:VITE_RUNTIME_ENV = 'test'
+$env:VITE_DATA_SOURCE = 'real'
 npm run build
 ```
 

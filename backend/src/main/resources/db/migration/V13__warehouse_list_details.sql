@@ -1,0 +1,1 @@
+ALTER TABLE warehouse ADD COLUMN manager_name VARCHAR(100) NULL;

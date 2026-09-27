@@ -57,7 +57,9 @@ export const mockRegionService: RegionService = {
   }
 };
 
-async function unavailable(): Promise<never> { throw new Error('地区选项暂不可用，请手工填写省、市、区/县'); }
+async function unavailable(): Promise<never> {
+  throw Object.assign(new Error('地区选项暂不可用，请手工填写省、市、区/县'), { status: 501, code: 'NOT_IMPLEMENTED' });
+}
 export const regionService: RegionService = createService(() => mockRegionService, () => ({
   listProvinces: unavailable, listCities: unavailable, listDistricts: unavailable
 }));

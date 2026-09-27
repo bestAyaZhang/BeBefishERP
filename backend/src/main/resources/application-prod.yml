@@ -1,0 +1,5 @@
+spring:
+  datasource:
+    url: ${ERP_PROD_DB_URL}
+    username: ${ERP_PROD_DB_USERNAME}
+    password: ${ERP_PROD_DB_PASSWORD}

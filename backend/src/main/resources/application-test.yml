@@ -1,0 +1,5 @@
+spring:
+  datasource:
+    url: ${ERP_TEST_DB_URL}
+    username: ${ERP_TEST_DB_USERNAME}
+    password: ${ERP_TEST_DB_PASSWORD}

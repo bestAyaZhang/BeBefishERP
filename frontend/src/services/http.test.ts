@@ -56,4 +56,21 @@ describe('HTTP service', () => {
     expect(localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBeNull();
     expect(redirectToLogin).toHaveBeenCalledOnce();
   });
+
+  it('keeps the backend error code and status so only a missing endpoint can use mock data', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ code: 'NOT_FOUND', message: '接口不存在', data: null }),
+      { status: 404, headers: { 'Content-Type': 'application/json' } }
+    )));
+
+    await expect(request('/api/not-implemented')).rejects.toMatchObject({
+      code: 'NOT_FOUND', status: 404, message: '接口不存在'
+    });
+  });
+
+  it('marks network failures as unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+
+    await expect(request('/api/products')).rejects.toMatchObject({ code: 'API_UNAVAILABLE', status: 0 });
+  });
 });

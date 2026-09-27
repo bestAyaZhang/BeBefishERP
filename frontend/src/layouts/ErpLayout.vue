@@ -16,6 +16,7 @@ const mobileNavigationDrawer = ref<HTMLElement | null>(null);
 const mobileNavigationClose = ref<HTMLButtonElement | null>(null);
 let desktopMediaQueryList: MediaQueryList | null = null;
 const searchQuery = ref('');
+const mockFallbackActive = ref(false);
 const router = useRouter();
 const route = useRoute();
 
@@ -76,6 +77,7 @@ provide('openMobileNavigation', openMobileNavigation);
 
 onMounted(async () => {
   window.addEventListener('keydown', handleKeydown);
+  window.addEventListener('erp:mock-fallback', handleMockFallback);
   if (typeof window.matchMedia === 'function') {
     desktopMediaQueryList = window.matchMedia(DESKTOP_MEDIA_QUERY);
     desktopViewport.value = desktopMediaQueryList.matches;
@@ -95,9 +97,14 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener('erp:mock-fallback', handleMockFallback);
   desktopMediaQueryList?.removeEventListener('change', handleDesktopViewportChange);
   desktopMediaQueryList = null;
 });
+
+function handleMockFallback() {
+  mockFallbackActive.value = true;
+}
 
 watch(() => route.fullPath, () => closeMobileNavigation());
 
@@ -195,6 +202,9 @@ async function handleLogout() {
           </div>
         </header>
 
+        <div v-if="mockFallbackActive" role="status" class="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-800">
+          本地接口暂不可用，当前部分内容为演示数据；演示数据不会写入数据库。
+        </div>
         <div data-testid="erp-page-content" class="min-h-0 min-w-0 flex-1 overflow-y-auto" :class="route.meta.flushContent === true ? 'p-0' : 'p-4 lg:px-8 lg:pb-3 lg:pt-8'">
           <RouterView />
         </div>

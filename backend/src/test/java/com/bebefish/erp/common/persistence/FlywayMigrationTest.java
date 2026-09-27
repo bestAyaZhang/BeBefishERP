@@ -73,6 +73,8 @@ class FlywayMigrationTest {
                 "product_sku_spec_value", "sku_supplier_quote", "supplier_quote_allowed_state",
                 "file_asset", "business_code_sequence",
                 "inventory_balance", "inventory_ledger", "stock_adjustment", "stock_adjustment_item",
+                "warehouse_layout", "inventory_location_balance", "inventory_stocktake_task", "inventory_stocktake_item",
+                "shipment", "shipment_logistics_order",
                 "sales_order_sequence", "sales_order", "sales_order_item",
                 "department", "position", "employee", "sys_user", "sys_permission", "sys_role",
                 "sys_role_permission", "sys_user_role", "sys_feishu_identity",
@@ -87,6 +89,9 @@ class FlywayMigrationTest {
                 "select count(*) from sys_permission where code = 'system:role:manage'",
                 Integer.class
         )).isEqualTo(1);
+        assertThat(jdbc.queryForList(
+                "select code from sys_permission where module_key = 'shipping' order by code", String.class
+        )).containsExactly("shipping:create", "shipping:edit", "shipping:order", "shipping:view");
         assertThat(jdbc.queryForMap(
                 "select immutable, is_sensitive as sensitive_value, data_scope from sys_role where code = 'SUPER_ADMIN'"
         )).containsEntry("immutable", true)
@@ -289,7 +294,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("11");
+        )).isEqualTo("19");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId

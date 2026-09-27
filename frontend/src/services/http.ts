@@ -58,7 +58,10 @@ async function unwrapResponse<T>(response: Response): Promise<T> {
     handleUnauthorized();
   }
   if (!response.ok || payload.code !== 'SUCCESS') {
-    throw new Error(payload.message || '请求失败');
+    throw Object.assign(new Error(payload.message || '请求失败'), {
+      status: response.status,
+      code: payload.code
+    });
   }
   return payload.data;
 }
@@ -71,7 +74,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
       headers: buildHeaders(init)
     });
   } catch {
-    throw new Error(SERVICE_UNAVAILABLE_MESSAGE);
+    throw Object.assign(new Error(SERVICE_UNAVAILABLE_MESSAGE), { status: 0, code: 'API_UNAVAILABLE' });
   }
 
   return unwrapResponse<T>(response);
