@@ -24,6 +24,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -31,15 +32,18 @@ public class StocktakeService {
     private static final DateTimeFormatter TASK_DATE = DateTimeFormatter.BASIC_ISO_DATE;
     private final NamedParameterJdbcTemplate jdbc;
     private final InventoryService inventoryService;
+    private final WarehouseInventoryLayoutQueryService layoutQuery;
     private final ObjectMapper objectMapper;
 
     public StocktakeService(
             NamedParameterJdbcTemplate jdbc,
             InventoryService inventoryService,
+            WarehouseInventoryLayoutQueryService layoutQuery,
             ObjectMapper objectMapper
     ) {
         this.jdbc = jdbc;
         this.inventoryService = inventoryService;
+        this.layoutQuery = layoutQuery;
         this.objectMapper = objectMapper;
     }
 
@@ -167,27 +171,16 @@ public class StocktakeService {
             }
         }
         var selectedScope = !selectedPalletIds.isEmpty();
-        var snapshotSql = """
-                select l.zone_id, l.pallet_id, l.sku_id,
-                       coalesce(s.sku_code, concat('SKU-', l.sku_id)) as sku_code,
-                       coalesce(p.product_name, '未匹配商品') as product_name,
-                       coalesce(s.sku_name, concat('SKU ', l.sku_id)) as sku_name,
-                       s.spec_text, s.carton_quantity, l.quantity
-                from inventory_location_balance l
-                left join product_sku s on s.id=l.sku_id
-                left join product_spu p on p.id=s.product_id
-                where l.warehouse_id=:warehouseId and l.quantity > 0
-                """ + (selectedScope ? " and l.pallet_id in (:palletIds) " : "") + """
-                order by coalesce(l.zone_id, ''), l.pallet_id, l.sku_id
-                """;
-        var snapshotParams = new MapSqlParameterSource("warehouseId", warehouseId);
-        if (selectedScope) snapshotParams.addValue("palletIds", selectedPalletIds);
-        var snapshot = jdbc.query(snapshotSql, snapshotParams, (rs, rowNum) -> new Snapshot(
-                rs.getString("zone_id"), rs.getString("pallet_id"), rs.getLong("sku_id"),
-                rs.getString("sku_code"), rs.getString("product_name"), rs.getString("sku_name"),
-                rs.getString("spec_text"), rs.getObject("carton_quantity", Integer.class),
-                rs.getBigDecimal("quantity")
-        ));
+        var snapshot = layoutQuery.get(warehouseId).allocations().stream()
+                .filter(row -> !selectedScope || selectedPalletIds.contains(row.palletId()))
+                .map(row -> new Snapshot(
+                        row.zoneId(), row.palletId(), row.skuId(),
+                        fallback(row.skuCode(), "SKU-" + row.skuId()),
+                        fallback(row.productName(), "未匹配商品"),
+                        fallback(row.skuName(), "SKU " + row.skuId()),
+                        row.specification(), row.unitsPerCase(), row.units()
+                ))
+                .toList();
         if (snapshot.isEmpty()) {
             throw validation(selectedScope ? "所选货物堆暂无可盘点库存" : "该仓库暂无可盘点库存");
         }
@@ -298,11 +291,25 @@ public class StocktakeService {
         return get(id);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public Details approve(long id, String operator) {
         var status = lockStatus(id);
         if (!status.equals("awaiting_approval")) throw validation("当前状态不可审批");
         var task = get(id);
+        lockWarehouseInventory(task.warehouseId());
+        var selectedScope = !task.scopeLabel().startsWith("全仓");
+        var selectedPalletIds = task.items().stream().map(Item::palletId).collect(java.util.stream.Collectors.toSet());
+        var current = new LinkedHashMap<Position, BigDecimal>();
+        for (var allocation : layoutQuery.get(task.warehouseId()).allocations()) {
+            if (!selectedScope || selectedPalletIds.contains(allocation.palletId())) {
+                current.put(new Position(allocation.palletId(), allocation.skuId()), allocation.units());
+            }
+        }
+        var expected = new LinkedHashMap<Position, BigDecimal>();
+        for (var item : task.items()) {
+            expected.put(new Position(item.palletId(), item.skuId()), item.bookQuantity());
+        }
+        if (!current.equals(expected)) throw snapshotStale();
         var bookBySku = new LinkedHashMap<Long, BigDecimal>();
         var finalBySku = new LinkedHashMap<Long, BigDecimal>();
         for (var item : task.items()) {
@@ -313,17 +320,7 @@ public class StocktakeService {
         }
         for (var item : task.items()) {
             var finalQuantity = item.recountQuantity() != null ? item.recountQuantity() : item.firstCountQuantity();
-            var current = jdbc.query("""
-                    select quantity from inventory_location_balance
-                    where warehouse_id=:warehouseId and pallet_id=:palletId and sku_id=:skuId for update
-                    """, new MapSqlParameterSource()
-                    .addValue("warehouseId", task.warehouseId())
-                    .addValue("palletId", item.palletId())
-                    .addValue("skuId", item.skuId()), (rs, rowNum) -> rs.getBigDecimal(1))
-                    .stream().findFirst().orElse(null);
-            if (current == null || current.compareTo(item.bookQuantity()) != 0) {
-                throw snapshotStale();
-            }
+            if ("UNALLOCATED".equals(item.palletId())) continue;
             var updated = jdbc.update("""
                     update inventory_location_balance
                     set quantity=:quantity, version_no=version_no+1, updated_at=:updatedAt
@@ -354,6 +351,20 @@ public class StocktakeService {
                 update inventory_stocktake_task set status='completed', updated_at=:updatedAt where id=:id
                 """, Map.of("updatedAt", LocalDateTime.now(), "id", id));
         return get(id);
+    }
+
+    private void lockWarehouseInventory(long warehouseId) {
+        var parameters = Map.of("warehouseId", warehouseId);
+        jdbc.query("select id from warehouse where id=:warehouseId for update", parameters,
+                (rs, rowNum) -> rs.getLong(1));
+        jdbc.query("""
+                select sku_id from inventory_balance where warehouse_id=:warehouseId
+                order by sku_id for update
+                """, parameters, (rs, rowNum) -> rs.getLong(1));
+        jdbc.query("""
+                select pallet_id from inventory_location_balance where warehouse_id=:warehouseId
+                order by sku_id, pallet_id for update
+                """, parameters, (rs, rowNum) -> rs.getString(1));
     }
 
     private void applyCounts(long id, List<Count> counts, boolean submit) {
@@ -471,6 +482,10 @@ public class StocktakeService {
         return node.path("id").asText();
     }
 
+    private String fallback(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
     private String zoneLabel(LayoutLabels labels, String zoneId) {
         if (zoneId == null || zoneId.isBlank()) return "全仓";
         return labels.zones().getOrDefault(zoneId, zoneId);
@@ -505,6 +520,9 @@ public class StocktakeService {
             Integer unitsPerCase,
             BigDecimal quantity
     ) {
+    }
+
+    private record Position(String palletId, long skuId) {
     }
 
     private record LayoutLabels(Map<String, String> zones, Map<String, String> piles) {

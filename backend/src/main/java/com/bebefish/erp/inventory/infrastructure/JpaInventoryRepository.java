@@ -28,6 +28,12 @@ public class JpaInventoryRepository implements InventoryRepository {
     }
 
     @Override
+    public void lockWarehouse(long warehouseId) {
+        // Serialize stock movements with full-warehouse stocktake approval, including a first receipt of a SKU.
+        jdbc.query("select id from warehouse where id = ? for update", (rs, row) -> rs.getLong(1), warehouseId);
+    }
+
+    @Override
     public void ensureBalances(long warehouseId, List<Long> sortedSkuIds) {
         var skuIds = new ArrayList<>(sortedSkuIds);
         skuIds.sort(Comparator.naturalOrder());

@@ -3,6 +3,7 @@ import { ArrowLeft, Search } from 'lucide-vue-next';
 import { computed, inject, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import FigmaSelect from '../../masterdata/components/FigmaSelect.vue';
+import { currentUser } from '../../../services/authSession';
 import { stocktakeService as defaultService } from '../stocktake/stocktakeService';
 import type { StocktakeCountInput, StocktakeService, StocktakeTaskDetails } from '../stocktake/types';
 
@@ -42,6 +43,7 @@ const pileOptions = computed(() => [
 const initialMode = computed(() => task.value?.status === 'not_started' || task.value?.status === 'in_progress');
 const recountMode = computed(() => task.value?.status === 'awaiting_recount');
 const approvalMode = computed(() => task.value?.status === 'awaiting_approval');
+const canApprove = computed(() => currentUser.value?.permissions.includes('inventory:approve') ?? false);
 const actionableItems = computed(() => recountMode.value
   ? (task.value?.items ?? []).filter((item) => item.difference !== 0)
   : (task.value?.items ?? []));
@@ -183,7 +185,7 @@ function stateClass(item: StocktakeTaskDetails['items'][number]) {
             <span :class="item.difference === null || item.difference === 0 ? 'text-slate-400' : item.difference > 0 ? 'text-emerald-600' : 'text-rose-600'">{{ item.difference === null ? '—' : item.difference > 0 ? `+${item.difference}` : item.difference }}</span>
           </div>
         </div>
-        <div class="mt-4 flex items-center justify-between border-t border-slate-100 pt-4"><div><p v-if="notice" class="text-sm font-medium text-emerald-600">{{ notice }}</p><p v-if="error" class="text-sm font-medium text-rose-600">{{ error }}</p></div><div class="flex gap-3"><template v-if="initialMode"><button data-testid="save-stocktake-draft" type="button" class="h-10 rounded-md bg-slate-50 px-5 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50" :disabled="saving" @click="saveDraft">保存草稿</button><button data-testid="submit-initial" type="button" class="h-10 rounded-md bg-[#536dff] px-5 text-sm font-semibold text-white hover:bg-[#445ee8] disabled:cursor-not-allowed disabled:opacity-40" :disabled="saving || !allCounted" @click="submitInitial">提交初盘</button></template><button v-else-if="recountMode" data-testid="submit-recount" type="button" class="h-10 rounded-md bg-[#536dff] px-5 text-sm font-semibold text-white disabled:opacity-40" :disabled="saving || !allCounted" @click="submitRecount">提交复盘</button><button v-else-if="approvalMode" data-testid="approve-stocktake" type="button" class="h-10 rounded-md bg-emerald-600 px-5 text-sm font-semibold text-white disabled:opacity-40" :disabled="saving" @click="approve">批准并调整库存</button></div></div>
+        <div class="mt-4 flex items-center justify-between border-t border-slate-100 pt-4"><div><p v-if="notice" class="text-sm font-medium text-emerald-600">{{ notice }}</p><p v-if="error" class="text-sm font-medium text-rose-600">{{ error }}</p></div><div class="flex gap-3"><template v-if="initialMode"><button data-testid="save-stocktake-draft" type="button" class="h-10 rounded-md bg-slate-50 px-5 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50" :disabled="saving" @click="saveDraft">保存草稿</button><button data-testid="submit-initial" type="button" class="h-10 rounded-md bg-[#536dff] px-5 text-sm font-semibold text-white hover:bg-[#445ee8] disabled:cursor-not-allowed disabled:opacity-40" :disabled="saving || !allCounted" @click="submitInitial">提交初盘</button></template><button v-else-if="recountMode" data-testid="submit-recount" type="button" class="h-10 rounded-md bg-[#536dff] px-5 text-sm font-semibold text-white disabled:opacity-40" :disabled="saving || !allCounted" @click="submitRecount">提交复盘</button><button v-else-if="approvalMode && canApprove" data-testid="approve-stocktake" type="button" class="h-10 rounded-md bg-emerald-600 px-5 text-sm font-semibold text-white disabled:opacity-40" :disabled="saving" @click="approve">批准并调整库存</button></div></div>
       </article>
     </div>
   </section>

@@ -63,7 +63,10 @@ const actionLabels: Record<StocktakeStatus, string> = {
 const warehouses = computed(() => enabledWarehouses.value.length
   ? enabledWarehouses.value.map((warehouse) => [warehouse.id, warehouse.warehouseName] as const)
   : Array.from(new Map(data.value.tasks.map((task) => [task.warehouseId, task.warehouseName]))));
-const canCreate = computed(() => !!createWarehouseId.value
+const canCreateTask = computed(() => currentUser.value?.permissions.includes('inventory:view')
+  && currentUser.value.permissions.includes('inventory:edit')
+  && currentUser.value.permissions.includes('warehouse:view'));
+const canCreate = computed(() => canCreateTask.value && !!createWarehouseId.value
   && !pilesLoading.value
   && (createScopeMode.value === 'all' || selectedPileIds.value.length > 0));
 const createOwnerName = computed(() => currentUser.value?.displayName?.trim()
@@ -112,9 +115,9 @@ watch(createWarehouseId, async (value) => {
 onMounted(async () => {
   await Promise.all([
     load(),
-    masterdata.listActiveWarehouses().then((values) => {
+    ...(canCreateTask.value ? [masterdata.listActiveWarehouses().then((values) => {
       enabledWarehouses.value = values.filter((warehouse) => warehouse.status === 'enabled');
-    }).catch(() => undefined)
+    }).catch(() => undefined)] : [])
   ]);
 });
 
@@ -176,7 +179,7 @@ async function createTask() {
           </div>
           <p class="mt-1 text-sm text-slate-500">创建盘点任务，按仓库、区域和货物堆核对实际库存。</p>
         </div>
-        <button data-testid="create-stocktake" type="button" class="inline-flex h-10 items-center gap-2 rounded-lg bg-[#536dff] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#445ee8]" @click="createOpen = true">
+        <button v-if="canCreateTask" data-testid="create-stocktake" type="button" class="inline-flex h-10 items-center gap-2 rounded-lg bg-[#536dff] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#445ee8]" @click="createOpen = true">
           <Plus class="h-4 w-4" aria-hidden="true" />新建盘点
         </button>
       </header>
@@ -256,7 +259,7 @@ async function createTask() {
                 </label>
                 <p v-if="!availablePiles.length" class="py-4 text-center text-sm text-slate-400">该仓库暂无有库存的货物堆</p>
               </div>
-              <p v-else class="text-xs text-slate-400">将盘点该仓库全部有库存的货物堆，共 {{ availablePiles.length }} 个。</p>
+              <p v-else class="text-xs text-slate-400">将盘点该仓库全部实际库存（包含 {{ availablePiles.length }} 个有库存的货物堆及待分配库存）。</p>
             </fieldset>
             <div data-testid="stocktake-create-owner" class="grid gap-1.5 text-sm font-semibold">盘点负责人<div class="flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 font-normal text-[#25314d]">{{ createOwnerName }}<span class="ml-2 text-xs text-slate-400">谁创建，谁负责</span></div></div>
             <label class="flex items-center gap-2 rounded-md bg-indigo-50 px-3 py-2.5 text-sm text-indigo-700"><input checked disabled type="checkbox" class="h-4 w-4 accent-[#536dff]" />启用盲盘，初盘人员不可查看账面数量</label>

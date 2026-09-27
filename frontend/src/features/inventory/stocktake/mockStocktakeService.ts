@@ -81,7 +81,7 @@ function updateCounts(task: StocktakeTaskDetails, counts: StocktakeCountInput[])
   task.items.forEach((entry) => {
     if (!byItem.has(entry.id)) return;
     entry.firstCountQuantity = byItem.get(entry.id) ?? null;
-    entry.difference = entry.firstCountQuantity === null ? null : entry.firstCountQuantity - entry.bookQuantity;
+    entry.difference = entry.firstCountQuantity === null ? null : entry.firstCountQuantity - (entry.bookQuantity ?? 0);
     entry.status = entry.firstCountQuantity === null ? 'uncounted' : 'counted';
   });
   task.countedItems = task.items.filter((entry) => entry.firstCountQuantity !== null).length;
@@ -153,7 +153,7 @@ export const mockStocktakeService: StocktakeService = {
     if (differences.some((entry) => !byItem.has(entry.id))) throw new Error('请完成全部差异项复盘');
     differences.forEach((entry) => {
       entry.recountQuantity = byItem.get(entry.id) ?? null;
-      entry.difference = entry.recountQuantity === null ? null : entry.recountQuantity - entry.bookQuantity;
+      entry.difference = entry.recountQuantity === null ? null : entry.recountQuantity - (entry.bookQuantity ?? 0);
       entry.status = entry.difference === 0 ? 'matched' : 'recount_required';
     });
     task.differenceItems = differences.filter((entry) => entry.difference !== 0).length;
