@@ -375,6 +375,7 @@ onBeforeUnmount(() => {
     <article id="sales-print-document" data-testid="sales-print-document" class="sales-print-document">
       <header class="sales-print-header">
         <div>
+          <img class="sales-print-logo" src="/brand/bebefish-horizontal.svg" alt="BeBefish 公司 Logo" width="160" height="42" />
           <p class="sales-print-company">BeBefish ERP</p>
           <p class="sales-print-company-subtitle">电商经营管理</p>
         </div>
@@ -456,6 +457,14 @@ onBeforeUnmount(() => {
   gap: 18px;
   padding-bottom: 16px;
   border-bottom: 2px solid #1f2937;
+}
+
+.sales-print-logo {
+  display: block;
+  width: 160px;
+  max-width: 100%;
+  height: auto;
+  margin-bottom: 6px;
 }
 
 .sales-print-company {

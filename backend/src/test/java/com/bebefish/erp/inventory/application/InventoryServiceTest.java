@@ -17,6 +17,8 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class InventoryServiceTest {
     private FakeInventoryRepository repository;
@@ -115,6 +117,33 @@ class InventoryServiceTest {
         )).isInstanceOf(BusinessException.class).hasMessage("库存变动数量必须大于 0");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"sales", "adjustment", "reverse"})
+    void rejectsDecreasesBelowPlacedStockBeforeWritingAnyBalanceOrLedger(String operation) {
+        repository.seed(1L, 10L, "100");
+        repository.seed(1L, 20L, "100");
+        repository.placed.put(20L, new BigDecimal("80"));
+        var changes = List.of(change(10L, "10"), change(20L, "21"));
+        assertThatThrownBy(() -> {
+            if (operation.equals("adjustment")) service.adjust(1, List.of(change(10, "-10"), change(20, "-21")), source(operation, 1, "ADJ001"), "13800138000");
+            else if (operation.equals("reverse")) service.reverse(1, changes, source(operation, 1, "VOID001"), "13800138000");
+            else service.decrease(1, changes, source(operation, 1, "SO001"), "13800138000");
+        }).isInstanceOfSatisfying(BusinessException.class,
+                error -> assertThat(error.code()).isEqualTo("INVENTORY_ALLOCATED_TO_PILES"));
+        assertThat(repository.balance(1, 10)).isEqualByComparingTo("100");
+        assertThat(repository.balance(1, 20)).isEqualByComparingTo("100");
+        assertThat(repository.ledger()).isEmpty();
+    }
+
+    @Test
+    void permitsDecreasesDownToPlacedStock() {
+        repository.seed(1, 10, "100");
+        repository.placed.put(10L, new BigDecimal("80"));
+        service.decrease(1, List.of(change(10, "20")), source("sales", 1, "SO001"), "13800138000");
+        assertThat(repository.balance(1, 10)).isEqualByComparingTo("80");
+        assertThat(repository.ledger()).hasSize(1);
+    }
+
     private InventoryChange change(long skuId, String quantity) {
         return new InventoryChange(skuId, new BigDecimal(quantity));
     }
@@ -127,6 +156,12 @@ class InventoryServiceTest {
         private final AtomicLong sequence = new AtomicLong();
         private final Map<String, InventoryBalance> balances = new LinkedHashMap<>();
         private final List<InventoryLedgerEntry> ledger = new ArrayList<>();
+        private final Map<Long, BigDecimal> placed = new LinkedHashMap<>();
+
+        @Override
+        public BigDecimal lockPlacedQuantity(long warehouseId, long skuId) {
+            return placed.getOrDefault(skuId, BigDecimal.ZERO);
+        }
 
         void seed(long warehouseId, long skuId, String quantity) {
             var id = sequence.incrementAndGet();

@@ -111,6 +111,10 @@ public class InventoryService {
             if (after.signum() < 0) {
                 throw new BusinessException("INVENTORY_NOT_ENOUGH", HttpStatus.BAD_REQUEST, "库存不足");
             }
+            if (delta.signum() < 0 && after.compareTo(repository.lockPlacedQuantity(warehouseId, entry.getKey())) < 0) {
+                throw new BusinessException("INVENTORY_ALLOCATED_TO_PILES", HttpStatus.CONFLICT,
+                        "库存已分配到货物堆，本次扣减将低于已分配数量，请先确认出库堆位");
+            }
             pendingChanges.add(new PendingBalanceChange(balance, delta, after));
         }
 

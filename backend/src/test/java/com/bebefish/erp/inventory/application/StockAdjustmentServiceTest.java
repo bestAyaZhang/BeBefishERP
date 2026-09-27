@@ -134,6 +134,11 @@ class StockAdjustmentServiceTest {
     }
 
     private static final class FakeInventoryRepository implements InventoryRepository {
+        @Override
+        public BigDecimal lockPlacedQuantity(long warehouseId, long skuId) {
+            return BigDecimal.ZERO;
+        }
+
         private final AtomicLong sequence = new AtomicLong();
         private final Map<String, InventoryBalance> balances = new LinkedHashMap<>();
         private final List<InventoryLedgerEntry> ledger = new ArrayList<>();

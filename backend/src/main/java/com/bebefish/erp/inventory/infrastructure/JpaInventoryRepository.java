@@ -3,23 +3,28 @@ package com.bebefish.erp.inventory.infrastructure;
 import com.bebefish.erp.inventory.domain.InventoryBalance;
 import com.bebefish.erp.inventory.domain.InventoryLedgerEntry;
 import com.bebefish.erp.inventory.domain.InventoryRepository;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class JpaInventoryRepository implements InventoryRepository {
     private final SpringDataInventoryBalanceRepository balanceRepository;
     private final SpringDataInventoryLedgerRepository ledgerRepository;
+    private final JdbcTemplate jdbc;
 
     public JpaInventoryRepository(
             SpringDataInventoryBalanceRepository balanceRepository,
-            SpringDataInventoryLedgerRepository ledgerRepository
+            SpringDataInventoryLedgerRepository ledgerRepository,
+            JdbcTemplate jdbc
     ) {
         this.balanceRepository = balanceRepository;
         this.ledgerRepository = ledgerRepository;
+        this.jdbc = jdbc;
     }
 
     @Override
@@ -46,6 +51,19 @@ public class JpaInventoryRepository implements InventoryRepository {
                 .stream()
                 .map(InventoryBalanceJpaEntity::toDomain)
                 .toList();
+    }
+
+    @Override
+    public BigDecimal lockPlacedQuantity(long warehouseId, long skuId) {
+        // Match allocation's balance -> ordered location locking; UNALLOCATED is derived.
+        return jdbc.query("""
+                select pallet_id, quantity from inventory_location_balance
+                where warehouse_id = ? and sku_id = ?
+                order by pallet_id
+                for update
+                """, (rs, row) -> "UNALLOCATED".equals(rs.getString("pallet_id"))
+                        ? BigDecimal.ZERO : rs.getBigDecimal("quantity"), warehouseId, skuId)
+                .stream().reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     @Override
