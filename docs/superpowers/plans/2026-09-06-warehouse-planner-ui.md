@@ -267,4 +267,3 @@ Place the supplied reference and implementation screenshot side-by-side at equal
 git add frontend/src/features/inventory prototype-screenshots/warehouse-planner
 git commit -m "test: verify warehouse planner UI"
 ```
-
