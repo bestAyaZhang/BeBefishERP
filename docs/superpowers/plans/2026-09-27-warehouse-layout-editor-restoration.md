@@ -75,10 +75,10 @@
 - Consumes the Task 2 controller and `masterdataService.listActiveWarehouses()`.
 - Emits object selection, drawing, property edits, visibility, and locking operations through typed component events.
 
-- [ ] **Step 1: Replace the page tests with failing tests** for warehouse identity, original page title/copy, three-column composition, editor toolbar, synchronized selection, property editing, and responsive containment.
-- [ ] **Step 2: Run the view test and verify failures against the simplified SKU canvas.**
-- [ ] **Step 3: Implement the layer tree, canvas, inspector, and restored page composition.**
-- [ ] **Step 4: Run view tests and fix interaction/accessibility failures.**
+- [x] **Step 1: Replace the page tests with failing tests** for warehouse identity, original page title/copy, three-column composition, editor toolbar, synchronized selection, property editing, and responsive containment.
+- [x] **Step 2: Run the view test and verify failures against the simplified SKU canvas.**
+- [x] **Step 3: Implement the layer tree, canvas, inspector, and restored page composition.**
+- [x] **Step 4: Run view tests and fix interaction/accessibility failures.**
 
 ### Task 4: Publish validation flow and integrated verification
 
