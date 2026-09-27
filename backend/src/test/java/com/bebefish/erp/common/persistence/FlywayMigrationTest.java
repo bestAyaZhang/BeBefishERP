@@ -74,6 +74,7 @@ class FlywayMigrationTest {
                 "file_asset", "business_code_sequence",
                 "inventory_balance", "inventory_ledger", "stock_adjustment", "stock_adjustment_item",
                 "warehouse_layout", "inventory_location_balance",
+                "inventory_stocktake_task", "inventory_stocktake_item",
                 "sales_order_sequence", "sales_order", "sales_order_item",
                 "department", "position", "employee", "sys_user", "sys_permission", "sys_role",
                 "sys_role_permission", "sys_user_role", "sys_feishu_identity",
@@ -290,7 +291,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("15");
+        )).isEqualTo("16");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId

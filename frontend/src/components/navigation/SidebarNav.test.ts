@@ -98,17 +98,18 @@ describe('SidebarNav', () => {
     expect(wrapper.get('a[href="/organization/permissions"]').classes()).not.toContain('ml-6');
   });
 
-  it('shows the warehouse canvas first in the inventory submenu', () => {
+  it('opens warehouses from inventory management without a standalone canvas menu', () => {
+    storeCurrentUser(['inventory:view']);
     const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
 
-    const inventoryLinks = wrapper.findAll('a').filter((link) => link.attributes('href')?.startsWith('/inventory/'));
-    expect(inventoryLinks.map((link) => link.text())).toEqual([
-      '仓库画布',
+    expect(wrapper.findAll('a').map((link) => link.text())).toEqual([
+      '仓库管理',
       '库存余额',
       '库存流水',
-      '库存调整',
       '库存盘点'
     ]);
+    expect(wrapper.get('a[href="/warehouses"]').text()).toBe('仓库管理');
+    expect(wrapper.text()).not.toContain('仓库画布');
   });
 
   it('shows inventory stocktake for users allowed to view inventory', () => {

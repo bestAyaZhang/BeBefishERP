@@ -57,8 +57,8 @@ class WarehouseLayoutServiceConcurrencyTest {
             if (!bothSnapshotsEstablished.await(10, TimeUnit.SECONDS)) {
                 throw new AssertionError("Concurrent layout saves did not establish their snapshots");
             }
-            return new Warehouse(WAREHOUSE_ID, "WH-007", "Test warehouse", null, null,
-                    null, false, "enabled", null);
+            return new Warehouse(WAREHOUSE_ID, "WH-007", "Test warehouse", null,
+                    false, "enabled", null);
         });
 
         service = new WarehouseLayoutService(jdbc, mapper, warehouses);
