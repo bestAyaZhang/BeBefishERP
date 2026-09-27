@@ -59,7 +59,9 @@ function createTestRouter() {
       { path: '/organization/employees', name: 'organization-employees', component: TestPage },
       { path: '/organization/departments', name: 'organization-departments', component: TestPage },
       { path: '/organization/positions', name: 'organization-positions', component: TestPage },
-      { path: '/organization/permissions', name: 'organization-permissions', component: TestPage }
+      { path: '/organization/permissions', name: 'organization-permissions', component: TestPage },
+      { path: '/inventory/balances', name: 'inventory-balances', component: TestPage },
+      { path: '/inventory/warehouse-canvas', name: 'warehouse-canvas', component: TestPage, meta: { flushContent: true } }
     ]
   });
 }
@@ -157,6 +159,17 @@ describe('ErpLayout', () => {
       'flex-1',
       'overflow-y-auto'
     ]));
+  });
+
+  it('keeps warehouse planning inside the content area with system navigation', async () => {
+    ({ router, wrapper } = await mountLayout('/inventory/warehouse-canvas'));
+
+    expect(wrapper.get('[data-testid="erp-layout-grid"]').classes()).toContain('lg:grid-cols-[244px_minmax(0,1fr)]');
+    expect(wrapper.get('[data-testid="erp-layout-grid"]').classes()).toContain('grid-cols-1');
+    expect(wrapper.find('[data-testid="erp-sidebar"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="erp-topbar"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="erp-breadcrumb"]').classes()).not.toContain('sr-only');
+    expect(wrapper.get('[data-testid="erp-page-content"]').classes()).toContain('p-0');
   });
 
   it('keeps the 320px topbar shrink-safe while preserving full desktop actions', async () => {

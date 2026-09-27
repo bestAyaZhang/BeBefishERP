@@ -5,8 +5,7 @@ import {
   EyeOff,
   LogIn,
   LogOut,
-  ShieldCheck,
-  Sparkles
+  ShieldCheck
 } from 'lucide-vue-next';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -208,11 +207,10 @@ async function handleLogout() {
         class="relative flex min-h-[420px] flex-col justify-between overflow-hidden bg-black p-6 text-white sm:min-h-screen lg:p-12"
       >
         <div class="relative z-20 flex items-center gap-2 text-lg font-semibold">
-          <div class="flex min-w-0 items-center gap-2">
-            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white/10 backdrop-blur">
-              <Sparkles class="h-4 w-4" aria-hidden="true" />
-            </div>
-            <span class="truncate">BeBefish ERP</span>
+          <div class="flex min-w-0 items-center gap-4">
+            <!-- Display the original artwork in white and blend its background into the dark panel. -->
+            <img src="/brand/bebefish-horizontal.svg" alt="BeBefish" width="176" height="46" class="h-auto w-44 mix-blend-screen [filter:grayscale(1)_invert(1)_contrast(3)]" />
+            <span class="shrink-0 border-l border-white/20 pl-4 text-xs font-medium tracking-[0.18em] text-white/60" aria-label="BeBefish ERP">ERP</span>
           </div>
         </div>
 
