@@ -21,13 +21,11 @@ async function mountSidebar() {
 }
 
 describe('WarehouseInventorySidebar', () => {
-  it('lists every planned pile and keeps empty piles visible', async () => {
+  it('lists every planned pile without the removed summary card', async () => {
     const wrapper = await mountSidebar()
 
     expect(wrapper.get('h2').text()).toBe('货物堆与实际库存')
-    expect(wrapper.get('[data-testid="inventory-total-piles"]').text()).toBe('3')
-    expect(wrapper.get('[data-testid="inventory-occupied-piles"]').text()).toBe('2')
-    expect(wrapper.get('[data-testid="inventory-total-units"]').text()).toBe('990')
+    expect(wrapper.find('[aria-label="货物堆库存概览"]').exists()).toBe(false)
     expect(wrapper.findAll('[data-testid^="inventory-pile-pallet-"]')).toHaveLength(3)
 
     const emptyPile = wrapper.get('[data-testid="inventory-pile-pallet-a03"]')

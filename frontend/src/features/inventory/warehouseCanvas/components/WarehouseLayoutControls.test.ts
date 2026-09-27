@@ -14,7 +14,7 @@ describe('WarehouseLayoutControls', () => {
       expect(wrapper.emitted('loaded')?.[0]).toEqual([document])
       const edited = {...document,structure:{...document.structure,zones:[{id:'area',label:'A',tone:'blue' as const,left:10,top:10,width:10,height:10}]}}
       await wrapper.setProps({document:edited})
-      await wrapper.get('button').trigger('click')
+      await wrapper.findAll('button').find(button => button.text() === '保存规划')!.trigger('click')
       await flushPromises()
       expect(service.save).toHaveBeenCalledWith(7,{revision:2,document:edited})
       expect(wrapper.text()).toContain('已保存')
@@ -28,12 +28,13 @@ describe('WarehouseLayoutControls', () => {
     try {
       await flushPromises()
       await wrapper.setProps({document:{...document,structure:{...document.structure,zones:[{id:'area',label:'A',tone:'blue',left:10,top:10,width:10,height:10}]}}})
-      await wrapper.get('button').trigger('click'); await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === '保存规划')!.trigger('click'); await flushPromises()
       expect(wrapper.get('[role="alert"]').text()).toContain('规划已被其他人修改')
       expect(wrapper.get('[role="status"]').text()).toBe('未保存')
-      await wrapper.get('select').setValue('2'); await flushPromises()
+      await wrapper.get('[data-testid="warehouse-layout-selector"]').trigger('click')
+      await wrapper.get('[data-testid="warehouse-layout-option-2"]').trigger('click'); await flushPromises()
       expect(service.load).toHaveBeenCalledTimes(1)
-      expect(wrapper.get('select').element.value).toBe('1')
+      expect(wrapper.get('[data-testid="warehouse-layout-selector"]').text()).toContain('A')
     } finally { wrapper.unmount(); confirm.mockRestore() }
   })
 })
