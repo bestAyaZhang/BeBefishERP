@@ -57,10 +57,10 @@
 - Consumes `WarehouseLayoutRepository` and the Task 1 model.
 - Produces refs and commands for `load`, `selectObject`, `setTool`, `createObject`, `updateSelectedObject`, `toggleObjectLock`, `toggleObjectVisibility`, `undo`, `redo`, `discard`, `saveDraft`, and `publish`.
 
-- [ ] **Step 1: Write failing controller tests** for ID-based load, selection, edits, history, discard, save, publish blocking, and successful publish.
-- [ ] **Step 2: Run the controller test file and verify the expected failures.**
-- [ ] **Step 3: Implement the controller with immutable snapshots and warehouse-isolated persistence.**
-- [ ] **Step 4: Run the controller tests and verify they pass.**
+- [x] **Step 1: Write failing controller tests** for ID-based load, selection, edits, history, discard, save, publish blocking, and successful publish.
+- [x] **Step 2: Run the controller test file and verify the expected failures.**
+- [x] **Step 3: Implement the controller with immutable snapshots and warehouse-isolated persistence.**
+- [x] **Step 4: Run the controller tests and verify they pass.**
 
 ### Task 3: Restore the Figma layout editor page
 
