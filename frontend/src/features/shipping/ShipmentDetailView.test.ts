@@ -48,6 +48,30 @@ describe('ShipmentDetailView', () => {
     wrapper.unmount();
   });
 
+  it('keeps a test waybill separate from the real tracking number', async () => {
+    service.get.mockResolvedValue({ ...shipment, content: { ...shipment.content, trackingNo: '' } });
+    service.getLogisticsOrder.mockResolvedValue({ shipmentId: 8, orderNo: 'BF008', state: 'succeeded',
+      trackingNo: '123456789012', childTrackingNos: '', message: '测试下单成功',
+      updatedAt: '2026-09-24T10:00:00', testEnvironment: true });
+    const { wrapper } = await render();
+    expect(wrapper.get('[data-testid="shipment-real-tracking"]').text()).toBe('暂无');
+    expect(wrapper.get('[data-testid="shipment-test-order"]').text()).toContain('测试运单号');
+    expect(wrapper.get('[data-testid="shipment-test-order"]').text()).toContain('123456789012');
+    expect(wrapper.get('[data-testid="shipment-test-order"]').text()).toContain('不可用于实际走货');
+    wrapper.unmount();
+  });
+
+  it('shows the reconciliation instruction when an order result is unknown', async () => {
+    service.getLogisticsOrder.mockResolvedValue({ shipmentId: 8, orderNo: 'BF008', state: 'unknown',
+      trackingNo: '', childTrackingNos: '', message: '下单结果待核实，请联系安能网点核对订单号，勿重复下单',
+      updatedAt: '2026-09-24T10:00:00', testEnvironment: false });
+    const { wrapper } = await render();
+    expect(wrapper.text()).toContain('结果待核实');
+    expect(wrapper.get('[data-testid="shipment-order-message"]').text()).toContain('请联系安能网点核对订单号，勿重复下单');
+    expect(wrapper.text()).toContain('BF008');
+    wrapper.unmount();
+  });
+
   it('shows a retry action when the record cannot be loaded', async () => {
     service.get.mockRejectedValueOnce(new Error('发货单不存在')).mockResolvedValueOnce(shipment);
     const { wrapper } = await render();

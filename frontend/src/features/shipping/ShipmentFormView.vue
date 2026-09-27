@@ -193,7 +193,7 @@ onBeforeUnmount(() => { generation++; });
 
       <div class="flex flex-wrap justify-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><button type="button" :disabled="busy" class="rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 disabled:opacity-40" @click="cancel">取消</button><button data-testid="shipment-save-only" type="button" :disabled="busy" class="inline-flex items-center gap-2 rounded-lg border border-indigo-200 px-5 py-2.5 text-sm font-semibold text-[#536dff] disabled:opacity-40" @click="persist(false)"><Save :size="16" />{{ busy ? '处理中…' : isEdit ? '仅保存修改' : '仅保存发货单' }}</button><button v-if="canOrder && !locked" data-testid="shipment-save-and-order" type="button" :disabled="busy" class="inline-flex items-center gap-2 rounded-lg bg-[#536dff] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40" @click="persist(true)"><Send :size="16" />{{ busy ? '处理中…' : '保存并一键下单' }}</button></div>
     </form>
-    <ShipmentSuccessDialog :open="!!result" :tracking-no="result?.trackingNo || ''" :order-no="result?.orderNo || ''" @back-list="backToList" @continue="continueOrder" />
+    <ShipmentSuccessDialog :open="!!result" :tracking-no="result?.trackingNo || ''" :order-no="result?.orderNo || ''" :test-environment="result?.testEnvironment || false" @back-list="backToList" @continue="continueOrder" />
   </section>
 </template>
 

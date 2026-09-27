@@ -93,6 +93,23 @@ describe('ShipmentFormView', () => {
     wrapper.unmount();
   });
 
+  it('shows the test-environment warning after a test order succeeds', async () => {
+    service.logisticsAvailability.mockResolvedValue({ available: true, testEnvironment: true,
+      message: '安能测试环境已配置' });
+    service.placeLogisticsOrder.mockResolvedValue({ shipmentId: 18, orderNo: 'BF018', state: 'succeeded',
+      trackingNo: '123456789012', childTrackingNos: '', message: '成功',
+      updatedAt: '2026-09-24T10:00:00', testEnvironment: true });
+    const { wrapper } = await render();
+    await fillRequired(wrapper);
+    await wrapper.get('[data-testid="ane-cargo-name"]').setValue('水族用品');
+    await wrapper.get('[data-testid="ane-weight"]').setValue('18.5');
+    await wrapper.get('[data-testid="ane-volume"]').setValue('0.12');
+    await wrapper.get('[data-testid="shipment-save-and-order"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('[role="dialog"]').text()).toContain('测试环境下单成功');
+    expect(wrapper.get('[role="dialog"]').text()).toContain('不可用于实际走货');
+    wrapper.unmount();
+  });
+
   it('hides the logistics order action without shipping:order permission', async () => {
     saveCurrentUser({ accessToken: 'test', mobile: null, displayName: '录入人', roles: [],
       permissions: ['shipping:view', 'shipping:create'], loginMethod: 'feishu' });

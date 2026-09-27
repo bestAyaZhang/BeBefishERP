@@ -14,4 +14,17 @@ describe('ShipmentSuccessDialog', () => {
     expect(wrapper.emitted('continue')).toHaveLength(1);
     wrapper.unmount();
   });
+
+  it('marks a test order as unusable for real shipping', () => {
+    const wrapper = mount(ShipmentSuccessDialog, {
+      props: { open: true, trackingNo: '123456789012', orderNo: 'BF019', testEnvironment: true }
+    });
+    const dialog = wrapper.get('[role="dialog"]').text();
+    expect(dialog).toContain('测试环境');
+    expect(dialog).toContain('不可用于实际走货');
+    expect(dialog).toContain('测试运单号');
+    expect(dialog).toContain('123456789012');
+    expect(dialog).not.toContain('请按此单号安排后续发货');
+    wrapper.unmount();
+  });
 });
