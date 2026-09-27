@@ -36,4 +36,18 @@ describe('RecipientRecognitionCard', () => {
     expect((wrapper.get('[data-testid="recipient-detail-address"]').element as HTMLInputElement).value).toBe('人工保留的门牌号');
     expect(wrapper.text()).toContain('已识别部分信息');
   });
+
+  it('lets the user re-recognize edited raw text without clearing the populated fields', async () => {
+    const wrapper = render();
+    await wrapper.get('[data-testid="recipient-raw"]').setValue('收件人：王先生 电话：13900001086');
+    await wrapper.get('[data-testid="recipient-recognize"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="recipient-recognized"]').text()).toBe('已识别');
+    await wrapper.get('[data-testid="recipient-recognize-again"]').trigger('click');
+    expect((wrapper.get('[data-testid="recipient-name"]').element as HTMLInputElement).value).toBe('王先生');
+
+    await wrapper.get('[data-testid="recipient-raw"]').setValue('收件人：李女士 电话：13800006028');
+    await wrapper.get('[data-testid="recipient-recognize"]').trigger('click');
+    expect((wrapper.get('[data-testid="recipient-name"]').element as HTMLInputElement).value).toBe('李女士');
+  });
 });

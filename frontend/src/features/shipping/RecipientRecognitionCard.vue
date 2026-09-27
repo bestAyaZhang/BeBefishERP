@@ -26,6 +26,10 @@ function recognize() {
   emit('update:modelValue', next);
   recognition.value = found === keys.length ? 'complete' : 'partial';
 }
+
+function recognizeAgain() {
+  recognition.value = 'none';
+}
 </script>
 
 <template>
@@ -35,9 +39,14 @@ function recognize() {
       <div class="mt-2 flex flex-col gap-3 lg:flex-row lg:items-stretch">
         <textarea id="recipient-raw" v-model="raw" data-testid="recipient-raw" :disabled="disabled" rows="3"
           class="field-input mt-0 min-h-24 flex-1 resize-y" placeholder="粘贴姓名、电话和完整地址，可一行或多行" />
-        <button type="button" data-testid="recipient-recognize" :disabled="disabled || !raw.trim()"
+        <button v-if="recognition === 'none'" type="button" data-testid="recipient-recognize" :disabled="disabled || !raw.trim()"
           class="inline-flex min-w-32 items-center justify-center gap-2 rounded-lg bg-indigo-50 px-5 py-3 text-sm font-semibold text-[#536dff] disabled:cursor-not-allowed disabled:opacity-40"
           @click="recognize"><ScanLine :size="17" />智能识别</button>
+        <div v-else class="flex min-w-32 flex-col items-center justify-center gap-1 rounded-lg bg-emerald-50 px-5 py-2 text-sm text-emerald-700">
+          <span data-testid="recipient-recognized" class="font-semibold">已识别</span>
+          <button type="button" data-testid="recipient-recognize-again" :disabled="disabled"
+            class="text-xs underline underline-offset-2 disabled:opacity-40" @click="recognizeAgain">重新识别</button>
+        </div>
       </div>
       <p v-if="recognition !== 'none'" class="mt-2 text-xs" :class="recognition === 'complete' ? 'text-emerald-600' : 'text-amber-600'">
         {{ recognition === 'complete' ? '已识别，请核对' : '已识别部分信息，请补充标红字段' }}

@@ -169,9 +169,9 @@ onBeforeUnmount(() => { generation++; });
 
       <section class="form-card"><div class="section-heading"><span>02</span><div><h2>收件人信息</h2><p>粘贴原始信息后在当前卡片内识别，并核对拆分结果。</p></div></div><div class="mt-5"><RecipientRecognitionCard v-model="recipient" :disabled="busy || locked" /></div></section>
 
-      <section class="form-card"><div class="section-heading"><span>03</span><div><h2>备货清单</h2><p>按行记录商品、规格和数量，可容纳多 SKU 的自由文本。</p></div></div><div class="mt-5 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-        <label class="field-label">备货内容 <span class="text-rose-500">*</span><textarea v-model="form.preparationContent" data-testid="shipment-preparation-content" :disabled="busy" maxlength="10000" rows="9" placeholder="例如：&#10;蓝色水族箱 × 2&#10;过滤棉 × 6&#10;外箱 × 2" class="field-input min-h-56 resize-y" /></label>
-        <label class="field-label">备注<textarea v-model="form.remark" data-testid="shipment-remark" :disabled="busy" maxlength="5000" rows="9" placeholder="缺货、补发、包装注意事项等" class="field-input min-h-56 resize-y" /></label>
+      <section class="form-card"><div class="section-heading"><span>03</span><div><h2>备货清单</h2><p>按行记录商品、规格和数量，可容纳多 SKU 的自由文本。</p></div></div><div class="mt-5 space-y-4">
+        <label class="field-label block">备货内容 <span class="text-rose-500">*</span><textarea v-model="form.preparationContent" data-testid="shipment-preparation-content" :disabled="busy" maxlength="10000" rows="12" placeholder="例如：&#10;蓝色水族箱 × 2&#10;过滤棉 × 6&#10;外箱 × 2" class="field-input min-h-72 resize-y" /></label>
+        <label class="field-label block">备注<textarea v-model="form.remark" data-testid="shipment-remark" :disabled="busy" maxlength="5000" rows="3" placeholder="缺货、补发、包装注意事项等" class="field-input resize-y" /></label>
       </div></section>
 
       <section class="form-card"><div class="flex flex-wrap items-start justify-between gap-4"><div class="section-heading"><span>04</span><div><h2>安能一键下单</h2><p>{{ availability?.message || '正在检查安能物流服务配置' }}</p></div></div><span class="rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700">物流公司：安能物流</span></div>
