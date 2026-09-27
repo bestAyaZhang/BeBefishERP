@@ -485,6 +485,9 @@ onBeforeUnmount(() => {
         @pointerdown="startPalletDrag($event, pallet)"
         @click="emit('select-pallet', pallet.id)"
       >
+        <span class="pallet-cells" aria-hidden="true">
+          <i v-for="cell in pallet.columns * pallet.rows" :key="cell" data-testid="pallet-box-cell" class="pallet-cell" />
+        </span>
         <span class="sr-only">{{ pallet.name }} · {{ pallet.contents.length }} 种商品 · 共 {{ palletTotalUnits(pallet) }} 个</span>
         <template v-if="selectedPalletId === pallet.id && !structureEditing && !zoneEditing && !inventoryDetailsVisible">
           <i v-for="handle in 8" :key="handle" class="selection-handle" :class="`handle-${handle}`" aria-hidden="true" />
@@ -588,7 +591,9 @@ onBeforeUnmount(() => {
 .utility-room { position: absolute; z-index: 4; display: grid; place-content: center; gap: 4px; border: 0; background: transparent; text-align: center; pointer-events:none; }.utility-room strong { font-size: 12px; }.utility-room span { color: #64748b; font-size: 10px; }
 .fire-lane { position: absolute; z-index: 4; border-inline: 1px solid #ef7868; background: repeating-linear-gradient(45deg,rgba(245,102,82,.3) 0 2px,transparent 2px 6px); transform-origin: center; }.fire-lane span { position: absolute; left: 125%; top: 45%; color: #d54734; font-size: 10px; line-height: 15px; white-space: nowrap; transform: rotate(0deg); }
 .structure-column { position: absolute; z-index: 6; width: 14px; height: 14px; border: 1px solid #46515f; background: #6b7786; box-shadow: inset 2px 2px rgba(255,255,255,.35); }
-.pallet-group { position: absolute; z-index: 8; min-height: 0; border: 1px solid #a6966b; border-radius: 1px; padding: 0; background-color: #d9c797; background-image: linear-gradient(90deg,transparent calc(100% / var(--pallet-columns) - 1px),#aa9a70 calc(100% / var(--pallet-columns) - 1px)),linear-gradient(transparent calc(100% / var(--pallet-rows) - 1px),#aa9a70 calc(100% / var(--pallet-rows) - 1px)); background-size: calc(100% / var(--pallet-columns)) 100%,100% calc(100% / var(--pallet-rows)); box-shadow: inset 0 0 0 2px rgba(255,255,255,.2),0 1px 2px rgba(37,49,77,.12); cursor: grab; touch-action: none; user-select: none; }
+.pallet-group { position: absolute; z-index: 8; min-height: 0; border: 1px solid #aa996d; border-radius: 2px; padding: 0; background:#f3eee2; box-shadow:0 1px 3px rgba(37,49,77,.16); cursor: grab; touch-action: none; user-select: none; }
+.pallet-cells {position:absolute;inset:2px;display:grid;grid-template-columns:repeat(var(--pallet-columns),minmax(0,1fr));grid-template-rows:repeat(var(--pallet-rows),minmax(0,1fr));gap:2px;pointer-events:none;overflow:hidden;}
+.pallet-cell {display:block;min-width:0;min-height:0;border:1px solid rgba(139,117,68,.3);border-radius:1px;background:linear-gradient(135deg,#dfd0aa 0%,#cbb789 100%);box-shadow:inset 1px 1px rgba(255,255,255,.42),0 1px rgba(91,75,43,.13);}
 .details-visible .pallet-group { cursor: pointer; }
 .pallet-group.dragging { z-index: 19; cursor: grabbing; will-change: transform; }
 .pallet-group:hover { border-color: #7c6c45; filter: brightness(1.02); }.pallet-group:focus-visible { outline: 2px solid #536dff; outline-offset: 2px; }

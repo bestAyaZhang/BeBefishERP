@@ -45,6 +45,29 @@ afterEach(() => {
 })
 
 describe('WarehouseBlueprintScene', () => {
+  it('renders each saved pile as individual box cells in detail mode', () => {
+    const pallet = {
+      ...warehousePlannerScene.palletGroups[0]!,
+      id: 'pile-box-grid',
+      columns: 3,
+      rows: 2,
+    }
+    const wrapper = mount(WarehouseBlueprintScene, {
+      props: {
+        gridSnapping: true,
+        measurementEnabled: false,
+        selectedPalletId: null,
+        detailMode: true,
+        inventoryDetailsVisible: true,
+        palletGroups: [pallet],
+        structure: createWarehouseStructure(),
+      },
+    })
+
+    const pile = wrapper.get('[data-testid="planner-pallet-pile-box-grid"]')
+    expect(pile.findAll('[data-testid="pallet-box-cell"]')).toHaveLength(6)
+  })
+
   it('reuses the saved blueprint in detail mode without editing rulers and emits zone selection', async () => {
     const structure = createWarehouseStructure()
     const wrapper = mount(WarehouseBlueprintScene, {
