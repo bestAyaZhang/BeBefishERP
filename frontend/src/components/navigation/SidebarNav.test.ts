@@ -106,9 +106,17 @@ describe('SidebarNav', () => {
     expect(wrapper.findAll('a').map((link) => link.text())).toEqual([
       '仓库管理',
       '库存余额',
-      '库存流水'
+      '库存流水',
+      '库存盘点'
     ]);
     expect(wrapper.text()).not.toContain('仓库画布');
+  });
+
+  it('shows inventory stocktake for users allowed to view inventory', () => {
+    storeCurrentUser(['inventory:view']);
+    const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
+
+    expect(wrapper.get('a[href="/inventory/stocktakes"]').text()).toBe('库存盘点');
   });
 
   it('uses the full-height ERP navigation structure without a card shell', () => {

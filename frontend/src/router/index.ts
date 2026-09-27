@@ -49,6 +49,13 @@ const placeholderPages: RouteRecordRaw[] = [
   { path: 'inventory/balances', name: 'inventory-balances', component: InventoryBalanceView, meta: { flushContent: true } },
   { path: 'inventory/ledger', name: 'inventory-ledger', component: InventoryLedgerView },
   { path: 'inventory/adjustments', name: 'inventory-adjustments', component: StockAdjustmentView },
+  { path: 'inventory/stocktakes', name: 'inventory-stocktakes', component: () => import('../features/inventory/views/StocktakeTaskListView.vue') },
+  {
+    path: 'inventory/stocktakes/:id',
+    name: 'inventory-stocktake-execution',
+    component: () => import('../features/inventory/views/StocktakeExecutionView.vue'),
+    props: (route) => ({ taskId: route.params.id })
+  },
   { path: 'organization/employees', name: 'organization-employees', component: () => import('../features/organization/views/EmployeeManagementView.vue') },
   { path: 'organization/departments', name: 'organization-departments', component: () => import('../features/organization/views/DepartmentManagementView.vue') },
   { path: 'organization/positions', name: 'organization-positions', component: () => import('../features/organization/views/PositionManagementView.vue') },

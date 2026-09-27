@@ -21,7 +21,8 @@ const mockNavigationCatalog: NavigationCatalog = {
         { label: '仓库管理', routeName: 'warehouses', permission: 'inventory:view' },
         { label: '库存余额', routeName: 'inventory-balances', permission: 'inventory:view' },
         { label: '库存流水', routeName: 'inventory-ledger', permission: 'inventory:view' },
-        { label: '库存调整', routeName: 'inventory-adjustments', permission: 'inventory:adjust' }
+        { label: '库存调整', routeName: 'inventory-adjustments', permission: 'inventory:adjust' },
+        { label: '库存盘点', routeName: 'inventory-stocktakes', permission: 'inventory:view' }
       ]
     },
     {

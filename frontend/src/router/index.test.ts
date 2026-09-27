@@ -93,4 +93,15 @@ describe('ERP router', () => {
     expect(resolved.meta.requiresAuth).toBe(true);
     expect(resolved.meta.flushContent).toBe(true);
   });
+
+  it('routes stocktake list and execution inside the authenticated ERP layout', () => {
+    const list = router.resolve('/inventory/stocktakes');
+    const execution = router.resolve('/inventory/stocktakes/12');
+
+    expect(list.name).toBe('inventory-stocktakes');
+    expect(list.meta.requiresAuth).toBe(true);
+    expect(execution.name).toBe('inventory-stocktake-execution');
+    expect(execution.params.id).toBe('12');
+    expect(execution.meta.requiresAuth).toBe(true);
+  });
 });

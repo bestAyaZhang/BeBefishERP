@@ -43,6 +43,8 @@ const pageHeaders: Record<string, PageHeader> = {
   'inventory-balances': { group: '库存管理', groupRoute: 'inventory-balances', title: '库存余额', titleRoute: 'inventory-balances' },
   'inventory-ledger': { group: 'Inventory', groupRoute: 'inventory-balances', title: 'Ledger', titleRoute: 'inventory-ledger' },
   'inventory-adjustments': { group: 'Inventory', groupRoute: 'inventory-balances', title: 'Adjustments', titleRoute: 'inventory-adjustments' },
+  'inventory-stocktakes': { group: '库存管理', groupRoute: 'inventory-balances', title: '库存盘点', titleRoute: 'inventory-stocktakes' },
+  'inventory-stocktake-execution': { group: '库存管理', groupRoute: 'inventory-stocktakes', title: '盘点执行', titleRoute: 'inventory-stocktake-execution' },
   'organization-employees': { group: '组织架构', groupRoute: 'organization-employees', title: '员工管理', titleRoute: 'organization-employees' },
   'organization-departments': { group: '组织架构', groupRoute: 'organization-employees', title: '部门管理', titleRoute: 'organization-departments' },
   'organization-positions': { group: '组织架构', groupRoute: 'organization-employees', title: '岗位管理', titleRoute: 'organization-positions' },
