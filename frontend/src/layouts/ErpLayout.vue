@@ -83,10 +83,11 @@ onMounted(async () => {
   }
 
   const accessToken = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
-  if (currentUser.value || !accessToken) return;
+  if (!accessToken) return;
 
   try {
-    saveCurrentUser(await getCurrentUser(accessToken));
+    const user = await getCurrentUser(accessToken);
+    if (localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) === accessToken) saveCurrentUser(user);
   } catch {
     // The HTTP layer handles expired sessions; keep the layout empty until login succeeds again.
   }
