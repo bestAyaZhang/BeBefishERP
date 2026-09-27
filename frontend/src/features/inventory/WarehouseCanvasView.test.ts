@@ -256,12 +256,12 @@ describe('Warehouse canvas overview', () => {
     controls.vm.$emit('warehouse', 9)
     controls.vm.$emit('loaded', { schemaVersion: 1, structure, palletGroups: [palletC018], completed: true })
     await flushPromises()
-    expect(wrapper.get('[data-testid="inventory-total-units"]').text()).toBe('7')
+    expect(wrapper.get('[data-testid="inventory-pile-pallet-c018"]').text()).toContain('1种 SKU · 7个')
 
     resolveAllocation(inventoryA)
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="inventory-total-units"]').text()).toBe('7')
+    expect(wrapper.get('[data-testid="inventory-pile-pallet-c018"]').text()).toContain('1种 SKU · 7个')
     expect(wrapper.find('.planner-toast').exists()).toBe(false)
   })
 

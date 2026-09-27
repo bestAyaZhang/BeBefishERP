@@ -20,6 +20,7 @@ defineProps<{
   canUndo: boolean
   canRedo: boolean
   completed?: boolean
+  inventoryView?: boolean
   completionBlocked?: boolean
   completionReason?: string
 }>()
@@ -49,16 +50,19 @@ const tools: Array<{
   <div class="planner-chrome">
     <header class="planner-header">
       <div class="planner-heading">
-        <h1 data-testid="planner-title">{{ warehouseName }} · {{ completed ? '画布查看' : '平面规划' }}</h1>
+        <h1 data-testid="planner-title">{{ warehouseName }} · {{ inventoryView ? '库存查看' : completed ? '画布查看' : '平面规划' }}</h1>
         <p v-if="contextNotice" data-testid="planner-warehouse-notice" role="status">{{ contextNotice }}</p>
       </div>
-      <nav v-show="!completed" class="planner-tool-rail" aria-label="仓库规划工具">
+      <div v-if="inventoryView" class="planner-header-controls">
+        <slot name="inventory-controls" />
+      </div>
+      <nav v-if="!inventoryView" v-show="!completed" class="planner-tool-rail" aria-label="仓库规划工具">
         <button v-for="tool in tools" :key="tool.id" :data-testid="`planner-tool-${tool.id}`" type="button" :aria-pressed="activeTool === tool.id" :disabled="completed" @click="emit('change-tool', tool.id)">
           <component :is="tool.icon" :size="18" stroke-width="1.8" />
           <span>{{ tool.label }}</span>
         </button>
       </nav>
-      <div class="planner-actions" aria-label="规划操作">
+      <div v-if="!inventoryView" class="planner-actions" aria-label="规划操作">
         <button data-testid="planner-undo" type="button" aria-label="撤销" :disabled="!canUndo" @click="emit('undo')">
           <Undo2 :size="18" />
         </button>
@@ -105,14 +109,16 @@ const tools: Array<{
   justify-content: space-between;
   height: 56px;
   gap: 16px;
-  overflow-x: auto;
+  overflow-x: visible;
+  overflow-y: visible;
   padding: 0 18px 0 22px;
   border-bottom: 1px solid #e2e8f0;
   background: rgba(255,255,255,.96);
   box-shadow: 0 1px 7px rgba(37,49,77,.06);
 }
-.planner-heading { display: flex; min-width: 0; align-items: center; gap: 12px; }
-.planner-header h1 { margin: 0; color: #202b43; font-size: 18px; line-height: 1; font-weight: 650; letter-spacing: .01em; white-space: nowrap; }
+.planner-heading { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 12px; overflow: hidden; }
+.planner-header-controls { display:flex; min-width:0; max-width:50%; flex:0 1 360px; align-items:center; margin-left:auto; }
+.planner-header h1 { min-width: 0; margin: 0; overflow: hidden; color: #202b43; font-size: 18px; line-height: 1; font-weight: 650; letter-spacing: .01em; text-overflow: ellipsis; white-space: nowrap; }
 .planner-heading p { max-width: 420px; margin: 0; overflow: hidden; border: 1px solid #f4d486; border-radius: 999px; padding: 4px 9px; background: #fff8df; color: #8a5a08; font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .planner-actions { display: flex; flex-shrink: 0; align-items: center; gap: 7px; margin-left:auto; }
 .planner-actions button {

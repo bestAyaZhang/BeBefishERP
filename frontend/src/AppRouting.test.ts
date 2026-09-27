@@ -306,13 +306,10 @@ describe('application routes', () => {
     await router.push('/inventory/balances');
     await flushPromises();
 
-    expect(wrapper.get('[data-testid="erp-page-content"]').classes()).toEqual(expect.arrayContaining([
-      'p-4',
-      'lg:px-8',
-      'lg:pb-3',
-      'lg:pt-8'
-    ]));
-    expect(wrapper.get('[data-testid="erp-page-content"]').classes()).not.toContain('p-0');
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('库存管理');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('库存余额');
+    expect(wrapper.get('[data-testid="erp-page-content"]').classes()).toContain('p-0');
+    expect(wrapper.get('[data-testid="erp-page-content"]').classes()).not.toContain('p-4');
   });
 
   it('opens the customer full-page form for a data-heavy new record', async () => {

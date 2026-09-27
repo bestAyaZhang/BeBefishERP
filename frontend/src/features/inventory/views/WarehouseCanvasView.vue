@@ -24,7 +24,11 @@ import { cloneStructure, createWarehouseStructure, validatePlannerLayout } from 
 import type { WarehouseStructure, StructureIssue } from '../warehouseCanvas/warehouseStructure'
 import { currentUser } from '../../../services/authSession'
 
-const props = defineProps<{ demo?: boolean }>()
+const props = withDefaults(defineProps<{ demo?: boolean; mode?: 'planner' | 'inventory' }>(), {
+  demo: false,
+  mode: 'planner',
+})
+const inventoryMode = computed(() => props.mode === 'inventory')
 const canvas = useWarehouseCanvas()
 const route = inject(routeLocationKey, null)
 const inventoryReader = inject<WarehouseInventoryService>('warehouseInventoryService', warehouseInventoryService)
@@ -63,7 +67,7 @@ const selectedWarehouseId = ref<number | null>(null)
 const actualInventory = ref<WarehouseInventoryLayout | null>(null)
 const inventoryLoading = ref(false)
 const inventoryError = ref('')
-const canEditInventory = computed(() => currentUser.value?.permissions.includes('inventory:edit') ?? false)
+const canEditInventory = computed(() => !inventoryMode.value && (currentUser.value?.permissions.includes('inventory:edit') ?? false))
 const inventoryAllocationSaving = ref(false)
 const inventoryAllocationError = ref('')
 const inventoryAllocationContextGeneration = ref(0)
@@ -83,7 +87,8 @@ const selectedPlannerPallet = computed(() => plannerPalletGroups.value.find(item
 const selectedPlannerZone = computed(() => plannerStructure.value.zones?.find(item => item.id === selectedZoneId.value) ?? null)
 const plannerContextNotice = computed(() => props.demo
   ? visibleWarehouseNotice.value
-  : planningRequired.value ? '该仓库尚未规划，请先完成仓库布局规划。' : '')
+  : planningRequired.value ? inventoryMode.value ? '该仓库尚未规划，暂时无法查看库存布局。' : '该仓库尚未规划，请先完成仓库布局规划。' : '')
+const planningHref = computed(() => selectedWarehouseId.value ? `/inventory/warehouse-canvas?warehouseId=${selectedWarehouseId.value}` : '/warehouses')
 const layoutDocument = computed<WarehouseLayoutDocument>(() => ({schemaVersion:1,structure:plannerStructure.value,palletGroups:plannerPalletGroups.value,completed:plannerCompleted.value}))
 function loadPlannerDocument(document:WarehouseLayoutDocument) {
   plannerStructure.value = cloneStructure(document.structure)
@@ -310,6 +315,7 @@ function redoPlanner() {
   applyPlannerSnapshot(next)
 }
 async function completeUiPreview() {
+  if (inventoryMode.value) return
   if (!layoutReady.value || layoutSaving.value) return
   if (!plannerCompleted.value) {
     plannerStructureIssues.value=validatePlannerLayout(plannerStructure.value,plannerPalletGroups.value)
@@ -452,6 +458,7 @@ onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } ca
         :can-undo="layoutReady && !layoutSaving && plannerCanUndo && !plannerCompleted && !plannerStructureBusy"
         :can-redo="layoutReady && !layoutSaving && plannerCanRedo && !plannerCompleted && !plannerStructureBusy"
         :completed="plannerCompleted"
+        :inventory-view="inventoryMode"
         :completion-blocked="!layoutReady || layoutSaving || (!plannerCompleted && (plannerStructureBusy || plannerStructureIssues.length > 0))"
         :completion-reason="plannerStructureBusy ? '请先结束当前操作' : `请先处理 ${plannerStructureIssues.length} 个规划问题`"
         @change-tool="changePlannerTool"
@@ -460,9 +467,13 @@ onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } ca
         @undo="undoPlanner"
         @redo="redoPlanner"
         @complete="completeUiPreview"
-      />
-      <WarehouseLayoutControls v-if="!props.demo" ref="layoutControls" :document="layoutDocument" :viewing="plannerCompleted" :busy="plannerStructureBusy" @loaded="loadPlannerDocument" @name="actualWarehouseName = $event" @available="layoutReady = $event" @warehouse="selectWarehouse" />
-      <div class="planner-canvas-scroll" :class="{'with-layout-controls':!props.demo,'detail-layout':!props.demo && plannerCompleted}" :inert="!layoutReady || layoutSaving || undefined">
+      >
+        <template #inventory-controls>
+          <WarehouseLayoutControls v-if="!props.demo && inventoryMode" ref="layoutControls" embedded :document="layoutDocument" :viewing="true" :inventory-viewing="true" :busy="plannerStructureBusy" @loaded="loadPlannerDocument" @name="actualWarehouseName = $event" @available="layoutReady = $event" @warehouse="selectWarehouse" />
+        </template>
+      </WarehousePlannerChrome>
+      <WarehouseLayoutControls v-if="!props.demo && !inventoryMode" ref="layoutControls" :document="layoutDocument" :viewing="plannerCompleted" :busy="plannerStructureBusy" @loaded="loadPlannerDocument" @name="actualWarehouseName = $event" @available="layoutReady = $event" @warehouse="selectWarehouse" />
+      <div class="planner-canvas-scroll" :class="{'with-layout-controls':!props.demo && !inventoryMode,'detail-layout':!props.demo && plannerCompleted}" :inert="!layoutReady || layoutSaving || undefined">
       <WarehouseInventorySidebar
         v-if="!props.demo && plannerCompleted"
         :inventory="actualInventory"
@@ -474,7 +485,14 @@ onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } ca
         @retry="loadActualInventory()"
       />
         <div class="planner-scene-host">
+        <section v-if="inventoryMode && planningRequired" data-testid="warehouse-inventory-unplanned" class="inventory-unplanned">
+          <Warehouse :size="34" aria-hidden="true" />
+          <h2>该仓库尚未规划</h2>
+          <p>请先完成仓库布局规划，再查看货物堆和实际 SKU 库存。</p>
+          <a data-testid="inventory-plan-warehouse" :href="planningHref">前往规划</a>
+        </section>
         <WarehouseBlueprintScene
+          v-else
           :show-demo-rooms="Boolean(props.demo)"
           :grid-snapping="gridSnapping"
           :inventory-details-visible="plannerCompleted"
@@ -484,9 +502,9 @@ onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } ca
           :selected-zone-id="selectedZoneId"
           :pallet-groups="plannerPalletGroups"
           :structure="plannerStructure"
-          :structure-editing="plannerTool === 'structure' && !plannerCompleted"
-          :zone-editing="plannerTool === 'zone' && !plannerCompleted"
-          :goods-editing="plannerTool === 'goods' && !plannerCompleted"
+          :structure-editing="!inventoryMode && plannerTool === 'structure' && !plannerCompleted"
+          :zone-editing="!inventoryMode && plannerTool === 'zone' && !plannerCompleted"
+          :goods-editing="!inventoryMode && plannerTool === 'goods' && !plannerCompleted"
           :focused-structure-id="focusedStructureId"
           @change-structure="changePlannerStructure"
           @structure-issues="plannerStructureIssues = $event"
@@ -512,7 +530,7 @@ onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } ca
         />
         </div>
       </div>
-      <aside v-if="plannerStructureIssues.length && plannerStructure.outline.nodes.length && !plannerCompleted" class="planner-structure-issues" aria-label="规划问题">
+      <aside v-if="!inventoryMode && plannerStructureIssues.length && plannerStructure.outline.nodes.length && !plannerCompleted" class="planner-structure-issues" aria-label="规划问题">
         <button class="structure-issues-toggle" data-testid="planner-structure-issues-toggle" :aria-expanded="plannerIssuesOpen" @click="plannerIssuesOpen = !plannerIssuesOpen"><TriangleAlert :size="16" />{{ plannerStructureIssues.length }} 个规划问题 · {{ plannerIssuesOpen ? '收起' : '查看' }}</button>
         <div v-if="plannerIssuesOpen" class="structure-issue-items">
           <div v-for="issue in plannerStructureIssues" :key="issue.id"><span>{{ issue.message }}</span><button @click="locatePlannerIssue(issue)">定位</button></div>
@@ -630,6 +648,11 @@ onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } ca
 .planner-canvas-scroll.with-layout-controls {height:calc(100% - 100px);}
 .planner-canvas-scroll.detail-layout {display:flex;overflow:hidden;background:#f7f9fc;}
 .planner-scene-host {position:relative;flex:1;min-width:0;height:100%;overflow:auto;}
+.inventory-unplanned {display:flex;height:100%;min-height:360px;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;color:#64748b;}
+.inventory-unplanned svg {margin-bottom:12px;color:#94a3b8;}
+.inventory-unplanned h2 {margin:0;color:#25314d;font-size:18px;font-weight:650;}
+.inventory-unplanned p {max-width:420px;margin:8px 0 18px;font-size:13px;}
+.inventory-unplanned a {display:inline-flex;min-height:36px;align-items:center;justify-content:center;border-radius:7px;padding:0 16px;background:#536dff;color:#fff;font-size:13px;font-weight:600;text-decoration:none;}
 .legacy-editor { display:none; }
 .warehouse-page > p[role="status"] { position:fixed; z-index:55; bottom:18px; left:50%; margin:0; padding:9px 14px; border:1px solid #d8e0e8; border-radius:8px; background:#fff; color:#354159; box-shadow:0 8px 24px #25314d20; transform:translateX(-50%); }
 .page-header,.summary,h1,h2 { display:flex; align-items:center; gap:12px; }

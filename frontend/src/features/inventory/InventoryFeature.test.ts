@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
-import { createMemoryHistory, createRouter } from 'vue-router';
+import { createMemoryHistory, createRouter, routeLocationKey } from 'vue-router';
 import InventoryBalanceView from './views/InventoryBalanceView.vue';
 import InventoryLedgerView from './views/InventoryLedgerView.vue';
 import StockAdjustmentView from './views/StockAdjustmentView.vue';
@@ -15,6 +15,8 @@ import type {
   SaveInventoryAdjustmentPayload
 } from './types';
 import type { Warehouse } from '../masterdata/types';
+import { createWarehouseStructure } from './warehouseCanvas/warehouseStructure';
+import { warehousePlannerScene } from './warehouseCanvas/warehousePlannerScene';
 
 const page = <T,>(records: T[], total = records.length): PageResult<T> => ({ records, page: 1, pageSize: 20, total });
 
@@ -38,21 +40,68 @@ function fakeService(overrides: Partial<InventoryService> = {}): InventoryServic
 }
 
 describe('inventory pages', () => {
-  it('shows balance fields and loads by filter', async () => {
-    const service = fakeService({
-      listBalances: vi.fn().mockResolvedValue(page([
-        {
-          warehouseId: 1, skuId: 10, skuCode: 'PRD-001-001', barcode: '690001', itemNo: 'EW43245',
-          productName: '玻璃杯', skuName: '透明款', specification: '透明 / 竖纹', quantity: 12
-        }
-      ]))
+  it('shows inventory balances as the default active warehouse layout and switches active warehouses', async () => {
+    const structure = createWarehouseStructure();
+    const pallet = warehousePlannerScene.palletGroups[0];
+    const disabledWarehouse: Warehouse = {
+      id: 77, warehouseNo: 'WH-077', warehouseName: '停用仓库',
+      address: '宁波', defaultWarehouse: false, status: 'disabled', remark: ''
+    };
+    const layoutLoad = vi.fn().mockResolvedValue({
+      revision: 2,
+      document: { schemaVersion: 1, structure, palletGroups: [pallet], completed: true }
     });
-    const wrapper = mount(InventoryBalanceView, { global: { provide: { inventoryService: service, masterdataService: { listActiveWarehouses: vi.fn().mockResolvedValue(activeWarehouses) } } } });
-    await vi.waitFor(() => expect(wrapper.text()).toContain('EW43245'));
-    expect(wrapper.get('[data-testid="inventory-balance-warehouse"]').text()).toContain('杭州主仓');
-    expect(wrapper.text()).toContain('12');
-    await wrapper.get('[data-testid="inventory-balance-search"]').trigger('click');
-    expect(service.listBalances).toHaveBeenCalled();
+    const inventoryLoad = vi.fn((warehouseId: number) => Promise.resolve({
+      warehouseId, totalUnits: 12, skuCount: 1, placedUnits: 12, unallocatedUnits: 0, updatedAt: null,
+      allocations: [{ zoneId: null, palletId: pallet.id, skuId: 10, skuCode: 'PRD-001-001', productName: '玻璃杯', skuName: '透明款', specification: '透明 / 竖纹', unitsPerCase: 6, units: 12 }]
+    }));
+    const wrapper = mount(InventoryBalanceView, {
+      global: { provide: {
+        [routeLocationKey as symbol]: { query: {} },
+        masterdataService: { listActiveWarehouses: vi.fn().mockResolvedValue([...activeWarehouses, disabledWarehouse]) },
+        warehouseLayoutService: { load: layoutLoad, save: vi.fn() },
+        warehouseInventoryService: { load: inventoryLoad, allocateToPile: vi.fn() }
+      } }
+    });
+
+    await flushPromises();
+    expect(wrapper.get('[data-testid="planner-title"]').text()).toBe('杭州主仓 · 库存查看');
+    const warehouseSelect = wrapper.get('[data-testid="warehouse-layout-selector"]');
+    expect(warehouseSelect.element.closest('.planner-header')).not.toBeNull();
+    expect(warehouseSelect.attributes('role')).toBe('combobox');
+    expect(warehouseSelect.attributes('aria-expanded')).toBe('false');
+    await warehouseSelect.trigger('click');
+    expect(wrapper.get('[data-testid="warehouse-layout-menu"]').text()).toContain('义乌备货仓');
+    expect(wrapper.get('[data-testid="warehouse-layout-menu"]').text()).not.toContain('停用仓库');
+    expect(wrapper.find('[data-testid="planner-complete"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="planner-tool-structure"]').exists()).toBe(false);
+    expect(wrapper.find('.inventory-sidebar').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="货物堆库存概览"]').exists()).toBe(false);
+    expect(inventoryLoad).toHaveBeenCalledWith(88);
+
+    await wrapper.get('[data-testid="warehouse-layout-option-99"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="planner-title"]').text()).toBe('义乌备货仓 · 库存查看');
+    expect(layoutLoad).toHaveBeenLastCalledWith(99);
+    expect(inventoryLoad).toHaveBeenLastCalledWith(99);
+  });
+
+  it('blocks inventory layout viewing until the warehouse has been planned', async () => {
+    const inventoryLoad = vi.fn();
+    const wrapper = mount(InventoryBalanceView, {
+      global: { provide: {
+        [routeLocationKey as symbol]: { query: {} },
+        masterdataService: { listActiveWarehouses: vi.fn().mockResolvedValue(activeWarehouses) },
+        warehouseLayoutService: { load: vi.fn().mockResolvedValue({ revision: 0, document: null }), save: vi.fn() },
+        warehouseInventoryService: { load: inventoryLoad, allocateToPile: vi.fn() }
+      } }
+    });
+
+    await flushPromises();
+    expect(wrapper.get('[data-testid="warehouse-inventory-unplanned"]').text()).toContain('该仓库尚未规划');
+    expect(wrapper.get('[data-testid="inventory-plan-warehouse"]').attributes('href')).toBe('/inventory/warehouse-canvas?warehouseId=88');
+    expect(wrapper.find('[data-testid="warehouse-blueprint-scene"]').exists()).toBe(false);
+    expect(inventoryLoad).not.toHaveBeenCalled();
   });
 
   it('shows ledger before and after quantities', async () => {

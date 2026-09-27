@@ -5,8 +5,13 @@ import { masterdataService } from '../../../masterdata/masterdataService'
 import type { MasterdataService, Warehouse } from '../../../masterdata/types'
 import { blankWarehouseLayout, warehouseLayoutService } from '../warehouseLayoutService'
 import type { WarehouseLayoutDocument } from '../warehouseLayoutService'
+import FigmaSelect from '../../../masterdata/components/FigmaSelect.vue'
 
-const props = defineProps<{ document:WarehouseLayoutDocument; busy:boolean; viewing?:boolean }>()
+const props = withDefaults(defineProps<{ document:WarehouseLayoutDocument; busy:boolean; viewing?:boolean; inventoryViewing?:boolean; embedded?:boolean }>(), {
+  viewing: false,
+  inventoryViewing: false,
+  embedded: false,
+})
 const emit = defineEmits<{ loaded:[document:WarehouseLayoutDocument]; name:[name:string]; available:[ready:boolean]; warehouse:[id:number] }>()
 const warehouses = inject<MasterdataService>('masterdataService',masterdataService)
 const layouts = inject('warehouseLayoutService',warehouseLayoutService)
@@ -21,6 +26,10 @@ const ready = ref(false)
 const error = ref('')
 const comparable = (document:WarehouseLayoutDocument) => JSON.stringify({structure:document.structure,palletGroups:document.palletGroups})
 const dirty = computed(() => ready.value && comparable(props.document) !== baseline.value)
+const warehouseOptions = computed(() => [
+  { value: null, label: '选择仓库', disabled: true },
+  ...choices.value.map(warehouse => ({ value: warehouse.id, label: warehouse.warehouseName }))
+])
 let disposed = false
 async function load(id:number) {
   loading.value = true; ready.value = false; emit('available',false); error.value = ''
@@ -44,24 +53,30 @@ async function initialize() {
   loading.value = true; error.value = ''
   try {
     const all: Warehouse[] = []
-    for (let page=1; ; page++) {
-      const result = await warehouses.listWarehouses({page,size:100})
-      all.push(...result.records)
-      if (all.length >= result.total || result.records.length === 0) break
+    if (props.inventoryViewing) {
+      all.push(...(await warehouses.listActiveWarehouses()).filter(warehouse => warehouse.status === 'enabled'))
+    } else {
+      for (let page=1; ; page++) {
+        const result = await warehouses.listWarehouses({page,size:100})
+        all.push(...result.records)
+        if (all.length >= result.total || result.records.length === 0) break
+      }
     }
     if (disposed) return
     choices.value = all
     const requested = Number(route?.query.warehouseId)
-    if (route && !Number.isSafeInteger(requested) || route && requested <= 0) { error.value = '请从仓库列表选择需要管理的仓库'; return }
-    const warehouse = requested ? all.find(w => w.id === requested) : all.find(w => w.defaultWarehouse) ?? all[0]
-    if (!warehouse) { error.value = requested ? '指定仓库不存在或无权访问，请选择仓库' : '暂无可用仓库，请先在仓库管理中创建'; return }
+    const hasValidRequestedId = Number.isSafeInteger(requested) && requested > 0
+    if (!props.inventoryViewing && route && !hasValidRequestedId) { error.value = '请从仓库列表选择需要管理的仓库'; return }
+    const requestedWarehouse = hasValidRequestedId ? all.find(w => w.id === requested) : undefined
+    if (!props.inventoryViewing && route && !requestedWarehouse) { error.value = '指定仓库不存在或无权访问，请返回仓库列表重新选择'; return }
+    const warehouse = requestedWarehouse ?? all.find(w => w.defaultWarehouse) ?? all[0]
+    if (!warehouse) { error.value = props.inventoryViewing ? '暂无启用仓库，请先在仓库管理中启用仓库' : requested ? '指定仓库不存在或无权访问，请选择仓库' : '暂无可用仓库，请先在仓库管理中创建'; return }
     await load(warehouse.id)
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '仓库列表加载失败' }
   finally { loading.value = false }
 }
-async function change(event:Event) {
-  const select = event.target as HTMLSelectElement, id = Number(select.value)
-  select.value = String(selected.value ?? '')
+async function change(value:string | number | null) {
+  const id = Number(value)
   if (!id || id === selected.value) return
   if (dirty.value && !window.confirm('当前规划尚未保存，切换仓库将放弃这些改动。是否继续？')) return
   await load(id)
@@ -83,9 +98,21 @@ onBeforeUnmount(() => { disposed = true; window.removeEventListener('beforeunloa
 defineExpose({ saveDocument })
 </script>
 <template>
-  <div class="layout-controls" data-testid="warehouse-layout-controls">
-    <a href="/warehouses">返回仓库列表</a>
-    <label v-if="!route">仓库 <select :value="selected ?? ''" :disabled="loading || saving || busy" @change="change"><option value="" disabled>选择仓库</option><option v-for="warehouse in choices" :key="warehouse.id" :value="warehouse.id">{{warehouse.warehouseName}}</option></select></label>
+  <div class="layout-controls" :class="{ 'inventory-controls': inventoryViewing, 'embedded-controls': embedded }" data-testid="warehouse-layout-controls">
+    <a v-if="!inventoryViewing" href="/warehouses">返回仓库列表</a>
+    <FigmaSelect
+      v-if="inventoryViewing || !route"
+      class="layout-warehouse-select"
+      :model-value="selected"
+      :options="warehouseOptions"
+      label="仓库"
+      accessible-label="选择仓库"
+      test-id-prefix="warehouse-layout"
+      trigger-test-id="warehouse-layout-selector"
+      :inline="embedded"
+      :disabled="loading || saving || busy"
+      @update:model-value="change"
+    />
     <span role="status">{{ loading ? '加载中…' : saving ? '保存中…' : !ready ? '尚未加载规划' : dirty ? '未保存' : revision ? '已保存' : '尚未创建规划' }}</span>
     <button v-if="!viewing" :disabled="!ready || loading || saving || busy || !dirty" @click="saveDocument()">保存规划</button>
     <span v-if="error" role="alert">{{error}}</span>
@@ -94,8 +121,12 @@ defineExpose({ saveDocument })
 </template>
 <style scoped>
 .layout-controls {display:flex;align-items:center;flex-wrap:wrap;gap:10px;min-height:44px;padding:6px 16px;border-bottom:1px solid #e2e8f0;background:#fff;color:#64748b;font-size:12px;}
-label {display:flex;align-items:center;gap:8px;color:#334155;}
-select {max-width:230px;min-height:30px;border:1px solid #e2e8f0;border-radius:5px;padding:3px 8px;background:#fff;}
+.inventory-controls {align-items:flex-start;min-height:74px;}
+.layout-warehouse-select {width:230px;height:62px;}
+.inventory-controls > [role=status] {margin-top:22px;}
+.embedded-controls {width:100%;min-width:0;min-height:40px;padding:0;border:0;background:transparent;flex-wrap:nowrap;}
+.embedded-controls .layout-warehouse-select {min-width:0;height:40px;flex:1 1 230px;}
+.embedded-controls > [role=status] {min-width:0;margin-top:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 button {padding:5px 10px;border:1px solid #dce3ef;border-radius:5px;background:#eef2ff;color:#536dff;}
 button:disabled {opacity:.45;cursor:not-allowed;}
 [role=alert] {color:#b42338;}

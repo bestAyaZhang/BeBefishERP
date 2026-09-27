@@ -43,8 +43,6 @@ const pileRows = computed(() => props.palletGroups.map((pallet) => {
   }
 }))
 
-const occupiedPileCount = computed(() => pileRows.value.filter((row) => row.units > 0).length)
-
 const filteredPileRows = computed(() => {
   const query = searchQuery.value.trim().toLocaleLowerCase('zh-CN')
   if (!query) return pileRows.value
@@ -64,21 +62,6 @@ const filteredPileRows = computed(() => {
       <h2>货物堆与实际库存</h2>
       <p>点击货物堆定位布局，数量来自库存台账</p>
     </header>
-
-    <section v-if="inventory" class="inventory-summary" aria-label="货物堆库存概览">
-      <div class="summary-item">
-        <strong data-testid="inventory-total-piles">{{ palletGroups.length }}</strong>
-        <span>货物堆</span>
-      </div>
-      <div class="summary-item">
-        <strong data-testid="inventory-occupied-piles">{{ occupiedPileCount }}</strong>
-        <span>已占用</span>
-      </div>
-      <div class="summary-item summary-total">
-        <strong data-testid="inventory-total-units">{{ number.format(inventory.totalUnits) }}</strong>
-        <span>实际个数</span>
-      </div>
-    </section>
 
     <label class="search-field">
       <Search :size="16" aria-hidden="true" />
@@ -142,12 +125,6 @@ const filteredPileRows = computed(() => {
 .inventory-sidebar { display:flex; width:320px; min-width:320px; min-height:0; flex-direction:column; gap:14px; padding:16px; overflow:hidden; border:1px solid #e5eaf2; border-radius:8px; background:#fff; box-shadow:0 2px 10px rgba(15,35,65,.04); }
 .sidebar-header h2 { margin:0; color:#14213d; font-size:16px; font-weight:650; line-height:24px; }
 .sidebar-header p { margin:3px 0 0; color:#8491a7; font-size:12px; line-height:18px; }
-.inventory-summary { display:grid; grid-template-columns:1fr 1fr 1.2fr; overflow:hidden; border:1px solid #e7ecf4; border-radius:8px; background:#f8faff; }
-.summary-item { display:flex; min-width:0; flex-direction:column; align-items:center; justify-content:center; padding:10px 6px; border-right:1px solid #e7ecf4; }
-.summary-item:last-child { border-right:0; }
-.summary-item strong { color:#1a2947; font-size:18px; font-weight:700; line-height:24px; }
-.summary-total strong { color:#2f67e8; }
-.summary-item span { color:#8995a9; font-size:11px; line-height:16px; }
 .search-field { display:flex; height:38px; flex:0 0 auto; align-items:center; gap:8px; padding:0 11px; border:1px solid #dfe5ee; border-radius:7px; color:#8794a8; background:#fff; transition:border-color .16s ease,box-shadow .16s ease; }
 .search-field:focus-within { border-color:#6f98f3; box-shadow:0 0 0 3px rgba(47,103,232,.1); }
 .search-field input { width:100%; border:0; outline:0; color:#23324f; font:inherit; font-size:13px; background:transparent; }
