@@ -8,6 +8,8 @@ const ADMIN_PERMISSIONS = [
   'dashboard:view',
   'masterdata:view',
   'product:view',
+  'shipping:view',
+  'warehouse:view',
   'inventory:view',
   'inventory:adjust',
   'sales:view',
@@ -46,6 +48,8 @@ describe('SidebarNav', () => {
       '分类管理',
       '客户管理',
       '供应商管理',
+      '发货管理',
+      '仓库管理',
       '库存管理',
       '销售单据',
       '财务管理',
@@ -97,19 +101,26 @@ describe('SidebarNav', () => {
     expect(wrapper.get('a[href="/organization/permissions"]').classes()).not.toContain('ml-6');
   });
 
-  it('shows warehouse management in the inventory submenu without a standalone canvas entry', () => {
-    storeCurrentUser(['inventory:view']);
+  it('opens warehouses from inventory management without a standalone canvas menu', () => {
+    storeCurrentUser(['warehouse:view', 'inventory:view']);
     const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
 
-    expect(wrapper.text()).toContain('库存管理');
-    expect(wrapper.get('a[href="/warehouses"]').text()).toBe('仓库管理');
     expect(wrapper.findAll('a').map((link) => link.text())).toEqual([
       '仓库管理',
       '库存余额',
       '库存流水',
       '库存盘点'
     ]);
+    expect(wrapper.get('a[href="/warehouses"]').text()).toBe('仓库管理');
     expect(wrapper.text()).not.toContain('仓库画布');
+  });
+
+  it('lets warehouse viewers open warehouse management without inventory viewing permission', () => {
+    storeCurrentUser(['warehouse:view']);
+    const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
+
+    expect(wrapper.get('a[href="/warehouses"]').text()).toBe('仓库管理');
+    expect(wrapper.text()).not.toContain('库存余额');
   });
 
   it('shows inventory stocktake for users allowed to view inventory', () => {

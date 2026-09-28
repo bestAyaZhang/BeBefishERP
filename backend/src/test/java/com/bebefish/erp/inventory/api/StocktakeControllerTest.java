@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.nullValue;
 
 import com.bebefish.erp.auth.domain.TokenIssuer;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -92,7 +93,7 @@ class StocktakeControllerTest {
 
     @Test
     void createsWarehouseSnapshotSavesDraftAndSubmitsInitialCount() throws Exception {
-        var editor = bearer(token("inventory:view", "inventory:edit"));
+        var editor = bearer(token("inventory:view", "inventory:edit", "warehouse:view"));
         var createResponse = mvc.perform(post("/api/inventory/stocktakes")
                         .header("Authorization", editor)
                         .contentType(APPLICATION_JSON)
@@ -108,7 +109,7 @@ class StocktakeControllerTest {
                 .andExpect(jsonPath("$.data.items[?(@.palletId == 'pile-a01')].palletLabel").value(hasItem("P001")))
                 .andExpect(jsonPath("$.data.items[?(@.palletId == 'pile-a02')].zoneName").value(hasItem("A区")))
                 .andExpect(jsonPath("$.data.items[?(@.palletId == 'pile-a02')].palletLabel").value(hasItem("P002")))
-                .andExpect(jsonPath("$.data.items[0].bookQuantity").exists())
+                .andExpect(jsonPath("$.data.items[0].bookQuantity").value(nullValue()))
                 .andReturn().getResponse().getContentAsString();
         var task = objectMapper.readTree(createResponse).path("data");
         var taskId = task.path("id").asLong();
@@ -118,6 +119,11 @@ class StocktakeControllerTest {
         var secondItemId = java.util.stream.StreamSupport.stream(task.path("items").spliterator(), false)
                 .filter(item -> "pile-a02".equals(item.path("palletId").asText()))
                 .findFirst().orElseThrow().path("id").asLong();
+
+        mvc.perform(get("/api/inventory/stocktakes/{id}", taskId)
+                        .header("Authorization", bearer(token("inventory:view"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].bookQuantity").value(nullValue()));
 
         mvc.perform(put("/api/inventory/stocktakes/{id}/draft", taskId)
                         .header("Authorization", editor)
@@ -153,6 +159,10 @@ class StocktakeControllerTest {
 
         mvc.perform(post("/api/inventory/stocktakes/{id}/approve", taskId)
                         .header("Authorization", editor))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(post("/api/inventory/stocktakes/{id}/approve", taskId)
+                        .header("Authorization", bearer(token("inventory:view", "inventory:approve"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("completed"));
 
@@ -181,7 +191,7 @@ class StocktakeControllerTest {
     @Test
     void createsStocktakeForOnlyTheSelectedPiles() throws Exception {
         mvc.perform(post("/api/inventory/stocktakes")
-                        .header("Authorization", bearer(token("inventory:view", "inventory:edit")))
+                        .header("Authorization", bearer(token("inventory:view", "inventory:edit", "warehouse:view")))
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {"warehouseId":%d,"blindCount":true,
@@ -197,8 +207,135 @@ class StocktakeControllerTest {
     }
 
     @Test
+    void fullWarehouseSnapshotIncludesActualUnallocatedBalance() throws Exception {
+        jdbc.update("update inventory_balance set quantity=15 where warehouse_id=? and sku_id=?",
+                warehouseId, firstSkuId);
+
+        mvc.perform(post("/api/inventory/stocktakes")
+                        .header("Authorization", bearer(token("inventory:view", "inventory:edit", "warehouse:view")))
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"warehouseId":%d,"blindCount":false}
+                                """.formatted(warehouseId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalItems").value(3))
+                .andExpect(jsonPath("$.data.items[?(@.palletId == 'UNALLOCATED')].bookQuantity")
+                        .value(hasItem(3.0)));
+    }
+
+    @Test
+    void approvesCountedUnallocatedStockWithoutAStoredLocationRow() throws Exception {
+        var editor = bearer(token("inventory:view", "inventory:edit", "warehouse:view"));
+        jdbc.update("update inventory_balance set quantity=15 where warehouse_id=? and sku_id=?",
+                warehouseId, firstSkuId);
+        var response = mvc.perform(post("/api/inventory/stocktakes")
+                        .header("Authorization", editor)
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"warehouseId":%d,"blindCount":false}
+                                """.formatted(warehouseId)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var task = objectMapper.readTree(response).path("data");
+        var id = task.path("id").asLong();
+        var counts = new java.util.ArrayList<String>();
+        for (var item : task.path("items")) {
+            var quantity = "UNALLOCATED".equals(item.path("palletId").asText()) ? 4
+                    : item.path("bookQuantity").asInt();
+            counts.add("{\"itemId\":" + item.path("id").asLong() + ",\"quantity\":" + quantity + "}");
+        }
+        mvc.perform(post("/api/inventory/stocktakes/{id}/submit-initial", id)
+                        .header("Authorization", editor)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"counts\":[" + String.join(",", counts) + "]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("awaiting_recount"));
+        var unallocatedId = java.util.stream.StreamSupport.stream(task.path("items").spliterator(), false)
+                .filter(item -> "UNALLOCATED".equals(item.path("palletId").asText()))
+                .findFirst().orElseThrow().path("id").asLong();
+        mvc.perform(post("/api/inventory/stocktakes/{id}/submit-recount", id)
+                        .header("Authorization", editor)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"counts\":[{\"itemId\":" + unallocatedId + ",\"quantity\":4}]}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/inventory/stocktakes/{id}/approve", id)
+                        .header("Authorization", bearer(token("inventory:view", "inventory:approve"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("completed"));
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+                "select quantity from inventory_balance where warehouse_id=? and sku_id=?",
+                java.math.BigDecimal.class, warehouseId, firstSkuId
+        )).isEqualByComparingTo("16");
+    }
+
+    @Test
+    void rejectsApprovalWhenAnAdditionalSkuAppearsInSelectedPile() throws Exception {
+        var editor = bearer(token("inventory:view", "inventory:edit", "warehouse:view"));
+        var response = mvc.perform(post("/api/inventory/stocktakes")
+                        .header("Authorization", editor)
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"warehouseId":%d,"blindCount":false,"palletIds":["pile-a01"]}
+                                """.formatted(warehouseId)))
+                .andReturn().getResponse().getContentAsString();
+        var task = objectMapper.readTree(response).path("data");
+        var id = task.path("id").asLong();
+        var itemId = task.path("items").get(0).path("id").asLong();
+        mvc.perform(post("/api/inventory/stocktakes/{id}/submit-initial", id)
+                        .header("Authorization", editor)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"counts\":[{\"itemId\":" + itemId + ",\"quantity\":12}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("awaiting_approval"));
+        jdbc.update("update inventory_location_balance set quantity=7 where warehouse_id=? and pallet_id='pile-a02' and sku_id=?",
+                warehouseId, secondSkuId);
+        jdbc.update("""
+                insert into inventory_location_balance (
+                    warehouse_id, zone_id, pallet_id, sku_id, quantity, version_no, created_at, updated_at
+                ) values (?, null, 'pile-a01', ?, 1, 0, current_timestamp, current_timestamp)
+                """, warehouseId, secondSkuId);
+        mvc.perform(post("/api/inventory/stocktakes/{id}/approve", id)
+                        .header("Authorization", bearer(token("inventory:view", "inventory:approve"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("STOCKTAKE_SNAPSHOT_STALE"));
+    }
+
+    @Test
+    void rejectsApprovalWhenUnallocatedBalanceChangesAfterSnapshot() throws Exception {
+        var editor = bearer(token("inventory:view", "inventory:edit", "warehouse:view"));
+        jdbc.update("update inventory_balance set quantity=15 where warehouse_id=? and sku_id=?",
+                warehouseId, firstSkuId);
+        var response = mvc.perform(post("/api/inventory/stocktakes")
+                        .header("Authorization", editor)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"warehouseId\":" + warehouseId + ",\"blindCount\":false}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var task = objectMapper.readTree(response).path("data");
+        var counts = new java.util.ArrayList<String>();
+        for (var item : task.path("items")) {
+            counts.add("{\"itemId\":" + item.path("id").asLong()
+                    + ",\"quantity\":" + item.path("bookQuantity").asInt() + "}");
+        }
+        var id = task.path("id").asLong();
+        mvc.perform(post("/api/inventory/stocktakes/{id}/submit-initial", id)
+                        .header("Authorization", editor)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"counts\":[" + String.join(",", counts) + "]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("awaiting_approval"));
+
+        jdbc.update("update inventory_balance set quantity=16 where warehouse_id=? and sku_id=?",
+                warehouseId, firstSkuId);
+        mvc.perform(post("/api/inventory/stocktakes/{id}/approve", id)
+                        .header("Authorization", bearer(token("inventory:view", "inventory:approve"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("STOCKTAKE_SNAPSHOT_STALE"));
+    }
+
+    @Test
     void approvesSelectedPileWhenTheSameSkuAlsoExistsOnAnotherPile() throws Exception {
-        var editor = bearer(token("inventory:view", "inventory:edit"));
+        var editor = bearer(token("inventory:view", "inventory:edit", "warehouse:view"));
         jdbc.update("update inventory_balance set quantity=13 where warehouse_id=? and sku_id=?",
                 warehouseId, secondSkuId);
         jdbc.update("""
@@ -238,7 +375,7 @@ class StocktakeControllerTest {
                 .andExpect(jsonPath("$.data.status").value("awaiting_approval"));
 
         mvc.perform(post("/api/inventory/stocktakes/{id}/approve", taskId)
-                        .header("Authorization", editor))
+                        .header("Authorization", bearer(token("inventory:view", "inventory:approve"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("completed"));
 
@@ -264,6 +401,12 @@ class StocktakeControllerTest {
                         .content("""
                                 {"warehouseId":%d,"assigneeName":"张敏","blindCount":true}
                                 """.formatted(warehouseId)))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(post("/api/inventory/stocktakes")
+                        .header("Authorization", bearer(token("inventory:view", "inventory:edit")))
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"warehouseId\":" + warehouseId + ",\"blindCount\":true}"))
                 .andExpect(status().isForbidden());
     }
 

@@ -4,6 +4,7 @@ import com.bebefish.erp.common.api.ApiResponse;
 import com.bebefish.erp.common.security.ErpPrincipal;
 import com.bebefish.erp.inventory.application.StocktakeService;
 import com.bebefish.erp.inventory.application.StocktakeViews.Details;
+import com.bebefish.erp.inventory.application.StocktakeViews.Item;
 import com.bebefish.erp.inventory.application.StocktakeViews.ListResult;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -39,19 +40,19 @@ public class StocktakeController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('inventory:view')")
     public ApiResponse<Details> get(@PathVariable long id) {
-        return ApiResponse.success(service.get(id));
+        return ApiResponse.success(visibleDetails(service.get(id)));
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('inventory:edit')")
+    @PreAuthorize("hasAuthority('inventory:view') and hasAuthority('inventory:edit') and hasAuthority('warehouse:view')")
     public ApiResponse<Details> create(
             @Valid @RequestBody CreateStocktakeRequest request,
             @AuthenticationPrincipal ErpPrincipal principal
     ) {
-        return ApiResponse.success(service.create(
+        return ApiResponse.success(visibleDetails(service.create(
                 request.warehouseId(), assigneeName(principal), request.blindCount(), request.palletIds(),
                 principal.operatorIdentifier()
-        ));
+        )));
     }
 
     private String assigneeName(ErpPrincipal principal) {
@@ -66,7 +67,7 @@ public class StocktakeController {
             @PathVariable long id,
             @Valid @RequestBody SaveStocktakeCountsRequest request
     ) {
-        return ApiResponse.success(service.saveDraft(id, request.toCounts()));
+        return ApiResponse.success(visibleDetails(service.saveDraft(id, request.toCounts())));
     }
 
     @PostMapping("/{id}/submit-initial")
@@ -75,7 +76,7 @@ public class StocktakeController {
             @PathVariable long id,
             @Valid @RequestBody SaveStocktakeCountsRequest request
     ) {
-        return ApiResponse.success(service.submitInitial(id, request.toCounts()));
+        return ApiResponse.success(visibleDetails(service.submitInitial(id, request.toCounts())));
     }
 
     @PostMapping("/{id}/submit-recount")
@@ -84,15 +85,31 @@ public class StocktakeController {
             @PathVariable long id,
             @Valid @RequestBody SaveStocktakeCountsRequest request
     ) {
-        return ApiResponse.success(service.submitRecount(id, request.toCounts()));
+        return ApiResponse.success(visibleDetails(service.submitRecount(id, request.toCounts())));
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('inventory:edit')")
+    @PreAuthorize("hasAuthority('inventory:approve')")
     public ApiResponse<Details> approve(
             @PathVariable long id,
             @AuthenticationPrincipal ErpPrincipal principal
     ) {
-        return ApiResponse.success(service.approve(id, principal.operatorIdentifier()));
+        return ApiResponse.success(visibleDetails(service.approve(id, principal.operatorIdentifier())));
+    }
+
+    private Details visibleDetails(Details details) {
+        if (!details.blindCount() || !("not_started".equals(details.status())
+                || "in_progress".equals(details.status()))) {
+            return details;
+        }
+        var hiddenItems = details.items().stream().map(item -> new Item(
+                item.id(), item.zoneName(), item.palletId(), item.palletLabel(), item.skuId(),
+                item.skuCode(), item.productName(), item.skuName(), item.specification(),
+                item.unitsPerCase(), null, item.firstCountQuantity(), item.recountQuantity(),
+                null, item.status()
+        )).toList();
+        return new Details(details.id(), details.taskNo(), details.warehouseId(), details.warehouseName(),
+                details.scopeLabel(), details.assigneeName(), details.countedItems(), details.totalItems(),
+                details.differenceItems(), details.status(), details.createdAt(), details.blindCount(), hiddenItems);
     }
 }

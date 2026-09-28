@@ -95,6 +95,7 @@ public class InventoryService {
 
         var signedQuantities = aggregate(changes, operationSign, allowSignedChanges);
         var skuIds = new ArrayList<>(signedQuantities.keySet());
+        repository.lockWarehouse(warehouseId);
         repository.ensureBalances(warehouseId, skuIds);
         var balances = repository.lockBalances(warehouseId, skuIds);
         if (balances.size() != skuIds.size()) {

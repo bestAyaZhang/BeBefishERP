@@ -159,6 +159,10 @@ class InventoryServiceTest {
         private final Map<Long, BigDecimal> placed = new LinkedHashMap<>();
 
         @Override
+        public void lockWarehouse(long warehouseId) {
+        }
+
+        @Override
         public BigDecimal lockPlacedQuantity(long warehouseId, long skuId) {
             return placed.getOrDefault(skuId, BigDecimal.ZERO);
         }

@@ -47,7 +47,7 @@ export interface StocktakeItem {
   skuName: string;
   specification: string | null;
   unitsPerCase: number | null;
-  bookQuantity: number;
+  bookQuantity: number | null;
   firstCountQuantity: number | null;
   recountQuantity: number | null;
   difference: number | null;

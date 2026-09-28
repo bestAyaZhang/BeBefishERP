@@ -135,6 +135,9 @@ class StockAdjustmentServiceTest {
 
     private static final class FakeInventoryRepository implements InventoryRepository {
         @Override
+        public void lockWarehouse(long warehouseId) {
+        }
+        @Override
         public BigDecimal lockPlacedQuantity(long warehouseId, long skuId) {
             return BigDecimal.ZERO;
         }

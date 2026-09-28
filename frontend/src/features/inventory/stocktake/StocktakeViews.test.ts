@@ -96,7 +96,7 @@ describe('stocktake views', () => {
   it('creates a blind-count task for an enabled warehouse', async () => {
     currentUser.value = {
       accessToken: 'token-current-user', employeeId: 9, mobile: '13800000009', displayName: '当前盘点员',
-      roles: ['仓库管理员'], permissions: ['inventory:edit'], loginMethod: 'password'
+      roles: ['仓库管理员'], permissions: ['inventory:view', 'inventory:edit', 'warehouse:view'], loginMethod: 'password'
     };
     const stocktakeService = service({
       createTask: vi.fn().mockResolvedValue({ ...listResult.tasks[0], blindCount: true, items: [] })
@@ -138,10 +138,29 @@ describe('stocktake views', () => {
     expect(router.currentRoute.value.name).toBe('inventory-stocktake-execution');
   });
 
+  it('does not offer task creation when the user cannot view warehouses', async () => {
+    currentUser.value = {
+      accessToken: 'inventory-editor', mobile: '13800000009', roles: [],
+      permissions: ['inventory:view', 'inventory:edit'], loginMethod: 'password'
+    };
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/inventory/stocktakes', name: 'inventory-stocktakes', component: StocktakeTaskListView }]
+    });
+    await router.push('/inventory/stocktakes');
+    await router.isReady();
+    const wrapper = mount(StocktakeTaskListView, {
+      global: { plugins: [router], provide: { stocktakeService: service() } }
+    });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="create-stocktake"]').exists()).toBe(false);
+  });
+
   it('creates a stocktake for one or more selected piles', async () => {
     currentUser.value = {
       accessToken: 'token-current-user', employeeId: 9, mobile: '13800000009', displayName: '当前盘点员',
-      roles: ['仓库管理员'], permissions: ['inventory:edit'], loginMethod: 'password'
+      roles: ['仓库管理员'], permissions: ['inventory:view', 'inventory:edit', 'warehouse:view'], loginMethod: 'password'
     };
     const stocktakeService = service({
       createTask: vi.fn().mockResolvedValue({ ...listResult.tasks[0], blindCount: true, items: [] })
@@ -222,13 +241,13 @@ describe('stocktake views', () => {
         {
           id: 101, zoneName: 'A区', palletId: 'ST-001', palletLabel: 'ST-001', skuId: 501,
           skuCode: 'SKU-FISH-500ML-红', productName: '玻璃杯', skuName: '红色款', specification: '红色 / 500ml',
-          unitsPerCase: 24, bookQuantity: 288, firstCountQuantity: null, recountQuantity: null,
+          unitsPerCase: 24, bookQuantity: null, firstCountQuantity: null, recountQuantity: null,
           difference: null, status: 'uncounted'
         },
         {
           id: 102, zoneName: 'A区', palletId: 'ST-002', palletLabel: 'ST-002', skuId: 502,
           skuCode: 'SKU-CUP-12OZ', productName: '随行杯', skuName: '透明款', specification: '透明 / 12oz',
-          unitsPerCase: 12, bookQuantity: 120, firstCountQuantity: 120, recountQuantity: null,
+          unitsPerCase: 12, bookQuantity: null, firstCountQuantity: 120, recountQuantity: null,
           difference: null, status: 'counted'
         }
       ]
@@ -359,7 +378,14 @@ describe('stocktake views', () => {
       getTask: vi.fn().mockResolvedValue(approvalTask),
       approve: vi.fn().mockResolvedValue({ ...approvalTask, status: 'completed' })
     });
+    currentUser.value = {
+      accessToken: 'approval-token', mobile: '13800000009', roles: [],
+      permissions: ['inventory:view', 'inventory:edit'], loginMethod: 'password'
+    };
     const approvalWrapper = mount(StocktakeExecutionView, { props: { taskId: 2 }, global: { plugins: [router], provide: { stocktakeService: approvalService } } });
+    await flushPromises();
+    expect(approvalWrapper.find('[data-testid="approve-stocktake"]').exists()).toBe(false);
+    currentUser.value = { ...currentUser.value, permissions: ['inventory:view', 'inventory:approve'] };
     await flushPromises();
     await approvalWrapper.get('[data-testid="approve-stocktake"]').trigger('click');
     expect(approvalService.approve).toHaveBeenCalledWith(2);
