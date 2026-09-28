@@ -52,4 +52,14 @@ class AneOrderClientTest {
         assertThat(client.parse("{\"result\":true,\"resultCode\":\"1000\",\"resultInfo\":{\"matchResult\":\"Y\",\"orderNo\":\"OTHER\",\"ewbNo\":\"620240314001\"}}", "BF1").state()).isEqualTo("unknown");
         assertThat(client.parse("{\"result\":false,\"resultCode\":\"2002\",\"reason\":\"摘要验证失败\"}", "BF1").state()).isEqualTo("rejected");
     }
+
+    @Test
+    void preservesTheUpstreamFailureCodeAndReasonForDiagnosis() throws Exception {
+        var client = new AneOrderClient(new AneProperties(), new ObjectMapper());
+
+        var response = client.parse("{\"result\":false,\"resultCode\":\"1001\",\"reason\":\"该客户没有库存\"}", "BF1");
+
+        assertThat(response.state()).isEqualTo("unknown");
+        assertThat(response.message()).contains("1001").contains("该客户没有库存");
+    }
 }

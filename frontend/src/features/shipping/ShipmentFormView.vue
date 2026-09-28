@@ -183,7 +183,7 @@ onBeforeUnmount(() => { generation++; });
           <label class="field-label">体积（m³）<input v-model="form.orderDraft.volume" data-testid="ane-volume" :disabled="busy || locked" type="number" min="0.01" step="0.01" class="field-input" /></label>
           <label class="field-label">物流产品<select v-model="form.orderDraft.productTypeId" :disabled="busy || locked" class="field-input"><option :value="524">MiNi 电商小件</option><option :value="95">Mini 电商大件</option><option :value="24">精准零担</option><option :value="23">定时达</option><option :value="270">普惠达</option><option :value="546">安心达</option></select></label>
           <label class="field-label">送货方式<select v-model="form.orderDraft.goodsType" :disabled="busy || locked" class="field-input"><option :value="180">送货（不含上楼）</option><option :value="179">送货上楼</option><option :value="285">自提</option></select></label>
-          <label class="field-label">付款方式<select v-model="form.orderDraft.payType" :disabled="busy || locked" class="field-input"><option :value="104">月结</option><option :value="102">现金</option><option :value="103">到付</option></select></label>
+          <label class="field-label">付款方式<select v-model="form.orderDraft.payType" :disabled="busy || locked" class="field-input"><option :value="102">现金</option><option :value="104">月结</option><option :value="103">到付</option></select></label>
           <label class="field-label">运费预测（元，可选）<input v-model="form.estimatedFreight" :disabled="busy || locked" type="number" min="0" step="0.01" class="field-input" /></label>
           <label class="field-label md:col-span-2">物流备注<textarea v-model="form.orderDraft.logisticsRemark" :disabled="busy || locked" maxlength="200" rows="2" class="field-input resize-y" /></label>
         </div>

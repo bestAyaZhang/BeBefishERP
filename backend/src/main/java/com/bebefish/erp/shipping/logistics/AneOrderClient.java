@@ -52,8 +52,11 @@ public class AneOrderClient {
                 case "2003" -> "安能时间戳验证失败，请检查服务器时间";
                 default -> "安能未返回可承运运单，请联系网点核实订单、承运范围及面单额度，勿重复下单";
             };
+            String reason = root.path("reason").asText("").replaceAll("[\\p{Cntrl}]", " ").strip();
+            if (reason.length() > 200) reason = reason.substring(0, 200);
+            String diagnostic = code.isBlank() ? "" : "（安能返回码 " + code + (reason.isBlank() ? "" : "：" + reason) + "）";
             // The document says a failed GIS match can still create an order. Only explicit auth failures are retryable.
-            return new AneOrderResult(Set.of("2001", "2002", "2003").contains(code) ? "rejected" : "unknown", "", "", message);
+            return new AneOrderResult(Set.of("2001", "2002", "2003").contains(code) ? "rejected" : "unknown", "", "", message + diagnostic);
         }
         JsonNode info = root.path("resultInfo");
         if (info.isTextual()) info = mapper.readTree(info.asText());

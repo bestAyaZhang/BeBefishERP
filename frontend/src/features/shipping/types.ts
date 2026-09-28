@@ -117,7 +117,7 @@ export function emptyShipmentForm(): ShipmentFormInput {
     recipientProvince: '', recipientCity: '', recipientCounty: '', recipientDetailAddress: '',
     preparationContent: '', remark: '', estimatedFreight: null,
     orderDraft: { cargoName: '', packType: '纸箱', weight: null, volume: null, pieceAmount: 1,
-      productTypeId: 524, goodsType: 180, payType: 104, logisticsRemark: '' }
+      productTypeId: 524, goodsType: 180, payType: 102, logisticsRemark: '' }
   };
 }
 

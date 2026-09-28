@@ -65,6 +65,15 @@ beforeEach(() => {
 afterEach(clearCurrentUser);
 
 describe('ShipmentFormView', () => {
+  it('defaults a new order to the documented cash payment type', async () => {
+    const { wrapper } = await render();
+    const paymentSelect = wrapper.findAll('select').find(select => select.text().includes('月结') && select.text().includes('现金'));
+
+    expect(paymentSelect).toBeDefined();
+    expect((paymentSelect!.element as HTMLSelectElement).value).toBe('102');
+    wrapper.unmount();
+  });
+
   it('keeps server fields hidden, recognizes inline and saves the full-width form', async () => {
     const { wrapper, router } = await render();
     expect(wrapper.find('[data-testid="shipment-date"]').exists()).toBe(false);
