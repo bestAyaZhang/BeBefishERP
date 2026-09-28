@@ -69,15 +69,15 @@ public class AneOrderStore {
                 new BusinessException("SHIPMENT_NOT_FOUND", HttpStatus.NOT_FOUND, "发货单不存在"));
         params.addValue("weight", shipment.content().orderDraft().weight())
                 .addValue("address", shipment.content().recipientFullAddress());
-        var original = find(id).orElseThrow();
         int changed = jdbc.update("""
                 update shipment_logistics_order set state=:state, tracking_no=:tracking, child_tracking_nos=:children,
                     message=:message, updated_at=now(3) where shipment_id=:id and state='processing'
                 """, params);
-        if (changed == 1 && "succeeded".equals(result.state()) && !original.testEnvironment()) {
+        if (changed == 1 && "succeeded".equals(result.state())) {
             jdbc.update("""
                     update shipment set tracking_no=:tracking, logistics_company='安能物流', weight=:weight,
-                        recipient_address=:address, version_no=version_no+1, updated_by=:operator, updated_at=now(3) where id=:id
+                        recipient_address=:address, status='completed', version_no=version_no+1,
+                        updated_by=:operator, updated_at=now(3) where id=:id
                     """, params);
         }
         return find(id).orElseThrow();

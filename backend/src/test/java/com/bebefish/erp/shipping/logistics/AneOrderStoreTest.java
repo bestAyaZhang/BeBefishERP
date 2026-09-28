@@ -47,7 +47,7 @@ class AneOrderStoreTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    void onlyProductionSuccessWritesARealShipmentTrackingNumber(boolean testEnvironment) {
+    void successfulOrderUpdatesTrackingAndCompletionInEveryEnvironment(boolean testEnvironment) {
         var jdbc = mock(NamedParameterJdbcTemplate.class);
         var shipments = mock(ShipmentRepository.class);
         when(shipments.findById(1L)).thenReturn(Optional.of(shipment()));
@@ -57,7 +57,8 @@ class AneOrderStoreTest {
         store.finish(1, new AneOrderResult("succeeded", "620240314001", "", "成功"), "operator");
         var sql = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(jdbc, atLeastOnce()).update(sql.capture(), any(SqlParameterSource.class));
-        assertThat(sql.getAllValues().stream().anyMatch(s -> s.contains("update shipment set tracking_no"))).isEqualTo(!testEnvironment);
+        assertThat(sql.getAllValues()).anyMatch(s -> s.contains("update shipment set tracking_no")
+                && s.contains("logistics_company='安能物流'") && s.contains("status='completed'"));
     }
 
     private com.bebefish.erp.shipping.domain.Shipment shipment() {
