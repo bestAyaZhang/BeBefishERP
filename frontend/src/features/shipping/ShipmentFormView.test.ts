@@ -74,6 +74,19 @@ describe('ShipmentFormView', () => {
     wrapper.unmount();
   });
 
+  it('marks every field required for an ANE order and leaves optional fields unmarked', async () => {
+    const { wrapper } = await render();
+    const labels = wrapper.findAll('label.field-label');
+    const labelText = (name: string) => labels.find(label => label.text().startsWith(name))?.text() || '';
+
+    for (const name of ['货物名称', '包装方式', '件数', '重量（kg）', '体积（m³）', '物流产品', '送货方式', '付款方式']) {
+      expect(labelText(name), `${name} should be marked required`).toContain('*');
+    }
+    expect(labelText('运费预测')).not.toContain('*');
+    expect(labelText('物流备注')).not.toContain('*');
+    wrapper.unmount();
+  });
+
   it('keeps server fields hidden, recognizes inline and saves the full-width form', async () => {
     const { wrapper, router } = await render();
     expect(wrapper.find('[data-testid="shipment-date"]').exists()).toBe(false);
