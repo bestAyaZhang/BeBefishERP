@@ -29,13 +29,20 @@ export type WarehousePileAllocationInput = {
   units: number
 }
 
+export type WarehouseSkuCandidate = Pick<WarehouseInventoryAllocation,
+  'skuId' | 'skuCode' | 'productName' | 'skuName' | 'specification' | 'unitsPerCase'>
+
 export type WarehouseInventoryService = {
   load: (warehouseId: number) => Promise<WarehouseInventoryLayout>
+  listSkuCandidates: (warehouseId: number, keyword: string) => Promise<WarehouseSkuCandidate[]>
   allocateToPile: (warehouseId: number, input: WarehousePileAllocationInput) => Promise<WarehouseInventoryLayout>
 }
 
 export const httpWarehouseInventoryService: WarehouseInventoryService = {
   load: warehouseId => request<WarehouseInventoryLayout>(`/api/warehouses/${warehouseId}/inventory-layout`),
+  listSkuCandidates: (warehouseId, keyword) => request<WarehouseSkuCandidate[]>(
+    `/api/warehouses/${warehouseId}/inventory-layout/sku-candidates?${new URLSearchParams({ keyword })}`,
+  ),
   allocateToPile: (warehouseId, input) => request<WarehouseInventoryLayout>(
     `/api/warehouses/${warehouseId}/inventory-layout/pile-allocations`,
     { method: 'POST', body: JSON.stringify(input) },
@@ -44,6 +51,9 @@ export const httpWarehouseInventoryService: WarehouseInventoryService = {
 
 export function createMockWarehouseInventoryService(): WarehouseInventoryService {
   const layouts = new Map<number, WarehouseInventoryLayout>()
+  const catalog: WarehouseSkuCandidate[] = [
+    { skuId: 999, skuCode: 'SKU-ZERO-001', productName: '待入库商品', skuName: '标准款', specification: null, unitsPerCase: 12 },
+  ]
 
   const cloneLayout = (layout: WarehouseInventoryLayout): WarehouseInventoryLayout => ({
     ...layout,
@@ -86,13 +96,28 @@ export function createMockWarehouseInventoryService(): WarehouseInventoryService
     async load(warehouseId) {
       return cloneLayout(storedLayout(warehouseId))
     },
+    async listSkuCandidates(_warehouseId, keyword) {
+      const search = keyword.trim().toLocaleLowerCase()
+      return catalog.filter(sku => `${sku.skuCode} ${sku.productName} ${sku.skuName ?? ''}`.toLocaleLowerCase().includes(search))
+        .map(sku => ({ ...sku }))
+    },
     async allocateToPile(warehouseId, input) {
-      if (!Number.isInteger(input.units) || input.units <= 0) {
-        throw new Error('Allocated units must be a positive integer')
+      if (!Number.isInteger(input.units) || input.units < 0) {
+        throw new Error('Allocated units must be a non-negative integer')
       }
 
       const current = storedLayout(warehouseId)
       const next = cloneLayout(current)
+      if (input.units === 0) {
+        const sku = catalog.find(item => item.skuId === input.skuId)
+          ?? next.allocations.find(item => item.skuId === input.skuId)
+        if (!sku) throw new Error('SKU not found')
+        if (!next.allocations.some(item => item.palletId === input.palletId && item.skuId === input.skuId)) {
+          next.allocations.push({ ...sku, zoneId: null, palletId: input.palletId, units: 0 })
+        }
+        layouts.set(warehouseId, cloneLayout(next))
+        return cloneLayout(next)
+      }
       const sourceIndex = next.allocations.findIndex(allocation => (
         allocation.palletId === 'UNALLOCATED' && allocation.skuId === input.skuId
       ))

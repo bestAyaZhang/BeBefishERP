@@ -117,6 +117,36 @@ describe('Warehouse canvas overview', () => {
     expect(wrapper.find('[data-testid="inventory-allocation-form"]').exists()).toBe(false)
   })
 
+  it('links a zero-stock product through the warehouse page without increasing actual inventory', async () => {
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['inventory:view', 'inventory:edit'], loginMethod: 'password' }
+    const service = createMockWarehouseInventoryService()
+    const initial = await service.load(8)
+    const pallet = { ...warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-a03')!, contents: [] }
+    const wrapper = mount(WarehouseCanvasView, {
+      attachTo: document.body,
+      global: { provide: {
+        [routeLocationKey as symbol]: { query: { warehouseId: '8' } },
+        masterdataService: { listWarehouses: vi.fn().mockResolvedValue({ records: [{ id: 8, warehouseName: '义乌备货仓', defaultWarehouse: true }], total: 1 }) },
+        warehouseLayoutService: { load: vi.fn().mockResolvedValue({ revision: 3, document: { schemaVersion: 1, structure: createWarehouseStructure(), palletGroups: [pallet], completed: true } }), save: vi.fn() },
+        warehouseInventoryService: service,
+      } },
+    })
+    mounted.push(wrapper)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="inventory-pile-pallet-a03"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-add-sku"]').trigger('click')
+    await wrapper.get('[data-testid="inventory-link-mode"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="inventory-link-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="inventory-pile-pallet-a03"]').text()).toContain('1种 SKU · 0个')
+    expect(wrapper.get('[data-testid="inventory-detail-sku"]').text()).toContain('SKU-ZERO-001')
+    expect(wrapper.get('[data-testid="inventory-detail-sku"]').text()).toContain('0 个')
+    expect((await service.load(8)).totalUnits).toBe(initial.totalUnits)
+  })
+
   it.each(['switch', 'close'])('synchronizes successful allocation after drawer %s within the same warehouse', async action => {
     currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['inventory:view', 'inventory:edit'], loginMethod: 'password' }
     const structure = createWarehouseStructure()

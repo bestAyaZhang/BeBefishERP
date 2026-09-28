@@ -1,5 +1,5 @@
-import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { describe, expect, it, vi } from 'vitest'
 import WarehouseInventoryDrawer from './WarehouseInventoryDrawer.vue'
 import { createMockWarehouseInventoryService } from '../warehouseInventoryService'
 import { warehousePlannerScene } from '../warehousePlannerScene'
@@ -101,16 +101,61 @@ describe('WarehouseInventoryDrawer', () => {
     expect(wrapper.find('[data-testid="inventory-allocation-form"]').exists()).toBe(true)
   })
 
-  it('disables 添加 SKU when there is no unallocated inventory', async () => {
+  it('keeps 添加 SKU available for zero-stock linking when there is no unallocated inventory', async () => {
     const inventory = await createMockWarehouseInventoryService().load(8)
     inventory.allocations = inventory.allocations.filter(item => item.palletId !== 'UNALLOCATED')
     const pallet = warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-a03')!
     const wrapper = mount(WarehouseInventoryDrawer, {
-      props: { inventory, pallet, zone: null, open: true, canEdit: true, saving: false, allocationError: '' },
+      props: { inventory, pallet, zone: null, open: true, canEdit: true, saving: false, allocationError: '', lookupSkuCandidates: vi.fn().mockResolvedValue([]) },
     })
 
-    expect(wrapper.get('[data-testid="inventory-add-sku"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="inventory-add-sku"]').attributes('disabled')).toBeUndefined()
     expect(wrapper.text()).toContain('暂无待分配库存')
+    await wrapper.get('[data-testid="inventory-add-sku"]').trigger('click')
+    expect(wrapper.find('[data-testid="inventory-link-sku"]').exists()).toBe(true)
+  })
+
+  it('links a zero-stock catalog SKU to a pile without claiming any actual units', async () => {
+    const inventory = await createMockWarehouseInventoryService().load(8)
+    inventory.allocations = inventory.allocations.filter(item => item.palletId !== 'UNALLOCATED')
+    const pallet = warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-a03')!
+    const lookupSkuCandidates = vi.fn().mockResolvedValue([
+      { skuId: 999, skuCode: 'SKU-ZERO', productName: '待入库商品', skuName: '标准款', specification: null, unitsPerCase: 12 },
+    ])
+    const wrapper = mount(WarehouseInventoryDrawer, {
+      props: { inventory, pallet, zone: null, open: true, canEdit: true, lookupSkuCandidates },
+    })
+
+    await wrapper.get('[data-testid="inventory-add-sku"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="inventory-link-sku"]').text()).toContain('SKU-ZERO')
+    await wrapper.get('[data-testid="inventory-link-submit"]').trigger('click')
+
+    expect(wrapper.emitted('allocate')?.[0]).toEqual([{ palletId: 'pallet-a03', skuId: 999, units: 0 }])
+  })
+
+  it('cannot submit an old SKU selection after a new search fails', async () => {
+    const inventory = await createMockWarehouseInventoryService().load(8)
+    inventory.allocations = inventory.allocations.filter(item => item.palletId !== 'UNALLOCATED')
+    const pallet = warehousePlannerScene.palletGroups.find(item => item.id === 'pallet-a03')!
+    const lookupSkuCandidates = vi.fn()
+      .mockResolvedValueOnce([{ skuId: 999, skuCode: 'SKU-OLD', productName: '旧商品', skuName: null, specification: null, unitsPerCase: null }])
+      .mockRejectedValueOnce(new Error('查询失败'))
+    const wrapper = mount(WarehouseInventoryDrawer, {
+      props: { inventory, pallet, zone: null, open: true, canEdit: true, lookupSkuCandidates },
+    })
+
+    await wrapper.get('[data-testid="inventory-add-sku"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="inventory-link-sku"]').text()).toContain('SKU-OLD')
+    await wrapper.get('input[type="search"]').setValue('新商品')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('查询失败')
+    expect(wrapper.get('[data-testid="inventory-link-submit"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="inventory-link-submit"]').trigger('click')
+    expect(wrapper.emitted('allocate')).toBeUndefined()
   })
 
   it.each(['success', 'close', 'pile'])('resets form and quantity on %s', async action => {

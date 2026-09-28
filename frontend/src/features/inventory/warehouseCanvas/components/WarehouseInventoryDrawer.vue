@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { Box, Layers3, MapPin, PackageOpen, X } from 'lucide-vue-next'
 import type { PlannerPalletGroup, PlannerZone } from '../warehousePlannerScene'
-import type { WarehouseInventoryAllocation, WarehouseInventoryLayout } from '../warehouseInventoryService'
+import type { WarehouseInventoryAllocation, WarehouseInventoryLayout, WarehouseSkuCandidate } from '../warehouseInventoryService'
 
 const props = withDefaults(defineProps<{
   inventory: WarehouseInventoryLayout | null
@@ -14,6 +14,7 @@ const props = withDefaults(defineProps<{
   saving?: boolean
   allocationError?: string
   allocationSuccessGeneration?: number
+  lookupSkuCandidates?: (keyword: string) => Promise<WarehouseSkuCandidate[]>
 }>(), {
   canEdit: false,
   saving: false,
@@ -28,12 +29,25 @@ const number = new Intl.NumberFormat('zh-CN')
 const addingSku = ref(false)
 const selectedSkuId = ref<number | null>(null)
 const allocationUnits = ref('')
+const linkingSku = ref(false)
+const linkSearch = ref('')
+const linkCandidates = ref<WarehouseSkuCandidate[]>([])
+const linkSkuId = ref<number | null>(null)
+const linkLoading = ref(false)
+const linkError = ref('')
+let linkRequestGeneration = 0
 watch(
   [() => props.open, () => props.pallet?.id, () => props.inventory?.warehouseId, () => props.allocationSuccessGeneration],
   () => {
     addingSku.value = false
     selectedSkuId.value = null
     allocationUnits.value = ''
+    linkingSku.value = false
+    linkSearch.value = ''
+    linkCandidates.value = []
+    linkSkuId.value = null
+    linkError.value = ''
+    linkRequestGeneration += 1
   },
 )
 
@@ -67,10 +81,42 @@ const allocationIsValid = computed(() => {
 const allocationValidationMessage = computed(() => allocationIsValid.value ? '' : '请输入不超过可分配库存的正整数个数')
 
 function openAllocationForm() {
-  if (!props.pallet || !props.canEdit || !unallocated.value.length || props.saving) return
-  selectedSkuId.value = unallocated.value[0]!.skuId
+  if (!props.pallet || !props.canEdit || props.saving) return
+  selectedSkuId.value = unallocated.value[0]?.skuId ?? null
   allocationUnits.value = ''
   addingSku.value = true
+  if (!unallocated.value.length) openLinkForm()
+}
+
+function openLinkForm() {
+  linkingSku.value = true
+  void loadSkuCandidates()
+}
+
+async function loadSkuCandidates() {
+  if (!props.lookupSkuCandidates) return
+  const generation = ++linkRequestGeneration
+  linkLoading.value = true
+  linkError.value = ''
+  linkCandidates.value = []
+  linkSkuId.value = null
+  try {
+    const candidates = await props.lookupSkuCandidates(linkSearch.value.trim())
+    if (generation !== linkRequestGeneration) return
+    linkCandidates.value = candidates.filter(candidate => !props.inventory?.allocations.some(item => (
+      item.palletId === props.pallet?.id && item.skuId === candidate.skuId
+    )))
+    linkSkuId.value = linkCandidates.value[0]?.skuId ?? null
+  } catch (cause) {
+    if (generation === linkRequestGeneration) linkError.value = cause instanceof Error ? cause.message : 'SKU 加载失败'
+  } finally {
+    if (generation === linkRequestGeneration) linkLoading.value = false
+  }
+}
+
+function submitLink() {
+  if (!props.pallet || !props.canEdit || props.saving || linkLoading.value || linkError.value || linkSkuId.value === null) return
+  emit('allocate', { palletId: props.pallet.id, skuId: linkSkuId.value, units: 0 })
 }
 
 function submitAllocation() {
@@ -102,11 +148,11 @@ function caseText(item: WarehouseInventoryAllocation) {
 
       <section v-if="pallet && canEdit" class="allocation-panel">
         <div class="allocation-heading">
-          <div><span>库存分配</span><small>从待分配库存添加到当前货物堆</small></div>
-          <button data-testid="inventory-add-sku" type="button" :disabled="saving || !unallocated.length" @click="openAllocationForm">添加 SKU</button>
+          <div><span>商品与库存分配</span><small>有库存可分配数量；零库存可先关联 SKU</small></div>
+          <button data-testid="inventory-add-sku" type="button" :disabled="saving" @click="openAllocationForm">添加 SKU</button>
         </div>
-        <p v-if="!unallocated.length" class="allocation-hint">暂无待分配库存</p>
-        <form v-if="addingSku" data-testid="inventory-allocation-form" class="allocation-form" @submit.prevent="submitAllocation">
+        <p v-if="!unallocated.length" class="allocation-hint">暂无待分配库存，可关联零库存 SKU</p>
+        <form v-if="addingSku && !linkingSku" data-testid="inventory-allocation-form" class="allocation-form" @submit.prevent="submitAllocation">
           <label>SKU
             <select v-model.number="selectedSkuId" data-testid="inventory-allocation-sku" :disabled="saving">
               <option v-for="item in unallocated" :key="item.skuId" :value="item.skuId">{{ item.skuCode }} · {{ item.productName }}</option>
@@ -122,7 +168,27 @@ function caseText(item: WarehouseInventoryAllocation) {
           <p v-if="allocationValidationMessage" data-testid="inventory-allocation-validation" class="allocation-validation">{{ allocationValidationMessage }}</p>
           <p v-if="allocationError" class="allocation-error" role="alert">{{ allocationError }}</p>
           <button data-testid="inventory-allocation-submit" type="submit" :disabled="saving || !allocationIsValid">{{ saving ? '分配中…' : '确认分配' }}</button>
+          <button v-if="lookupSkuCandidates" data-testid="inventory-link-mode" type="button" :disabled="saving" @click="openLinkForm">关联零库存 SKU</button>
         </form>
+        <div v-if="addingSku && linkingSku" class="allocation-form">
+          <form class="allocation-form" @submit.prevent="loadSkuCandidates">
+            <label>搜索商品或 SKU
+              <input v-model="linkSearch" type="search" placeholder="输入商品名称或 SKU 编码" :disabled="saving || linkLoading">
+            </label>
+            <button type="submit" :disabled="saving || linkLoading">搜索</button>
+          </form>
+          <label>选择 SKU
+            <select v-model.number="linkSkuId" data-testid="inventory-link-sku" :disabled="saving || linkLoading || !linkCandidates.length">
+              <option v-for="candidate in linkCandidates" :key="candidate.skuId" :value="candidate.skuId">{{ candidate.skuCode }} · {{ candidate.productName }}</option>
+            </select>
+          </label>
+          <p class="allocation-hint">仅关联商品位置，实际库存仍为 0 个；入库后需另行分配库存。</p>
+          <p v-if="linkLoading" class="allocation-hint">正在加载 SKU…</p>
+          <p v-else-if="!linkCandidates.length && !linkError" class="allocation-hint">未找到可关联的 SKU，可输入更具体的名称或编码重试</p>
+          <p v-if="linkError" class="allocation-error" role="alert">{{ linkError }}</p>
+          <p v-if="allocationError" class="allocation-error" role="alert">{{ allocationError }}</p>
+          <button data-testid="inventory-link-submit" type="button" :disabled="saving || linkLoading || !!linkError || linkSkuId === null" @click="submitLink">{{ saving ? '关联中…' : '关联到货物堆' }}</button>
+        </div>
       </section>
 
       <div class="sku-heading"><span>SKU 明细</span><small>库存单位：个</small></div>

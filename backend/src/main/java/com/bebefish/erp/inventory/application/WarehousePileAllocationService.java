@@ -39,6 +39,11 @@ public class WarehousePileAllocationService {
     public WarehouseInventoryLayoutView allocate(long warehouseId, Command command) {
         validateCommand(warehouseId, command);
         var target = loadCompletedPile(warehouseId, command.palletId());
+        if (command.units() == 0) {
+            ensureSkuEnabled(command.skuId());
+            upsertTarget(warehouseId, target.zoneId(), command);
+            return query.get(warehouseId);
+        }
         var balance = lockBalance(warehouseId, command.skuId());
         var placed = lockPlacedLocations(warehouseId, command.skuId());
         var available = balance.subtract(placed);
@@ -56,7 +61,7 @@ public class WarehousePileAllocationService {
 
     private void validateCommand(long warehouseId, Command command) {
         if (warehouseId <= 0 || command == null || command.palletId() == null
-                || command.palletId().isBlank() || command.skuId() <= 0 || command.units() <= 0) {
+                || command.palletId().isBlank() || command.skuId() <= 0 || command.units() < 0) {
             throw new BusinessException(
                     "INVALID_PILE_ALLOCATION", HttpStatus.BAD_REQUEST, "堆位分配参数无效"
             );
@@ -135,6 +140,17 @@ public class WarehousePileAllocationService {
             );
         }
         return balances.getFirst();
+    }
+
+    private void ensureSkuEnabled(long skuId) {
+        var skus = jdbc.query("""
+                select s.id from product_sku s
+                join product_spu p on p.id = s.product_id
+                where s.id = :skuId and s.status = 'enabled' and p.status = 'enabled'
+                """, Map.of("skuId", skuId), (rs, rowNum) -> rs.getLong("id"));
+        if (skus.isEmpty()) {
+            throw new BusinessException("SKU_NOT_FOUND", HttpStatus.NOT_FOUND, "可用 SKU 不存在");
+        }
     }
 
     private BigDecimal lockPlacedLocations(long warehouseId, long skuId) {
