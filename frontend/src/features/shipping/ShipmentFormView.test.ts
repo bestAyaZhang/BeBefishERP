@@ -79,11 +79,25 @@ describe('ShipmentFormView', () => {
     const labels = wrapper.findAll('label.field-label');
     const labelText = (name: string) => labels.find(label => label.text().startsWith(name))?.text() || '';
 
+    expect(labelText('备货人（可多选）')).toContain('*');
     for (const name of ['货物名称', '包装方式', '件数', '重量（kg）', '体积（m³）', '物流产品', '送货方式', '付款方式']) {
       expect(labelText(name), `${name} should be marked required`).toContain('*');
     }
     expect(labelText('运费预测')).not.toContain('*');
     expect(labelText('物流备注')).not.toContain('*');
+    wrapper.unmount();
+  });
+
+  it('requires at least one preparer before saving a shipment', async () => {
+    const { wrapper } = await render();
+    await wrapper.get('[data-testid="recipient-raw"]').setValue('林女士 13800006028 浙江省杭州市余杭区 示例路18号2栋101室');
+    await wrapper.get('[data-testid="recipient-recognize"]').trigger('click');
+    await wrapper.get('[data-testid="shipment-preparation-content"]').setValue('水族箱 × 2');
+
+    await wrapper.get('[data-testid="shipment-save-only"]').trigger('click');
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('请至少选择一名备货人');
+    expect(service.create).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 

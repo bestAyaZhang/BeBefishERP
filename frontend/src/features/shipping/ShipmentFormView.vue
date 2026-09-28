@@ -81,6 +81,7 @@ async function initialize() {
 
 function validateShipment(value: ShipmentFormInput) {
   if (!value.shopName.trim()) return '请选择店铺名称';
+  if (!value.preparers.length) return '请至少选择一名备货人';
   if (![value.recipientName, value.recipientPhone, value.recipientProvince, value.recipientCity,
     value.recipientCounty, value.recipientDetailAddress, value.preparationContent].every(item => item.trim())) {
     return '请填写完整的收件人、地址和备货清单';
@@ -164,7 +165,7 @@ onBeforeUnmount(() => { generation++; });
       <section class="form-card"><div class="section-heading"><span>01</span><div><h2>发货单信息</h2><p>选择来源平台、店铺和本次参与备货的人员。</p></div></div><div class="mt-5 grid gap-4 lg:grid-cols-3">
         <label class="field-label">平台<input v-model="form.platform" data-testid="shipment-platform" :disabled="busy || locked" maxlength="100" placeholder="如淘宝、抖音、线下" class="field-input" /></label>
         <label class="field-label">店铺名称 <span class="text-rose-500">*</span><select v-model="form.shopName" data-testid="shipment-shop" :disabled="busy || locked" class="field-input"><option value="">请选择店铺</option><option v-for="shop in options.shopNames" :key="shop" :value="shop">{{ shop }}</option></select></label>
-        <label class="field-label">备货人（可多选）<PreparerMultiSelect v-model="form.preparers" class="mt-1.5" :options="options.preparers" :disabled="busy || locked" /></label>
+        <label class="field-label">备货人（可多选） <span class="text-rose-500">*</span><PreparerMultiSelect v-model="form.preparers" class="mt-1.5" :options="options.preparers" :disabled="busy || locked" /></label>
       </div></section>
 
       <section class="form-card"><div class="section-heading"><span>02</span><div><h2>收件人信息</h2><p>粘贴原始信息后在当前卡片内识别，并核对拆分结果。</p></div></div><div class="mt-5"><RecipientRecognitionCard v-model="recipient" :disabled="busy || locked" /></div></section>

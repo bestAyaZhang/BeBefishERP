@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
@@ -14,6 +15,7 @@ import java.util.List;
 public record ShipmentFormInput(
         @Size(max = 100) String platform,
         @NotBlank(message = "请选择店铺") @Size(max = 200) String shopName,
+        @NotEmpty(message = "请至少选择一名备货人")
         @Size(max = 20, message = "备货人最多选择20人") List<@NotBlank @Size(max = 100) String> preparers,
         @NotBlank(message = "请填写收件人姓名") @Size(max = 100) String recipientName,
         @NotBlank(message = "请填写收件人电话") @Size(max = 50) String recipientPhone,

@@ -48,6 +48,15 @@ class ShipmentServiceTest {
         assertThat(saved.createdBy()).isEqualTo("employee:23");
     }
 
+    @Test
+    void rejectsShipmentWithoutAPreparer() {
+        assertThatThrownBy(() -> service.create(form(List.of(), null, null), "employee:23", "陈小鱼"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        failure -> assertThat(failure.getMessage()).contains("至少选择一名备货人"));
+
+        verifyNoInteractions(repository);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"unfinished", "completed", "out_of_stock", "partially_shipped"})
     void updateAcceptsAllFourManualStatuses(String status) {
