@@ -10,9 +10,33 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 class WarehousePileAllocationLockTest {
+    @Test
+    void linksARealSkuWithZeroUnitsWithoutCreatingWarehouseStock() {
+        var jdbc = mock(NamedParameterJdbcTemplate.class);
+        when(jdbc.query(anyString(), anyMap(), org.mockito.ArgumentMatchers.<RowMapper<Object>>any())).thenAnswer(call -> {
+            String sql = call.getArgument(0);
+            if (sql.contains("from warehouse ")) return List.of(8L);
+            if (sql.contains("layout_json")) return List.of("""
+                    {"completed":true,"palletGroups":[{"id":"pile","left":0,"top":0,"width":2,"height":2}]}
+                    """);
+            if (sql.contains("from product_sku")) return List.of(101L);
+            return List.of();
+        });
+        var service = new WarehousePileAllocationService(jdbc, mock(WarehouseInventoryLayoutQueryService.class), new ObjectMapper());
+
+        service.allocate(8, new WarehousePileAllocationService.Command("pile", 101, 0));
+
+        verify(jdbc).update(contains("insert into inventory_location_balance"),
+                argThat((MapSqlParameterSource parameters) ->
+                        "pile".equals(parameters.getValue("palletId"))
+                                && new BigDecimal("0").equals(parameters.getValue("quantity"))));
+        verify(jdbc, never()).update(contains("inventory_balance"), any(MapSqlParameterSource.class));
+    }
+
     @Test
     void locksTheWarehouseBeforeReadingGeometryOrLockingInventory() {
         var jdbc = mock(NamedParameterJdbcTemplate.class);

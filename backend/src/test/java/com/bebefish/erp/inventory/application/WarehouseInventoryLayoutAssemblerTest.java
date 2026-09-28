@@ -51,6 +51,22 @@ class WarehouseInventoryLayoutAssemblerTest {
                 });
     }
 
+    @Test
+    void keepsAZeroStockSkuLinkedToAPileWithoutIncreasingActualInventory() {
+        var locations = List.of(allocation("zone-a", "pile-a", 103, "SKU-C", "待入库商品", "标准款", 12, "0"));
+
+        var result = assembler.assemble(8, List.of(), locations);
+
+        assertThat(result.totalUnits()).isEqualByComparingTo("0");
+        assertThat(result.placedUnits()).isEqualByComparingTo("0");
+        assertThat(result.unallocatedUnits()).isEqualByComparingTo("0");
+        assertThat(result.allocations()).singleElement().satisfies(item -> {
+            assertThat(item.palletId()).isEqualTo("pile-a");
+            assertThat(item.skuCode()).isEqualTo("SKU-C");
+            assertThat(item.units()).isEqualByComparingTo("0");
+        });
+    }
+
     private WarehouseInventoryLayoutAssembler.BalanceRow balance(
             long skuId, String skuCode, String productName, String skuName, Integer unitsPerCase, String units
     ) {

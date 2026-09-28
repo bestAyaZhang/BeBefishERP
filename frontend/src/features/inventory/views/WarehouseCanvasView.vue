@@ -236,7 +236,7 @@ async function allocateInventoryToPile(input: WarehousePileAllocationInput) {
     if (selectedWarehouseId.value === warehouseId) actualInventory.value = inventory
     if (isCurrentAllocationContext(warehouseId, contextGeneration)) {
       inventoryAllocationSuccessGeneration.value += 1
-      notice.value = `已向货物堆分配 ${input.units} 个库存`
+      notice.value = input.units === 0 ? '已关联 SKU，实际库存仍为 0 个' : `已向货物堆分配 ${input.units} 个库存`
     }
   } catch (cause) {
     const allocationError = cause instanceof Error ? cause.message : 'SKU 分配失败'
@@ -245,6 +245,11 @@ async function allocateInventoryToPile(input: WarehousePileAllocationInput) {
   } finally {
     inventoryAllocationSaving.value = false
   }
+}
+function lookupSkuCandidates(keyword: string) {
+  return selectedWarehouseId.value
+    ? inventoryReader.listSkuCandidates(selectedWarehouseId.value, keyword)
+    : Promise.resolve([])
 }
 function isCurrentAllocationContext(warehouseId: number, contextGeneration: number) {
   return selectedWarehouseId.value === warehouseId && inventoryAllocationContextGeneration.value === contextGeneration
@@ -525,6 +530,7 @@ onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } ca
           :saving="inventoryAllocationSaving"
           :allocation-error="inventoryAllocationError"
           :allocation-success-generation="inventoryAllocationSuccessGeneration"
+          :lookup-sku-candidates="lookupSkuCandidates"
           @close="closeInventoryDrawer"
           @allocate="allocateInventoryToPile"
         />

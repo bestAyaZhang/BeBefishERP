@@ -3,6 +3,7 @@ package com.bebefish.erp.common.api;
 import com.bebefish.erp.auth.application.AuthException;
 import com.bebefish.erp.file.domain.FileStorageException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -40,6 +41,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .badRequest()
                 .body(ApiResponse.failure("VALIDATION_FAILED", message, null));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableRequest(HttpMessageNotReadableException exception) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.failure("VALIDATION_FAILED", "请求参数不完整或格式错误", null));
     }
 
     @ExceptionHandler(AccessDeniedException.class)

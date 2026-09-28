@@ -217,8 +217,8 @@ class WarehousePileAllocationServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(longs = {0, -1})
-    void rejectsNonPositiveAllocationUnits(long units) {
+    @ValueSource(longs = {-1})
+    void rejectsNegativeAllocationUnits(long units) {
         assertThatThrownBy(() -> service.allocate(warehouseId,
                 new WarehousePileAllocationService.Command("pallet-c018", skuId, units)))
                 .isInstanceOfSatisfying(BusinessException.class,

@@ -1,7 +1,9 @@
 package com.bebefish.erp.inventory.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -39,6 +41,9 @@ class WarehouseInventoryLayoutControllerTest {
 
     private long warehouseId;
     private long skuId;
+    private Long candidateCategoryId;
+    private Long candidateProductId;
+    private Long candidateSkuId;
 
     @BeforeEach
     void setUp() {
@@ -72,6 +77,11 @@ class WarehouseInventoryLayoutControllerTest {
         jdbc.update("delete from inventory_balance where warehouse_id = ?", warehouseId);
         jdbc.update("delete from warehouse_layout where warehouse_id = ?", warehouseId);
         jdbc.update("delete from warehouse where id = ?", warehouseId);
+        if (candidateSkuId != null) {
+            jdbc.update("delete from product_sku where id = ?", candidateSkuId);
+            jdbc.update("delete from product_spu where id = ?", candidateProductId);
+            jdbc.update("delete from product_category where id = ?", candidateCategoryId);
+        }
     }
 
     @Test
@@ -96,6 +106,60 @@ class WarehouseInventoryLayoutControllerTest {
                         .formatted(skuId), hasItem(24.0)));
     }
 
+    @Test
+    void linksAnEnabledSkuWithNoBalanceWithoutCreatingInventory() throws Exception {
+        createCandidateSku();
+        var editor = bearer(token("inventory:edit"));
+
+        mvc.perform(get("/api/warehouses/{id}/inventory-layout/sku-candidates", warehouseId)
+                        .header("Authorization", editor)
+                        .param("keyword", "ZERO-" + warehouseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].skuId").value(candidateSkuId))
+                .andExpect(jsonPath("$.data[0].skuCode").value("ZERO-" + warehouseId));
+
+        mvc.perform(post("/api/warehouses/{id}/inventory-layout/pile-allocations", warehouseId)
+                        .header("Authorization", editor)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"palletId\":\"pallet-c018\",\"skuId\":%d,\"units\":0}"
+                                .formatted(candidateSkuId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalUnits").value(100))
+                .andExpect(jsonPath("$.data.placedUnits").value(0))
+                .andExpect(jsonPath("$.data.allocations[?(@.palletId == 'pallet-c018' && @.skuId == %d)].units"
+                        .formatted(candidateSkuId), hasItem(0.0)));
+
+        assertThat(jdbc.queryForObject("select count(*) from inventory_balance where warehouse_id = ? "
+                + "and sku_id = ?", Integer.class, warehouseId, candidateSkuId)).isZero();
+        assertThat(jdbc.queryForObject("select quantity from inventory_location_balance "
+                + "where warehouse_id = ? and pallet_id = 'pallet-c018' and sku_id = ?",
+                Integer.class, warehouseId, candidateSkuId)).isZero();
+    }
+
+    private void createCandidateSku() {
+        candidateCategoryId = IDS.incrementAndGet();
+        candidateProductId = IDS.incrementAndGet();
+        candidateSkuId = IDS.incrementAndGet();
+        jdbc.update("""
+                insert into product_category (id, category_code, category_name, level_no,
+                    sort_order, status, created_at, updated_at)
+                values (?, ?, ?, 1, 0, 'enabled', current_timestamp, current_timestamp)
+                """, candidateCategoryId, "CAT-ZERO-" + warehouseId, "Zero stock " + warehouseId);
+        jdbc.update("""
+                insert into product_spu (id, product_code, item_no, product_name, category_id,
+                    product_type, status, created_at, updated_at)
+                values (?, ?, ?, 'Zero stock product', ?, 'simple', 'enabled',
+                    current_timestamp, current_timestamp)
+                """, candidateProductId, "PROD-ZERO-" + warehouseId,
+                "ITEM-ZERO-" + warehouseId, candidateCategoryId);
+        jdbc.update("""
+                insert into product_sku (id, product_id, sku_code, sku_name, sales_unit,
+                    default_sale_price, standard_cost, is_default, status, created_at, updated_at)
+                values (?, ?, ?, 'Zero stock SKU', '个', 0, 0, true, 'enabled',
+                    current_timestamp, current_timestamp)
+                """, candidateSkuId, candidateProductId, "ZERO-" + warehouseId);
+    }
+
     @ParameterizedTest(name = "rejects invalid pile allocation request: {0}")
     @MethodSource("invalidRequests")
     void rejectsInvalidPileAllocationRequests(String scenario, String request) throws Exception {
@@ -112,8 +176,8 @@ class WarehouseInventoryLayoutControllerTest {
                         "{\"palletId\":\"pallet-c018\",\"skuId\":%d.5,\"units\":24}"),
                 Arguments.of("fractional units",
                         "{\"palletId\":\"pallet-c018\",\"skuId\":%d,\"units\":1.5}"),
-                Arguments.of("zero units",
-                        "{\"palletId\":\"pallet-c018\",\"skuId\":%d,\"units\":0}"),
+                Arguments.of("negative units",
+                        "{\"palletId\":\"pallet-c018\",\"skuId\":%d,\"units\":-1}"),
                 Arguments.of("blank pallet id",
                         "{\"palletId\":\"   \",\"skuId\":%d,\"units\":24}"),
                 Arguments.of("missing sku id",

@@ -1,12 +1,19 @@
 package com.bebefish.erp.inventory.application;
 
 import java.util.Map;
+import java.util.List;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class WarehouseInventoryLayoutQueryService {
+    public record SkuCandidate(
+            long skuId, String skuCode, String productName, String skuName,
+            String specification, Integer unitsPerCase
+    ) {
+    }
+
     private final NamedParameterJdbcTemplate jdbc;
     private final WarehouseInventoryLayoutAssembler assembler;
 
@@ -40,7 +47,7 @@ public class WarehouseInventoryLayoutQueryService {
                 from inventory_location_balance l
                 left join product_sku s on s.id = l.sku_id
                 left join product_spu p on p.id = s.product_id
-                where l.warehouse_id = :warehouseId and l.pallet_id <> 'UNALLOCATED' and l.quantity > 0
+                where l.warehouse_id = :warehouseId and l.pallet_id <> 'UNALLOCATED' and l.quantity >= 0
                 order by l.pallet_id, l.sku_id
                 """, parameters, (rs, rowNum) -> new WarehouseInventoryLayoutAssembler.LocationRow(
                 rs.getString("zone_id"), rs.getString("pallet_id"), rs.getLong("sku_id"),
@@ -49,5 +56,27 @@ public class WarehouseInventoryLayoutQueryService {
                 rs.getBigDecimal("quantity"), rs.getTimestamp("updated_at").toLocalDateTime()
         ));
         return assembler.assemble(warehouseId, balances, locations);
+    }
+
+    @Transactional(readOnly = true)
+    public List<SkuCandidate> listSkuCandidates(String keyword) {
+        var search = keyword == null ? "" : keyword.trim().toLowerCase();
+        var parameters = Map.of("search", "%" + search.replace("!", "!!").replace("%", "!%")
+                .replace("_", "!_") + "%");
+        return jdbc.query("""
+                select s.id, s.sku_code, p.product_name, s.sku_name, s.spec_text, s.carton_quantity
+                from product_sku s
+                join product_spu p on p.id = s.product_id
+                where s.status = 'enabled' and p.status = 'enabled'
+                  and (lower(s.sku_code) like :search escape '!'
+                       or lower(p.product_name) like :search escape '!'
+                       or lower(s.sku_name) like :search escape '!')
+                order by s.sku_code, s.id
+                limit 50
+                """, parameters, (rs, rowNum) -> new SkuCandidate(
+                rs.getLong("id"), rs.getString("sku_code"), rs.getString("product_name"),
+                rs.getString("sku_name"), rs.getString("spec_text"),
+                rs.getObject("carton_quantity", Integer.class)
+        ));
     }
 }

@@ -207,6 +207,47 @@ class StocktakeControllerTest {
     }
 
     @Test
+    void ignoresZeroQuantityPileLinksInTheSnapshotAndApprovalCheck() throws Exception {
+        var editor = bearer(token("inventory:view", "inventory:edit", "warehouse:view"));
+        jdbc.update("""
+                insert into inventory_location_balance (
+                    warehouse_id, zone_id, pallet_id, sku_id, quantity, version_no,
+                    created_at, updated_at
+                ) values (?, null, 'pile-a01', ?, 0, 0, current_timestamp, current_timestamp)
+                """, warehouseId, secondSkuId);
+        var response = mvc.perform(post("/api/inventory/stocktakes")
+                        .header("Authorization", editor)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"warehouseId\":%d,\"blindCount\":false}".formatted(warehouseId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalItems").value(2))
+                .andReturn().getResponse().getContentAsString();
+        var task = objectMapper.readTree(response).path("data");
+        var id = task.path("id").asLong();
+        jdbc.update("""
+                insert into inventory_location_balance (
+                    warehouse_id, zone_id, pallet_id, sku_id, quantity, version_no,
+                    created_at, updated_at
+                ) values (?, 'zone-a', 'pile-a02', ?, 0, 0, current_timestamp, current_timestamp)
+                """, warehouseId, firstSkuId);
+        var counts = new java.util.ArrayList<String>();
+        for (var item : task.path("items")) {
+            counts.add("{\"itemId\":" + item.path("id").asLong()
+                    + ",\"quantity\":" + item.path("bookQuantity").asInt() + "}");
+        }
+        mvc.perform(post("/api/inventory/stocktakes/{id}/submit-initial", id)
+                        .header("Authorization", editor)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"counts\":[" + String.join(",", counts) + "]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("awaiting_approval"));
+        mvc.perform(post("/api/inventory/stocktakes/{id}/approve", id)
+                        .header("Authorization", bearer(token("inventory:view", "inventory:approve"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("completed"));
+    }
+
+    @Test
     void fullWarehouseSnapshotIncludesActualUnallocatedBalance() throws Exception {
         jdbc.update("update inventory_balance set quantity=15 where warehouse_id=? and sku_id=?",
                 warehouseId, firstSkuId);

@@ -43,10 +43,12 @@ public class WarehouseInventoryLayoutAssembler {
         var updatedAt = balances.stream().map(BalanceRow::updatedAt).filter(value -> value != null)
                 .max(Comparator.naturalOrder()).orElse(null);
         for (var location : locations) {
-            if (location.units().signum() <= 0 || UNALLOCATED.equals(location.palletId())) {
+            if (location.units().signum() < 0 || UNALLOCATED.equals(location.palletId())) {
                 continue;
             }
-            placedBySku.merge(location.skuId(), location.units(), BigDecimal::add);
+            if (location.units().signum() > 0) {
+                placedBySku.merge(location.skuId(), location.units(), BigDecimal::add);
+            }
             allocations.add(toAllocation(location));
             if (location.updatedAt() != null && (updatedAt == null || location.updatedAt().isAfter(updatedAt))) {
                 updatedAt = location.updatedAt();

@@ -31,6 +31,14 @@ describe('warehouse inventory layout service', () => {
     )
   })
 
+  it('searches catalog SKUs through the inventory-scoped endpoint', async () => {
+    request.mockResolvedValue([])
+
+    await httpWarehouseInventoryService.listSkuCandidates(8, '玻璃 杯')
+
+    expect(request).toHaveBeenCalledWith('/api/warehouses/8/inventory-layout/sku-candidates?keyword=%E7%8E%BB%E7%92%83+%E6%9D%AF')
+  })
+
   it('provides clearly local mock allocations for UI development', async () => {
     const result = await createMockWarehouseInventoryService().load(8)
 
@@ -52,10 +60,24 @@ describe('warehouse inventory layout service', () => {
     expect(allocated.unallocatedUnits).toBe(48)
     expect(allocated.allocations).toContainEqual(expect.objectContaining({ palletId: 'pallet-a03', skuId: 104, units: 24, zoneId: null }))
 
-    await expect(service.allocateToPile(8, { palletId: 'pallet-a03', skuId: 104, units: 0 })).rejects.toThrow()
+    await expect(service.allocateToPile(8, { palletId: 'pallet-a03', skuId: 104, units: -1 })).rejects.toThrow()
     await expect(service.allocateToPile(8, { palletId: 'pallet-a03', skuId: 104, units: 1.5 })).rejects.toThrow()
     await expect(service.allocateToPile(8, { palletId: 'pallet-a03', skuId: 104, units: 49 })).rejects.toThrow()
 
     expect(await service.load(8)).toEqual(allocated)
+  })
+
+  it('links a catalog SKU with no stock to a pile while keeping all inventory totals at zero', async () => {
+    const service = createMockWarehouseInventoryService()
+    const before = await service.load(8)
+    const candidates = await service.listSkuCandidates(8, 'ZERO')
+    const sku = candidates.find(item => item.skuCode === 'SKU-ZERO-001')!
+
+    const result = await service.allocateToPile(8, { palletId: 'pallet-a03', skuId: sku.skuId, units: 0 })
+
+    expect(result.totalUnits).toBe(before.totalUnits)
+    expect(result.placedUnits).toBe(before.placedUnits)
+    expect(result.unallocatedUnits).toBe(before.unallocatedUnits)
+    expect(result.allocations).toContainEqual(expect.objectContaining({ palletId: 'pallet-a03', skuId: sku.skuId, units: 0 }))
   })
 })

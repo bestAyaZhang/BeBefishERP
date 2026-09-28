@@ -172,6 +172,7 @@ public class StocktakeService {
         }
         var selectedScope = !selectedPalletIds.isEmpty();
         var snapshot = layoutQuery.get(warehouseId).allocations().stream()
+                .filter(row -> row.units().signum() > 0)
                 .filter(row -> !selectedScope || selectedPalletIds.contains(row.palletId()))
                 .map(row -> new Snapshot(
                         row.zoneId(), row.palletId(), row.skuId(),
@@ -301,6 +302,7 @@ public class StocktakeService {
         var selectedPalletIds = task.items().stream().map(Item::palletId).collect(java.util.stream.Collectors.toSet());
         var current = new LinkedHashMap<Position, BigDecimal>();
         for (var allocation : layoutQuery.get(task.warehouseId()).allocations()) {
+            if (allocation.units().signum() <= 0) continue;
             if (!selectedScope || selectedPalletIds.contains(allocation.palletId())) {
                 current.put(new Position(allocation.palletId(), allocation.skuId()), allocation.units());
             }
