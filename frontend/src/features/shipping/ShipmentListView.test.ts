@@ -53,6 +53,24 @@ describe('ShipmentListView', () => {
     wrapper.unmount();
   });
 
+  it('keeps dense rows compact while preserving full shipment and preparation details', async () => {
+    const item = record();
+    item.shipmentNo = 'FH20260928-0DA07473BC63479F97353F0C33BCA6B4';
+    item.content.preparationContent = '商品一 × 5\n商品二 × 8\n商品三 × 3\n商品四 × 12\n商品五 × 6';
+    item.content.remark = '这是一段较长的备货备注信息，需要在列表中保持单行展示';
+    service.list.mockResolvedValue({ records: [item], page: 1, pageSize: 20, total: 1 });
+
+    const { wrapper } = await render();
+    const shipmentNo = wrapper.get('[data-testid="shipment-number-8"]');
+    expect(shipmentNo.text()).toBe('FH20260928-0DA074…');
+    expect(shipmentNo.attributes('title')).toBe(item.shipmentNo);
+    expect(wrapper.get('[data-testid="shipment-preparation-8"]').classes()).toContain('line-clamp-3');
+    expect(wrapper.get('[data-testid="shipment-preparation-8"]').attributes('title')).toBe(item.content.preparationContent);
+    expect(wrapper.get('[data-testid="shipment-remark-8"]').classes()).toContain('line-clamp-1');
+    expect(wrapper.get('[data-testid="shipment-remark-8"]').attributes('title')).toBe(`备注：${item.content.remark}`);
+    wrapper.unmount();
+  });
+
   it('supports incomplete, explicit filters, pagination and reset-to-today', async () => {
     service.list.mockResolvedValue({ records: [record()], page: 1, pageSize: 20, total: 45 });
     const { wrapper } = await render();
