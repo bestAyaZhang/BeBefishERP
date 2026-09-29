@@ -28,8 +28,10 @@ public class ShipmentController {
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String keyword, @RequestParam(required = false) String status,
             @RequestParam(required = false) LocalDate dateFrom, @RequestParam(required = false) LocalDate dateTo,
-            @RequestParam(required = false) String platform, @RequestParam(defaultValue = "false") boolean incompleteOnly) {
-        return ApiResponse.success(PageResponse.from(service.list(new ShipmentQuery(keyword, status, dateFrom, dateTo, platform, incompleteOnly), page, size)));
+            @RequestParam(required = false) String platform, @RequestParam(defaultValue = "false") boolean incompleteOnly,
+            @RequestParam(required=false) Long platformId, @RequestParam(required=false) Long shopId,
+            @RequestParam(defaultValue="false") boolean unlinkedOnly) {
+        return ApiResponse.success(PageResponse.from(service.list(new ShipmentQuery(keyword, status, dateFrom, dateTo, platform, incompleteOnly, platformId, shopId, unlinkedOnly), page, size)));
     }
 
     @GetMapping("/summary")
@@ -48,6 +50,10 @@ public class ShipmentController {
     @PreAuthorize("hasAuthority('shipping:view')")
     public ApiResponse<Shipment> get(@PathVariable long id) { return ApiResponse.success(service.get(id)); }
 
+    @GetMapping("/filter-options")
+    @PreAuthorize("hasAuthority('shipping:view')")
+    public ApiResponse<ShippingFormOptionsService.FilterOptions> filterOptions() { return ApiResponse.success(optionsService.filterOptions()); }
+
     @PostMapping
     @PreAuthorize("hasAuthority('shipping:create')")
     public ApiResponse<Shipment> create(@Valid @RequestBody SaveShipmentRequest request, @AuthenticationPrincipal ErpPrincipal principal) {
@@ -60,7 +66,7 @@ public class ShipmentController {
                                          @AuthenticationPrincipal ErpPrincipal principal) {
         if (request.version() == null) throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "缺少发货单版本，请重新打开后再保存");
         if (request.status() == null || request.status().isBlank())
-            throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "请选择发货状态");
+            throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "请选择备货状态");
         return ApiResponse.success(service.update(id, request.form(), request.status(), request.version(), principal.operatorIdentifier()));
     }
 

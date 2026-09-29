@@ -7,6 +7,7 @@ const SALES: PermissionAction[] = ['view', 'create', 'edit', 'delete', 'approve'
 const FINANCE: PermissionAction[] = ['view', 'create', 'edit', 'approve', 'export'];
 
 export const PERMISSION_MODULES: PermissionModule[] = [
+  { key: 'platform', label: '平台管理', description: '维护平台与店铺资料及启停用', supportedActions: ['view', 'create', 'edit'] },
   { key: 'dashboard', label: '工作台', description: '查看工作台经营概览与待办信息', supportedActions: VIEW },
   { key: 'product', label: '商品', description: '维护商品资料及商品导出信息', supportedActions: STANDARD },
   { key: 'category', label: '分类', description: '维护商品分类及分类导出信息', supportedActions: STANDARD },

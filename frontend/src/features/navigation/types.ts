@@ -4,6 +4,7 @@ export type SidebarIconName =
   | 'category'
   | 'customer'
   | 'supplier'
+  | 'platform'
   | 'warehouse'
   | 'inventory'
   | 'organization'

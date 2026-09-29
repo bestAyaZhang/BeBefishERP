@@ -34,6 +34,13 @@ class AneOrderServiceTest {
         assertThat(service.place(1, input(), "user")).isEqualTo(existing);
         verifyNoInteractions(client);
     }
+    @Test void exposesConfiguredSenderWithoutExposingCredentials() {
+        var availability = service.availability();
+
+        assertThat(availability.sender()).isEqualTo(new AneOrderService.SenderInfo(
+                "测试寄件人", "123", "浙江省", "杭州市", "萧山区", "测试路1号"));
+        assertThat(availability.toString()).doesNotContain("customer", "pass", "key");
+    }
     @Test void doesNotRetryUnknownOrProcessingOrders() {
         var existing = new LogisticsOrder(1, "BF000000000001", "unknown", "", "", "待核实", LocalDateTime.now(), true);
         when(store.claim(1L, 0L, "user")).thenReturn(new AneOrderStore.Claim(shipment(), existing.orderNo(), existing));

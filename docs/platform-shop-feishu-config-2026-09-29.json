@@ -1,0 +1,27 @@
+{
+  "source": "用户提供的飞书店铺截图，2026-09-29 人工转录",
+  "platforms": ["拼多多", "1688", "抖音", "抖音代发"],
+  "shops": [
+    { "name": "笨笨的生活商铺", "platform": "拼多多", "channelType": "ecommerce", "ownerName": "韩晓兵", "optionLabel": "电商_拼多多_笨笨的生活商铺" },
+    { "name": "东方玻璃烟灰缸直卖", "platform": "拼多多", "channelType": "ecommerce", "ownerName": "韩晓兵", "optionLabel": "电商_拼多多_东方玻璃烟灰缸直卖" },
+    { "name": "东方选真烟灰缸", "platform": "拼多多", "channelType": "ecommerce", "ownerName": "韩晓兵", "optionLabel": "电商_拼多多_东方选真烟灰缸" },
+    { "name": "一家卖烟灰缸的", "platform": "拼多多", "channelType": "ecommerce", "ownerName": "韩晓兵", "optionLabel": "电商_拼多多_一家卖烟灰缸的" },
+    { "name": "东方玻璃制品工厂店", "platform": "拼多多", "channelType": "ecommerce", "ownerName": "韩晓兵", "optionLabel": "电商_拼多多_东方玻璃制品工厂店" },
+    { "name": "咪球生活家居", "platform": "拼多多", "channelType": "ecommerce", "ownerName": "韩晓兵", "optionLabel": "电商_拼多多_咪球生活家居" },
+    { "name": "义乌市共典商贸", "platform": "拼多多", "channelType": "ecommerce", "ownerName": "韩晓兵", "optionLabel": "电商_拼多多_义乌市共典商贸" },
+    { "name": "东方笨笨鱼玻璃直卖", "platform": "拼多多", "channelType": "ecommerce", "ownerName": "韩晓兵", "optionLabel": "电商_拼多多_东方笨笨鱼玻璃直卖" },
+    { "name": "共典家居生活馆", "platform": "拼多多", "channelType": "ecommerce", "ownerName": "韩晓兵", "optionLabel": "电商_拼多多_共典家居生活馆" },
+    { "name": "东方选真", "platform": "拼多多", "channelType": "ecommerce", "ownerName": "韩晓兵", "optionLabel": "电商_拼多多_东方选真" },
+    { "name": "BeBeFish玻璃小店", "platform": "拼多多", "channelType": "ecommerce", "ownerName": "韩晓兵", "optionLabel": "电商_拼多多_BeBeFish玻璃小店" },
+    { "name": "东阳市共典贸易有限公司", "platform": "1688", "channelType": "ecommerce", "ownerName": "张振亚", "optionLabel": "电商_1688_东阳市共典贸易有限公司" },
+    { "name": "东阳市振亚电子商务商行", "platform": "1688", "channelType": "ecommerce", "ownerName": "张振亚", "optionLabel": "电商_1688_东阳市振亚电子商务商行" },
+    { "name": "咪球玻璃小馆", "platform": "抖音", "channelType": "ecommerce", "ownerName": "安正鹏", "optionLabel": "电商_抖音_咪球玻璃小馆" },
+    { "name": "璃想家", "platform": "抖音", "channelType": "ecommerce", "ownerName": "安正鹏", "optionLabel": "电商_抖音_璃想家" },
+    { "name": "红绳拾语", "platform": "抖音", "channelType": "ecommerce", "ownerName": "安正鹏", "optionLabel": "电商_抖音_红绳拾语" },
+    { "name": "代发1", "platform": "抖音代发", "channelType": "private", "ownerName": "安正鹏", "optionLabel": "私域_代发_方钉" },
+    { "name": "代发2", "platform": "抖音代发", "channelType": "private", "ownerName": "安正鹏", "optionLabel": "私域_代发_蒙古包-3.5" },
+    { "name": "代发3", "platform": "抖音代发", "channelType": "private", "ownerName": "安正鹏", "optionLabel": "私域_代发_冰淇凌碗" },
+    { "name": "笨笨鱼玻璃制品工厂店", "platform": "拼多多", "channelType": "ecommerce", "ownerName": "韩晓兵", "optionLabel": "电商_拼多多_笨笨鱼玻璃制品工厂店" },
+    { "name": "果宴工坊", "platform": "拼多多", "channelType": "ecommerce", "ownerName": "韩晓兵", "optionLabel": "电商_拼多多_果宴工坊" }
+  ]
+}

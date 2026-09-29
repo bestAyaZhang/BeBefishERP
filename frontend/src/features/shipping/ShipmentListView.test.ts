@@ -5,12 +5,13 @@ import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
 import ShipmentListView from './ShipmentListView.vue';
 import type { Shipment } from './types';
 
-const service = vi.hoisted(() => ({ list: vi.fn(), summary: vi.fn() }));
+const service = vi.hoisted(() => ({ list: vi.fn(), summary: vi.fn(), getFilterOptions: vi.fn().mockResolvedValue({ platforms: [], shops: [] }) }));
 vi.mock('./shippingService', () => ({ shippingService: service }));
 
 function record(id = 8): Shipment {
   return {
     id, shipmentNo: `FH20260924-${id}`, version: 3, createdBy: 'employee:1', updatedBy: 'employee:1',
+    logisticsOrderState: 'succeeded',
     createdAt: '2026-09-24T09:00:00', updatedAt: '2026-09-24T10:00:00',
     content: {
       shipmentDate: '2026-09-24', platform: '淘宝', shopName: '贝贝鱼淘宝旗舰店', preparers: ['小周', '阿杰'],
@@ -42,6 +43,13 @@ beforeEach(() => {
 });
 
 describe('ShipmentListView', () => {
+  it('uses configured store labels in the shop filter', async () => {
+    service.getFilterOptions.mockResolvedValueOnce({ platforms: [{ id: 1, name: '拼多多', status: 'enabled' }],
+      shops: [{ id: 11, platformId: 1, name: '笨笨的生活商铺', optionLabel: '电商_拼多多_笨笨的生活商铺', status: 'enabled', platformStatus: 'enabled' }] });
+    const { wrapper } = await render();
+    expect(wrapper.get('[aria-label="店铺筛选"]').text()).toContain('电商_拼多多_笨笨的生活商铺');
+    wrapper.unmount();
+  });
   it('shows the Figma summary, masked recipient and routes to detail', async () => {
     const { wrapper, router } = await render();
     expect(wrapper.get('[data-testid="shipment-summary-today"]').text()).toContain('7 单');
@@ -50,6 +58,19 @@ describe('ShipmentListView', () => {
     await wrapper.get('[data-testid="shipment-detail-8"]').trigger('click');
     await flushPromises();
     expect(router.currentRoute.value).toMatchObject({ name: 'shipping-detail', params: { id: '8' } });
+    wrapper.unmount();
+  });
+
+  it('shows ANE order status separately from preparation status', async () => {
+    const item = record();
+    item.content.status = 'out_of_stock';
+    item.logisticsOrderState = 'succeeded';
+    service.list.mockResolvedValue({ records: [item], page: 1, pageSize: 20, total: 1 });
+
+    const { wrapper } = await render();
+    expect(wrapper.get('[data-testid="shipment-logistics-status-8"]').text()).toContain('下单成功');
+    expect(wrapper.get('[data-testid="shipment-preparation-status-8"]').text()).toContain('缺货');
+    expect(wrapper.get('[data-testid="shipment-filter-status-label"]').text()).toContain('备货状态');
     wrapper.unmount();
   });
 

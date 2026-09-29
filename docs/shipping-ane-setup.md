@@ -36,7 +36,7 @@
 
 | 环境变量 | 内容 |
 | --- | --- |
-| ERP_SHIPPING_SHOP_NAMES | 发货单可选店铺，多个名称用英文逗号分隔；只有一个店铺时新建页自动选中 |
+| ERP_SHIPPING_SHOP_NAMES | 仅离线迁移预演读取的旧店铺名称，英文逗号分隔；正常运行改由平台管理提供选项，参见 [平台管理发布说明](platform-management-rollout.md) |
 | ERP_ANE_ENABLED | 完成配置后设置为 true |
 | ERP_ANE_ORDER_URL | 测试默认 `https://opc.test.ane56.com/aneop/opwb/lb/new`；正式地址使用安能提供的 HTTPS 地址 |
 | ERP_ANE_CODE / ERP_ANE_APP_KEY | 安能技术分配的接口标识和签名密钥 |

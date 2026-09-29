@@ -22,11 +22,14 @@ public class AneOrderService {
                            ShipmentRepository shipments, Validator validator) {
         this.config = config; this.store = store; this.client = client; this.shipments = shipments; this.validator = validator;
     }
-    public record Availability(boolean available, boolean testEnvironment, String message) {}
+    public record SenderInfo(String name, String phone, String province, String city, String county, String address) {}
+    public record Availability(boolean available, boolean testEnvironment, String message, SenderInfo sender) {}
     public Availability availability() {
         return new Availability(config.ready(), config.testEnvironment(), config.ready()
                 ? (config.testEnvironment() ? "安能测试环境：只用于接口联调，不安排实际走货" : "安能物流下单服务已配置")
-                : "物流下单服务尚未接入：请配置安能账号、密钥和寄件人资料");
+                : "物流下单服务尚未接入：请配置安能账号、密钥和寄件人资料",
+                new SenderInfo(config.getSenderName(), config.getSenderPhone(), config.getSenderProvince(),
+                        config.getSenderCity(), config.getSenderCounty(), config.getSenderAddress()));
     }
     public LogisticsOrder get(long id) { return store.find(id).orElse(null); }
 

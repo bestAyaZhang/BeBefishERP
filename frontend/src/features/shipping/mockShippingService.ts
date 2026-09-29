@@ -1,6 +1,7 @@
 import { currentUser } from '../../services/authSession';
 import type { Shipment, ShippingService, ShipmentStatus } from './types';
 import { todayDate } from './types';
+import { mockCatalogOptions } from '../platform/mockPlatformService';
 
 const STORAGE_KEY = 'bebefish_mock_shipments_v2';
 
@@ -9,10 +10,12 @@ export function createMockShippingService(): ShippingService {
   const write = (records: Shipment[]) => localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
   const operator = () => currentUser.value?.displayName ?? currentUser.value?.mobile ?? '演示用户';
   return {
-    async logisticsAvailability() { return { available: false, testEnvironment: true, message: '演示数据不提交真实物流订单' }; },
+    async logisticsAvailability() { return { available: false, testEnvironment: true,
+      message: '演示数据不提交真实物流订单', sender: null }; },
     async getLogisticsOrder() { return null; },
     async placeLogisticsOrder() { throw new Error('演示数据不能提交真实物流订单'); },
-    async formOptions() { return { shopNames: ['贝贝鱼淘宝旗舰店'], preparers: [] }; },
+    async formOptions() { const catalog = mockCatalogOptions(); return { ...catalog, shopNames: catalog.shops.map(s => s.name), preparers: [] }; },
+    async getFilterOptions() { return mockCatalogOptions(false); },
     async summary(date) {
       const rows = read().filter(row => row.content.shipmentDate === date);
       const count = (status: ShipmentStatus) => rows.filter(row => row.content.status === status).length;
@@ -28,6 +31,9 @@ export function createMockShippingService(): ShippingService {
           && (!query.status || c.status === query.status)
           && (!query.incompleteOnly || c.status !== 'completed')
           && (!query.platform?.trim() || c.platform === query.platform.trim())
+          && (!query.platformId || c.platformId === query.platformId)
+          && (!query.shopId || c.shopId === query.shopId)
+          && (!query.unlinkedOnly || c.shopId == null)
           && (!keyword || [row.shipmentNo, c.recipientName, c.recipientPhone, c.trackingNo,
             c.preparationContent, c.preparers.join('、'), c.orderer, c.shopName]
             .some(value => value.toLocaleLowerCase().includes(keyword)));
@@ -46,6 +52,7 @@ export function createMockShippingService(): ShippingService {
       const now = new Date().toISOString();
       const record: Shipment = {
         id, shipmentNo: `FH-DEMO-${String(id).padStart(6, '0')}`,
+        logisticsOrderState: null,
         content: { ...structuredClone(form), shipmentDate: todayDate(), status: 'unfinished', orderer: operator(), logisticsCompany: '', trackingNo: '' },
         version: 0, createdAt: now, updatedAt: now, createdBy: operator(), updatedBy: operator()
       };

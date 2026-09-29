@@ -42,6 +42,8 @@ describe('ShipmentDetailView', () => {
     expect(wrapper.text()).toContain('贝贝鱼淘宝旗舰店');
     expect(wrapper.text()).toContain('小周、阿杰');
     expect(wrapper.text()).toContain('ANE001');
+    expect(wrapper.get('[data-testid="shipment-detail-logistics-status"]').text()).toContain('下单成功');
+    expect(wrapper.get('[data-testid="shipment-detail-preparation-status"]').text()).toContain('部分发货');
     await wrapper.get('[data-testid="shipment-back-list"]').trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.name).toBe('shipping-list');

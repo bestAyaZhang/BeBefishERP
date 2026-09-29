@@ -26,7 +26,7 @@ class ShipmentServiceTest {
     @BeforeEach
     void setup() {
         service = new ShipmentService(repository, Validation.buildDefaultValidatorFactory().getValidator(), clock,
-                new ShipmentEditPolicy());
+                new ShipmentEditPolicy(), com.bebefish.erp.support.TestShippingSources.resolver());
         when(repository.insert(any())).thenAnswer(call -> {
             Shipment s = call.getArgument(0);
             return new Shipment(1L, s.shipmentNo(), s.content(), 0, s.createdBy(), s.updatedBy(), s.createdAt(), s.updatedAt());
@@ -61,7 +61,7 @@ class ShipmentServiceTest {
     @ValueSource(strings = {"unfinished", "completed", "out_of_stock", "partially_shipped"})
     void updateAcceptsAllFourManualStatuses(String status) {
         var original = existing("unfinished");
-        when(repository.findById(1)).thenReturn(Optional.of(original));
+        when(repository.findByIdForUpdate(1)).thenReturn(Optional.of(original));
         when(repository.update(any(), eq(2L))).thenReturn(true);
 
         assertThat(service.update(1, form(List.of("小周"), null, null), status, 2, "employee:9")
@@ -71,7 +71,7 @@ class ShipmentServiceTest {
     @Test
     void updatePreservesServerOwnedDateAndOrderer() {
         var original = existing("unfinished");
-        when(repository.findById(1)).thenReturn(Optional.of(original));
+        when(repository.findByIdForUpdate(1)).thenReturn(Optional.of(original));
         when(repository.update(any(), eq(2L))).thenReturn(true);
 
         var updated = service.update(1, form(List.of("小周"), new BigDecimal("2.500"), null),
@@ -100,7 +100,7 @@ class ShipmentServiceTest {
                 e -> assertThat(e.status().value()).isEqualTo(404));
 
         var original = existing("unfinished");
-        when(repository.findById(1)).thenReturn(Optional.of(original));
+        when(repository.findByIdForUpdate(1)).thenReturn(Optional.of(original));
         when(repository.update(any(), eq(2L))).thenReturn(false);
         assertThatThrownBy(() -> service.update(1, form(List.of("小周"), null, null), "completed", 2, "second"))
                 .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.status().value()).isEqualTo(409));
@@ -127,6 +127,6 @@ class ShipmentServiceTest {
     private ShipmentFormInput form(List<String> preparers, BigDecimal weight, BigDecimal freight) {
         return new ShipmentFormInput("淘宝", "贝贝鱼淘宝旗舰店", preparers, "张三", "13800138000",
                 "浙江省", "杭州市", "余杭区", "示例路1号", "蓝色收纳盒 × 2\n纸箱 × 1", "轻放", freight,
-                new AneOrderDraft("水族用品", "纸箱", weight, new BigDecimal("0.12"), 2, 524, 180, 104, "外箱加固"));
+                new AneOrderDraft("水族用品", "纸箱", weight, new BigDecimal("0.12"), 2, 524, 180, 104, "外箱加固"), 1L, 1L);
     }
 }

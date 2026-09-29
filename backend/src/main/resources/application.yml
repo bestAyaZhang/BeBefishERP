@@ -15,7 +15,6 @@ spring:
     open-in-view: false
 erp:
   shipping:
-    shop-names: ${ERP_SHIPPING_SHOP_NAMES:贝贝鱼淘宝旗舰店}
     ane:
       enabled: ${ERP_ANE_ENABLED:false}
       order-url: ${ERP_ANE_ORDER_URL:https://opc.test.ane56.com/aneop/opwb/lb/new}

@@ -9,6 +9,7 @@ public interface ShipmentRepository {
     Shipment insert(Shipment shipment);
     boolean update(Shipment shipment, long expectedVersion);
     Optional<Shipment> findById(long id);
+    Optional<Shipment> findByIdForUpdate(long id);
     Page<Shipment> findAll(ShipmentQuery query, Pageable pageable);
     ShipmentSummary summary(LocalDate date);
     boolean hasNonRejectedLogisticsOrder(long id);

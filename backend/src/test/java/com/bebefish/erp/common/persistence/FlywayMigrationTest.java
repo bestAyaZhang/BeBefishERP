@@ -60,6 +60,25 @@ class FlywayMigrationTest {
     }
 
     @Test
+    void convertsGeneratedV22LabelsButKeepsPrivateExceptions() {
+        flyway().clean();
+        Flyway.configure().dataSource(dataSource).target("22").load().migrate();
+        jdbc.update("insert into sales_platform(platform_code,platform_name,created_by,updated_by,created_at,updated_at) "
+                + "values('P_AUTO','抖音代发','test','test',now(3),now(3))");
+        long platformId = jdbc.queryForObject("select id from sales_platform where platform_code='P_AUTO'", Long.class);
+        jdbc.update("insert into platform_shop(platform_id,shop_code,shop_name,channel_type,owner_name,option_label,created_by,updated_by,created_at,updated_at) "
+                + "values(?, 'S_AUTO', '普通店', 'ecommerce', '运营', '电商_抖音代发_普通店', 'test', 'test', now(3), now(3))", platformId);
+        jdbc.update("insert into platform_shop(platform_id,shop_code,shop_name,channel_type,owner_name,option_label,created_by,updated_by,created_at,updated_at) "
+                + "values(?, 'S_PRIVATE', '代发1', 'private', '运营', '私域_代发_方钉', 'test', 'test', now(3), now(3))", platformId);
+
+        flyway().migrate();
+
+        assertThat(jdbc.queryForObject("select option_label from platform_shop where shop_code='S_AUTO'", String.class)).isNull();
+        assertThat(jdbc.queryForObject("select option_label from platform_shop where shop_code='S_PRIVATE'", String.class))
+                .isEqualTo("私域_代发_方钉");
+    }
+
+    @Test
     void createsMasterdataAndProductTables() {
         var tables = jdbc.queryForList(
                 "select table_name from information_schema.tables "
@@ -74,7 +93,7 @@ class FlywayMigrationTest {
                 "file_asset", "business_code_sequence",
                 "inventory_balance", "inventory_ledger", "stock_adjustment", "stock_adjustment_item",
                 "warehouse_layout", "inventory_location_balance", "inventory_stocktake_task", "inventory_stocktake_item",
-                "shipment", "shipment_logistics_order",
+                "shipment", "shipment_logistics_order", "sales_platform", "platform_shop",
                 "sales_order_sequence", "sales_order", "sales_order_item",
                 "department", "position", "employee", "sys_user", "sys_permission", "sys_role",
                 "sys_role_permission", "sys_user_role", "sys_feishu_identity",
@@ -294,7 +313,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("19");
+        )).isEqualTo("23");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId

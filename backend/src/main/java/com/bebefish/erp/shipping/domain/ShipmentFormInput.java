@@ -14,7 +14,7 @@ import java.util.List;
 
 public record ShipmentFormInput(
         @Size(max = 100) String platform,
-        @NotBlank(message = "请选择店铺") @Size(max = 200) String shopName,
+        @Size(max = 200) String shopName,
         @NotEmpty(message = "请至少选择一名备货人")
         @Size(max = 20, message = "备货人最多选择20人") List<@NotBlank @Size(max = 100) String> preparers,
         @NotBlank(message = "请填写收件人姓名") @Size(max = 100) String recipientName,
@@ -27,8 +27,22 @@ public record ShipmentFormInput(
         @Size(max = 5000) String remark,
         @DecimalMin(value = "0", message = "预计运费不能小于零")
         @Digits(integer = 10, fraction = 2, message = "预计运费最多保留两位小数") BigDecimal estimatedFreight,
-        @NotNull(message = "缺少安能下单资料") @Valid AneOrderDraft orderDraft
+        @NotNull(message = "缺少安能下单资料") @Valid AneOrderDraft orderDraft,
+        @jakarta.validation.constraints.Positive Long platformId,
+        @jakarta.validation.constraints.Positive Long shopId
 ) {
+    public ShipmentFormInput(String platform,String shopName,List<String> preparers,String recipientName,String recipientPhone,
+        String recipientProvince,String recipientCity,String recipientCounty,String recipientDetailAddress,String preparationContent,
+        String remark,BigDecimal estimatedFreight,AneOrderDraft orderDraft) {
+        this(platform,shopName,preparers,recipientName,recipientPhone,recipientProvince,recipientCity,recipientCounty,
+            recipientDetailAddress,preparationContent,remark,estimatedFreight,orderDraft,null,null);
+    }
+    public ShipmentSource source() { return new ShipmentSource(platformId,shopId,platform,shopName); }
+    public ShipmentFormInput withSource(ShipmentSource source) {
+        return new ShipmentFormInput(source.platform(),source.shopName(),preparers,recipientName,recipientPhone,
+            recipientProvince,recipientCity,recipientCounty,recipientDetailAddress,preparationContent,remark,estimatedFreight,
+            orderDraft,source.platformId(),source.shopId());
+    }
     public ShipmentFormInput normalized() {
         var normalizedPreparers = new LinkedHashSet<String>();
         if (preparers != null) {
@@ -40,7 +54,7 @@ public record ShipmentFormInput(
         return new ShipmentFormInput(clean(platform), clean(shopName), new ArrayList<>(normalizedPreparers),
                 clean(recipientName), clean(recipientPhone), clean(recipientProvince), clean(recipientCity),
                 clean(recipientCounty), clean(recipientDetailAddress), clean(preparationContent), clean(remark),
-                estimatedFreight, orderDraft == null ? null : orderDraft.normalized());
+                estimatedFreight, orderDraft == null ? null : orderDraft.normalized(), platformId, shopId);
     }
 
     private static String clean(String value) { return value == null ? "" : value.strip(); }

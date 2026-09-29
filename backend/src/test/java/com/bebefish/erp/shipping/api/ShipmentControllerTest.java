@@ -50,7 +50,7 @@ class ShipmentControllerTest {
         @Bean Clock clock() { return Clock.fixed(Instant.parse("2026-09-24T02:00:00Z"), ZoneId.of("Asia/Shanghai")); }
         @Bean ShipmentEditPolicy shipmentEditPolicy() { return new ShipmentEditPolicy(); }
         @Bean ShipmentService service(ShipmentRepository repository, Clock clock, ShipmentEditPolicy policy) {
-            return new ShipmentService(repository, Validation.buildDefaultValidatorFactory().getValidator(), clock, policy);
+            return new ShipmentService(repository, Validation.buildDefaultValidatorFactory().getValidator(), clock, policy, com.bebefish.erp.support.TestShippingSources.resolver());
         }
         @Bean ShippingFormOptionsService optionsService() { return mock(ShippingFormOptionsService.class); }
         @Bean ShipmentController controller(ShipmentService service, ShippingFormOptionsService optionsService) {
@@ -108,7 +108,7 @@ class ShipmentControllerTest {
     void rejectsMissingShopTooManyPreparersAndMissingRegion() throws Exception {
         login("测试用户", "shipping:create");
         var missingShop = validForm("测试");
-        missingShop.put("shopName", "  ");
+        missingShop.remove("shopId");
         mvc.perform(post("/api/shipments").contentType(APPLICATION_JSON).content(body(missingShop, null, null)))
                 .andExpect(status().isBadRequest());
 
@@ -212,7 +212,7 @@ class ShipmentControllerTest {
 
     private Map<String, Object> validForm(String recipient) {
         var form = new LinkedHashMap<String, Object>();
-        form.put("platform", "淘宝");
+        form.put("platformId", 1L); form.put("shopId", 1L); form.put("platform", "淘宝");
         form.put("shopName", "贝贝鱼淘宝旗舰店");
         form.put("preparers", List.of("小周", "阿杰"));
         form.put("recipientName", recipient);

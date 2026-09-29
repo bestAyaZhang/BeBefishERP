@@ -32,6 +32,8 @@ export interface AneOrderDraft {
 }
 
 export interface ShipmentFormInput extends RecipientFields {
+  platformId?: number | null;
+  shopId?: number | null;
   platform: string;
   shopName: string;
   preparers: string[];
@@ -52,6 +54,7 @@ export interface ShipmentContent extends ShipmentFormInput {
 export interface Shipment {
   id: number;
   shipmentNo: string;
+  logisticsOrderState: LogisticsOrderState | null;
   content: ShipmentContent;
   version: number;
   createdBy: string;
@@ -61,6 +64,9 @@ export interface Shipment {
 }
 
 export interface ShipmentQuery {
+  platformId?: number;
+  shopId?: number;
+  unlinkedOnly?: boolean;
   page: number;
   size: number;
   keyword?: string;
@@ -80,8 +86,29 @@ export interface ShipmentSummary {
 }
 
 export interface PreparerOption { employeeId: number; employeeName: string }
-export interface ShippingFormOptions { shopNames: string[]; preparers: PreparerOption[] }
-export interface LogisticsAvailability { available: boolean; testEnvironment: boolean; message: string }
+export interface ShippingFormOptions {
+  shopNames: string[]; preparers: PreparerOption[];
+  platforms: { id: number; name: string }[];
+  shops: { id: number; platformId: number; name: string; optionLabel?: string }[];
+}
+export interface ShippingFilterOptions {
+  platforms: { id: number; name: string; status: string }[];
+  shops: { id: number; platformId: number; name: string; optionLabel?: string; status: string; platformStatus: string }[];
+}
+export interface SenderInfo {
+  name: string;
+  phone: string;
+  province: string;
+  city: string;
+  county: string;
+  address: string;
+}
+export interface LogisticsAvailability {
+  available: boolean;
+  testEnvironment: boolean;
+  message: string;
+  sender: SenderInfo | null;
+}
 export interface LogisticsOrder {
   shipmentId: number;
   orderNo: string;
@@ -98,6 +125,7 @@ export interface ShippingService {
   list(query: ShipmentQuery): Promise<PageResult<Shipment>>;
   summary(date: string): Promise<ShipmentSummary>;
   formOptions(): Promise<ShippingFormOptions>;
+  getFilterOptions(): Promise<ShippingFilterOptions>;
   get(id: number): Promise<Shipment>;
   create(form: ShipmentFormInput): Promise<Shipment>;
   update(id: number, form: ShipmentFormInput, status: ShipmentStatus, version: number): Promise<Shipment>;
@@ -125,12 +153,26 @@ export function recipientFullAddress(content: RecipientFields) {
   return `${content.recipientProvince}${content.recipientCity}${content.recipientCounty}${content.recipientDetailAddress}`;
 }
 
+export function senderFullAddress(sender: SenderInfo) {
+  return `${sender.province}${sender.city}${sender.county}${sender.address}`;
+}
+
 export function shipmentStatus(value: ShipmentStatus) {
   return SHIPMENT_STATUSES.find(item => item.value === value) ?? SHIPMENT_STATUSES[0];
 }
 
 export function logisticsStateLabel(value?: LogisticsOrderState) {
-  return ({ processing: '下单中', succeeded: '下单成功', rejected: '下单失败', unknown: '结果待核实' } as const)[value ?? 'rejected'];
+  return logisticsOrderStatus(value).label;
+}
+
+export function logisticsOrderStatus(value?: LogisticsOrderState | null) {
+  if (!value) return { label: '尚未下单', tone: 'bg-slate-100 text-slate-600' };
+  return ({
+    processing: { label: '下单中', tone: 'bg-blue-50 text-blue-700' },
+    succeeded: { label: '下单成功', tone: 'bg-emerald-50 text-emerald-700' },
+    rejected: { label: '下单失败', tone: 'bg-rose-50 text-rose-600' },
+    unknown: { label: '结果待核实', tone: 'bg-amber-50 text-amber-700' }
+  } as const)[value];
 }
 
 export function freightText(value: number | null) { return value == null ? '未填写' : `¥${value.toFixed(2)}`; }

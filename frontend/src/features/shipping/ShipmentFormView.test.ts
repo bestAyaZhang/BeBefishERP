@@ -12,6 +12,7 @@ vi.mock('./shippingService', () => ({ shippingService: service }));
 function shipment(overrides: Partial<Shipment> = {}): Shipment {
   const base: Shipment = {
     id: 18, shipmentNo: 'FH20260924-18', version: 0, createdBy: 'employee:1', updatedBy: 'employee:1',
+    logisticsOrderState: null,
     createdAt: '2026-09-24T09:00:00', updatedAt: '2026-09-24T09:00:00',
     content: { shipmentDate: '2026-09-24', platform: '淘宝', shopName: '贝贝鱼淘宝旗舰店', preparers: ['小周', '阿杰'],
       recipientName: '林女士', recipientPhone: '13800006028', recipientProvince: '浙江省', recipientCity: '杭州市',
@@ -37,7 +38,7 @@ async function render(path = '/shipping/new') {
 }
 
 async function fillRequired(wrapper: ReturnType<typeof mount>) {
-  await wrapper.get('[data-testid="shipment-platform"]').setValue('淘宝');
+  await wrapper.get('[data-testid="shipment-platform"]').setValue('1');
   await wrapper.get('[data-testid="preparer-toggle"]').trigger('click');
   await wrapper.get('[data-testid="preparer-option-1"]').trigger('click');
   await wrapper.get('[data-testid="preparer-option-2"]').trigger('click');
@@ -51,9 +52,17 @@ beforeEach(() => {
   clearCurrentUser();
   saveCurrentUser({ accessToken: 'test', mobile: null, displayName: '李主管', roles: [],
     permissions: ['shipping:view', 'shipping:create', 'shipping:edit', 'shipping:order'], loginMethod: 'feishu' });
-  service.formOptions.mockReset().mockResolvedValue({ shopNames: ['贝贝鱼淘宝旗舰店'], preparers: [
+  service.formOptions.mockReset().mockResolvedValue({ shopNames: ['贝贝鱼淘宝旗舰店'], platforms: [{ id: 1, name: '淘宝' }], shops: [{ id: 1, platformId: 1, name: '贝贝鱼淘宝旗舰店' }], preparers: [
     { employeeId: 1, employeeName: '小周' }, { employeeId: 2, employeeName: '阿杰' }] });
-  service.logisticsAvailability.mockReset().mockResolvedValue({ available: true, testEnvironment: false, message: '安能物流下单服务已配置' });
+  service.logisticsAvailability.mockReset().mockResolvedValue({
+    available: true,
+    testEnvironment: false,
+    message: '安能物流下单服务已配置',
+    sender: {
+      name: '测试发货人', phone: '13800000000', province: '浙江省', city: '杭州市', county: '余杭区',
+      address: '测试路1号'
+    }
+  });
   service.get.mockReset().mockResolvedValue(shipment());
   service.getLogisticsOrder.mockReset().mockResolvedValue(null);
   service.create.mockReset().mockResolvedValue(shipment());
@@ -65,6 +74,16 @@ beforeEach(() => {
 afterEach(clearCurrentUser);
 
 describe('ShipmentFormView', () => {
+  it('shows the configured sender in the shipment information section', async () => {
+    const { wrapper } = await render();
+
+    const sender = wrapper.get('[data-testid="shipment-sender"]');
+    expect(sender.text()).toContain('测试发货人');
+    expect(sender.text()).toContain('13800000000');
+    expect(sender.text()).toContain('浙江省杭州市余杭区测试路1号');
+    wrapper.unmount();
+  });
+
   it('defaults a new order to the documented cash payment type', async () => {
     const { wrapper } = await render();
     const paymentSelect = wrapper.findAll('select').find(select => select.text().includes('月结') && select.text().includes('现金'));
@@ -106,7 +125,7 @@ describe('ShipmentFormView', () => {
     expect(wrapper.find('[data-testid="shipment-date"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="shipment-orderer"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="shipment-status"]').exists()).toBe(false);
-    expect((wrapper.get('[data-testid="shipment-shop"]').element as HTMLSelectElement).value).toBe('贝贝鱼淘宝旗舰店');
+    expect((wrapper.get('[data-testid="shipment-shop"]').element as HTMLSelectElement).value).toBe('1');
     await fillRequired(wrapper);
     expect((wrapper.get('[data-testid="recipient-county"]').element as HTMLInputElement).value).toBe('余杭区');
     await wrapper.get('[data-testid="shipment-save-only"]').trigger('click'); await flushPromises();
@@ -204,4 +223,47 @@ describe('ShipmentFormView', () => {
       preparationContent: '已发第一批', remark: '剩余待补' }), 'partially_shipped', 0);
     wrapper.unmount();
   });
+});
+
+it('uses stable catalog IDs and clears a shop from a different platform', async () => {
+  service.formOptions.mockResolvedValue({ shopNames: [], preparers: [], platforms: [{ id: 1, name: '淘宝' }, { id: 2, name: '抖音' }], shops: [{ id: 11, platformId: 1, name: '旗舰店' }, { id: 22, platformId: 2, name: '直播店' }, { id: 23, platformId: 2, name: '分店' }] });
+  const { wrapper } = await render();
+  expect(wrapper.get('[data-testid="shipment-platform"]').element.tagName).toBe('SELECT');
+  await wrapper.get('[data-testid="shipment-platform"]').setValue('1');
+  expect((wrapper.get('[data-testid="shipment-shop"]').element as HTMLSelectElement).value).toBe('11');
+  await wrapper.get('[data-testid="shipment-platform"]').setValue('2');
+  expect((wrapper.get('[data-testid="shipment-shop"]').element as HTMLSelectElement).selectedIndex).toBe(0);
+  expect(wrapper.get('[data-testid="shipment-shop"]').text()).not.toContain('旗舰店');
+  wrapper.unmount();
+});
+
+it('shows the configured store option while retaining the actual shop name in the shipment', async () => {
+  service.formOptions.mockResolvedValue({ shopNames: [], preparers: [], platforms: [{ id: 1, name: '拼多多' }],
+    shops: [{ id: 11, platformId: 1, name: '笨笨的生活商铺', optionLabel: '电商_拼多多_笨笨的生活商铺' }] });
+  const { wrapper } = await render();
+  expect(wrapper.get<HTMLSelectElement>('[data-testid="shipment-shop"]').element.selectedOptions[0].textContent).toBe('电商_拼多多_笨笨的生活商铺');
+  expect((wrapper.vm as any).form.shopName).toBe('笨笨的生活商铺');
+  wrapper.unmount();
+});
+
+it('preserves an unlinked historical source when editing with no active catalog', async () => {
+  service.formOptions.mockResolvedValue({ shopNames: [], preparers: [], platforms: [], shops: [] });
+  const historical = shipment();
+  historical.content.platformId = null;
+  historical.content.shopId = null;
+  service.get.mockResolvedValue(historical);
+  const { wrapper } = await render('/shipping/18/edit');
+  expect(wrapper.get<HTMLSelectElement>('[data-testid="shipment-platform"]').element.selectedOptions[0].textContent).toContain('淘宝');
+  expect(wrapper.get<HTMLSelectElement>('[data-testid="shipment-shop"]').element.selectedOptions[0].textContent).toContain('贝贝鱼淘宝旗舰店');
+  await wrapper.get('[data-testid="shipment-save-only"]').trigger('click'); await flushPromises();
+  expect(service.update).toHaveBeenCalledWith(18, expect.objectContaining({ platform: '淘宝', shopName: '贝贝鱼淘宝旗舰店' }), 'unfinished', 0);
+  wrapper.unmount();
+});
+
+it('blocks creation and explains an empty catalog', async () => {
+  service.formOptions.mockResolvedValue({ shopNames: [], preparers: [], platforms: [], shops: [] });
+  const { wrapper } = await render();
+  expect(wrapper.text()).toContain('暂无可用店铺');
+  expect(wrapper.get('[data-testid="shipment-save-only"]').attributes('disabled')).toBeDefined();
+  wrapper.unmount();
 });

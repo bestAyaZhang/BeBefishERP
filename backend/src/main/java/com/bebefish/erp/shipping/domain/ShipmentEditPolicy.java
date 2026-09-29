@@ -10,7 +10,9 @@ public class ShipmentEditPolicy {
     public void assertAllowed(ShipmentContent previous, ShipmentFormInput next, boolean ordered) {
         if (!ordered) return;
         var current = previous.form();
-        boolean immutableChanged = !Objects.equals(current.platform(), next.platform())
+        boolean immutableChanged = !Objects.equals(current.platformId(), next.platformId())
+                || !Objects.equals(current.shopId(), next.shopId())
+                || !Objects.equals(current.platform(), next.platform())
                 || !Objects.equals(current.shopName(), next.shopName())
                 || !Objects.equals(current.preparers(), next.preparers())
                 || !Objects.equals(current.recipientName(), next.recipientName())

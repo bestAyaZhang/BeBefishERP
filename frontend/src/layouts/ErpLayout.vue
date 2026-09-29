@@ -38,6 +38,7 @@ const pageHeaders: Record<string, PageHeader> = {
   'customer-new': { group: 'Master Data', groupRoute: 'customers', title: 'New Customer', titleRoute: 'customer-new' },
   'customer-edit': { group: 'Master Data', groupRoute: 'customers', title: 'Edit Customer', titleRoute: 'customer-edit' },
   suppliers: { group: 'Master Data', groupRoute: 'categories', title: 'Suppliers', titleRoute: 'suppliers' },
+  platforms: { group: '平台管理', groupRoute: 'platforms', title: '平台管理', titleRoute: 'platforms' },
   warehouses: { group: '库存管理', groupRoute: 'inventory-balances', title: '仓库列表', titleRoute: 'warehouses' },
   'warehouse-canvas': { group: '库存管理', groupRoute: 'inventory-balances', title: '仓库画布', titleRoute: 'warehouse-canvas' },
   'inventory-balances': { group: '库存管理', groupRoute: 'inventory-balances', title: '库存余额', titleRoute: 'inventory-balances' },

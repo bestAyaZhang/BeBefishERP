@@ -7,6 +7,7 @@ const mockNavigationCatalog: NavigationCatalog = {
     { id: 'categories', label: '分类管理', icon: 'category', routeName: 'categories', permission: 'masterdata:view' },
     { id: 'customers', label: '客户管理', icon: 'customer', routeName: 'customers', permission: 'masterdata:view' },
     { id: 'suppliers', label: '供应商管理', icon: 'supplier', routeName: 'suppliers', permission: 'masterdata:view' },
+    { id: 'platforms', label: '平台管理', icon: 'platform', routeName: 'platforms', permission: 'platform:view' },
     {
       id: 'shipping',
       label: '发货管理',
