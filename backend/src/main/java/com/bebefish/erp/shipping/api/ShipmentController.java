@@ -60,7 +60,7 @@ public class ShipmentController {
                                          @AuthenticationPrincipal ErpPrincipal principal) {
         if (request.version() == null) throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "缺少发货单版本，请重新打开后再保存");
         if (request.status() == null || request.status().isBlank())
-            throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "请选择发货状态");
+            throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "请选择备货状态");
         return ApiResponse.success(service.update(id, request.form(), request.status(), request.version(), principal.operatorIdentifier()));
     }
 

@@ -258,6 +258,20 @@ class FlywayMigrationTest {
     }
 
     @Test
+    void addsShipmentSenderSnapshotColumns() {
+        var columns = jdbc.queryForList(
+                "select column_name from information_schema.columns "
+                        + "where table_schema = database() and table_name = 'shipment'",
+                String.class
+        );
+
+        assertThat(columns).contains(
+                "sender_name", "sender_phone", "sender_province", "sender_city", "sender_county",
+                "sender_detail_address"
+        );
+    }
+
+    @Test
     void upgradesRepresentativeLegacyRowsFromV7ToLatestWithoutDataLoss() {
         var v7 = Flyway.configure()
                 .dataSource(dataSource)
@@ -294,7 +308,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("19");
+        )).isEqualTo("21");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId

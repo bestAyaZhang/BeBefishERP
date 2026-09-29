@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import { AlertTriangle, Boxes, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Plus, RotateCcw, Search, Truck } from 'lucide-vue-next';
 import { currentUser } from '../../services/authSession';
 import { shippingService } from './shippingService';
-import { freightText, recipientFullAddress, shipmentStatus, SHIPMENT_STATUSES, todayDate,
+import { freightText, logisticsOrderStatus, recipientFullAddress, shipmentStatus, SHIPMENT_STATUSES, todayDate,
   type Shipment, type ShipmentQuery, type ShipmentSummary } from './types';
 
 const router = useRouter();
@@ -67,8 +67,8 @@ onBeforeUnmount(() => { listRequest++; summaryRequest++; });
     <p v-if="summaryError" class="rounded-lg border border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700">今日统计暂时无法加载：{{ summaryError }} <button class="ml-2 underline" @click="loadSummary">重试</button></p>
     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <article data-testid="shipment-summary-today" class="summary-card"><span class="summary-icon bg-indigo-50 text-indigo-600"><Truck :size="20" /></span><div><p class="summary-label">今日发货</p><p class="summary-value">{{ summary.todayCount }} 单</p></div></article>
-      <article class="summary-card"><span class="summary-icon bg-amber-50 text-amber-600"><Clock3 :size="20" /></span><div><p class="summary-label">未完成</p><p class="summary-value">{{ summary.unfinishedCount }} 单</p></div></article>
-      <article class="summary-card"><span class="summary-icon bg-emerald-50 text-emerald-600"><CheckCircle2 :size="20" /></span><div><p class="summary-label">已完成</p><p class="summary-value">{{ summary.completedCount }} 单</p></div></article>
+      <article class="summary-card"><span class="summary-icon bg-amber-50 text-amber-600"><Clock3 :size="20" /></span><div><p class="summary-label">备货未完成</p><p class="summary-value">{{ summary.unfinishedCount }} 单</p></div></article>
+      <article class="summary-card"><span class="summary-icon bg-emerald-50 text-emerald-600"><CheckCircle2 :size="20" /></span><div><p class="summary-label">备货已完成</p><p class="summary-value">{{ summary.completedCount }} 单</p></div></article>
       <article class="summary-card"><span class="summary-icon bg-rose-50 text-rose-600"><AlertTriangle :size="20" /></span><div><p class="summary-label">缺货 / 部分发货</p><p class="summary-value">{{ summary.outOfStockCount }} / {{ summary.partiallyShippedCount }} 单</p></div></article>
     </div>
 
@@ -77,14 +77,14 @@ onBeforeUnmount(() => { listRequest++; summaryRequest++; });
         <label class="min-w-[240px] flex-1 text-xs font-medium text-slate-500">关键词<div class="relative mt-1.5"><Search class="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" /><input v-model="query.keyword" data-testid="shipment-search" maxlength="200" placeholder="姓名、电话、单号、备货内容或人员" class="filter-input w-full pl-9" /></div></label>
         <label class="text-xs font-medium text-slate-500">开始日期<input v-model="query.dateFrom" data-testid="shipment-date-from" type="date" class="filter-input mt-1.5 block" /></label>
         <label class="text-xs font-medium text-slate-500">结束日期<input v-model="query.dateTo" data-testid="shipment-date-to" type="date" :min="query.dateFrom" class="filter-input mt-1.5 block" /></label>
-        <label class="text-xs font-medium text-slate-500">状态<select v-model="query.status" data-testid="shipment-filter-status" class="filter-input mt-1.5 block min-w-32"><option value="">全部状态</option><option v-for="item in SHIPMENT_STATUSES" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
+        <label data-testid="shipment-filter-status-label" class="text-xs font-medium text-slate-500">备货状态<select v-model="query.status" data-testid="shipment-filter-status" class="filter-input mt-1.5 block min-w-32"><option value="">全部备货状态</option><option v-for="item in SHIPMENT_STATUSES" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
         <label class="text-xs font-medium text-slate-500">平台<input v-model="query.platform" data-testid="shipment-platform" maxlength="100" placeholder="全部平台" class="filter-input mt-1.5 block w-36" /></label>
         <button type="submit" class="h-10 rounded-lg bg-[#536dff] px-5 text-sm font-semibold text-white">查询</button>
         <button data-testid="shipment-reset" type="button" class="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 px-4 text-sm text-slate-600" @click="reset"><RotateCcw :size="15" />重置</button>
       </div>
       <div class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
         <button data-testid="shipment-scope-today" type="button" class="shortcut-button" @click="showToday">今天</button>
-        <button data-testid="shipment-scope-incomplete" type="button" class="shortcut-button" @click="showIncomplete">全部未完成</button>
+        <button data-testid="shipment-scope-incomplete" type="button" class="shortcut-button" @click="showIncomplete">全部备货未完成</button>
       </div>
     </form>
 
@@ -94,14 +94,14 @@ onBeforeUnmount(() => { listRequest++; summaryRequest++; });
       <div v-else-if="!records.length" class="px-5 py-20 text-center"><Boxes class="mx-auto h-10 w-10 text-slate-300" /><p class="mt-4 text-sm font-semibold text-slate-600">当前条件下暂无发货记录</p><p class="mt-2 text-xs text-slate-400">可调整筛选条件或新建发货单。</p></div>
       <div v-else class="overflow-x-auto">
         <table class="w-full min-w-[1420px] text-left text-sm">
-          <thead class="bg-slate-50 text-xs font-medium text-slate-500"><tr><th class="table-cell">发货单</th><th class="table-cell">收件信息</th><th class="table-cell">备货清单 / 备注</th><th class="table-cell">物流信息</th><th class="table-cell">重量 / 运费预测</th><th class="table-cell">状态</th><th class="table-cell">备货人 / 下单人</th><th class="table-cell text-right">操作</th></tr></thead>
+          <thead class="bg-slate-50 text-xs font-medium text-slate-500"><tr><th class="table-cell">发货单</th><th class="table-cell">收件信息</th><th class="table-cell">备货清单 / 备注</th><th class="table-cell">物流信息</th><th class="table-cell">重量 / 运费预测</th><th class="table-cell">下单 / 备货状态</th><th class="table-cell">备货人 / 下单人</th><th class="table-cell text-right">操作</th></tr></thead>
           <tbody class="divide-y divide-slate-100"><tr v-for="row in records" :key="row.id" :data-testid="`shipment-row-${row.id}`" class="align-top hover:bg-slate-50/60">
             <td class="table-cell"><p :data-testid="`shipment-number-${row.id}`" :title="row.shipmentNo" class="whitespace-nowrap font-semibold text-slate-800">{{ compactShipmentNo(row.shipmentNo) }}</p><p class="mt-1 text-xs text-slate-400">{{ row.content.shipmentDate }} · {{ row.content.platform || '未填平台' }}</p><p class="mt-1 text-xs text-slate-400">{{ row.content.shopName }}</p></td>
             <td class="table-cell"><p class="font-medium text-slate-800">{{ row.content.recipientName }} <span class="ml-2 font-normal text-slate-500">{{ maskPhone(row.content.recipientPhone) }}</span></p><p class="mt-1.5 max-w-72 break-words text-xs leading-5 text-slate-500">{{ recipientFullAddress(row.content) }}</p></td>
             <td class="table-cell"><p :data-testid="`shipment-preparation-${row.id}`" :title="row.content.preparationContent" class="line-clamp-3 max-w-72 whitespace-pre-wrap break-words leading-6 text-slate-700">{{ row.content.preparationContent }}</p><p v-if="row.content.remark" :data-testid="`shipment-remark-${row.id}`" :title="`备注：${row.content.remark}`" class="mt-1 line-clamp-1 max-w-72 text-xs text-slate-400">备注：{{ row.content.remark }}</p></td>
             <td class="table-cell"><p class="text-slate-700">{{ row.content.logisticsCompany || '待下单' }}</p><p class="mt-1 max-w-40 break-all text-xs text-slate-400">{{ row.content.trackingNo || '暂无物流单号' }}</p></td>
             <td class="table-cell whitespace-nowrap"><p>{{ row.content.orderDraft.weight == null ? '未填写' : `${row.content.orderDraft.weight} kg` }}</p><p class="mt-1 text-xs text-slate-400">{{ freightText(row.content.estimatedFreight) }}</p></td>
-            <td class="table-cell"><span class="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium" :class="shipmentStatus(row.content.status).tone">{{ shipmentStatus(row.content.status).label }}</span></td>
+            <td class="table-cell"><div class="space-y-2"><div><p class="mb-1 text-[11px] text-slate-400">安能下单</p><span :data-testid="`shipment-logistics-status-${row.id}`" class="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium" :class="logisticsOrderStatus(row.logisticsOrderState).tone">{{ logisticsOrderStatus(row.logisticsOrderState).label }}</span></div><div><p class="mb-1 text-[11px] text-slate-400">备货</p><span :data-testid="`shipment-preparation-status-${row.id}`" class="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium" :class="shipmentStatus(row.content.status).tone">{{ shipmentStatus(row.content.status).label }}</span></div></div></td>
             <td class="table-cell"><p class="max-w-36 break-words text-slate-700">{{ row.content.preparers.join('、') || '未指定' }}</p><p class="mt-1 text-xs text-slate-400">{{ row.content.orderer || '—' }}</p></td>
             <td class="table-cell whitespace-nowrap text-right"><button :data-testid="`shipment-detail-${row.id}`" type="button" class="font-medium text-[#536dff]" @click="openDetail(row.id)">查看详情</button><button v-if="canEdit" :data-testid="`shipment-edit-${row.id}`" type="button" class="ml-3 font-medium text-[#536dff]" @click="openEdit(row.id)">编辑</button></td>
           </tr></tbody>

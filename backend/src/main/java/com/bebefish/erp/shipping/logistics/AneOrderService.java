@@ -22,11 +22,14 @@ public class AneOrderService {
                            ShipmentRepository shipments, Validator validator) {
         this.config = config; this.store = store; this.client = client; this.shipments = shipments; this.validator = validator;
     }
-    public record Availability(boolean available, boolean testEnvironment, String message) {}
+    public record SenderInfo(String name, String phone, String province, String city, String county, String address) {}
+    public record Availability(boolean available, boolean testEnvironment, String message, SenderInfo sender) {}
     public Availability availability() {
         return new Availability(config.ready(), config.testEnvironment(), config.ready()
                 ? (config.testEnvironment() ? "安能测试环境：只用于接口联调，不安排实际走货" : "安能物流下单服务已配置")
-                : "物流下单服务尚未接入：请配置安能账号、密钥和寄件人资料");
+                : "物流下单服务尚未接入：请配置安能账号、密钥和寄件人资料",
+                new SenderInfo(config.getSenderName(), config.getSenderPhone(), config.getSenderProvince(),
+                        config.getSenderCity(), config.getSenderCounty(), config.getSenderAddress()));
     }
     public LogisticsOrder get(long id) { return store.find(id).orElse(null); }
 
@@ -46,10 +49,10 @@ public class AneOrderService {
         params.put("volume", draft.volume()); params.put("pieceAmount", draft.pieceAmount());
         params.put("cargoName", draft.cargoName()); params.put("packType", draft.packType());
         params.put("payType", draft.payType()); params.put("remark", draft.logisticsRemark());
-        params.put("sendMan", config.getSenderName()); params.put("sendPhone", config.getSenderPhone());
+        params.put("sendMan", c.senderName()); params.put("sendPhone", c.senderPhone());
         params.put("customerCode", config.getCustomerCode()); params.put("customerPass", config.getCustomerPass());
-        params.put("sendProvinceName", config.getSenderProvince()); params.put("sendCityName", config.getSenderCity());
-        params.put("sendCountyName", config.getSenderCounty()); params.put("detailAddress", config.getSenderAddress());
+        params.put("sendProvinceName", c.senderProvince()); params.put("sendCityName", c.senderCity());
+        params.put("sendCountyName", c.senderCounty()); params.put("detailAddress", c.senderDetailAddress());
         params.put("receiveMan", c.recipientName()); params.put("receivePhone", c.recipientPhone());
         params.put("toProvinceName", c.recipientProvince()); params.put("toCityName", c.recipientCity());
         params.put("toCountyName", c.recipientCounty()); params.put("toAddress", c.recipientDetailAddress());
@@ -61,6 +64,14 @@ public class AneOrderService {
 
     private void validateOrderContent(ShipmentContent content) {
         var draft = content.orderDraft();
+        if (blank(content.senderName()) || content.senderName().length() > 30
+                || blank(content.senderPhone()) || content.senderPhone().length() > 30
+                || blank(content.senderProvince()) || content.senderProvince().length() > 30
+                || blank(content.senderCity()) || content.senderCity().length() > 30
+                || blank(content.senderCounty()) || content.senderCounty().length() > 30
+                || blank(content.senderDetailAddress()) || content.senderDetailAddress().length() > 100) {
+            throw invalid("请补全符合安能要求的发货人和地址信息");
+        }
         if (blank(content.recipientName()) || content.recipientName().length() > 30
                 || blank(content.recipientPhone()) || content.recipientPhone().length() > 30
                 || blank(content.recipientProvince()) || content.recipientProvince().length() > 30

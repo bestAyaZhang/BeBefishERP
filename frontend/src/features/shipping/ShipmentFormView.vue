@@ -53,6 +53,20 @@ function payload(): ShipmentFormInput {
   return value;
 }
 
+function applyConfiguredSender() {
+  const sender = availability.value?.sender;
+  if (!sender || [form.value.senderName, form.value.senderPhone, form.value.senderProvince, form.value.senderCity,
+    form.value.senderCounty, form.value.senderDetailAddress].some(value => value?.trim())) return;
+  Object.assign(form.value, {
+    senderName: sender.name,
+    senderPhone: sender.phone,
+    senderProvince: sender.province,
+    senderCity: sender.city,
+    senderCounty: sender.county,
+    senderDetailAddress: sender.address
+  });
+}
+
 async function initialize() {
   const request = ++generation;
   loading.value = true;
@@ -68,12 +82,16 @@ async function initialize() {
     if (isEdit.value) {
       const loaded = await shippingService.get(Number(route.params.id));
       if (request !== generation) return;
+      const loadedOrder = await shippingService.getLogisticsOrder(loaded.id).catch(() => null);
+      if (request !== generation) return;
       shipment.value = loaded;
+      existingOrder.value = loadedOrder;
       form.value = formFromShipment(loaded);
+      if (!loadedOrder || loadedOrder.state === 'rejected') applyConfiguredSender();
       status.value = loaded.content.status;
-      existingOrder.value = await shippingService.getLogisticsOrder(loaded.id).catch(() => null);
-    } else if (loadedOptions.shopNames.length === 1) {
-      form.value.shopName = loadedOptions.shopNames[0];
+    } else {
+      applyConfiguredSender();
+      if (loadedOptions.shopNames.length === 1) form.value.shopName = loadedOptions.shopNames[0];
     }
   } catch (cause) { if (request === generation) error.value = cause instanceof Error ? cause.message : '发货表单加载失败'; }
   finally { if (request === generation) loading.value = false; }
@@ -91,6 +109,10 @@ function validateShipment(value: ShipmentFormInput) {
   return '';
 }
 function validateOrder(value: ShipmentFormInput) {
+  if (![value.senderName, value.senderPhone, value.senderProvince, value.senderCity, value.senderCounty,
+    value.senderDetailAddress].every(item => item.trim())) {
+    return '一键下单前请填写完整的发货人、电话和地址信息';
+  }
   const draft = value.orderDraft;
   if (!draft.cargoName.trim() || !draft.packType.trim() || draft.weight == null || draft.weight < 1
     || draft.volume == null || draft.volume < 0.01 || draft.pieceAmount == null || draft.pieceAmount < 1
@@ -148,6 +170,7 @@ function cancel() { return router.push(isEdit.value && shipment.value ? { name: 
 function backToList() { result.value = null; return router.push({ name: 'shipping-list' }); }
 async function continueOrder() {
   result.value = null; shipment.value = null; existingOrder.value = null; status.value = 'unfinished'; form.value = emptyShipmentForm();
+  applyConfiguredSender();
   if (options.value.shopNames.length === 1) form.value.shopName = options.value.shopNames[0];
   await router.replace({ name: 'shipping-new', query: { reset: String(Date.now()) } });
 }
@@ -159,14 +182,26 @@ onBeforeUnmount(() => { generation++; });
   <section data-testid="shipment-form-page" class="mx-auto w-full max-w-[1500px] space-y-5 pb-8">
     <header class="flex flex-wrap items-center justify-between gap-4"><div class="flex items-center gap-3"><button type="button" class="rounded-lg border border-slate-200 bg-white p-2 text-slate-500" @click="cancel"><ArrowLeft :size="18" /></button><div><h1 class="text-2xl font-bold text-[#25314d]">{{ isEdit ? '编辑发货单' : '新建发货单' }}</h1><p class="mt-1 text-sm text-slate-500">{{ isEdit ? shipment?.shipmentNo : '填写发货资料，可保存后直接向安能下单。' }}</p></div></div></header>
     <p v-if="error" role="alert" class="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">{{ error }}</p>
-    <p v-if="locked" class="flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700"><Info class="mt-0.5 shrink-0" :size="16" />该发货单已经提交物流，平台、店铺、备货人、收件资料、运费预测与安能下单资料已锁定；仍可维护备货清单、备注和状态。</p>
+    <p v-if="locked" class="flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700"><Info class="mt-0.5 shrink-0" :size="16" />该发货单已经提交物流，平台、店铺、备货人、发货人、收件资料、运费预测与安能下单资料已锁定；仍可维护备货清单、备注和状态。</p>
     <div v-if="loading" role="status" class="rounded-xl border border-slate-200 bg-white py-24 text-center text-sm text-slate-500">正在准备发货表单…</div>
     <form v-else class="space-y-5" @submit.prevent>
-      <section class="form-card"><div class="section-heading"><span>01</span><div><h2>发货单信息</h2><p>选择来源平台、店铺和本次参与备货的人员。</p></div></div><div class="mt-5 grid gap-4 lg:grid-cols-3">
+      <section class="form-card"><div class="section-heading"><span>01</span><div><h2>发货单信息</h2><p>选择来源平台、店铺和本次参与备货的人员，并核对发货人资料。</p></div></div><div class="mt-5 grid gap-4 lg:grid-cols-3">
         <label class="field-label">平台<input v-model="form.platform" data-testid="shipment-platform" :disabled="busy || locked" maxlength="100" placeholder="如淘宝、抖音、线下" class="field-input" /></label>
         <label class="field-label">店铺名称 <span class="text-rose-500">*</span><select v-model="form.shopName" data-testid="shipment-shop" :disabled="busy || locked" class="field-input"><option value="">请选择店铺</option><option v-for="shop in options.shopNames" :key="shop" :value="shop">{{ shop }}</option></select></label>
         <label class="field-label">备货人（可多选） <span class="text-rose-500">*</span><PreparerMultiSelect v-model="form.preparers" class="mt-1.5" :options="options.preparers" :disabled="busy || locked" /></label>
-      </div></section>
+      </div>
+        <div data-testid="shipment-sender" class="mt-5 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
+          <div class="flex flex-wrap items-center justify-between gap-2"><p class="text-sm font-bold text-[#25314d]">发货人信息</p><span class="text-xs text-indigo-600">默认读取安能配置，可按本单修改</span></div>
+          <div class="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <label class="field-label">姓名 <span class="text-rose-500">*</span><input v-model="form.senderName" data-testid="sender-name" :disabled="busy || locked" maxlength="30" class="field-input" /></label>
+            <label class="field-label">电话 <span class="text-rose-500">*</span><input v-model="form.senderPhone" data-testid="sender-phone" :disabled="busy || locked" maxlength="30" class="field-input" /></label>
+            <label class="field-label">省 <span class="text-rose-500">*</span><input v-model="form.senderProvince" data-testid="sender-province" :disabled="busy || locked" maxlength="30" class="field-input" /></label>
+            <label class="field-label">市 <span class="text-rose-500">*</span><input v-model="form.senderCity" data-testid="sender-city" :disabled="busy || locked" maxlength="30" class="field-input" /></label>
+            <label class="field-label">区 / 县 <span class="text-rose-500">*</span><input v-model="form.senderCounty" data-testid="sender-county" :disabled="busy || locked" maxlength="30" class="field-input" /></label>
+            <label class="field-label">详细地址 <span class="text-rose-500">*</span><input v-model="form.senderDetailAddress" data-testid="sender-detail-address" :disabled="busy || locked" maxlength="100" class="field-input" /></label>
+          </div>
+        </div>
+      </section>
 
       <section class="form-card"><div class="section-heading"><span>02</span><div><h2>收件人信息</h2><p>粘贴原始信息后在当前卡片内识别，并核对拆分结果。</p></div></div><div class="mt-5"><RecipientRecognitionCard v-model="recipient" :disabled="busy || locked" /></div></section>
 
@@ -190,7 +225,7 @@ onBeforeUnmount(() => { generation++; });
         </div>
       </section>
 
-      <section v-if="isEdit" class="form-card"><div class="section-heading"><span>05</span><div><h2>发货状态</h2><p>下单成功不代表已完成发货，请按实际进度维护。</p></div></div><label class="field-label mt-5 block max-w-sm">当前状态<select v-model="status" data-testid="shipment-status" :disabled="busy" class="field-input"><option v-for="item in SHIPMENT_STATUSES" :key="item.value" :value="item.value">{{ item.label }}</option></select></label></section>
+      <section v-if="isEdit" class="form-card"><div class="section-heading"><span>05</span><div><h2>备货状态</h2><p>安能下单成功不会改变备货状态，请按实际备货进度维护。</p></div></div><label class="field-label mt-5 block max-w-sm">当前备货状态<select v-model="status" data-testid="shipment-status" :disabled="busy" class="field-input"><option v-for="item in SHIPMENT_STATUSES" :key="item.value" :value="item.value">{{ item.label }}</option></select></label></section>
 
       <div class="flex flex-wrap justify-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><button type="button" :disabled="busy" class="rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 disabled:opacity-40" @click="cancel">取消</button><button data-testid="shipment-save-only" type="button" :disabled="busy" class="inline-flex items-center gap-2 rounded-lg border border-indigo-200 px-5 py-2.5 text-sm font-semibold text-[#536dff] disabled:opacity-40" @click="persist(false)"><Save :size="16" />{{ busy ? '处理中…' : isEdit ? '仅保存修改' : '仅保存发货单' }}</button><button v-if="canOrder && !locked" data-testid="shipment-save-and-order" type="button" :disabled="busy" class="inline-flex items-center gap-2 rounded-lg bg-[#536dff] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40" @click="persist(true)"><Send :size="16" />{{ busy ? '处理中…' : '保存并一键下单' }}</button></div>
     </form>

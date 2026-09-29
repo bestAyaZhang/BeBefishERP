@@ -27,8 +27,23 @@ public record ShipmentFormInput(
         @Size(max = 5000) String remark,
         @DecimalMin(value = "0", message = "预计运费不能小于零")
         @Digits(integer = 10, fraction = 2, message = "预计运费最多保留两位小数") BigDecimal estimatedFreight,
-        @NotNull(message = "缺少安能下单资料") @Valid AneOrderDraft orderDraft
+        @NotNull(message = "缺少安能下单资料") @Valid AneOrderDraft orderDraft,
+        @Size(max = 30) String senderName,
+        @Size(max = 30) String senderPhone,
+        @Size(max = 30) String senderProvince,
+        @Size(max = 30) String senderCity,
+        @Size(max = 30) String senderCounty,
+        @Size(max = 100) String senderDetailAddress
 ) {
+    public ShipmentFormInput(String platform, String shopName, List<String> preparers, String recipientName,
+                             String recipientPhone, String recipientProvince, String recipientCity,
+                             String recipientCounty, String recipientDetailAddress, String preparationContent,
+                             String remark, BigDecimal estimatedFreight, AneOrderDraft orderDraft) {
+        this(platform, shopName, preparers, recipientName, recipientPhone, recipientProvince, recipientCity,
+                recipientCounty, recipientDetailAddress, preparationContent, remark, estimatedFreight, orderDraft,
+                "", "", "", "", "", "");
+    }
+
     public ShipmentFormInput normalized() {
         var normalizedPreparers = new LinkedHashSet<String>();
         if (preparers != null) {
@@ -40,7 +55,9 @@ public record ShipmentFormInput(
         return new ShipmentFormInput(clean(platform), clean(shopName), new ArrayList<>(normalizedPreparers),
                 clean(recipientName), clean(recipientPhone), clean(recipientProvince), clean(recipientCity),
                 clean(recipientCounty), clean(recipientDetailAddress), clean(preparationContent), clean(remark),
-                estimatedFreight, orderDraft == null ? null : orderDraft.normalized());
+                estimatedFreight, orderDraft == null ? null : orderDraft.normalized(), clean(senderName),
+                clean(senderPhone), clean(senderProvince), clean(senderCity), clean(senderCounty),
+                clean(senderDetailAddress));
     }
 
     private static String clean(String value) { return value == null ? "" : value.strip(); }

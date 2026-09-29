@@ -19,6 +19,15 @@ export interface RecipientFields {
   recipientDetailAddress: string;
 }
 
+export interface SenderFields {
+  senderName: string;
+  senderPhone: string;
+  senderProvince: string;
+  senderCity: string;
+  senderCounty: string;
+  senderDetailAddress: string;
+}
+
 export interface AneOrderDraft {
   cargoName: string;
   packType: string;
@@ -31,7 +40,7 @@ export interface AneOrderDraft {
   logisticsRemark: string;
 }
 
-export interface ShipmentFormInput extends RecipientFields {
+export interface ShipmentFormInput extends RecipientFields, SenderFields {
   platform: string;
   shopName: string;
   preparers: string[];
@@ -52,6 +61,7 @@ export interface ShipmentContent extends ShipmentFormInput {
 export interface Shipment {
   id: number;
   shipmentNo: string;
+  logisticsOrderState: LogisticsOrderState | null;
   content: ShipmentContent;
   version: number;
   createdBy: string;
@@ -81,7 +91,20 @@ export interface ShipmentSummary {
 
 export interface PreparerOption { employeeId: number; employeeName: string }
 export interface ShippingFormOptions { shopNames: string[]; preparers: PreparerOption[] }
-export interface LogisticsAvailability { available: boolean; testEnvironment: boolean; message: string }
+export interface SenderInfo {
+  name: string;
+  phone: string;
+  province: string;
+  city: string;
+  county: string;
+  address: string;
+}
+export interface LogisticsAvailability {
+  available: boolean;
+  testEnvironment: boolean;
+  message: string;
+  sender: SenderInfo | null;
+}
 export interface LogisticsOrder {
   shipmentId: number;
   orderNo: string;
@@ -115,6 +138,7 @@ export function emptyShipmentForm(): ShipmentFormInput {
   return {
     platform: '', shopName: '', preparers: [], recipientName: '', recipientPhone: '',
     recipientProvince: '', recipientCity: '', recipientCounty: '', recipientDetailAddress: '',
+    senderName: '', senderPhone: '', senderProvince: '', senderCity: '', senderCounty: '', senderDetailAddress: '',
     preparationContent: '', remark: '', estimatedFreight: null,
     orderDraft: { cargoName: '', packType: '纸箱', weight: null, volume: null, pieceAmount: 1,
       productTypeId: 524, goodsType: 180, payType: 102, logisticsRemark: '' }
@@ -125,12 +149,30 @@ export function recipientFullAddress(content: RecipientFields) {
   return `${content.recipientProvince}${content.recipientCity}${content.recipientCounty}${content.recipientDetailAddress}`;
 }
 
+export function senderFullAddress(sender: SenderInfo) {
+  return `${sender.province}${sender.city}${sender.county}${sender.address}`;
+}
+
+export function shipmentSenderFullAddress(sender: SenderFields) {
+  return `${sender.senderProvince}${sender.senderCity}${sender.senderCounty}${sender.senderDetailAddress}`;
+}
+
 export function shipmentStatus(value: ShipmentStatus) {
   return SHIPMENT_STATUSES.find(item => item.value === value) ?? SHIPMENT_STATUSES[0];
 }
 
 export function logisticsStateLabel(value?: LogisticsOrderState) {
-  return ({ processing: '下单中', succeeded: '下单成功', rejected: '下单失败', unknown: '结果待核实' } as const)[value ?? 'rejected'];
+  return logisticsOrderStatus(value).label;
+}
+
+export function logisticsOrderStatus(value?: LogisticsOrderState | null) {
+  if (!value) return { label: '尚未下单', tone: 'bg-slate-100 text-slate-600' };
+  return ({
+    processing: { label: '下单中', tone: 'bg-blue-50 text-blue-700' },
+    succeeded: { label: '下单成功', tone: 'bg-emerald-50 text-emerald-700' },
+    rejected: { label: '下单失败', tone: 'bg-rose-50 text-rose-600' },
+    unknown: { label: '结果待核实', tone: 'bg-amber-50 text-amber-700' }
+  } as const)[value];
 }
 
 export function freightText(value: number | null) { return value == null ? '未填写' : `¥${value.toFixed(2)}`; }

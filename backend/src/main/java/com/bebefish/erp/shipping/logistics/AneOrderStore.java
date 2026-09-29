@@ -76,7 +76,7 @@ public class AneOrderStore {
         if (changed == 1 && "succeeded".equals(result.state())) {
             jdbc.update("""
                     update shipment set tracking_no=:tracking, logistics_company='安能物流', weight=:weight,
-                        recipient_address=:address, status='completed', version_no=version_no+1,
+                        recipient_address=:address, version_no=version_no+1,
                         updated_by=:operator, updated_at=now(3) where id=:id
                     """, params);
         }

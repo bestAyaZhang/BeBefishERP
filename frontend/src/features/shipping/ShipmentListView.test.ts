@@ -11,9 +11,12 @@ vi.mock('./shippingService', () => ({ shippingService: service }));
 function record(id = 8): Shipment {
   return {
     id, shipmentNo: `FH20260924-${id}`, version: 3, createdBy: 'employee:1', updatedBy: 'employee:1',
+    logisticsOrderState: 'succeeded',
     createdAt: '2026-09-24T09:00:00', updatedAt: '2026-09-24T10:00:00',
     content: {
       shipmentDate: '2026-09-24', platform: '淘宝', shopName: '贝贝鱼淘宝旗舰店', preparers: ['小周', '阿杰'],
+      senderName: '测试发货人', senderPhone: '13800000000', senderProvince: '浙江省', senderCity: '杭州市',
+      senderCounty: '余杭区', senderDetailAddress: '测试路1号',
       recipientName: '林女士', recipientPhone: '13800006028', recipientProvince: '浙江省', recipientCity: '杭州市',
       recipientCounty: '余杭区', recipientDetailAddress: '示例路18号2栋101室', preparationContent: '水族箱 × 2\n滤材 × 6',
       remark: '外箱加固', estimatedFreight: 58, orderDraft: { cargoName: '水族用品', packType: '纸箱', weight: 18.5,
@@ -50,6 +53,19 @@ describe('ShipmentListView', () => {
     await wrapper.get('[data-testid="shipment-detail-8"]').trigger('click');
     await flushPromises();
     expect(router.currentRoute.value).toMatchObject({ name: 'shipping-detail', params: { id: '8' } });
+    wrapper.unmount();
+  });
+
+  it('shows ANE order status separately from preparation status', async () => {
+    const item = record();
+    item.content.status = 'out_of_stock';
+    item.logisticsOrderState = 'succeeded';
+    service.list.mockResolvedValue({ records: [item], page: 1, pageSize: 20, total: 1 });
+
+    const { wrapper } = await render();
+    expect(wrapper.get('[data-testid="shipment-logistics-status-8"]').text()).toContain('下单成功');
+    expect(wrapper.get('[data-testid="shipment-preparation-status-8"]').text()).toContain('缺货');
+    expect(wrapper.get('[data-testid="shipment-filter-status-label"]').text()).toContain('备货状态');
     wrapper.unmount();
   });
 

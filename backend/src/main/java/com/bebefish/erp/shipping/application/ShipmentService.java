@@ -50,7 +50,7 @@ public class ShipmentService {
         var content = ShipmentContent.from(previous.content().shipmentDate(), form, status, previous.content().orderer(),
                 previous.content().logisticsCompany(), previous.content().trackingNo());
         var next = new Shipment(id, previous.shipmentNo(), content, version + 1, previous.createdBy(), auditOperator,
-                previous.createdAt(), LocalDateTime.now(clock));
+                previous.createdAt(), LocalDateTime.now(clock), previous.logisticsOrderState());
         if (!repository.update(next, version)) throw conflict();
         return next;
     }
@@ -86,7 +86,7 @@ public class ShipmentService {
     }
 
     private void validateStatus(String status) {
-        if (status == null || !STATUSES.contains(status)) throw invalid("发货状态无效");
+        if (status == null || !STATUSES.contains(status)) throw invalid("备货状态无效");
     }
 
     private static String clean(String value) { return value == null ? "" : value.strip(); }

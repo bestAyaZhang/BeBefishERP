@@ -47,7 +47,7 @@ class AneOrderStoreTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    void successfulOrderUpdatesTrackingAndCompletionInEveryEnvironment(boolean testEnvironment) {
+    void successfulOrderUpdatesTrackingWithoutChangingPreparationStatus(boolean testEnvironment) {
         var jdbc = mock(NamedParameterJdbcTemplate.class);
         var shipments = mock(ShipmentRepository.class);
         when(shipments.findById(1L)).thenReturn(Optional.of(shipment()));
@@ -58,7 +58,8 @@ class AneOrderStoreTest {
         var sql = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(jdbc, atLeastOnce()).update(sql.capture(), any(SqlParameterSource.class));
         assertThat(sql.getAllValues()).anyMatch(s -> s.contains("update shipment set tracking_no")
-                && s.contains("logistics_company='安能物流'") && s.contains("status='completed'"));
+                && s.contains("logistics_company='安能物流'"));
+        assertThat(sql.getAllValues()).noneMatch(s -> s.contains("status='completed'"));
     }
 
     private com.bebefish.erp.shipping.domain.Shipment shipment() {
