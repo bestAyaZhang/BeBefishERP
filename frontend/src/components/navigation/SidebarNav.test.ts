@@ -48,6 +48,7 @@ describe('SidebarNav', () => {
       '分类管理',
       '客户管理',
       '供应商管理',
+      '平台管理',
       '发货管理',
       '仓库管理',
       '库存管理',
@@ -59,6 +60,7 @@ describe('SidebarNav', () => {
       expect(wrapper.text()).toContain(label);
     }
     expect(wrapper.text()).not.toContain('销售开单');
+    expect(wrapper.get('a[href="/platforms"]').text()).toBe('平台管理');
   });
 
   it('shows organization children only with organization permission', () => {
@@ -89,6 +91,14 @@ describe('SidebarNav', () => {
     expect(wrapper.text()).toContain('组织架构');
     expect(wrapper.text()).toContain('员工管理');
     expect(wrapper.text()).not.toContain('权限管理');
+  });
+
+  it('shows platform management to shipping viewers', () => {
+    storeCurrentUser(['shipping:view']);
+    const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
+
+    expect(wrapper.get('a[href="/platforms"]').text()).toBe('平台管理');
+    expect(wrapper.text()).toContain('发货管理');
   });
 
   it('shows the permission entry when system role viewing is the only granted navigation permission', () => {

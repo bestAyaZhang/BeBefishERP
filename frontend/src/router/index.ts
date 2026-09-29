@@ -39,6 +39,8 @@ const placeholderPages: RouteRecordRaw[] = [
   { path: 'customers/:id/edit', name: 'customer-edit', component: CustomerFormView },
   { path: 'customers', name: 'customers', component: () => import('../features/masterdata/views/CustomerView.vue') },
   { path: 'suppliers', name: 'suppliers', component: () => import('../features/masterdata/views/SupplierView.vue') },
+  { path: 'platforms', name: 'platforms', component: () => import('../views/PlaceholderView.vue'),
+    props: { title: '平台管理' }, meta: { requiredPermission: 'shipping:view' } },
   { path: 'warehouses', name: 'warehouses', component: () => import('../features/masterdata/views/WarehouseView.vue') },
   {
     path: 'inventory/warehouse-canvas',
