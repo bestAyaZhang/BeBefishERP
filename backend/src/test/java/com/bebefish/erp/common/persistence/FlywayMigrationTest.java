@@ -60,9 +60,9 @@ class FlywayMigrationTest {
     }
 
     @Test
-    void convertsGeneratedV22LabelsButKeepsPrivateExceptions() {
+    void convertsGeneratedV23LabelsButKeepsPrivateExceptions() {
         flyway().clean();
-        Flyway.configure().dataSource(dataSource).target("22").load().migrate();
+        Flyway.configure().dataSource(dataSource).target("23").load().migrate();
         jdbc.update("insert into sales_platform(platform_code,platform_name,created_by,updated_by,created_at,updated_at) "
                 + "values('P_AUTO','抖音代发','test','test',now(3),now(3))");
         long platformId = jdbc.queryForObject("select id from sales_platform where platform_code='P_AUTO'", Long.class);
@@ -277,6 +277,20 @@ class FlywayMigrationTest {
     }
 
     @Test
+    void addsShipmentSenderSnapshotColumns() {
+        var columns = jdbc.queryForList(
+                "select column_name from information_schema.columns "
+                        + "where table_schema = database() and table_name = 'shipment'",
+                String.class
+        );
+
+        assertThat(columns).contains(
+                "sender_name", "sender_phone", "sender_province", "sender_city", "sender_county",
+                "sender_detail_address"
+        );
+    }
+
+    @Test
     void upgradesRepresentativeLegacyRowsFromV7ToLatestWithoutDataLoss() {
         var v7 = Flyway.configure()
                 .dataSource(dataSource)
@@ -313,7 +327,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("23");
+        )).isEqualTo("24");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId

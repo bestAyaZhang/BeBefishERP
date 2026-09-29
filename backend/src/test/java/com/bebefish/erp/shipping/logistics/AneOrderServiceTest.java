@@ -55,6 +55,12 @@ class AneOrderServiceTest {
         var payload = org.mockito.ArgumentCaptor.forClass(java.util.Map.class);
         verify(client).createOrder(payload.capture());
         assertThat(payload.getValue()).containsEntry("receiveMan", "林女士")
+                .containsEntry("sendMan", "本单发货人")
+                .containsEntry("sendPhone", "13900000000")
+                .containsEntry("sendProvinceName", "浙江省")
+                .containsEntry("sendCityName", "金华市")
+                .containsEntry("sendCountyName", "东阳市")
+                .containsEntry("detailAddress", "本单发货路2号")
                 .containsEntry("receivePhone", "13800006028")
                 .containsEntry("toProvinceName", "浙江省")
                 .containsEntry("toCityName", "杭州市")
@@ -98,7 +104,8 @@ class AneOrderServiceTest {
         var form = new ShipmentFormInput("淘宝", "测试店铺", java.util.List.of(), "林女士", "13800006028",
                 "浙江省", "杭州市", "余杭区", "示例路18号2栋101室", "蓝色盒子2个", "", new BigDecimal("50"),
                 new AneOrderDraft("水族用品", "纸箱", new BigDecimal("2.50"), volume,
-                        2, 524, 180, 102, ""));
+                        2, 524, 180, 102, ""), "本单发货人", "13900000000", "浙江省", "金华市", "东阳市",
+                "本单发货路2号");
         var content = ShipmentContent.from(LocalDate.now(), form, "unfinished", "测试用户", "", "");
         return new Shipment(1L,"FHtest",content,version,"user","user",LocalDateTime.now(),LocalDateTime.now());
     }

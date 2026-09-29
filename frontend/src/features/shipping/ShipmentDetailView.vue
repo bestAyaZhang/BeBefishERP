@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, Box, MapPin, PackageCheck, RefreshCw, Truck } from 'lucide-vue-next';
 import { shippingService } from './shippingService';
 import { currentUser } from '../../services/authSession';
-import { freightText, logisticsStateLabel, recipientFullAddress, shipmentStatus,
+import { freightText, logisticsStateLabel, recipientFullAddress, shipmentSenderFullAddress, shipmentStatus,
   type LogisticsOrder, type Shipment } from './types';
 
 const route = useRoute();
@@ -46,6 +46,10 @@ onBeforeUnmount(() => { generation++; });
     <div v-else-if="error" data-testid="shipment-detail-error" role="alert" class="rounded-xl border border-rose-100 bg-white py-20 text-center"><p class="text-sm text-rose-600">{{ error }}</p><button data-testid="shipment-detail-retry" type="button" class="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 px-5 py-2 text-sm text-[#536dff]" @click="load"><RefreshCw :size="15" />重新加载</button></div>
     <div v-else-if="shipment" class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
       <main class="space-y-5">
+        <article data-testid="shipment-detail-sender" class="detail-card">
+          <div class="card-title"><Truck :size="18" />发货人信息</div>
+          <div class="mt-5 grid gap-5 sm:grid-cols-2"><div><p class="meta-label">姓名</p><p class="meta-value">{{ shipment.content.senderName || '未记录' }}</p></div><div><p class="meta-label">电话</p><p class="meta-value">{{ shipment.content.senderPhone || '未记录' }}</p></div><div class="sm:col-span-2"><p class="meta-label">完整地址</p><p class="meta-value break-words leading-7">{{ shipment.content.senderName ? shipmentSenderFullAddress(shipment.content) : '历史发货单未记录发货人地址' }}</p></div></div>
+        </article>
         <article class="detail-card">
           <div class="card-title"><MapPin :size="18" />收件人信息</div>
           <div class="mt-5 grid gap-5 sm:grid-cols-2"><div><p class="meta-label">姓名</p><p class="meta-value">{{ shipment.content.recipientName }}</p></div><div><p class="meta-label">电话</p><p class="meta-value">{{ shipment.content.recipientPhone }}</p></div><div class="sm:col-span-2"><p class="meta-label">完整地址</p><p class="meta-value break-words leading-7">{{ recipientFullAddress(shipment.content) }}</p></div></div>

@@ -19,6 +19,15 @@ export interface RecipientFields {
   recipientDetailAddress: string;
 }
 
+export interface SenderFields {
+  senderName: string;
+  senderPhone: string;
+  senderProvince: string;
+  senderCity: string;
+  senderCounty: string;
+  senderDetailAddress: string;
+}
+
 export interface AneOrderDraft {
   cargoName: string;
   packType: string;
@@ -31,7 +40,7 @@ export interface AneOrderDraft {
   logisticsRemark: string;
 }
 
-export interface ShipmentFormInput extends RecipientFields {
+export interface ShipmentFormInput extends RecipientFields, SenderFields {
   platformId?: number | null;
   shopId?: number | null;
   platform: string;
@@ -143,6 +152,7 @@ export function emptyShipmentForm(): ShipmentFormInput {
   return {
     platform: '', shopName: '', preparers: [], recipientName: '', recipientPhone: '',
     recipientProvince: '', recipientCity: '', recipientCounty: '', recipientDetailAddress: '',
+    senderName: '', senderPhone: '', senderProvince: '', senderCity: '', senderCounty: '', senderDetailAddress: '',
     preparationContent: '', remark: '', estimatedFreight: null,
     orderDraft: { cargoName: '', packType: '纸箱', weight: null, volume: null, pieceAmount: 1,
       productTypeId: 524, goodsType: 180, payType: 102, logisticsRemark: '' }
@@ -155,6 +165,10 @@ export function recipientFullAddress(content: RecipientFields) {
 
 export function senderFullAddress(sender: SenderInfo) {
   return `${sender.province}${sender.city}${sender.county}${sender.address}`;
+}
+
+export function shipmentSenderFullAddress(sender: SenderFields) {
+  return `${sender.senderProvince}${sender.senderCity}${sender.senderCounty}${sender.senderDetailAddress}`;
 }
 
 export function shipmentStatus(value: ShipmentStatus) {

@@ -15,6 +15,8 @@ function record(id = 8): Shipment {
     createdAt: '2026-09-24T09:00:00', updatedAt: '2026-09-24T10:00:00',
     content: {
       shipmentDate: '2026-09-24', platform: '淘宝', shopName: '贝贝鱼淘宝旗舰店', preparers: ['小周', '阿杰'],
+      senderName: '测试发货人', senderPhone: '13800000000', senderProvince: '浙江省', senderCity: '杭州市',
+      senderCounty: '余杭区', senderDetailAddress: '测试路1号',
       recipientName: '林女士', recipientPhone: '13800006028', recipientProvince: '浙江省', recipientCity: '杭州市',
       recipientCounty: '余杭区', recipientDetailAddress: '示例路18号2栋101室', preparationContent: '水族箱 × 2\n滤材 × 6',
       remark: '外箱加固', estimatedFreight: 58, orderDraft: { cargoName: '水族用品', packType: '纸箱', weight: 18.5,

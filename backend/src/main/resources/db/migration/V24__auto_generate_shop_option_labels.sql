@@ -1,4 +1,4 @@
--- V22 stored every displayed label. Retain only labels that differ from the generated rule
+-- V23 stored every displayed label. Retain only labels that differ from the generated rule
 -- as explicit exceptions; the other rows become dynamic when a shop or platform is renamed.
 update platform_shop s join sales_platform p on p.id = s.platform_id
 set s.option_label = null

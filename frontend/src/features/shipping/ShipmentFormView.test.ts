@@ -15,6 +15,8 @@ function shipment(overrides: Partial<Shipment> = {}): Shipment {
     logisticsOrderState: null,
     createdAt: '2026-09-24T09:00:00', updatedAt: '2026-09-24T09:00:00',
     content: { shipmentDate: '2026-09-24', platform: '淘宝', shopName: '贝贝鱼淘宝旗舰店', preparers: ['小周', '阿杰'],
+      senderName: '测试发货人', senderPhone: '13800000000', senderProvince: '浙江省', senderCity: '杭州市',
+      senderCounty: '余杭区', senderDetailAddress: '测试路1号',
       recipientName: '林女士', recipientPhone: '13800006028', recipientProvince: '浙江省', recipientCity: '杭州市',
       recipientCounty: '余杭区', recipientDetailAddress: '示例路18号2栋101室', preparationContent: '水族箱 × 2\n滤材 × 6',
       remark: '', estimatedFreight: null, orderDraft: { cargoName: '水族用品', packType: '纸箱', weight: 18.5,
@@ -74,13 +76,24 @@ beforeEach(() => {
 afterEach(clearCurrentUser);
 
 describe('ShipmentFormView', () => {
-  it('shows the configured sender in the shipment information section', async () => {
+  it('defaults sender fields from configuration and saves the edited shipment snapshot', async () => {
     const { wrapper } = await render();
 
-    const sender = wrapper.get('[data-testid="shipment-sender"]');
-    expect(sender.text()).toContain('测试发货人');
-    expect(sender.text()).toContain('13800000000');
-    expect(sender.text()).toContain('浙江省杭州市余杭区测试路1号');
+    expect((wrapper.get('[data-testid="sender-name"]').element as HTMLInputElement).value).toBe('测试发货人');
+    expect((wrapper.get('[data-testid="sender-phone"]').element as HTMLInputElement).value).toBe('13800000000');
+    expect((wrapper.get('[data-testid="sender-detail-address"]').element as HTMLInputElement).value).toBe('测试路1号');
+
+    await wrapper.get('[data-testid="sender-name"]').setValue('本单发货人');
+    await wrapper.get('[data-testid="sender-phone"]').setValue('13900000000');
+    await wrapper.get('[data-testid="sender-detail-address"]').setValue('本单发货路2号');
+    await fillRequired(wrapper);
+    await wrapper.get('[data-testid="shipment-save-only"]').trigger('click');
+    await flushPromises();
+
+    expect(service.create).toHaveBeenCalledWith(expect.objectContaining({
+      senderName: '本单发货人', senderPhone: '13900000000', senderProvince: '浙江省', senderCity: '杭州市',
+      senderCounty: '余杭区', senderDetailAddress: '本单发货路2号'
+    }));
     wrapper.unmount();
   });
 
@@ -150,7 +163,10 @@ describe('ShipmentFormView', () => {
 
   it('shows the test-environment warning after a test order succeeds', async () => {
     service.logisticsAvailability.mockResolvedValue({ available: true, testEnvironment: true,
-      message: '安能测试环境已配置' });
+      message: '安能测试环境已配置', sender: {
+        name: '测试发货人', phone: '13800000000', province: '浙江省', city: '杭州市', county: '余杭区',
+        address: '测试路1号'
+      } });
     service.placeLogisticsOrder.mockResolvedValue({ shipmentId: 18, orderNo: 'BF018', state: 'succeeded',
       trackingNo: '123456789012', childTrackingNos: '', message: '成功',
       updatedAt: '2026-09-24T10:00:00', testEnvironment: true });
@@ -206,6 +222,22 @@ describe('ShipmentFormView', () => {
     expect(wrapper.get('[data-testid="shipment-save-and-order"]').attributes('disabled')).toBeDefined();
     expect(wrapper.get('[data-testid="shipment-save-only"]').attributes('disabled')).toBeDefined();
     release(shipment()); await flushPromises();
+    wrapper.unmount();
+  });
+
+  it('does not replace a missing historical sender after the logistics order is locked', async () => {
+    const legacy = shipment();
+    Object.assign(legacy.content, {
+      senderName: '', senderPhone: '', senderProvince: '', senderCity: '', senderCounty: '', senderDetailAddress: ''
+    });
+    service.get.mockResolvedValue(legacy);
+    service.getLogisticsOrder.mockResolvedValue({ shipmentId: 18, orderNo: 'BF018', state: 'processing', trackingNo: '',
+      childTrackingNos: '', message: '提交中', updatedAt: '2026-09-24T10:00:00', testEnvironment: false });
+
+    const { wrapper } = await render('/shipping/18/edit');
+
+    expect((wrapper.get('[data-testid="sender-name"]').element as HTMLInputElement).value).toBe('');
+    expect(wrapper.get('[data-testid="sender-name"]').attributes('disabled')).toBeDefined();
     wrapper.unmount();
   });
 

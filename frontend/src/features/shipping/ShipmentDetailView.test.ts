@@ -10,6 +10,8 @@ const shipment = {
   id: 8, shipmentNo: 'FH20260924-8', version: 3, createdBy: 'employee:1', updatedBy: 'employee:2',
   createdAt: '2026-09-24T09:00:00', updatedAt: '2026-09-24T10:00:00',
   content: { shipmentDate: '2026-09-24', platform: '淘宝', shopName: '贝贝鱼淘宝旗舰店', preparers: ['小周', '阿杰'],
+    senderName: '本单发货人', senderPhone: '13900000000', senderProvince: '浙江省', senderCity: '金华市',
+    senderCounty: '东阳市', senderDetailAddress: '测试发货路2号',
     recipientName: '林女士', recipientPhone: '13800006028', recipientProvince: '浙江省', recipientCity: '杭州市',
     recipientCounty: '余杭区', recipientDetailAddress: '示例路18号2栋101室', preparationContent: '水族箱 × 2\n滤材 × 6',
     remark: '外箱加固', estimatedFreight: 58, orderDraft: { cargoName: '水族用品', packType: '纸箱', weight: 18.5,
@@ -38,6 +40,8 @@ describe('ShipmentDetailView', () => {
   it('shows recipient, preparation, record and logistics information', async () => {
     const { wrapper, router } = await render();
     expect(wrapper.get('[data-testid="shipment-detail-page"]').text()).toContain('浙江省杭州市余杭区示例路18号2栋101室');
+    expect(wrapper.get('[data-testid="shipment-detail-sender"]').text()).toContain('本单发货人');
+    expect(wrapper.get('[data-testid="shipment-detail-sender"]').text()).toContain('浙江省金华市东阳市测试发货路2号');
     expect(wrapper.text()).toContain('水族箱 × 2\n滤材 × 6');
     expect(wrapper.text()).toContain('贝贝鱼淘宝旗舰店');
     expect(wrapper.text()).toContain('小周、阿杰');

@@ -15,6 +15,12 @@ public class ShipmentEditPolicy {
                 || !Objects.equals(current.platform(), next.platform())
                 || !Objects.equals(current.shopName(), next.shopName())
                 || !Objects.equals(current.preparers(), next.preparers())
+                || !Objects.equals(current.senderName(), next.senderName())
+                || !Objects.equals(current.senderPhone(), next.senderPhone())
+                || !Objects.equals(current.senderProvince(), next.senderProvince())
+                || !Objects.equals(current.senderCity(), next.senderCity())
+                || !Objects.equals(current.senderCounty(), next.senderCounty())
+                || !Objects.equals(current.senderDetailAddress(), next.senderDetailAddress())
                 || !Objects.equals(current.recipientName(), next.recipientName())
                 || !Objects.equals(current.recipientPhone(), next.recipientPhone())
                 || !Objects.equals(current.recipientProvince(), next.recipientProvince())
@@ -25,7 +31,7 @@ public class ShipmentEditPolicy {
                 || !Objects.equals(current.orderDraft(), next.orderDraft());
         if (immutableChanged) {
             throw new BusinessException("SHIPMENT_ALREADY_ORDERED", HttpStatus.CONFLICT,
-                    "发货单已下单，平台、店铺、备货人、收件与物流资料不能修改");
+                    "发货单已下单，平台、店铺、备货人、发货人、收件与物流资料不能修改");
         }
     }
 }

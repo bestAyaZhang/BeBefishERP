@@ -7,7 +7,7 @@ import PreparerMultiSelect from './PreparerMultiSelect.vue';
 import RecipientRecognitionCard from './RecipientRecognitionCard.vue';
 import ShipmentSuccessDialog from './ShipmentSuccessDialog.vue';
 import { shippingService } from './shippingService';
-import { emptyShipmentForm, senderFullAddress, SHIPMENT_STATUSES, type LogisticsAvailability, type LogisticsOrder,
+import { emptyShipmentForm, SHIPMENT_STATUSES, type LogisticsAvailability, type LogisticsOrder,
   type RecipientFields, type Shipment, type ShipmentFormInput, type ShipmentStatus, type ShippingFormOptions } from './types';
 
 const route = useRoute();
@@ -67,6 +67,20 @@ function payload(): ShipmentFormInput {
   return value;
 }
 
+function applyConfiguredSender() {
+  const sender = availability.value?.sender;
+  if (!sender || [form.value.senderName, form.value.senderPhone, form.value.senderProvince, form.value.senderCity,
+    form.value.senderCounty, form.value.senderDetailAddress].some(value => value?.trim())) return;
+  Object.assign(form.value, {
+    senderName: sender.name,
+    senderPhone: sender.phone,
+    senderProvince: sender.province,
+    senderCity: sender.city,
+    senderCounty: sender.county,
+    senderDetailAddress: sender.address
+  });
+}
+
 async function initialize() {
   const request = ++generation;
   loading.value = true;
@@ -82,13 +96,19 @@ async function initialize() {
     if (isEdit.value) {
       const loaded = await shippingService.get(Number(route.params.id));
       if (request !== generation) return;
+      const loadedOrder = await shippingService.getLogisticsOrder(loaded.id).catch(() => null);
+      if (request !== generation) return;
       shipment.value = loaded;
+      existingOrder.value = loadedOrder;
       form.value = formFromShipment(loaded);
+      if (!loadedOrder || loadedOrder.state === 'rejected') applyConfiguredSender();
       status.value = loaded.content.status;
-      existingOrder.value = await shippingService.getLogisticsOrder(loaded.id).catch(() => null);
-    } else if (loadedOptions.platforms?.length === 1) {
-      form.value.platformId = loadedOptions.platforms[0].id;
-      platformChanged();
+    } else {
+      applyConfiguredSender();
+      if (loadedOptions.platforms?.length === 1) {
+        form.value.platformId = loadedOptions.platforms[0].id;
+        platformChanged();
+      }
     }
   } catch (cause) { if (request === generation) error.value = cause instanceof Error ? cause.message : '发货表单加载失败'; }
   finally { if (request === generation) loading.value = false; }
@@ -106,6 +126,10 @@ function validateShipment(value: ShipmentFormInput) {
   return '';
 }
 function validateOrder(value: ShipmentFormInput) {
+  if (![value.senderName, value.senderPhone, value.senderProvince, value.senderCity, value.senderCounty,
+    value.senderDetailAddress].every(item => item.trim())) {
+    return '一键下单前请填写完整的发货人、电话和地址信息';
+  }
   const draft = value.orderDraft;
   if (!draft.cargoName.trim() || !draft.packType.trim() || draft.weight == null || draft.weight < 1
     || draft.volume == null || draft.volume < 0.01 || draft.pieceAmount == null || draft.pieceAmount < 1
@@ -170,6 +194,7 @@ function backToList() { result.value = null; return router.push({ name: 'shippin
 async function continueOrder() {
   result.value = null; shipment.value = null; existingOrder.value = null; status.value = 'unfinished'; form.value = emptyShipmentForm();
   sourceChanged.value = false;
+  applyConfiguredSender();
   await router.replace({ name: 'shipping-new', query: { reset: String(Date.now()) } });
   await initialize();
 }
@@ -182,7 +207,7 @@ onBeforeUnmount(() => { generation++; });
     <p v-if="sourceUnavailable" role="status" class="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">暂无可用店铺，请联系运营管理员在平台管理中创建或启用平台和店铺。</p>
     <header class="flex flex-wrap items-center justify-between gap-4"><div class="flex items-center gap-3"><button type="button" class="rounded-lg border border-slate-200 bg-white p-2 text-slate-500" @click="cancel"><ArrowLeft :size="18" /></button><div><h1 class="text-2xl font-bold text-[#25314d]">{{ isEdit ? '编辑发货单' : '新建发货单' }}</h1><p class="mt-1 text-sm text-slate-500">{{ isEdit ? shipment?.shipmentNo : '填写发货资料，可保存后直接向安能下单。' }}</p></div></div></header>
     <p v-if="error" role="alert" class="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">{{ error }}</p>
-    <p v-if="locked" class="flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700"><Info class="mt-0.5 shrink-0" :size="16" />该发货单已经提交物流，平台、店铺、备货人、收件资料、运费预测与安能下单资料已锁定；仍可维护备货清单、备注和状态。</p>
+    <p v-if="locked" class="flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700"><Info class="mt-0.5 shrink-0" :size="16" />该发货单已经提交物流，平台、店铺、备货人、发货人、收件资料、运费预测与安能下单资料已锁定；仍可维护备货清单、备注和状态。</p>
     <div v-if="loading" role="status" class="rounded-xl border border-slate-200 bg-white py-24 text-center text-sm text-slate-500">正在准备发货表单…</div>
     <form v-else class="space-y-5" @submit.prevent>
       <section class="form-card"><div class="section-heading"><span>01</span><div><h2>发货单信息</h2><p>选择来源平台、店铺和本次参与备货的人员，并核对发货人资料。</p></div></div><div class="mt-5 grid gap-4 lg:grid-cols-3">
@@ -191,13 +216,15 @@ onBeforeUnmount(() => { generation++; });
         <label class="field-label">备货人（可多选） <span class="text-rose-500">*</span><PreparerMultiSelect v-model="form.preparers" class="mt-1.5" :options="options.preparers" :disabled="busy || locked" /></label>
       </div>
         <div data-testid="shipment-sender" class="mt-5 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
-          <div class="flex flex-wrap items-center justify-between gap-2"><p class="text-sm font-bold text-[#25314d]">发货人信息</p><span class="text-xs text-indigo-600">安能寄件人 · 自动带入</span></div>
-          <div v-if="availability?.sender?.name" class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-[180px_220px_minmax(0,1fr)]">
-            <div><p class="meta-label">姓名</p><p class="meta-value">{{ availability.sender.name }}</p></div>
-            <div><p class="meta-label">电话</p><p class="meta-value">{{ availability.sender.phone }}</p></div>
-            <div><p class="meta-label">发货地址</p><p class="meta-value break-words">{{ senderFullAddress(availability.sender) }}</p></div>
+          <div class="flex flex-wrap items-center justify-between gap-2"><p class="text-sm font-bold text-[#25314d]">发货人信息</p><span class="text-xs text-indigo-600">默认读取安能配置，可按本单修改</span></div>
+          <div class="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <label class="field-label">姓名 <span class="text-rose-500">*</span><input v-model="form.senderName" data-testid="sender-name" :disabled="busy || locked" maxlength="30" class="field-input" /></label>
+            <label class="field-label">电话 <span class="text-rose-500">*</span><input v-model="form.senderPhone" data-testid="sender-phone" :disabled="busy || locked" maxlength="30" class="field-input" /></label>
+            <label class="field-label">省 <span class="text-rose-500">*</span><input v-model="form.senderProvince" data-testid="sender-province" :disabled="busy || locked" maxlength="30" class="field-input" /></label>
+            <label class="field-label">市 <span class="text-rose-500">*</span><input v-model="form.senderCity" data-testid="sender-city" :disabled="busy || locked" maxlength="30" class="field-input" /></label>
+            <label class="field-label">区 / 县 <span class="text-rose-500">*</span><input v-model="form.senderCounty" data-testid="sender-county" :disabled="busy || locked" maxlength="30" class="field-input" /></label>
+            <label class="field-label">详细地址 <span class="text-rose-500">*</span><input v-model="form.senderDetailAddress" data-testid="sender-detail-address" :disabled="busy || locked" maxlength="100" class="field-input" /></label>
           </div>
-          <p v-else class="mt-3 text-sm text-amber-700">尚未配置发货人资料，配置完成后才能提交安能订单。</p>
         </div>
       </section>
 

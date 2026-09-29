@@ -29,19 +29,51 @@ public record ShipmentFormInput(
         @Digits(integer = 10, fraction = 2, message = "预计运费最多保留两位小数") BigDecimal estimatedFreight,
         @NotNull(message = "缺少安能下单资料") @Valid AneOrderDraft orderDraft,
         @jakarta.validation.constraints.Positive Long platformId,
-        @jakarta.validation.constraints.Positive Long shopId
+        @jakarta.validation.constraints.Positive Long shopId,
+        @Size(max = 30) String senderName,
+        @Size(max = 30) String senderPhone,
+        @Size(max = 30) String senderProvince,
+        @Size(max = 30) String senderCity,
+        @Size(max = 30) String senderCounty,
+        @Size(max = 100) String senderDetailAddress
 ) {
-    public ShipmentFormInput(String platform,String shopName,List<String> preparers,String recipientName,String recipientPhone,
-        String recipientProvince,String recipientCity,String recipientCounty,String recipientDetailAddress,String preparationContent,
-        String remark,BigDecimal estimatedFreight,AneOrderDraft orderDraft) {
-        this(platform,shopName,preparers,recipientName,recipientPhone,recipientProvince,recipientCity,recipientCounty,
-            recipientDetailAddress,preparationContent,remark,estimatedFreight,orderDraft,null,null);
+    public ShipmentFormInput(String platform, String shopName, List<String> preparers, String recipientName,
+                             String recipientPhone, String recipientProvince, String recipientCity,
+                             String recipientCounty, String recipientDetailAddress, String preparationContent,
+                             String remark, BigDecimal estimatedFreight, AneOrderDraft orderDraft) {
+        this(platform, shopName, preparers, recipientName, recipientPhone, recipientProvince, recipientCity,
+                recipientCounty, recipientDetailAddress, preparationContent, remark, estimatedFreight, orderDraft,
+                null, null, "", "", "", "", "", "");
     }
-    public ShipmentSource source() { return new ShipmentSource(platformId,shopId,platform,shopName); }
+
+    public ShipmentFormInput(String platform, String shopName, List<String> preparers, String recipientName,
+                             String recipientPhone, String recipientProvince, String recipientCity,
+                             String recipientCounty, String recipientDetailAddress, String preparationContent,
+                             String remark, BigDecimal estimatedFreight, AneOrderDraft orderDraft,
+                             Long platformId, Long shopId) {
+        this(platform, shopName, preparers, recipientName, recipientPhone, recipientProvince, recipientCity,
+                recipientCounty, recipientDetailAddress, preparationContent, remark, estimatedFreight, orderDraft,
+                platformId, shopId, "", "", "", "", "", "");
+    }
+
+    public ShipmentFormInput(String platform, String shopName, List<String> preparers, String recipientName,
+                             String recipientPhone, String recipientProvince, String recipientCity,
+                             String recipientCounty, String recipientDetailAddress, String preparationContent,
+                             String remark, BigDecimal estimatedFreight, AneOrderDraft orderDraft,
+                             String senderName, String senderPhone, String senderProvince, String senderCity,
+                             String senderCounty, String senderDetailAddress) {
+        this(platform, shopName, preparers, recipientName, recipientPhone, recipientProvince, recipientCity,
+                recipientCounty, recipientDetailAddress, preparationContent, remark, estimatedFreight, orderDraft,
+                null, null, senderName, senderPhone, senderProvince, senderCity, senderCounty, senderDetailAddress);
+    }
+
+    public ShipmentSource source() { return new ShipmentSource(platformId, shopId, platform, shopName); }
+
     public ShipmentFormInput withSource(ShipmentSource source) {
-        return new ShipmentFormInput(source.platform(),source.shopName(),preparers,recipientName,recipientPhone,
-            recipientProvince,recipientCity,recipientCounty,recipientDetailAddress,preparationContent,remark,estimatedFreight,
-            orderDraft,source.platformId(),source.shopId());
+        return new ShipmentFormInput(source.platform(), source.shopName(), preparers, recipientName, recipientPhone,
+                recipientProvince, recipientCity, recipientCounty, recipientDetailAddress, preparationContent, remark,
+                estimatedFreight, orderDraft, source.platformId(), source.shopId(), senderName, senderPhone,
+                senderProvince, senderCity, senderCounty, senderDetailAddress);
     }
     public ShipmentFormInput normalized() {
         var normalizedPreparers = new LinkedHashSet<String>();
@@ -54,7 +86,10 @@ public record ShipmentFormInput(
         return new ShipmentFormInput(clean(platform), clean(shopName), new ArrayList<>(normalizedPreparers),
                 clean(recipientName), clean(recipientPhone), clean(recipientProvince), clean(recipientCity),
                 clean(recipientCounty), clean(recipientDetailAddress), clean(preparationContent), clean(remark),
-                estimatedFreight, orderDraft == null ? null : orderDraft.normalized(), platformId, shopId);
+                estimatedFreight, orderDraft == null ? null : orderDraft.normalized(), platformId, shopId,
+                clean(senderName),
+                clean(senderPhone), clean(senderProvince), clean(senderCity), clean(senderCounty),
+                clean(senderDetailAddress));
     }
 
     private static String clean(String value) { return value == null ? "" : value.strip(); }

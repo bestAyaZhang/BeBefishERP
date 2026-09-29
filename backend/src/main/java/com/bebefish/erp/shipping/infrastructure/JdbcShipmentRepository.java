@@ -39,13 +39,15 @@ public class JdbcShipmentRepository implements ShipmentRepository {
     public Shipment insert(Shipment shipment) {
         var keys = new GeneratedKeyHolder();
         jdbc.update("""
-                insert into shipment (shipment_no, shipment_date, recipient_name, recipient_phone,
+                insert into shipment (shipment_no, shipment_date, sender_name, sender_phone, sender_province,
+                    sender_city, sender_county, sender_detail_address, recipient_name, recipient_phone,
                     recipient_province, recipient_city, recipient_county, recipient_detail_address, recipient_address,
                     logistics_company, weight, volume, piece_amount, product_type_id, goods_type, pay_type,
                     tracking_no, platform, shop_name, platform_id, shop_id, estimated_freight, cargo_name, pack_type, logistics_remark,
                     preparation_content, remark, status, preparer, preparers_json, orderer, version_no,
                     created_by, updated_by, created_at, updated_at)
-                values (:shipmentNo, :shipmentDate, :recipientName, :recipientPhone,
+                values (:shipmentNo, :shipmentDate, :senderName, :senderPhone, :senderProvince,
+                    :senderCity, :senderCounty, :senderDetailAddress, :recipientName, :recipientPhone,
                     :recipientProvince, :recipientCity, :recipientCounty, :recipientDetailAddress, :recipientAddress,
                     :logisticsCompany, :weight, :volume, :pieceAmount, :productTypeId, :goodsType, :payType,
                     :trackingNo, :platform, :shopName, :platformId, :shopId, :estimatedFreight, :cargoName, :packType, :logisticsRemark,
@@ -61,7 +63,10 @@ public class JdbcShipmentRepository implements ShipmentRepository {
     @Override
     public boolean update(Shipment shipment, long expectedVersion) {
         return jdbc.update("""
-                update shipment set recipient_name=:recipientName, recipient_phone=:recipientPhone,
+                update shipment set sender_name=:senderName, sender_phone=:senderPhone,
+                    sender_province=:senderProvince, sender_city=:senderCity, sender_county=:senderCounty,
+                    sender_detail_address=:senderDetailAddress,
+                    recipient_name=:recipientName, recipient_phone=:recipientPhone,
                     recipient_province=:recipientProvince, recipient_city=:recipientCity, recipient_county=:recipientCounty,
                     recipient_detail_address=:recipientDetailAddress, recipient_address=:recipientAddress,
                     platform=:platform, shop_name=:shopName, platform_id=:platformId, shop_id=:shopId, preparer=:preparer,
@@ -73,7 +78,10 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                     orderer=:orderer, version_no=:version, updated_by=:updatedBy, updated_at=:updatedAt
                 where id=:id and version_no=:expectedVersion
                     and (not exists (select 1 from shipment_logistics_order o where o.shipment_id=:id and o.state <> 'rejected')
-                        or (recipient_name=:recipientName and recipient_phone=:recipientPhone
+                        or (sender_name=:senderName and sender_phone=:senderPhone
+                            and sender_province=:senderProvince and sender_city=:senderCity
+                            and sender_county=:senderCounty and sender_detail_address=:senderDetailAddress
+                            and recipient_name=:recipientName and recipient_phone=:recipientPhone
                             and recipient_province=:recipientProvince and recipient_city=:recipientCity
                             and recipient_county=:recipientCounty and recipient_detail_address=:recipientDetailAddress
                             and recipient_address=:recipientAddress and platform=:platform and shop_name=:shopName
@@ -155,7 +163,10 @@ public class JdbcShipmentRepository implements ShipmentRepository {
         var c = shipment.content();
         var draft = c.orderDraft();
         return new MapSqlParameterSource().addValue("id", shipment.id()).addValue("shipmentNo", shipment.shipmentNo())
-                .addValue("shipmentDate", c.shipmentDate()).addValue("recipientName", c.recipientName())
+                .addValue("shipmentDate", c.shipmentDate()).addValue("senderName", c.senderName())
+                .addValue("senderPhone", c.senderPhone()).addValue("senderProvince", c.senderProvince())
+                .addValue("senderCity", c.senderCity()).addValue("senderCounty", c.senderCounty())
+                .addValue("senderDetailAddress", c.senderDetailAddress()).addValue("recipientName", c.recipientName())
                 .addValue("recipientPhone", c.recipientPhone()).addValue("recipientProvince", c.recipientProvince())
                 .addValue("recipientCity", c.recipientCity()).addValue("recipientCounty", c.recipientCounty())
                 .addValue("recipientDetailAddress", c.recipientDetailAddress()).addValue("recipientAddress", c.recipientFullAddress())
@@ -185,7 +196,10 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                 rs.getString("recipient_county"), rs.getString("recipient_detail_address"),
                 rs.getString("preparation_content"), rs.getString("remark"), rs.getBigDecimal("estimated_freight"),
                 draft, rs.getString("status"), rs.getString("orderer"), rs.getString("logistics_company"),
-                rs.getString("tracking_no"), rs.getObject("platform_id",Long.class), rs.getObject("shop_id",Long.class));
+                rs.getString("tracking_no"), rs.getObject("platform_id",Long.class), rs.getObject("shop_id",Long.class),
+                rs.getString("sender_name"), rs.getString("sender_phone"),
+                rs.getString("sender_province"), rs.getString("sender_city"), rs.getString("sender_county"),
+                rs.getString("sender_detail_address"));
         return new Shipment(rs.getLong("id"), rs.getString("shipment_no"), content, rs.getLong("version_no"),
                 rs.getString("created_by"), rs.getString("updated_by"), rs.getTimestamp("created_at").toLocalDateTime(),
                 rs.getTimestamp("updated_at").toLocalDateTime(), rs.getString("logistics_order_state"));
