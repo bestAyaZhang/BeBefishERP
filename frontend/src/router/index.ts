@@ -71,7 +71,7 @@ const placeholderPages: RouteRecordRaw[] = [
   { path: 'sales/orders/:id', name: 'sales-order-detail', component: () => import('../features/sales/SalesOrderDetailView.vue'), props: (route) => ({ orderId: Number(route.params.id) }) },
   { path: 'sales/orders', name: 'sales-orders', component: () => import('../features/sales/SalesOrdersView.vue') },
   { path: 'shipping/new', name: 'shipping-new', component: () => import('../features/shipping/ShipmentFormView.vue'), meta: { requiredPermission: 'shipping:create' } },
-  { path: 'shipping/list', name: 'shipping-list', component: () => import('../features/shipping/ShipmentListView.vue'), meta: { requiredPermission: 'shipping:view' } },
+  { path: 'shipping/list', name: 'shipping-list', component: () => import('../features/shipping/ShipmentListView.vue'), meta: { requiredPermission: 'shipping:view', flushContent: true } },
   { path: 'shipping/:id/edit', name: 'shipping-edit', component: () => import('../features/shipping/ShipmentFormView.vue'), meta: { requiredPermission: 'shipping:edit' } },
   { path: 'shipping/:id', name: 'shipping-detail', component: () => import('../features/shipping/ShipmentDetailView.vue'), meta: { requiredPermission: 'shipping:view' } },
   { path: 'finance/receipts', name: 'receipts', component: () => import('../views/PlaceholderView.vue'), props: { title: '收款记录' } },

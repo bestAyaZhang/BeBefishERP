@@ -64,7 +64,7 @@ onBeforeUnmount(() => { listRequest++; summaryRequest++; });
 </script>
 
 <template>
-  <section data-testid="shipment-list-page" class="mx-auto w-full max-w-[1680px] space-y-5 pb-8">
+  <section data-testid="shipment-list-page" class="min-w-0 w-full space-y-5 px-4 pb-8 pt-4 lg:px-6 lg:pt-8">
     <header class="flex flex-wrap items-end justify-between gap-4">
       <div><h1 class="text-2xl font-bold text-[#25314d]">发货列表</h1><p class="mt-2 text-sm text-slate-500">统一查看每天的备货内容、收件资料与物流进度。</p></div>
       <button v-if="canCreate" data-testid="shipment-add" type="button" class="inline-flex h-11 items-center gap-2 rounded-lg bg-[#536dff] px-5 text-sm font-semibold text-white shadow-sm hover:bg-[#465eea]" @click="openCreate"><Plus :size="17" />新建发货单</button>
