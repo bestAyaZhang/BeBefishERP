@@ -204,6 +204,24 @@ class ShipmentControllerTest {
         verify(logistics).place(17, input, "employee:42");
     }
 
+    @Test
+    void cancellationRequiresSeparatePermissionAndValidatedVersion() throws Exception {
+        String path = "/api/shipments/17/logistics-order/cancel";
+        for (String[] permissions : new String[][] { {"shipping:view", "shipping:order"}, {"shipping:cancel"} }) {
+            login("操作人", permissions);
+            mvc.perform(post(path).contentType(APPLICATION_JSON).content("{\"version\":3}"))
+                    .andExpect(status().isForbidden());
+        }
+        var logistics = context.getBean(AneOrderService.class);
+        verifyNoInteractions(logistics);
+        login("操作人", "shipping:view", "shipping:cancel");
+        mvc.perform(post(path).contentType(APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post(path).contentType(APPLICATION_JSON).content("{\"version\":3}"))
+                .andExpect(status().isOk());
+        verify(logistics).cancel(17, new CancelAneOrderRequest(3L), "employee:42");
+    }
+
     private void login(String displayName, String... permissions) {
         var principal = new ErpPrincipal(42, null, displayName, List.of(), List.of(permissions));
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal, null,

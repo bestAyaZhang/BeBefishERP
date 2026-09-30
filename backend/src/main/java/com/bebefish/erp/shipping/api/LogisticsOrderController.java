@@ -27,4 +27,10 @@ public class LogisticsOrderController {
                                             @AuthenticationPrincipal ErpPrincipal principal) {
         return ApiResponse.success(service.place(id, request, principal.operatorIdentifier()));
     }
+    @PostMapping("/{id}/logistics-order/cancel")
+    @PreAuthorize("hasAuthority('shipping:cancel') and hasAuthority('shipping:view')")
+    public ApiResponse<LogisticsOrder> cancel(@PathVariable long id, @Valid @RequestBody CancelAneOrderRequest request,
+                                             @AuthenticationPrincipal ErpPrincipal principal) {
+        return ApiResponse.success(service.cancel(id, request, principal.operatorIdentifier()));
+    }
 }

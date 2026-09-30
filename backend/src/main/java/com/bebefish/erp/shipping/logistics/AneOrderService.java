@@ -41,10 +41,29 @@ public class AneOrderService {
         validateOrderContent(preview.content());
         var claim = store.claim(id, input.version(), operator);
         if (claim.existing() != null) return claim.existing();
-        var c = claim.shipment().content();
+        var params = orderParams(claim.shipment().content(), claim.orderNo());
+        AneOrderResult result = client.createOrder(params);
+        return store.finish(id, result, operator);
+    }
+
+    public LogisticsOrder cancel(long id, CancelAneOrderRequest input, String operator) {
+        if (!config.ready()) throw new BusinessException("LOGISTICS_NOT_CONFIGURED", HttpStatus.SERVICE_UNAVAILABLE, availability().message());
+        if (input == null || !validator.validate(input).isEmpty()) throw invalid("请提供当前发货单版本");
+        var snapshot = store.cancellationSnapshot(id);
+        validateOrderContent(snapshot);
+        // Validate the frozen content before reserving; a legacy/incomplete snapshot must not leave a pending request.
+        var claim = store.claimCancellation(id, input.version(), operator);
+        if (!claim.claimed()) return claim.order();
+        var params = orderParams(snapshot, claim.order().orderNo());
+        params.put("action", 10);
+        params.put("ewbNo", ""); // The modification/cancellation contract explicitly specifies an empty ewbNo.
+        return store.finishCancellation(id, client.cancelOrder(params), operator);
+    }
+
+    private LinkedHashMap<String, Object> orderParams(ShipmentContent c, String orderNo) {
         var draft = c.orderDraft();
         var params = new LinkedHashMap<String, Object>();
-        params.put("orderNo", claim.orderNo()); params.put("productTypeId", draft.productTypeId());
+        params.put("orderNo", orderNo); params.put("productTypeId", draft.productTypeId());
         params.put("goodsType", String.valueOf(draft.goodsType())); params.put("weight", draft.weight());
         params.put("volume", draft.volume()); params.put("pieceAmount", draft.pieceAmount());
         params.put("cargoName", draft.cargoName()); params.put("packType", draft.packType());
@@ -58,11 +77,11 @@ public class AneOrderService {
         params.put("toCountyName", c.recipientCounty()); params.put("toAddress", c.recipientDetailAddress());
         params.put("dictId", config.getDictId()); params.put("receiptType", 0);
         params.put("signSms", 0); params.put("receiveSendSms", 0); params.put("receiveReachSms", 0);
-        AneOrderResult result = client.createOrder(params);
-        return store.finish(id, result, operator);
+        return params;
     }
 
     private void validateOrderContent(ShipmentContent content) {
+        if (content == null) throw invalid("原下单资料不完整，请联系安能网点处理取消");
         var draft = content.orderDraft();
         if (blank(content.senderName()) || content.senderName().length() > 30
                 || blank(content.senderPhone()) || content.senderPhone().length() > 30

@@ -14,6 +14,7 @@ export function createMockShippingService(): ShippingService {
       message: '演示数据不提交真实物流订单', sender: null }; },
     async getLogisticsOrder() { return null; },
     async placeLogisticsOrder() { throw new Error('演示数据不能提交真实物流订单'); },
+    async cancelLogisticsOrder() { throw new Error('演示数据不能取消真实物流订单'); },
     async formOptions() { const catalog = mockCatalogOptions(); return { ...catalog, shopNames: catalog.shops.map(s => s.name), preparers: [] }; },
     async getFilterOptions() { return mockCatalogOptions(false); },
     async summary(date) {

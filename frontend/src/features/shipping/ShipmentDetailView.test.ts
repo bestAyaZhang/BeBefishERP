@@ -2,8 +2,9 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ShipmentDetailView from './ShipmentDetailView.vue';
+import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
 
-const service = vi.hoisted(() => ({ get: vi.fn(), getLogisticsOrder: vi.fn() }));
+const service = vi.hoisted(() => ({ get: vi.fn(), getLogisticsOrder: vi.fn(), cancelLogisticsOrder: vi.fn() }));
 vi.mock('./shippingService', () => ({ shippingService: service }));
 
 const shipment = {
@@ -31,12 +32,98 @@ async function render() {
 }
 
 beforeEach(() => {
+  clearCurrentUser();
+  saveCurrentUser({ accessToken: 'test', mobile: null, displayName: '测试用户', roles: [],
+    permissions: ['shipping:view', 'shipping:cancel'], loginMethod: 'feishu' });
+  service.cancelLogisticsOrder.mockReset();
   service.get.mockReset().mockResolvedValue(shipment);
   service.getLogisticsOrder.mockReset().mockResolvedValue({ shipmentId: 8, orderNo: 'BF008', state: 'succeeded',
     trackingNo: 'ANE001', childTrackingNos: '', message: '下单成功', updatedAt: '2026-09-24T10:00:00', testEnvironment: false });
 });
 
 describe('ShipmentDetailView', () => {
+  it('disables duplicate confirmations while the cancellation request is pending', async () => {
+    let resolve!: (value: unknown) => void;
+    service.cancelLogisticsOrder.mockReturnValue(new Promise(done => { resolve = done; }));
+    const { wrapper } = await render();
+    await wrapper.get('[data-testid="shipment-cancel-order"]').trigger('click');
+    await wrapper.get('[data-testid="cancel-order-confirm"]').trigger('click');
+    expect(wrapper.get('[data-testid="cancel-order-confirm"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="cancel-order-confirm"]').trigger('click');
+    expect(service.cancelLogisticsOrder).toHaveBeenCalledTimes(1);
+    resolve({ shipmentId: 8, orderNo: 'BF008', state: 'cancel_unknown', trackingNo: 'ANE001',
+      childTrackingNos: '', message: '取消待核实', testEnvironment: false, updatedAt: '2026-09-30T10:00:00' });
+    service.getLogisticsOrder.mockResolvedValue({ shipmentId: 8, orderNo: 'BF008', state: 'cancel_unknown', trackingNo: 'ANE001',
+      childTrackingNos: '', message: '取消待核实', testEnvironment: false, updatedAt: '2026-09-30T10:00:00' });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="shipment-detail-logistics-status"]').text()).toContain('取消待核实');
+    expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+  it('confirms before cancellation then shows the cancelled waybill as history without changing preparation', async () => {
+    const { wrapper } = await render();
+    await wrapper.get('[data-testid="shipment-cancel-order"]').trigger('click');
+    expect(wrapper.get('[role="dialog"]').text()).toContain('揽收');
+    expect(wrapper.get('[role="dialog"]').text()).toContain('ANE001');
+    expect(service.cancelLogisticsOrder).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="cancel-order-dismiss"]').trigger('click');
+    expect(service.cancelLogisticsOrder).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="shipment-cancel-order"]').trigger('click');
+    service.cancelLogisticsOrder.mockResolvedValue({ shipmentId: 8, orderNo: 'BF008', state: 'cancelled', trackingNo: 'ANE001',
+      childTrackingNos: '', message: '订单已取消', testEnvironment: false, updatedAt: '2026-09-30T10:00:00' });
+    service.get.mockResolvedValue({ ...shipment, version: 5, content: { ...shipment.content, trackingNo: '' } });
+    service.getLogisticsOrder.mockResolvedValue({ shipmentId: 8, orderNo: 'BF008', state: 'cancelled', trackingNo: 'ANE001',
+      childTrackingNos: '', message: '订单已取消', testEnvironment: false, updatedAt: '2026-09-30T10:00:00' });
+    await wrapper.get('[data-testid="cancel-order-confirm"]').trigger('click'); await flushPromises();
+    expect(service.cancelLogisticsOrder).toHaveBeenCalledWith(8, { version: 3 });
+    expect(wrapper.get('[data-testid="shipment-detail-logistics-status"]').text()).toContain('已取消');
+    expect(wrapper.get('[data-testid="shipment-real-tracking"]').text()).toContain('已作废');
+    expect(wrapper.get('[data-testid="shipment-detail-preparation-status"]').text()).toContain('部分发货');
+    expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it.each(['cancel_processing', 'cancel_unknown', 'cancelled', 'unknown', 'processing'])('hides cancellation for %s', async state => {
+    service.getLogisticsOrder.mockResolvedValue({ shipmentId: 8, orderNo: 'BF008', state, trackingNo: 'ANE001',
+      childTrackingNos: '', message: '当前订单需核实', testEnvironment: false, updatedAt: '2026-09-30T10:00:00' });
+    const { wrapper } = await render();
+    expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('requires cancel permission even when the user can place orders', async () => {
+    saveCurrentUser({ accessToken: 'test', mobile: null, displayName: '测试用户', roles: [],
+      permissions: ['shipping:view', 'shipping:order'], loginMethod: 'feishu' });
+    const { wrapper } = await render();
+    expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('blocks another submission after transport failure until the saved state has been refreshed', async () => {
+    const { wrapper } = await render();
+    await wrapper.get('[data-testid="shipment-cancel-order"]').trigger('click');
+    service.cancelLogisticsOrder.mockRejectedValue(new Error('连接中断'));
+    service.getLogisticsOrder.mockRejectedValue(new Error('连接中断'));
+    await wrapper.get('[data-testid="cancel-order-confirm"]').trigger('click'); await flushPromises();
+    expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="shipment-cancel-feedback"]').text()).toContain('核实');
+    wrapper.unmount();
+  });
+
+  it('keeps a rejected cancellation active and displays its reason', async () => {
+    const { wrapper } = await render();
+    await wrapper.get('[data-testid="shipment-cancel-order"]').trigger('click');
+    const rejected = { shipmentId: 8, orderNo: 'BF008', state: 'cancel_rejected', trackingNo: 'ANE001',
+      childTrackingNos: '', message: '已揽收，无法取消', testEnvironment: false, updatedAt: '2026-09-30T10:00:00' };
+    service.cancelLogisticsOrder.mockResolvedValue(rejected);
+    service.getLogisticsOrder.mockResolvedValue(rejected);
+    await wrapper.get('[data-testid="cancel-order-confirm"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('[data-testid="shipment-real-tracking"]').text()).toBe('ANE001');
+    expect(wrapper.get('[data-testid="shipment-order-message"]').text()).toContain('已揽收');
+    expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   it('shows recipient, preparation, record and logistics information', async () => {
     const { wrapper, router } = await render();
     expect(wrapper.get('[data-testid="shipment-detail-page"]').text()).toContain('浙江省杭州市余杭区示例路18号2栋101室');

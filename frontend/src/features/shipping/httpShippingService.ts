@@ -22,5 +22,6 @@ export const httpShippingService: ShippingService = {
   update: (id, form, status, version) => request<Shipment>(`/api/shipments/${id}`, { method: 'PUT', body: JSON.stringify({ form, status, version }) }),
   logisticsAvailability: () => request<LogisticsAvailability>('/api/shipments/logistics/availability'),
   getLogisticsOrder: id => request<LogisticsOrder | null>(`/api/shipments/${id}/logistics-order`),
-  placeLogisticsOrder: (id, payload) => request<LogisticsOrder>(`/api/shipments/${id}/logistics-order`, { method: 'POST', body: JSON.stringify(payload) })
+  placeLogisticsOrder: (id, payload) => request<LogisticsOrder>(`/api/shipments/${id}/logistics-order`, { method: 'POST', body: JSON.stringify(payload) }),
+  cancelLogisticsOrder: (id, payload) => request<LogisticsOrder>(`/api/shipments/${id}/logistics-order/cancel`, { method: 'POST', body: JSON.stringify(payload) })
 };

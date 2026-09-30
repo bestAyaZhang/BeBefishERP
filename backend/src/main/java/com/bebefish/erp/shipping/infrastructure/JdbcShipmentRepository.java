@@ -23,7 +23,9 @@ public class JdbcShipmentRepository implements ShipmentRepository {
     private static final String SHIPMENT_SELECT = """
             select s.*,
                    case when o.state='processing' and o.updated_at < now(3) - interval 2 minute
-                        then 'unknown' else o.state end as logistics_order_state
+                        then 'unknown'
+                        when o.state='cancel_processing' and o.updated_at < now(3) - interval 2 minute
+                        then 'cancel_unknown' else o.state end as logistics_order_state
             from shipment s
             left join shipment_logistics_order o on o.shipment_id=s.id
             """;

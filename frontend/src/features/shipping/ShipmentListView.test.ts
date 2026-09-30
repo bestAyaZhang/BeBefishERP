@@ -45,6 +45,17 @@ beforeEach(() => {
 });
 
 describe('ShipmentListView', () => {
+  it('shows cancelled orders without presenting the historical waybill as active', async () => {
+    const item = record();
+    item.logisticsOrderState = 'cancelled' as Shipment['logisticsOrderState'];
+    item.content.trackingNo = '';
+    service.list.mockResolvedValue({ records: [item], page: 1, pageSize: 20, total: 1 });
+    const { wrapper } = await render();
+    expect(wrapper.get('[data-testid="shipment-logistics-status-8"]').text()).toContain('已取消');
+    expect(wrapper.text()).toContain('原运单已作废');
+    expect(wrapper.get('[data-testid="shipment-preparation-status-8"]').text()).toContain('未完成');
+    wrapper.unmount();
+  });
   it('uses configured store labels in the shop filter', async () => {
     service.getFilterOptions.mockResolvedValueOnce({ platforms: [{ id: 1, name: '拼多多', status: 'enabled' }],
       shops: [{ id: 11, platformId: 1, name: '笨笨的生活商铺', optionLabel: '电商_拼多多_笨笨的生活商铺', status: 'enabled', platformStatus: 'enabled' }] });
