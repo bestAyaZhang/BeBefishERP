@@ -71,7 +71,7 @@ public final class DatabaseEnvironmentSafetyInitializer
                     || expectedProdDatabase == null || expectedProdDatabase.isBlank()) {
                 throw new IllegalStateException("线上环境必须配置 ERP_PROD_DB_HOST 和 ERP_PROD_DB_NAME");
             }
-            if (loopback || !host.equalsIgnoreCase(expectedProdHost.trim())
+            if (!host.equalsIgnoreCase(expectedProdHost.trim())
                     || !database.equals(expectedProdDatabase.trim()) || database.toLowerCase(Locale.ROOT).endsWith("_test")) {
                 throw new IllegalStateException("线上数据库地址与指定的线上数据库不一致");
             }

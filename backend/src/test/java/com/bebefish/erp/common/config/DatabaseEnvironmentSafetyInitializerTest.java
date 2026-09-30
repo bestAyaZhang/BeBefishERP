@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.io.support.SpringFactoriesLoader;
@@ -65,7 +67,39 @@ class DatabaseEnvironmentSafetyInitializerTest {
                 Set.of("prod"), PROD, "other.internal", "bebefish_prod"))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("线上数据库");
         assertThatThrownBy(() -> DatabaseEnvironmentSafetyInitializer.validate(
-                Set.of("prod"), LOCAL, "127.0.0.1", "bebefish_erp"))
+                Set.of("prod"), PROD, "mysql.production.internal", "other_prod"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("线上数据库");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"127.0.0.1", "localhost", "[::1]"})
+    void prodProfilePermitsExplicitlyMatchedColocatedDatabase(String host) {
+        assertThatCode(() -> DatabaseEnvironmentSafetyInitializer.validate(
+                Set.of("prod"), "jdbc:mysql://" + host + ":3306/bebefish_erp", host, "bebefish_erp"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void colocatedProductionStillRequiresExplicitMatchingTarget() {
+        assertThatThrownBy(() -> DatabaseEnvironmentSafetyInitializer.validate(
+                Set.of("prod"), LOCAL, null, null))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("ERP_PROD_DB_HOST");
+        assertThatThrownBy(() -> DatabaseEnvironmentSafetyInitializer.validate(
+                Set.of("prod"), LOCAL, "localhost", "bebefish_erp"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("线上数据库");
+        assertThatThrownBy(() -> DatabaseEnvironmentSafetyInitializer.validate(
+                Set.of("prod"), LOCAL, "127.0.0.1", "other_prod"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("线上数据库");
+    }
+
+    @Test
+    void prodProfileRejectsTestDatabaseEvenWithMatchingTarget() {
+        assertThatThrownBy(() -> DatabaseEnvironmentSafetyInitializer.validate(
+                Set.of("prod"), TEST, "localhost", "bebefish_test"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("线上数据库");
+        assertThatThrownBy(() -> DatabaseEnvironmentSafetyInitializer.validate(
+                Set.of("prod"), "jdbc:mysql://mysql.production.internal:3306/bebefish_test",
+                "mysql.production.internal", "bebefish_test"))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("线上数据库");
     }
 
