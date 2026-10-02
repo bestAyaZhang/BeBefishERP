@@ -1,6 +1,7 @@
 package com.bebefish.erp.masterdata.application;
 
 import com.bebefish.erp.common.api.BusinessException;
+import com.bebefish.erp.inventory.application.WarehousePileReleaseService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,7 +28,7 @@ class WarehouseLayoutServiceTest {
         var jdbc = mock(JdbcTemplate.class);
         var warehouses = mock(WarehouseService.class);
         when(jdbc.query(anyString(),any(RowMapper.class),eq(7L))).thenReturn(List.of(layout(3)));
-        var service = new WarehouseLayoutService(jdbc,mapper,warehouses);
+        var service = new WarehouseLayoutService(jdbc,mapper,warehouses,mock(WarehousePileReleaseService.class));
         assertThrows(BusinessException.class, () -> service.save(7,layout(2)));
         verify(jdbc,never()).update(anyString(),any(Object[].class));
     }
@@ -36,7 +37,7 @@ class WarehouseLayoutServiceTest {
         var jdbc = mock(JdbcTemplate.class);
         var warehouses = mock(WarehouseService.class);
         when(jdbc.query(anyString(),any(RowMapper.class),eq(7L))).thenReturn(List.of());
-        var service = new WarehouseLayoutService(jdbc,mapper,warehouses);
+        var service = new WarehouseLayoutService(jdbc,mapper,warehouses,mock(WarehousePileReleaseService.class));
         assertEquals(1,service.save(7,layout(0)).revision());
         verify(warehouses).get(7);
         verify(jdbc).update(startsWith("INSERT INTO warehouse_layout"),eq(7L),eq(1L),anyString());

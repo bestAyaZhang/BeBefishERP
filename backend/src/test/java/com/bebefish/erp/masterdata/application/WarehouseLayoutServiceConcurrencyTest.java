@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.bebefish.erp.common.api.BusinessException;
+import com.bebefish.erp.inventory.application.WarehousePileReleaseService;
 import com.bebefish.erp.masterdata.domain.Warehouse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -61,7 +62,8 @@ class WarehouseLayoutServiceConcurrencyTest {
                     false, "enabled", null);
         });
 
-        service = new WarehouseLayoutService(jdbc, mapper, warehouses);
+        service = new WarehouseLayoutService(jdbc, mapper, warehouses,
+                mock(WarehousePileReleaseService.class));
         transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         transactions.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
     }
