@@ -17,6 +17,12 @@ const props = defineProps<{
   selectedZoneId?: string | null
   palletGroups?: readonly PlannerPalletGroup[]
   structure?: WarehouseStructure
+  toolbarTarget?: HTMLElement | null
+  minimapTarget?: HTMLElement | null
+  statusTarget?: HTMLElement | null
+  minimapViewport?: PlannerRect
+  zoomPercent?: number
+  viewportRulers?: boolean
   structureEditing?: boolean
   zoneEditing?: boolean
   goodsEditing?: boolean
@@ -32,6 +38,7 @@ const emit = defineEmits<{
   'change-structure': [structure: WarehouseStructure]
   'structure-issues': [issues: StructureIssue[]]
   'structure-busy': [busy: boolean]
+  'pan-minimap': [position: { left: number; top: number }]
 }>()
 
 type RulerTickKind = 'minor' | 'meter' | 'major'
@@ -113,6 +120,81 @@ const planningIssues = computed(() => validatePlannerLayout(currentStructure.val
 watch(planningIssues, (issues) => emit('structure-issues', issues), { immediate: true })
 const persistentConflictIds = computed(() => new Set(planningIssues.value.flatMap((v) => v.objectIds)))
 const minimapOutline = computed(() => currentStructure.value.outline.nodes.map((p) => `${p.x},${p.y}`).join(' '))
+const minimapSurface = ref<HTMLElement | null>(null)
+const visibleMinimapViewport = computed(() => props.minimapViewport ?? { left: 0, top: 0, width: 100, height: 100 })
+const scaleDenominator = computed(() => Math.round(10000 / (props.zoomPercent ?? 100)))
+const clippedMinimapViewport = computed(() => {
+  const view = visibleMinimapViewport.value
+  const left = Math.max(0, Math.min(100, view.left))
+  const top = Math.max(0, Math.min(100, view.top))
+  const round = (value: number) => Math.round(value * 100) / 100
+  return {
+    left: round(left),
+    top: round(top),
+    width: round(Math.max(0, Math.min(100, view.left + view.width) - left)),
+    height: round(Math.max(0, Math.min(100, view.top + view.height) - top)),
+  }
+})
+const minimapWindowStyle = computed(() => ({
+  left: `${clippedMinimapViewport.value.left}%`,
+  top: `${clippedMinimapViewport.value.top}%`,
+  width: `${clippedMinimapViewport.value.width}%`,
+  height: `${clippedMinimapViewport.value.height}%`,
+}))
+let minimapDrag: { pointerId: number; offsetX: number; offsetY: number } | null = null
+function minimapPoint(event: PointerEvent) {
+  const bounds = minimapSurface.value?.getBoundingClientRect()
+  if (!bounds?.width || !bounds.height) return null
+  return {
+    x: Math.max(0, Math.min(100, (event.clientX - bounds.left) / bounds.width * 100)),
+    y: Math.max(0, Math.min(100, (event.clientY - bounds.top) / bounds.height * 100)),
+  }
+}
+function panMinimap(point: { x: number; y: number }, offsetX: number, offsetY: number) {
+  const view = visibleMinimapViewport.value
+  emit('pan-minimap', {
+    left: Math.max(-view.width, Math.min(100, point.x - offsetX)),
+    top: Math.max(-view.height, Math.min(100, point.y - offsetY)),
+  })
+}
+function startMinimapDrag(event: PointerEvent) {
+  if (event.button !== 0) return
+  const point = minimapPoint(event)
+  if (!point) return
+  event.preventDefault()
+  event.stopPropagation()
+  const view = visibleMinimapViewport.value
+  const clipped = clippedMinimapViewport.value
+  const inside = point.x >= clipped.left && point.x <= clipped.left + clipped.width && point.y >= clipped.top && point.y <= clipped.top + clipped.height
+  minimapDrag = {
+    pointerId: event.pointerId,
+    offsetX: inside ? point.x - view.left : view.width / 2,
+    offsetY: inside ? point.y - view.top : view.height / 2,
+  }
+  minimapSurface.value?.setPointerCapture?.(event.pointerId)
+  panMinimap(point, minimapDrag.offsetX, minimapDrag.offsetY)
+}
+function moveMinimapDrag(event: PointerEvent) {
+  if (!minimapDrag || minimapDrag.pointerId !== event.pointerId) return
+  const point = minimapPoint(event)
+  if (point) panMinimap(point, minimapDrag.offsetX, minimapDrag.offsetY)
+}
+function stopMinimapDrag(event: PointerEvent) {
+  if (!minimapDrag || minimapDrag.pointerId !== event.pointerId) return
+  moveMinimapDrag(event)
+  minimapSurface.value?.releasePointerCapture?.(event.pointerId)
+  minimapDrag = null
+}
+function nudgeMinimap(event: KeyboardEvent) {
+  const offsets: Record<string, { x: number; y: number }> = {
+    ArrowLeft: { x: -5, y: 0 }, ArrowRight: { x: 5, y: 0 }, ArrowUp: { x: 0, y: -5 }, ArrowDown: { x: 0, y: 5 },
+  }
+  const offset = offsets[event.key]
+  if (!offset) return
+  event.preventDefault()
+  const view = visibleMinimapViewport.value
+  panMinimap({ x: view.left + offset.x, y: view.top + offset.y }, 0, 0)
+}
 type PalletDrag = {
   pointerId: number
   startClientX: number
@@ -146,8 +228,9 @@ function rectStyle(rect: PlannerRect) {
 
 function palletStyle(pallet: PlannerPalletGroup) {
   const drag = palletDrag.value?.pallet.id === pallet.id ? palletDrag.value : null
+  const scale = Math.max((props.zoomPercent ?? 100) / 100, 0.01)
   const transform = drag
-    ? `translate3d(${roundPosition((drag.preview.left - pallet.left) / 100 * drag.boardWidth)}px, ${roundPosition((drag.preview.top - pallet.top) / 100 * drag.boardHeight)}px, 0)`
+    ? `translate3d(${roundPosition((drag.preview.left - pallet.left) / 100 * drag.boardWidth / scale)}px, ${roundPosition((drag.preview.top - pallet.top) / 100 * drag.boardHeight / scale)}px, 0)`
     : undefined
   return {
     ...rectStyle(pallet),
@@ -390,13 +473,13 @@ onBeforeUnmount(() => {
   <section
     data-testid="warehouse-blueprint-scene"
     class="blueprint-scene"
-    :class="{ 'grid-muted': !gridSnapping, 'details-visible': inventoryDetailsVisible, 'detail-mode': detailMode }"
+    :class="{ 'grid-muted': !gridSnapping, 'details-visible': inventoryDetailsVisible, 'detail-mode': detailMode, 'viewport-canvas': viewportRulers }"
     :data-measuring="measurementEnabled ? 'true' : 'false'"
     :data-grid-snapping="gridSnapping ? 'true' : 'false'"
     :data-view-mode="inventoryDetailsVisible ? 'details' : 'planning'"
     aria-label="一号仓平面规划画布"
   >
-    <div v-if="!detailMode" data-testid="planner-ruler-x" class="ruler ruler-x" role="img" aria-label="横向标尺，0 至 60 米，最小刻度 0.5 米">
+    <div v-if="!detailMode && !viewportRulers" data-testid="planner-ruler-x" class="ruler ruler-x" role="img" aria-label="横向标尺，0 至 60 米，最小刻度 0.5 米">
       <i
         v-for="tick in horizontalRulerTicks"
         :key="tick.value"
@@ -416,7 +499,7 @@ onBeforeUnmount(() => {
       >{{ tick.value }}</span>
       <span class="ruler-unit">(m)</span>
     </div>
-    <div v-if="!detailMode" data-testid="planner-ruler-y" class="ruler ruler-y" role="img" aria-label="纵向标尺，0 至 40 米，最小刻度 0.5 米">
+    <div v-if="!detailMode && !viewportRulers" data-testid="planner-ruler-y" class="ruler ruler-y" role="img" aria-label="纵向标尺，0 至 40 米，最小刻度 0.5 米">
       <i
         v-for="tick in verticalRulerTicks"
         :key="tick.value"
@@ -449,6 +532,7 @@ onBeforeUnmount(() => {
       <div v-if="drawingPile" data-testid="pile-creation-preview" class="pile-creation-preview" :class="{ invalid: creationConflicts.length }" :style="rectStyle(drawingPile.rect)"></div>
       <p v-if="goodsEditing && !inventoryDetailsVisible" class="pile-creation-hint" role="status">{{ creationMessage || '在空白处按住鼠标拖动创建货物堆 · Esc 取消' }}</p>
       <WarehouseStructureLayer
+        :toolbar-target="toolbarTarget"
         :pallets="palletGroups"
         :structure="committedStructure" :editing="Boolean(structureEditing) && !inventoryDetailsVisible"
         :grid-snapping="gridSnapping" :issues="planningIssues.concat(collisionFeedbackIds.length ? [{id:'drop-conflict',objectIds:collisionFeedbackIds,message:'位置冲突'}] : [], palletDrag?.overlappingIds.length ? [{id:'drag-conflict',objectIds:palletDrag.overlappingIds,message:'位置冲突'}] : [])"
@@ -458,6 +542,7 @@ onBeforeUnmount(() => {
       />
 
       <WarehouseZoneLayer
+        :toolbar-target="toolbarTarget"
         :pallets="palletGroups"
         :structure="committedStructure" :editing="Boolean(zoneEditing) && !inventoryDetailsVisible"
         :viewing="Boolean(detailMode)" :selected-zone-id="selectedZoneId"
@@ -528,22 +613,26 @@ onBeforeUnmount(() => {
         @close="emit('select-pallet', null)"
       />
 
-      <aside v-if="!detailMode" data-testid="planner-minimap" class="planner-minimap" aria-label="仓库小地图">
-        <div class="minimap-shell">
+      <Teleport :to="minimapTarget ?? 'body'" :disabled="!minimapTarget">
+      <aside v-if="!detailMode" data-testid="planner-minimap" class="planner-minimap" :class="{ 'external-minimap': minimapTarget }" aria-label="仓库小地图">
+        <button ref="minimapSurface" type="button" data-testid="planner-minimap-surface" class="minimap-shell" aria-label="拖动查看仓库画布" @pointerdown="startMinimapDrag" @pointermove="moveMinimapDrag" @pointerup="stopMinimapDrag" @pointercancel="stopMinimapDrag" @keydown="nudgeMinimap">
           <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon :points="minimapOutline" fill="#f0f3f6" stroke="#8994a1" stroke-width="1.5" /><rect v-for="zone in currentStructure.zones" :key="zone.id" :x="zone.left" :y="zone.top" :width="zone.width" :height="zone.height" :fill="{ green: '#b8d9c8', blue: '#bbcdef', amber: '#e1d2ac', purple: '#d6c3e8' }[zone.tone]" /><rect v-for="lift in currentStructure.elevators" :key="lift.id" :x="lift.left" :y="lift.top" :width="lift.width" :height="lift.height" fill="#819ab5" /><rect v-for="column in currentStructure.columns" :key="column.id" :x="column.left" :y="column.top" :width="column.width" :height="column.height" fill="#566271" /></svg>
           <i v-for="pallet in palletGroups" :key="pallet.id" :style="rectStyle(pallet)" />
-          <span aria-hidden="true" />
-        </div>
+          <span data-testid="planner-minimap-window" :style="minimapWindowStyle" aria-hidden="true" />
+        </button>
       </aside>
+      </Teleport>
     </div>
-    <footer v-if="!detailMode" data-testid="planner-coordinate-status" class="coordinate-status">
+    <Teleport :to="statusTarget ?? 'body'" :disabled="!statusTarget">
+    <footer v-if="!detailMode" data-testid="planner-coordinate-status" class="coordinate-status" :class="{ 'external-status': statusTarget }">
       <span>X&nbsp; {{ selectedPallet?.xMeters ?? 32.4 }}m</span>
       <span>Y&nbsp; {{ selectedPallet?.yMeters ?? 21.8 }}m</span>
       <span class="status-divider" aria-hidden="true" />
-      <span>比例&nbsp; 1:100</span>
-      <span>缩放&nbsp; 100%</span>
+      <span>比例&nbsp; 1:{{ scaleDenominator }}</span>
+      <span>缩放&nbsp; {{ zoomPercent ?? 100 }}%</span>
       <strong class="north-indicator" aria-label="北向">N<span>▲</span></strong>
     </footer>
+    </Teleport>
   </section>
 </template>
 
@@ -556,6 +645,8 @@ onBeforeUnmount(() => {
 .blueprint-scene { position: relative; width: 100%; min-width: 980px; height: 100%; min-height: 720px; padding: 36px 28px 28px 48px; background: #f9fbfd; color: #25314d; }
 .drawing-board { position: relative; width: 100%; height: 100%; overflow: hidden; border: 1px solid #eef2f6; background-color: #fbfcfd; background-image: linear-gradient(#e8edf3 1px, transparent 1px), linear-gradient(90deg, #e8edf3 1px, transparent 1px), linear-gradient(#f1f4f8 1px, transparent 1px), linear-gradient(90deg, #f1f4f8 1px, transparent 1px); background-size: 40px 40px, 40px 40px, 8px 8px, 8px 8px; }
 .grid-muted .drawing-board { background-image: linear-gradient(#eef2f6 1px, transparent 1px), linear-gradient(90deg, #eef2f6 1px, transparent 1px); background-size: 40px 40px; }
+.blueprint-scene.viewport-canvas {background:transparent;}
+.viewport-canvas .drawing-board, .viewport-canvas.grid-muted .drawing-board {border:0;background-color:transparent;background-image:none;}
 .ruler { position: absolute; z-index: 2; color: #536176; font: 10px/1 Inter,sans-serif; }
 .ruler-x { top: 7px; left: 48px; right: 28px; height: 28px; border-bottom: 1px solid #8f9baa; }
 .ruler-y { top: 36px; bottom: 28px; left: 8px; width: 39px; border-right: 1px solid #8f9baa; }
@@ -612,12 +703,16 @@ onBeforeUnmount(() => {
 .width-measure span { left: 50%; top: -17px; transform: translateX(-50%); }.height-measure span { left: 4px; top: 50%; transform: translateY(-50%); }
 .scene-inspector { position: absolute; z-index: 24; }
 .planner-minimap { position: absolute; z-index: 20; right: 16px; bottom: 17px; width: 150px; height: 112px; border: 1px solid #e1e6ec; border-radius: 7px; padding: 9px; background: rgba(255,255,255,.96); box-shadow: 0 7px 20px rgba(37,49,77,.12); }
-.minimap-shell { position: relative; width: 100%; height: 100%; background: #f5f7f9; }
+.planner-minimap.external-minimap {position:static;width:100%;height:100%;pointer-events:auto;}
+.minimap-shell { position: relative; display:block; width: 100%; height: 100%; min-height:0; border:0; border-radius:0; padding:0; background: #f5f7f9; cursor:grab; touch-action:none; }
+.minimap-shell:active {cursor:grabbing;}
+.minimap-shell:focus-visible {outline:2px solid #536dff;outline-offset:2px;}
 .minimap-shell svg {position:absolute;inset:0;width:100%;height:100%;}
 .pile-issue-label {position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);white-space:nowrap;background:#fff1f2;color:#c8263c;border:1px solid #fecdd3;border-radius:4px;padding:2px 5px;font-size:10px;pointer-events:none;}
 .minimap-shell i { position: absolute; display: block; background: #d8ca9f; opacity: .8; transform: scale(.9); }
-.minimap-shell > span { position: absolute; left: 7%; top: 8%; width: 82%; height: 80%; border: 2px solid #536dff; background: rgba(83,109,255,.04); }
+.minimap-shell > span { position: absolute; display:block; border: 2px solid #536dff; background: rgba(83,109,255,.04); pointer-events:none; }
 .coordinate-status { position: absolute; z-index: 25; right: 0; bottom: 0; left: 0; display: flex; align-items: center; gap: 22px; height: 28px; padding: 0 22px; border-top: 1px solid #e6ebf1; background: rgba(255,255,255,.96); color: #536176; font: 11px/1 Inter,sans-serif; }
+.coordinate-status.external-status {position:static;width:max-content;max-width:100%;height:30px;gap:14px;padding:0 11px;border:1px solid #e0e7ef;border-radius:6px;background:rgba(255,255,255,.95);box-shadow:0 2px 8px rgba(37,49,77,.08);}
 .status-divider { width: 1px; height: 14px; margin-inline: -8px; background: #d6dde5; }.north-indicator { display: flex; align-items: center; gap: 4px; margin-left: auto; color: #354159; font-size: 10px; }.north-indicator span { font-size: 15px; }
 @media (max-width: 1280px) { .blueprint-scene { min-width: 1060px; } }
 </style>

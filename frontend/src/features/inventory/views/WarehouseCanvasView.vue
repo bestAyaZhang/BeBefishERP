@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { routeLocationKey } from 'vue-router'
-import { Warehouse, Plus, SquareDashedMousePointer, MousePointer2, Hand, Undo2, Redo2, Search, Eye, EyeOff, Lock, Unlock, TriangleAlert, X } from 'lucide-vue-next'
+import { Warehouse, Plus, Minus, SquareDashedMousePointer, MousePointer2, Hand, Undo2, Redo2, Search, Eye, EyeOff, Lock, Unlock, TriangleAlert, X } from 'lucide-vue-next'
 import AccessibleDialog from '../../../components/AccessibleDialog.vue'
 import WarehouseFloorCanvas from '../warehouseCanvas/components/WarehouseFloorCanvas.vue'
 import WarehouseBlueprintScene from '../warehouseCanvas/components/WarehouseBlueprintScene.vue'
+import WarehouseViewportRulers from '../warehouseCanvas/components/WarehouseViewportRulers.vue'
 import WarehousePlannerChrome from '../warehouseCanvas/components/WarehousePlannerChrome.vue'
 import WarehouseLayoutControls from '../warehouseCanvas/components/WarehouseLayoutControls.vue'
 import WarehouseInventorySidebar from '../warehouseCanvas/components/WarehouseInventorySidebar.vue'
@@ -133,6 +134,124 @@ const deleteFinal = ref(false)
 const deletingArea = computed(() => state.value.areas.find((area) => area.id === deleteAreaId.value))
 const deleteCount = computed(() => state.value.blocks.filter((block) => block.areaId === deleteAreaId.value).length)
 const viewport = ref<HTMLElement>()
+const plannerContextToolbar = ref<HTMLElement | null>(null)
+const plannerSceneViewport = ref<HTMLElement | null>(null)
+const plannerMinimapHost = ref<HTMLElement | null>(null)
+const plannerStatusHost = ref<HTMLElement | null>(null)
+const plannerZoom = ref(100)
+const plannerCamera = ref({ x: 0, y: 0 })
+const plannerViewportSize = ref({ width: 0, height: 0 })
+let plannerCameraHasBeenFitted = false
+const plannerSpaceHeld = ref(false)
+function plannerKeyDown(event: KeyboardEvent) {
+  if (plannerCompleted.value || event.code !== 'Space' || (event.target instanceof Element && event.target.closest('button, input, textarea, select, [role="button"], [contenteditable="true"]'))) return
+  event.preventDefault()
+  plannerSpaceHeld.value = true
+}
+function plannerKeyUp(event: KeyboardEvent) { if (event.code === 'Space') plannerSpaceHeld.value = false }
+function clearPlannerSpace() { plannerSpaceHeld.value = false }
+let plannerPan: { pointerId: number; startX: number; startY: number; cameraX: number; cameraY: number } | null = null
+const PLANNER_SCENE_WIDTH = 1200
+const PLANNER_SCENE_HEIGHT = 800
+const PLANNER_BOARD_LEFT = 48
+const PLANNER_BOARD_TOP = 36
+const PLANNER_BOARD_WIDTH = PLANNER_SCENE_WIDTH - PLANNER_BOARD_LEFT - 28
+const PLANNER_BOARD_HEIGHT = PLANNER_SCENE_HEIGHT - PLANNER_BOARD_TOP - 28
+const minimapViewport = ref<PlannerRect>({ left: 0, top: 0, width: 100, height: 100 })
+const plannerScale = computed(() => plannerZoom.value / 100)
+const sceneStageStyle = computed(() => plannerCompleted.value
+  ? { width: '100%', height: '100%', minWidth: '760px', minHeight: '560px' }
+  : {
+    width: `${PLANNER_SCENE_WIDTH}px`,
+    height: `${PLANNER_SCENE_HEIGHT}px`,
+    transform: `translate3d(${plannerCamera.value.x}px, ${plannerCamera.value.y}px, 0) scale(${plannerScale.value})`,
+    transformOrigin: 'top left',
+  })
+const sceneScaleStyle = computed(() => ({ width: '100%', height: '100%' }))
+function fitPlannerScene() {
+  const surface = plannerSceneViewport.value
+  if (!surface?.clientWidth || !surface.clientHeight) return
+  plannerViewportSize.value = { width: surface.clientWidth, height: surface.clientHeight }
+  const scale = Math.max(.1, Math.min(4, Math.min((surface.clientWidth - 96) / PLANNER_SCENE_WIDTH, (surface.clientHeight - 96) / PLANNER_SCENE_HEIGHT)))
+  plannerZoom.value = Math.round(scale * 100)
+  const fittedScale = plannerZoom.value / 100
+  plannerCamera.value = {
+    x: Math.round((surface.clientWidth - PLANNER_SCENE_WIDTH * fittedScale) / 2),
+    y: Math.round((surface.clientHeight - PLANNER_SCENE_HEIGHT * fittedScale) / 2),
+  }
+  plannerCameraHasBeenFitted = true
+  syncMinimapViewport()
+}
+function startPlannerPan(event: PointerEvent) {
+  if (plannerCompleted.value || !(event.button === 1 || (event.button === 0 && plannerSpaceHeld.value))) return
+  event.preventDefault()
+  event.stopPropagation()
+  plannerPan = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, cameraX: plannerCamera.value.x, cameraY: plannerCamera.value.y }
+  plannerSceneViewport.value?.setPointerCapture?.(event.pointerId)
+}
+function movePlannerPan(event: PointerEvent) {
+  if (!plannerPan || plannerPan.pointerId !== event.pointerId) return
+  event.preventDefault()
+  plannerCamera.value = { x: plannerPan.cameraX + event.clientX - plannerPan.startX, y: plannerPan.cameraY + event.clientY - plannerPan.startY }
+  syncMinimapViewport()
+}
+function stopPlannerPan(event: PointerEvent) {
+  if (!plannerPan || plannerPan.pointerId !== event.pointerId) return
+  movePlannerPan(event)
+  plannerSceneViewport.value?.releasePointerCapture?.(event.pointerId)
+  plannerPan = null
+}
+let plannerViewportObserver: ResizeObserver | null = null
+function syncMinimapViewport() {
+  const surface = plannerSceneViewport.value
+  if (!surface) return
+  plannerViewportSize.value = { width: surface.clientWidth, height: surface.clientHeight }
+  if (plannerCompleted.value || !surface.clientWidth || !surface.clientHeight) return
+  const left = -plannerCamera.value.x / plannerScale.value - PLANNER_BOARD_LEFT
+  const top = -plannerCamera.value.y / plannerScale.value - PLANNER_BOARD_TOP
+  minimapViewport.value = {
+    left: Math.round(left / PLANNER_BOARD_WIDTH * 10000) / 100,
+    top: Math.round(top / PLANNER_BOARD_HEIGHT * 10000) / 100,
+    width: Math.round(surface.clientWidth / plannerScale.value / PLANNER_BOARD_WIDTH * 10000) / 100,
+    height: Math.round(surface.clientHeight / plannerScale.value / PLANNER_BOARD_HEIGHT * 10000) / 100,
+  }
+}
+function changePlannerZoom(next: number, anchor?: { x: number; y: number }) {
+  const surface = plannerSceneViewport.value
+  const oldScale = plannerScale.value
+  const anchorX = anchor?.x ?? (surface?.clientWidth ?? 0) / 2
+  const anchorY = anchor?.y ?? (surface?.clientHeight ?? 0) / 2
+  plannerZoom.value = Math.max(10, Math.min(400, next))
+  const nextScale = plannerScale.value
+  if (surface?.clientWidth && surface.clientHeight) {
+    plannerCamera.value = {
+      x: Math.round((anchorX - (anchorX - plannerCamera.value.x) / oldScale * nextScale) * 100) / 100,
+      y: Math.round((anchorY - (anchorY - plannerCamera.value.y) / oldScale * nextScale) * 100) / 100,
+    }
+  }
+  syncMinimapViewport()
+}
+function zoomPlannerWheel(event: WheelEvent) {
+  if (plannerCompleted.value || (!event.ctrlKey && !event.metaKey)) return
+  event.preventDefault()
+  const bounds = plannerSceneViewport.value?.getBoundingClientRect()
+  if (!bounds) return
+  changePlannerZoom(Math.round(plannerZoom.value * (event.deltaY < 0 ? 1.25 : .8)), { x: event.clientX - bounds.left, y: event.clientY - bounds.top })
+}
+function panPlannerFromMinimap(position: { left: number; top: number }) {
+  const surface = plannerSceneViewport.value
+  if (!surface) return
+  plannerCamera.value = {
+    x: surface.clientWidth / plannerScale.value >= PLANNER_SCENE_WIDTH ? Math.round((surface.clientWidth - PLANNER_SCENE_WIDTH * plannerScale.value) / 2) : -Math.round((PLANNER_BOARD_LEFT + position.left / 100 * PLANNER_BOARD_WIDTH) * plannerScale.value * 100) / 100,
+    y: surface.clientHeight / plannerScale.value >= PLANNER_SCENE_HEIGHT ? Math.round((surface.clientHeight - PLANNER_SCENE_HEIGHT * plannerScale.value) / 2) : -Math.round((PLANNER_BOARD_TOP + position.top / 100 * PLANNER_BOARD_HEIGHT) * plannerScale.value * 100) / 100,
+  }
+  syncMinimapViewport()
+}
+watch(plannerCompleted, async (completed) => {
+  await nextTick()
+  if (!completed) fitPlannerScene()
+  else syncMinimapViewport()
+})
 const zoom = ref(100)
 let pan: { pointerId: number; x: number; y: number; left: number; top: number } | null = null
 const rectFields = ['x', 'y', 'width', 'height'] as const
@@ -448,7 +567,29 @@ function addProduct(input: { skuId: number; areaId: string; units: number }) {
     notice.value = `已将产品放入 ${area.name}`
   })
 }
-onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } catch (cause) { error.value = cause instanceof Error ? cause.message : '加载失败' } })
+onMounted(async () => {
+  window.addEventListener('keydown', plannerKeyDown)
+  window.addEventListener('keyup', plannerKeyUp)
+  window.addEventListener('blur', clearPlannerSpace)
+  await nextTick()
+  fitPlannerScene()
+  syncMinimapViewport()
+  if (typeof ResizeObserver !== 'undefined' && plannerSceneViewport.value) {
+    plannerViewportObserver = new ResizeObserver(() => {
+      if (!plannerCompleted.value && !plannerCameraHasBeenFitted) fitPlannerScene()
+      else syncMinimapViewport()
+    })
+    plannerViewportObserver.observe(plannerSceneViewport.value)
+  }
+  if (!props.demo) return
+  try { await canvas.load(1) } catch (cause) { error.value = cause instanceof Error ? cause.message : '加载失败' }
+})
+onBeforeUnmount(() => {
+  plannerViewportObserver?.disconnect()
+  window.removeEventListener('keydown', plannerKeyDown)
+  window.removeEventListener('keyup', plannerKeyUp)
+  window.removeEventListener('blur', clearPlannerSpace)
+})
 </script>
 
 <template>
@@ -478,7 +619,16 @@ onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } ca
         </template>
       </WarehousePlannerChrome>
       <WarehouseLayoutControls v-if="!props.demo && !inventoryMode" ref="layoutControls" :document="layoutDocument" :viewing="plannerCompleted" :busy="plannerStructureBusy" @loaded="loadPlannerDocument" @name="actualWarehouseName = $event" @available="layoutReady = $event" @warehouse="selectWarehouse" />
-      <div class="planner-canvas-scroll" :class="{'with-layout-controls':!props.demo && !inventoryMode,'detail-layout':!props.demo && plannerCompleted}" :inert="!layoutReady || layoutSaving || undefined">
+      <div v-if="!inventoryMode && !plannerCompleted" class="planner-context-bar" aria-label="画布工具栏">
+        <div ref="plannerContextToolbar" data-testid="planner-context-toolbar" class="planner-context-toolbar" />
+        <div class="planner-zoom-controls" aria-label="画布缩放">
+          <button data-testid="planner-zoom-out" type="button" aria-label="缩小画布" :disabled="plannerZoom <= 10" @click="changePlannerZoom(plannerZoom - 25)"><Minus :size="15" /></button>
+          <button data-testid="planner-zoom-reset" type="button" aria-label="恢复 100% 缩放" @click="changePlannerZoom(100)">{{ plannerZoom }}%</button>
+          <button data-testid="planner-zoom-in" type="button" aria-label="放大画布" :disabled="plannerZoom >= 400" @click="changePlannerZoom(plannerZoom + 25)"><Plus :size="15" /></button>
+          <button data-testid="planner-zoom-fit" type="button" aria-label="适合窗口" @click="fitPlannerScene">适合窗口</button>
+        </div>
+      </div>
+      <div class="planner-canvas-scroll" :class="{'with-layout-controls':!props.demo && !inventoryMode,'with-context-toolbar':!inventoryMode && !plannerCompleted,'detail-layout':!props.demo && plannerCompleted}" :inert="!layoutReady || layoutSaving || undefined">
       <WarehouseInventorySidebar
         v-if="!props.demo && plannerCompleted"
         :inventory="actualInventory"
@@ -490,14 +640,20 @@ onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } ca
         @retry="loadActualInventory()"
       />
         <div class="planner-scene-host">
+        <div v-if="!plannerCompleted" ref="plannerMinimapHost" class="planner-minimap-anchor" data-testid="planner-minimap-anchor" />
+        <div v-if="!plannerCompleted" ref="plannerStatusHost" class="planner-status-anchor" data-testid="planner-status-anchor" />
         <section v-if="inventoryMode && planningRequired" data-testid="warehouse-inventory-unplanned" class="inventory-unplanned">
           <Warehouse :size="34" aria-hidden="true" />
           <h2>该仓库尚未规划</h2>
           <p>请先完成仓库布局规划，再查看货物堆和实际 SKU 库存。</p>
           <a data-testid="inventory-plan-warehouse" :href="planningHref">前往规划</a>
         </section>
+        <div v-else ref="plannerSceneViewport" data-testid="planner-scene-viewport" class="planner-scene-viewport" :class="{ 'planner-camera-viewport': !plannerCompleted, 'planner-pan-ready': plannerSpaceHeld }" @pointerdown.capture="startPlannerPan" @pointermove="movePlannerPan" @pointerup="stopPlannerPan" @pointercancel="stopPlannerPan" @wheel="zoomPlannerWheel" @scroll="syncMinimapViewport">
+        <WarehouseViewportRulers v-if="!plannerCompleted" :camera-x="plannerCamera.x" :camera-y="plannerCamera.y" :scale="plannerScale" :viewport-width="plannerViewportSize.width" :viewport-height="plannerViewportSize.height" :scene-width="PLANNER_SCENE_WIDTH" :scene-height="PLANNER_SCENE_HEIGHT" />
+        <div data-testid="planner-scene-stage" class="planner-scene-stage" :class="{ 'scaled-stage': !plannerCompleted }" :style="sceneStageStyle">
         <WarehouseBlueprintScene
-          v-else
+          class="planner-scaled-scene"
+          :style="sceneScaleStyle"
           :show-demo-rooms="Boolean(props.demo)"
           :grid-snapping="gridSnapping"
           :inventory-details-visible="plannerCompleted"
@@ -507,6 +663,12 @@ onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } ca
           :selected-zone-id="selectedZoneId"
           :pallet-groups="plannerPalletGroups"
           :structure="plannerStructure"
+          :toolbar-target="plannerContextToolbar"
+          :minimap-target="plannerMinimapHost"
+          :status-target="plannerStatusHost"
+          :minimap-viewport="minimapViewport"
+          :zoom-percent="plannerCompleted ? 100 : plannerZoom"
+          :viewport-rulers="!plannerCompleted"
           :structure-editing="!inventoryMode && plannerTool === 'structure' && !plannerCompleted"
           :zone-editing="!inventoryMode && plannerTool === 'zone' && !plannerCompleted"
           :goods-editing="!inventoryMode && plannerTool === 'goods' && !plannerCompleted"
@@ -518,7 +680,10 @@ onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } ca
           @select-zone="selectPlannerZone"
           @move-pallet="movePlannerPallet"
           @create-pallet="createPlannerPallet"
+          @pan-minimap="panPlannerFromMinimap"
         />
+        </div>
+        </div>
         <WarehouseInventoryDrawer
           v-if="!props.demo"
           :open="plannerCompleted && Boolean(selectedPalletId || selectedZoneId)"
@@ -652,8 +817,27 @@ onMounted(async () => { if (!props.demo) return; try { await canvas.load(1) } ca
 .planner-prototype { position:relative; height:100%; min-height:0; overflow:hidden; background:#f9fbfd; }
 .planner-canvas-scroll { height:calc(100% - 56px); overflow:auto; }
 .planner-canvas-scroll.with-layout-controls {height:calc(100% - 100px);}
+.planner-canvas-scroll.with-context-toolbar {height:calc(100% - 100px);}
+.planner-canvas-scroll.with-layout-controls.with-context-toolbar {height:calc(100% - 144px);}
+.planner-context-bar {display:flex;align-items:center;min-height:44px;padding:4px 16px;border-bottom:1px solid #e2e8f0;background:#fff;}
+.planner-context-toolbar {display:flex;flex:1;align-items:center;min-width:0;overflow-x:auto;}
+.planner-zoom-controls {display:flex;flex-shrink:0;align-items:center;gap:3px;margin-left:auto;border-left:1px solid #e2e8f0;padding-left:12px;}
+.planner-zoom-controls button {min-width:30px;min-height:30px;height:30px;border:0;padding:4px;background:transparent;color:#536176;font-size:12px;cursor:pointer;}
+.planner-zoom-controls button:hover:not(:disabled) {background:#eef2ff;color:#4663ee;}
+.planner-zoom-controls button:focus-visible {outline:2px solid #536dff;outline-offset:1px;}
+.planner-zoom-controls button:disabled {color:#cbd5e1;cursor:default;}
+.planner-zoom-controls [data-testid='planner-zoom-reset'] {min-width:48px;font-variant-numeric:tabular-nums;}
 .planner-canvas-scroll.detail-layout {display:flex;overflow:hidden;background:#f7f9fc;}
-.planner-scene-host {position:relative;flex:1;min-width:0;height:100%;overflow:auto;}
+.planner-scene-host {position:relative;flex:1;min-width:0;height:100%;overflow:hidden;}
+.planner-scene-viewport {width:100%;height:100%;overflow:auto;}
+.planner-scene-viewport.planner-camera-viewport {position:relative;overflow:hidden;background-color:#f8fafc;background-image:linear-gradient(#e8edf3 1px,transparent 1px),linear-gradient(90deg,#e8edf3 1px,transparent 1px);background-size:24px 24px;}
+.planner-camera-viewport.planner-pan-ready {cursor:grab;}
+.planner-camera-viewport.planner-pan-ready:active {cursor:grabbing;}
+.planner-scene-stage {position:relative;}
+.planner-scene-stage.scaled-stage {position:absolute;top:0;left:0;will-change:transform;box-shadow:none;}
+.planner-scaled-scene {transform-origin:top left;}
+.planner-minimap-anchor {position:absolute;z-index:35;right:16px;bottom:44px;width:150px;height:112px;pointer-events:none;}
+.planner-status-anchor {position:absolute;z-index:35;left:16px;bottom:16px;max-width:calc(100% - 200px);pointer-events:none;}
 .inventory-unplanned {display:flex;height:100%;min-height:360px;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;color:#64748b;}
 .inventory-unplanned svg {margin-bottom:12px;color:#94a3b8;}
 .inventory-unplanned h2 {margin:0;color:#25314d;font-size:18px;font-weight:650;}
