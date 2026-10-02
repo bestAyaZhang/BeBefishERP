@@ -6,7 +6,7 @@ import { validatePlannerLayout } from '../warehouseStructure'
 import type { StructureColumn, StructureDoor, StructureElevator, StructureIssue, StructureNode, StructurePoint, StructureSegment, StructureWall, WarehouseStructure, WallAttachment } from '../warehouseStructure'
 import type { PlannerPalletGroup } from '../warehousePlannerScene'
 
-const props = defineProps<{ structure: WarehouseStructure; editing: boolean; gridSnapping: boolean; issues: StructureIssue[]; focusedId?: string | null; pallets?: readonly PlannerPalletGroup[] }>()
+const props = defineProps<{ structure: WarehouseStructure; editing: boolean; gridSnapping: boolean; issues: StructureIssue[]; focusedId?: string | null; pallets?: readonly PlannerPalletGroup[]; toolbarTarget?: HTMLElement | null }>()
 const emit = defineEmits<{ commit: [value: WarehouseStructure]; preview: [value: WarehouseStructure | null]; busy: [value: boolean]; conflict: [ids: string[]] }>()
 type Tool = 'select' | 'outline' | 'partition' | 'loading' | 'ordinary' | 'insert' | 'elevator' | 'column'
 const tool = ref<Tool>('select')
@@ -380,7 +380,8 @@ onBeforeUnmount(()=>{cancel();window.removeEventListener('keydown',keydown)})
       <line v-if="editing&&guide.x!==undefined" :x1="guide.x*6" y1="0" :x2="guide.x*6" y2="400" class="guide" />
       <line v-if="editing&&guide.y!==undefined" x1="0" :y1="guide.y*4" x2="600" :y2="guide.y*4" class="guide" />
     </svg>
-    <div v-if="editing" class="structure-toolbar" aria-label="结构绘制工具">
+    <Teleport :to="toolbarTarget ?? 'body'" :disabled="!toolbarTarget">
+    <div v-if="editing" class="structure-toolbar" :class="{ 'external-toolbar': toolbarTarget }" aria-label="结构绘制工具">
       <button v-for="item in tools" :key="item.id" :data-testid="`structure-tool-${item.id}`" :aria-pressed="tool===item.id" @click="choose(item.id)"><component :is="item.icon" :size="16"/>{{item.name}}</button>
       <span v-if="activeWall||selectedDoor||selectedElevator||selectedColumn" class="separator"/>
       <button v-if="activeWall" data-testid="structure-insert" :aria-pressed="tool==='insert'" @click="choose('insert')"><Plus :size="15"/>插入节点</button>
@@ -388,6 +389,7 @@ onBeforeUnmount(()=>{cancel();window.removeEventListener('keydown',keydown)})
       <button v-if="draft.length" data-testid="structure-finish" @click="finishDraft"><Check :size="15"/>{{tool==='outline'?'闭合':'结束'}}</button>
       <button v-if="draft.length" @click="cancel"><X :size="15"/>取消</button>
     </div>
+    </Teleport>
     <p v-if="editing" class="structure-hint" role="status">{{ !current.outline.nodes.length && tool === 'select' ? '空白仓库：选择「外围墙」，依次点击拐点并闭合，开始规划' : hint }}</p>
   </div>
 </template>
@@ -444,6 +446,7 @@ onBeforeUnmount(()=>{cancel();window.removeEventListener('keydown',keydown)})
 .door-preview {pointer-events:none;stroke:#08a69b;stroke-width:4;opacity:.8;}
 .guide {stroke:#08a69b;stroke-width:.6;stroke-dasharray:4 3;pointer-events:none;}
 .structure-toolbar {position:absolute;top:8px;left:44px;right:10px;display:flex;align-items:center;flex-wrap:wrap;gap:3px;width:max-content;max-width:calc(100% - 54px);padding:5px;border:1px solid #dce3ed;border-radius:8px;background:rgba(255,255,255,.97);box-shadow:0 3px 12px #25314d15;pointer-events:auto;}
+.structure-toolbar.external-toolbar {position:static;max-width:none;border:0;box-shadow:none;padding:0;background:transparent;}
 .structure-toolbar button {display:flex;align-items:center;gap:5px;min-height:32px;padding:5px 8px;border:0;border-radius:5px;background:transparent;color:#536176;font:inherit;font-size:12px;cursor:pointer;}
 .structure-toolbar button:hover,.structure-toolbar button[aria-pressed=true] {background:#eef2ff;color:#4663ee;}
 .structure-toolbar button:focus-visible {outline:2px solid #536dff;outline-offset:1px;}

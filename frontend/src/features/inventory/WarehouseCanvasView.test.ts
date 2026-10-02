@@ -24,6 +24,13 @@ function applyPageStyles() {
   document.head.append(style)
   styleElements.push(style)
 }
+function applyBlueprintStyles() {
+  const { descriptor } = parse(readFileSync(resolve(process.cwd(), 'src/features/inventory/warehouseCanvas/components/WarehouseBlueprintScene.vue'), 'utf8'))
+  const style = document.createElement('style')
+  style.textContent = descriptor.styles.map((item) => item.content).join('\n')
+  document.head.append(style)
+  styleElements.push(style)
+}
 async function mountPage(routeQuery: Record<string, string> = {}) {
   const wrapper = mount(WarehouseCanvasView, {
     props: { demo:true },
@@ -64,6 +71,7 @@ describe('Warehouse canvas overview', () => {
     await flushPromises()
     await viewOnly.get('[data-testid="inventory-pile-pallet-c018"]').trigger('click')
     expect(viewOnly.find('[data-testid="inventory-add-sku"]').exists()).toBe(false)
+    expect(viewOnly.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('min-width: 760px')
 
     currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['inventory:view', 'inventory:edit'], loginMethod: 'password' }
     const editable = mount(WarehouseCanvasView, { attachTo: document.body, global: { provide } })
@@ -329,7 +337,7 @@ describe('Warehouse canvas overview', () => {
 
     await wrapper.get('[data-testid="planner-complete"]').trigger('click')
     expect(wrapper.find('.inventory-sidebar').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="planner-ruler-x"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="planner-viewport-ruler-x"]').exists()).toBe(true)
   })
 
   it('forces an unplanned warehouse into planning before loading inventory detail', async () => {
@@ -368,6 +376,301 @@ describe('Warehouse canvas overview', () => {
     expect(scene.props('structureEditing')).toBe(false)
     expect(wrapper.findAll('.utility-room')).toHaveLength(0)
     expect(wrapper.get('[data-testid="planner-title"]').text()).toBe('仓库 · 画布查看')
+  })
+  it('keeps structure and zone drawing tools above the canvas instead of covering the drawing board', async () => {
+    const wrapper = await mountPage()
+    await wrapper.get('[data-testid="planner-tool-structure"]').trigger('click')
+    expect(wrapper.find('[data-testid="planner-context-toolbar"] [data-testid="structure-tool-outline"]').exists()).toBe(true)
+    expect(wrapper.find('.drawing-board .structure-toolbar').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="planner-tool-zone"]').trigger('click')
+    expect(wrapper.find('[data-testid="planner-context-toolbar"] [data-testid="zone-tool-draw"]').exists()).toBe(true)
+    expect(wrapper.find('.drawing-board .zone-toolbar').exists()).toBe(false)
+  })
+  it('zooms the planning scene while keeping pallet geometry unchanged', async () => {
+    const wrapper = await mountPage()
+    const scene = wrapper.getComponent(WarehouseBlueprintScene)
+    const before = JSON.stringify(scene.props('palletGroups'))
+
+    await wrapper.get('[data-testid="planner-zoom-in"]').trigger('click')
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('scale(1.25)')
+    expect(wrapper.get('[data-testid="planner-coordinate-status"]').text()).toMatch(/比例\s+1:80/)
+    expect(wrapper.get('[data-testid="planner-coordinate-status"]').text()).toContain('缩放  125%')
+    expect(JSON.stringify(scene.props('palletGroups'))).toBe(before)
+
+    await wrapper.get('[data-testid="planner-zoom-reset"]').trigger('click')
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('scale(1)')
+    expect(wrapper.get('[data-testid="planner-coordinate-status"]').text()).toMatch(/比例\s+1:100/)
+    expect(wrapper.get('[data-testid="planner-coordinate-status"]').text()).toContain('缩放  100%')
+  })
+  it('fits the warehouse inside the viewport with working space around its edges', async () => {
+    const wrapper = await mountPage()
+    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+    Object.defineProperties(viewport.element, {
+      clientWidth: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 600 },
+    })
+
+    await wrapper.get('[data-testid="planner-zoom-fit"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="planner-zoom-reset"]').text()).toContain('63%')
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('translate3d(122px, 48px, 0) scale(0.63)')
+  })
+  it('shows a neutral planning pasteboard outside the warehouse scene', async () => {
+    applyPageStyles()
+    const wrapper = await mountPage()
+    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+    expect(getComputedStyle(viewport.element).backgroundColor).toBe('rgb(248, 250, 252)')
+  })
+  it('shows warehouse walls without an extra artboard frame or bounded inner grid', async () => {
+    applyPageStyles()
+    applyBlueprintStyles()
+    const wrapper = await mountPage()
+    const stage = wrapper.get('[data-testid="planner-scene-stage"]')
+    const scene = wrapper.get('[data-testid="warehouse-blueprint-scene"]')
+    const drawingBoard = wrapper.get('.drawing-board')
+
+    expect(getComputedStyle(stage.element).boxShadow).toBe('none')
+    expect(getComputedStyle(scene.element).backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    expect(getComputedStyle(drawingBoard.element).borderTopWidth).toBe('0px')
+    expect(getComputedStyle(drawingBoard.element).backgroundImage).toBe('none')
+    expect(scene.find('.structure-floor').exists()).toBe(true)
+  })
+  it('keeps coordinates as a viewport overlay instead of a strip on the artboard', async () => {
+    applyPageStyles()
+    applyBlueprintStyles()
+    const wrapper = await mountPage()
+    const status = wrapper.get('[data-testid="planner-coordinate-status"]')
+
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').find('[data-testid="planner-coordinate-status"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="planner-status-anchor"]').element.contains(status.element)).toBe(true)
+    expect(getComputedStyle(status.element).position).toBe('static')
+  })
+  it('pans the planning pasteboard with the middle mouse button without moving warehouse objects', async () => {
+    const wrapper = await mountPage()
+    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+    Object.defineProperties(viewport.element, {
+      clientWidth: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 600 },
+      setPointerCapture: { configurable: true, value: vi.fn() },
+      releasePointerCapture: { configurable: true, value: vi.fn() },
+    })
+    await wrapper.get('[data-testid="planner-zoom-fit"]').trigger('click')
+    const palletsBefore = JSON.stringify(wrapper.getComponent(WarehouseBlueprintScene).props('palletGroups'))
+
+    await viewport.trigger('pointerdown', { button: 1, pointerId: 40, clientX: 300, clientY: 200 })
+    await viewport.trigger('pointermove', { pointerId: 40, clientX: 380, clientY: 160 })
+    await viewport.trigger('pointerup', { pointerId: 40, clientX: 380, clientY: 160 })
+
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('translate3d(202px, 8px, 0) scale(0.63)')
+    expect(JSON.stringify(wrapper.getComponent(WarehouseBlueprintScene).props('palletGroups'))).toBe(palletsBefore)
+  })
+  it('uses space plus left drag to pan instead of editing a pile', async () => {
+    const wrapper = await mountPage()
+    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+    Object.defineProperties(viewport.element, {
+      setPointerCapture: { configurable: true, value: vi.fn() },
+      releasePointerCapture: { configurable: true, value: vi.fn() },
+    })
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true }))
+    await viewport.trigger('pointerdown', { button: 0, pointerId: 41, clientX: 100, clientY: 100 })
+    await viewport.trigger('pointermove', { pointerId: 41, clientX: 140, clientY: 125 })
+    await viewport.trigger('pointerup', { pointerId: 41, clientX: 140, clientY: 125 })
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', code: 'Space', bubbles: true }))
+
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('translate3d(40px, 25px, 0)')
+    expect(wrapper.getComponent(WarehouseBlueprintScene).emitted('move-pallet')).toBeUndefined()
+  })
+  it('does not intercept Space when a toolbar button has keyboard focus', async () => {
+    const wrapper = await mountPage()
+    const button = wrapper.get('[data-testid="planner-zoom-fit"]').element
+    const event = new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true })
+    button.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(wrapper.get('[data-testid="planner-scene-viewport"]').classes()).not.toContain('planner-pan-ready')
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', code: 'Space', bubbles: true }))
+  })
+  it('keeps viewport rulers readable and changes meter intervals as zoom changes', async () => {
+    const wrapper = await mountPage()
+    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+    Object.defineProperties(viewport.element, {
+      clientWidth: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 600 },
+    })
+    await wrapper.get('[data-testid="planner-zoom-fit"]').trigger('click')
+
+    const ruler = wrapper.get('[data-testid="planner-viewport-ruler-x"]')
+    expect(viewport.get('[data-testid="planner-viewport-ruler-x-label-0"]').attributes('style')).toContain('left: 152.24px')
+    expect(ruler.find('[data-testid="planner-viewport-ruler-x-label-5"]').exists()).toBe(false)
+    expect(wrapper.getComponent(WarehouseBlueprintScene).find('[data-testid="planner-ruler-x"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="planner-zoom-in"]').trigger('click')
+    expect(ruler.find('[data-testid="planner-viewport-ruler-x-label-5"]').exists()).toBe(true)
+    expect(ruler.get('[data-testid="planner-viewport-ruler-x-label-0"]').attributes('style')).toContain('left: 14.24px')
+  })
+  it('zooms around the pointer with Ctrl plus wheel', async () => {
+    const wrapper = await mountPage()
+    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+    Object.defineProperties(viewport.element, {
+      clientWidth: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 600 },
+      getBoundingClientRect: { configurable: true, value: () => ({ left: 0, top: 0, width: 1000, height: 600 }) },
+    })
+    await wrapper.get('[data-testid="planner-zoom-fit"]').trigger('click')
+
+    viewport.element.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, ctrlKey: true, deltaY: -100, clientX: 250, clientY: 200 }))
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="planner-zoom-reset"]').text()).toContain('79%')
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('translate3d(89.49px, 9.4px, 0) scale(0.79)')
+  })
+  it('moves the camera when dragging the minimap window at 200% zoom', async () => {
+    const wrapper = await mountPage()
+    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+    Object.defineProperties(viewport.element, {
+      clientWidth: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 600 },
+    })
+    for (let index = 0; index < 4; index++) await wrapper.get('[data-testid="planner-zoom-in"]').trigger('click')
+    const windowFrame = wrapper.get('[data-testid="planner-minimap-window"]')
+    expect(windowFrame.attributes('style')).toContain('width: 44.48%')
+    expect(windowFrame.attributes('style')).toContain('height: 40.76%')
+
+    const shell = wrapper.get('[data-testid="planner-minimap-surface"]')
+    Object.defineProperty(shell.element, 'getBoundingClientRect', { configurable: true, value: () => ({ left: 0, top: 0, width: 100, height: 100 }) })
+    Object.defineProperty(shell.element, 'setPointerCapture', { configurable: true, value: vi.fn() })
+    Object.defineProperty(shell.element, 'releasePointerCapture', { configurable: true, value: vi.fn() })
+    await shell.trigger('pointerdown', { button: 0, pointerId: 62, clientX: 25, clientY: 25 })
+    await shell.trigger('pointermove', { pointerId: 62, clientX: 35, clientY: 35 })
+    await shell.trigger('pointerup', { pointerId: 62, clientX: 35, clientY: 35 })
+
+    const stageStyle = wrapper.get('[data-testid="planner-scene-stage"]').attributes('style') ?? ''
+    expect(Number(stageStyle.match(/translate3d\(([-\d.]+)px/)?.[1])).toBeCloseTo(-725, 0)
+    expect(Number(stageStyle.match(/, ([-\d.]+)px, 0\)/)?.[1])).toBeCloseTo(-447, 0)
+    expect(stageStyle).toContain('scale(2)')
+  })
+  it('recenters a fitted scene from the minimap after panning it off screen', async () => {
+    const wrapper = await mountPage()
+    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+    Object.defineProperties(viewport.element, {
+      clientWidth: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 600 },
+      setPointerCapture: { configurable: true, value: vi.fn() },
+      releasePointerCapture: { configurable: true, value: vi.fn() },
+    })
+    await wrapper.get('[data-testid="planner-zoom-fit"]').trigger('click')
+    await viewport.trigger('pointerdown', { button: 1, pointerId: 63, clientX: 500, clientY: 300 })
+    await viewport.trigger('pointermove', { pointerId: 63, clientX: 100, clientY: 300 })
+    await viewport.trigger('pointerup', { pointerId: 63, clientX: 100, clientY: 300 })
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('translate3d(-278px, 48px, 0) scale(0.63)')
+
+    const shell = wrapper.get('[data-testid="planner-minimap-surface"]')
+    Object.defineProperty(shell.element, 'getBoundingClientRect', { configurable: true, value: () => ({ left: 0, top: 0, width: 100, height: 100 }) })
+    Object.defineProperty(shell.element, 'setPointerCapture', { configurable: true, value: vi.fn() })
+    Object.defineProperty(shell.element, 'releasePointerCapture', { configurable: true, value: vi.fn() })
+    await shell.trigger('pointerdown', { button: 0, pointerId: 64, clientX: 50, clientY: 50 })
+    await shell.trigger('pointerup', { pointerId: 64, clientX: 50, clientY: 50 })
+
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('translate3d(122px, 48px, 0) scale(0.63)')
+  })
+  it('does not jump the camera when pressing a clipped minimap window', async () => {
+    const wrapper = await mountPage()
+    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+    Object.defineProperties(viewport.element, {
+      clientWidth: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 600 },
+      setPointerCapture: { configurable: true, value: vi.fn() },
+      releasePointerCapture: { configurable: true, value: vi.fn() },
+    })
+    for (let index = 0; index < 4; index++) await wrapper.get('[data-testid="planner-zoom-in"]').trigger('click')
+    await viewport.trigger('pointerdown', { button: 1, pointerId: 65, clientX: 100, clientY: 100 })
+    await viewport.trigger('pointermove', { pointerId: 65, clientX: 800, clientY: 100 })
+    await viewport.trigger('pointerup', { pointerId: 65, clientX: 800, clientY: 100 })
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('translate3d(200px, -300px, 0) scale(2)')
+
+    const shell = wrapper.get('[data-testid="planner-minimap-surface"]')
+    Object.defineProperty(shell.element, 'getBoundingClientRect', { configurable: true, value: () => ({ left: 0, top: 0, width: 100, height: 100 }) })
+    Object.defineProperty(shell.element, 'setPointerCapture', { configurable: true, value: vi.fn() })
+    Object.defineProperty(shell.element, 'releasePointerCapture', { configurable: true, value: vi.fn() })
+    await shell.trigger('pointerdown', { button: 0, pointerId: 66, clientX: 15, clientY: 25 })
+    const afterPress = wrapper.get('[data-testid="planner-scene-stage"]').attributes('style') ?? ''
+    expect(Number(afterPress.match(/translate3d\(([-\d.]+)px/)?.[1])).toBeCloseTo(200, 0)
+    expect(Number(afterPress.match(/, ([-\d.]+)px, 0\)/)?.[1])).toBeCloseTo(-300, 0)
+    expect(afterPress).toContain('scale(2)')
+    await shell.trigger('pointerup', { pointerId: 66, clientX: 15, clientY: 25 })
+  })
+  it('aligns the minimap origin with the drawing board rather than scene padding', async () => {
+    const wrapper = await mountPage()
+    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+    Object.defineProperties(viewport.element, {
+      clientWidth: { configurable: true, value: 600 },
+      clientHeight: { configurable: true, value: 400 },
+    })
+    for (let index = 0; index < 12; index++) await wrapper.get('[data-testid="planner-zoom-in"]').trigger('click')
+    wrapper.getComponent(WarehouseBlueprintScene).vm.$emit('pan-minimap', { left: 0, top: 0 })
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('translate3d(-192px, -144px, 0) scale(4)')
+    expect(wrapper.get('[data-testid="planner-minimap-window"]').attributes('style')).toContain('left: 0%')
+  })
+  it('returns the completed warehouse detail to normal scale', async () => {
+    const wrapper = await mountPage()
+    await wrapper.get('[data-testid="planner-zoom-in"]').trigger('click')
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).not.toContain('scale(')
+    expect(wrapper.getComponent(WarehouseBlueprintScene).props('zoomPercent')).toBe(100)
+  })
+  it('fits the planning scene again when returning from completed details', async () => {
+    const wrapper = await mountPage()
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+    Object.defineProperties(viewport.element, {
+      clientWidth: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 600 },
+    })
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="planner-zoom-reset"]').text()).toContain('63%')
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('translate3d(122px, 48px, 0) scale(0.63)')
+  })
+  it('lets the minimap keyboard move the planning camera', async () => {
+    const wrapper = await mountPage()
+    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+    Object.defineProperties(viewport.element, {
+      clientWidth: { configurable: true, value: 600 },
+      clientHeight: { configurable: true, value: 400 },
+    })
+    for (let index = 0; index < 4; index++) await wrapper.get('[data-testid="planner-zoom-in"]').trigger('click')
+    const minimap = wrapper.get('[data-testid="planner-minimap"]')
+    const windowFrame = minimap.get('[data-testid="planner-minimap-window"]')
+    expect(windowFrame.attributes('style')).toContain('width: 26.69%')
+    expect(windowFrame.attributes('style')).toContain('height: 27.17%')
+
+    const shell = minimap.get('[data-testid="planner-minimap-surface"]')
+    await shell.trigger('keydown', { key: 'ArrowRight' })
+
+    const stageStyle = wrapper.get('[data-testid="planner-scene-stage"]').attributes('style') ?? ''
+    expect(Number(stageStyle.match(/translate3d\(([-\d.]+)px/)?.[1])).toBeCloseTo(-412, 0)
+    expect(Number(stageStyle.match(/, ([-\d.]+)px, 0\)/)?.[1])).toBeCloseTo(-200, 0)
+    expect(windowFrame.attributes('style')).toContain('left: 14.07%')
+  })
+  it('refreshes the minimap window after returning from warehouse detail to planning', async () => {
+    const wrapper = await mountPage()
+    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+    Object.defineProperties(viewport.element, {
+      clientWidth: { configurable: true, value: 600 },
+      clientHeight: { configurable: true, value: 400 },
+    })
+    for (let index = 0; index < 4; index++) await wrapper.get('[data-testid="planner-zoom-in"]').trigger('click')
+    expect(wrapper.get('[data-testid="planner-minimap-window"]').attributes('style')).toContain('width: 26.69%')
+
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).not.toContain('scale(')
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="planner-zoom-reset"]').text()).toContain('38%')
+    expect(wrapper.get('[data-testid="planner-minimap-window"]').attributes('style')).toContain('width: 100%')
   })
   it('undoes passage width edits and deletion without changing goods', async () => {
     const wrapper = await mountPage()

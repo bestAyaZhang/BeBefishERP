@@ -4,7 +4,7 @@ import WarehouseBlueprintScene from './WarehouseBlueprintScene.vue'
 import { warehousePlannerScene } from '../warehousePlannerScene'
 import { createWarehouseStructure } from '../warehouseStructure'
 
-function setDrawingBoardBounds(wrapper: ReturnType<typeof mount>) {
+function setDrawingBoardBounds(wrapper: ReturnType<typeof mount>, width = 1000, height = 800) {
   const board = wrapper.get('.drawing-board')
   Object.defineProperty(board.element, 'getBoundingClientRect', {
     configurable: true,
@@ -13,10 +13,10 @@ function setDrawingBoardBounds(wrapper: ReturnType<typeof mount>) {
       y: 0,
       left: 0,
       top: 0,
-      right: 1000,
-      bottom: 800,
-      width: 1000,
-      height: 800,
+      right: width,
+      bottom: height,
+      width,
+      height,
       toJSON: () => ({}),
     }),
   })
@@ -287,6 +287,30 @@ describe('WarehouseBlueprintScene', () => {
     await board.trigger('pointerup', { pointerId: 11, clientX: 629, clientY: 409 })
 
     expect(wrapper.emitted('move-pallet')?.[0]).toEqual([{ id: 'pallet-c018', left: 61.67, top: 50 }])
+  })
+
+  it('keeps a pile drag preview under the pointer on a zoomed planning scene', async () => {
+    runAnimationFramesImmediately()
+    const pallet = warehousePlannerScene.palletGroups.find((item) => item.id === 'pallet-c018')!
+    const wrapper = mount(WarehouseBlueprintScene, {
+      props: {
+        gridSnapping: false,
+        measurementEnabled: false,
+        selectedPalletId: pallet.id,
+        palletGroups: [pallet],
+        zoomPercent: 200,
+      },
+    })
+    const board = setDrawingBoardBounds(wrapper, 2000, 1600)
+    const pile = wrapper.get('[data-testid="planner-pallet-pallet-c018"]')
+
+    await pile.trigger('pointerdown', { button: 0, pointerId: 27, clientX: 1200, clientY: 800 })
+    await board.trigger('pointermove', { pointerId: 27, clientX: 1300, clientY: 800 })
+
+    // The surrounding scene scales this local translation by 2, producing 100 visual pixels.
+    expect(pile.attributes('style')).toContain('transform: translate3d(50px, 0px, 0)')
+    await board.trigger('pointerup', { pointerId: 27, clientX: 1300, clientY: 800 })
+    expect(wrapper.emitted('move-pallet')?.[0]?.[0]).toMatchObject({ id: pallet.id, left: pallet.left + 5 })
   })
 
   it('does not render pile inventory details while planning', () => {

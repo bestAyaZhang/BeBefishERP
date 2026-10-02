@@ -7,7 +7,7 @@ import type { PlannerZone, PlannerZoneKind, PlannerPalletGroup } from '../wareho
 import { isPassage, passageAxis, passageWidthMeters, zoneKinds } from '../warehousePassages'
 import WarehousePassageMark from './WarehousePassageMark.vue'
 
-const props = defineProps<{ structure: WarehouseStructure; editing: boolean; viewing?: boolean; selectedZoneId?: string | null; gridSnapping: boolean; issues: StructureIssue[]; focusedId?: string | null; pallets?: readonly PlannerPalletGroup[] }>()
+const props = defineProps<{ structure: WarehouseStructure; editing: boolean; viewing?: boolean; selectedZoneId?: string | null; gridSnapping: boolean; issues: StructureIssue[]; focusedId?: string | null; pallets?: readonly PlannerPalletGroup[]; toolbarTarget?: HTMLElement | null }>()
 const emit = defineEmits<{ commit: [value: WarehouseStructure]; preview: [value: WarehouseStructure | null]; busy: [value: boolean]; conflict: [ids: string[]]; select: [id: string | null] }>()
 const svg = ref<SVGSVGElement>()
 const nameInput = ref<HTMLInputElement>()
@@ -218,12 +218,14 @@ onBeforeUnmount(() => { cancel(); window.removeEventListener('keydown', keydown)
         </template>
       </g>
     </svg>
-    <div v-if="editing" class="zone-toolbar" aria-label="区域规划工具" @pointerdown.stop>
+    <Teleport :to="toolbarTarget ?? 'body'" :disabled="!toolbarTarget">
+    <div v-if="editing" class="zone-toolbar" :class="{ 'external-toolbar': toolbarTarget }" aria-label="区域规划工具" @pointerdown.stop>
       <button data-testid="zone-tool-select" :aria-pressed="tool === 'select'" :disabled="!!pending" @click="choose('select')"><MousePointer2 :size="16" />选择</button>
       <select v-model="creationKind" data-testid="zone-kind-picker" aria-label="绘制类型" :disabled="!!pending || !!drag" @change="choose('draw')"><option v-for="item in zoneKinds" :key="item.id" :value="item.id">{{ item.label }}</option></select>
       <button data-testid="zone-tool-draw" :aria-pressed="tool === 'draw'" :disabled="!!pending" @click="choose('draw')"><SquareDashedMousePointer :size="16" />{{ creationKind === 'area' ? '绘制区域' : '绘制通道' }}</button>
       <template v-if="selected && !pending && !drag"><span class="separator" /><button data-testid="zone-edit" @click="openProperties(selected)"><Pencil :size="15" />编辑属性</button><button data-testid="zone-delete" @click="remove"><Trash2 :size="15" />删除</button></template>
     </div>
+    </Teleport>
     <form v-if="editing && pending" data-testid="zone-save" class="zone-properties" role="dialog" aria-label="区域与通道属性" novalidate @submit.prevent="save" @pointerdown.stop>
       <header><strong>{{ (structure.zones ?? []).some(zone => zone.id === pending!.id) ? '编辑区域' : '新建区域' }}</strong><button type="button" aria-label="关闭区域编辑" @click="cancel"><X :size="16" /></button></header>
       <label>区域名称<input ref="nameInput" v-model="name" data-testid="zone-name" maxlength="40" autocomplete="off" placeholder="例如：收货区、混放区 A+B" /></label>
@@ -265,6 +267,7 @@ onBeforeUnmount(() => { cancel(); window.removeEventListener('keydown', keydown)
 .zone-caption strong {max-width:100%;font-size:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .zone-caption small {max-width:100%;font-size:5px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .zone-toolbar {position:absolute;z-index:24;top:10px;left:24px;display:flex;align-items:center;gap:4px;padding:5px;background:#ffffffed;border:1px solid #e1e7ef;border-radius:8px;box-shadow:0 3px 12px #25314d0d;pointer-events:auto;}
+.zone-toolbar.external-toolbar {position:static;border:0;box-shadow:none;padding:0;background:transparent;}
 .zone-toolbar button,.zone-properties button {display:flex;align-items:center;justify-content:center;gap:5px;border:0;background:transparent;color:#596779;min-height:30px;padding:5px 9px;border-radius:5px;font-size:12px;}
 .zone-toolbar button[aria-pressed=true] {color:#536dff;background:#edf1ff;}.zone-toolbar button:disabled {opacity:.45;cursor:default;}
 .zone-toolbar button:hover:not(:disabled),.zone-properties button:hover {background:#f1f4fa;}
