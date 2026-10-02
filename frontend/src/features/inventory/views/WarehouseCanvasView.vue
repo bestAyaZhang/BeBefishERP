@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { routeLocationKey } from 'vue-router'
-import { Warehouse, Plus, Minus, SquareDashedMousePointer, MousePointer2, Hand, Undo2, Redo2, Search, Eye, EyeOff, Lock, Unlock, TriangleAlert, X } from 'lucide-vue-next'
+import { Warehouse, Plus, Minus, SquareDashedMousePointer, MousePointer2, Hand, Undo2, Redo2, Search, Eye, EyeOff, Lock, Unlock, TriangleAlert, X, Trash2 } from 'lucide-vue-next'
 import AccessibleDialog from '../../../components/AccessibleDialog.vue'
 import WarehouseFloorCanvas from '../warehouseCanvas/components/WarehouseFloorCanvas.vue'
 import WarehouseBlueprintScene from '../warehouseCanvas/components/WarehouseBlueprintScene.vue'
@@ -11,8 +11,8 @@ import WarehouseLayoutControls from '../warehouseCanvas/components/WarehouseLayo
 import WarehouseInventorySidebar from '../warehouseCanvas/components/WarehouseInventorySidebar.vue'
 import WarehouseInventoryDrawer from '../warehouseCanvas/components/WarehouseInventoryDrawer.vue'
 import { warehouseInventoryService } from '../warehouseCanvas/warehouseInventoryService'
-import type { WarehouseInventoryLayout, WarehouseInventoryService, WarehousePileAllocationInput } from '../warehouseCanvas/warehouseInventoryService'
-import type { WarehouseLayoutDocument } from '../warehouseCanvas/warehouseLayoutService'
+import type { WarehouseInventoryAllocation, WarehouseInventoryLayout, WarehouseInventoryService, WarehousePileAllocationInput } from '../warehouseCanvas/warehouseInventoryService'
+import type { ReleasedPileAllocation, WarehouseLayoutDocument } from '../warehouseCanvas/warehouseLayoutService'
 import type { PlannerUiTool } from '../warehouseCanvas/components/WarehousePlannerChrome.vue'
 import WarehouseProductDrawer from '../warehouseCanvas/components/WarehouseProductDrawer.vue'
 import WarehouseObjectPanel from '../warehouseCanvas/components/WarehouseObjectPanel.vue'
@@ -68,6 +68,7 @@ const selectedWarehouseId = ref<number | null>(null)
 const actualInventory = ref<WarehouseInventoryLayout | null>(null)
 const inventoryLoading = ref(false)
 const inventoryError = ref('')
+const canEditWarehouse = computed(() => props.demo || (currentUser.value?.permissions.includes('warehouse:edit') ?? false))
 const canEditInventory = computed(() => !inventoryMode.value && (currentUser.value?.permissions.includes('inventory:edit') ?? false))
 const inventoryAllocationSaving = ref(false)
 const inventoryAllocationError = ref('')
@@ -80,6 +81,13 @@ function clonePlannerPalletGroups(groups: readonly PlannerPalletGroup[]): Planne
   }))
 }
 const plannerPalletGroups = ref<PlannerPalletGroup[]>(props.demo ? clonePlannerPalletGroups(warehousePlannerScene.palletGroups) : [])
+const persistedPileIds = ref<Set<string>>(new Set())
+const confirmedPileReleases = ref<ReleasedPileAllocation[]>([])
+const pendingPileDeletion = ref<{ palletId: string; name: string; allocations: WarehouseInventoryAllocation[] } | null>(null)
+const deletePileError = ref('')
+const releasedPileAllocations = computed(() => confirmedPileReleases.value.filter(confirmation =>
+  !plannerPalletGroups.value.some(pile => pile.id === confirmation.palletId)))
+const deletingPileUnits = computed(() => pendingPileDeletion.value?.allocations.reduce((sum, item) => sum + item.units, 0) ?? 0)
 const layoutControls = ref<InstanceType<typeof WarehouseLayoutControls>>()
 const layoutReady = ref(Boolean(props.demo))
 const layoutSaving = ref(false)
@@ -94,6 +102,10 @@ const layoutDocument = computed<WarehouseLayoutDocument>(() => ({schemaVersion:1
 function loadPlannerDocument(document:WarehouseLayoutDocument) {
   plannerStructure.value = cloneStructure(document.structure)
   plannerPalletGroups.value = clonePlannerPalletGroups(document.palletGroups)
+  persistedPileIds.value = new Set(document.palletGroups.map(pile => pile.id))
+  confirmedPileReleases.value = []
+  pendingPileDeletion.value = null
+  deletePileError.value = ''
   const hasCompletedLayout = document.completed && document.structure.outline.closed && document.structure.outline.nodes.length >= 3
   plannerCompleted.value = hasCompletedLayout
   planningRequired.value = !hasCompletedLayout
@@ -102,7 +114,7 @@ function loadPlannerDocument(document:WarehouseLayoutDocument) {
   plannerUndoStack.value = []; plannerRedoStack.value = []
   plannerTool.value = 'structure'
   plannerStructureIssues.value = validatePlannerLayout(plannerStructure.value,plannerPalletGroups.value)
-  if (hasCompletedLayout) void loadActualInventory()
+  if (hasCompletedLayout || document.palletGroups.length > 0) void loadActualInventory()
 }
 type PlannerSnapshot = {
   tool: PlannerUiTool
@@ -342,6 +354,10 @@ function selectWarehouse(id: number) {
   selectedZoneId.value = null
   actualInventory.value = null
   inventoryError.value = ''
+  pendingPileDeletion.value = null
+  confirmedPileReleases.value = []
+  persistedPileIds.value = new Set()
+  deletePileError.value = ''
   if (contextChanged) clearAllocationError()
 }
 async function allocateInventoryToPile(input: WarehousePileAllocationInput) {
@@ -412,6 +428,68 @@ function movePlannerPallet(move: { id: string; left: number; top: number }) {
     selectedPalletId.value = move.id
   })
 }
+function resizePlannerPallet(rect: { id: string; left: number; top: number; width: number; height: number }) {
+  if (plannerCompleted.value || plannerTool.value !== 'goods') return
+  const current = plannerPalletGroups.value.find(pallet => pallet.id === rect.id)
+  if (!current || rect.width <= 0 || rect.height <= 0) return
+  const resized: PlannerPalletGroup = {
+    ...current,
+    ...rect,
+    xMeters: Number((current.xMeters + (rect.left - current.left) * .6).toFixed(1)),
+    yMeters: Number((current.yMeters + (rect.top - current.top) * .4).toFixed(1)),
+    lengthMeters: Number((rect.width * .6).toFixed(1)),
+    widthMeters: Number((rect.height * .4).toFixed(1)),
+    columns: Math.max(1, Math.round(rect.width * .6)),
+    rows: Math.max(1, Math.round(rect.height * .4)),
+  }
+  const next = plannerPalletGroups.value.map(pallet => pallet.id === rect.id ? resized : pallet)
+  if (validatePlannerLayout(plannerStructure.value, next).some(issue => issue.objectIds.includes(rect.id))) return
+  changePlannerState(() => { plannerPalletGroups.value = next; selectedPalletId.value = rect.id })
+}
+function requestDeletePlannerPallet(id: string) {
+  if (inventoryMode.value || plannerCompleted.value || plannerTool.value !== 'goods' || !canEditWarehouse.value || !layoutReady.value || layoutSaving.value || plannerStructureBusy.value) return
+  const pile = plannerPalletGroups.value.find(item => item.id === id)
+  if (!pile) return
+  deletePileError.value = ''
+  if (persistedPileIds.value.has(id) && (!actualInventory.value || inventoryLoading.value || inventoryError.value)) {
+    deletePileError.value = '实际库存未加载，无法安全删除货堆。请重试加载库存后再删除。'
+    return
+  }
+  pendingPileDeletion.value = {
+    palletId: id,
+    name: pile.name || pile.code,
+    allocations: (actualInventory.value?.allocations ?? []).filter(item => item.palletId === id).map(item => ({ ...item })),
+  }
+}
+function confirmDeletePlannerPallet() {
+  const pending = pendingPileDeletion.value
+  if (!pending || (pending.allocations.length > 0 && !canEditInventory.value)) return
+  const snapshot: ReleasedPileAllocation = {
+    palletId: pending.palletId,
+    allocations: pending.allocations.map(item => ({ skuId: item.skuId, units: item.units })),
+  }
+  changePlannerState(() => {
+    plannerPalletGroups.value = plannerPalletGroups.value.filter(item => item.id !== pending.palletId)
+    selectedPalletId.value = null
+  })
+  if (snapshot.allocations.length) {
+    confirmedPileReleases.value = [...confirmedPileReleases.value.filter(item => item.palletId !== pending.palletId), snapshot]
+  }
+  pendingPileDeletion.value = null
+  deletePileError.value = ''
+}
+function handlePlannerLayoutSaved(id: number) {
+  if (selectedWarehouseId.value !== id) return
+  const deletedPersistedPile = [...persistedPileIds.value].some(pileId => !plannerPalletGroups.value.some(pile => pile.id === pileId))
+  persistedPileIds.value = new Set(plannerPalletGroups.value.map(pile => pile.id))
+  confirmedPileReleases.value = []
+  pendingPileDeletion.value = null
+  if (deletedPersistedPile) {
+    plannerUndoStack.value = []
+    plannerRedoStack.value = []
+  }
+  void loadActualInventory(id)
+}
 function createPlannerPallet(rect: PlannerRect) {
   if (plannerCompleted.value || plannerTool.value !== 'goods') return
   const id = `pallet-${crypto.randomUUID()}`
@@ -454,7 +532,7 @@ async function completeUiPreview() {
   plannerCompleted.value = !plannerCompleted.value
   if (plannerCompleted.value) {
     planningRequired.value = false
-    void loadActualInventory()
+    if (props.demo) void loadActualInventory()
   }
   if (!props.demo) {
     selectedPalletId.value = null
@@ -618,9 +696,13 @@ onBeforeUnmount(() => {
           <WarehouseLayoutControls v-if="!props.demo && inventoryMode" ref="layoutControls" embedded :document="layoutDocument" :viewing="true" :inventory-viewing="true" :busy="plannerStructureBusy" @loaded="loadPlannerDocument" @name="actualWarehouseName = $event" @available="layoutReady = $event" @warehouse="selectWarehouse" />
         </template>
       </WarehousePlannerChrome>
-      <WarehouseLayoutControls v-if="!props.demo && !inventoryMode" ref="layoutControls" :document="layoutDocument" :viewing="plannerCompleted" :busy="plannerStructureBusy" @loaded="loadPlannerDocument" @name="actualWarehouseName = $event" @available="layoutReady = $event" @warehouse="selectWarehouse" />
+      <WarehouseLayoutControls v-if="!props.demo && !inventoryMode" ref="layoutControls" :document="layoutDocument" :released-pile-allocations="releasedPileAllocations" :viewing="plannerCompleted" :busy="plannerStructureBusy" @loaded="loadPlannerDocument" @name="actualWarehouseName = $event" @available="layoutReady = $event" @warehouse="selectWarehouse" @saved="handlePlannerLayoutSaved" />
       <div v-if="!inventoryMode && !plannerCompleted" class="planner-context-bar" aria-label="画布工具栏">
         <div ref="plannerContextToolbar" data-testid="planner-context-toolbar" class="planner-context-toolbar" />
+        <div v-if="plannerTool === 'goods' && selectedPlannerPallet" class="planner-pile-actions">
+          <button data-testid="planner-delete-pallet" type="button" :disabled="plannerStructureBusy || layoutSaving || !canEditWarehouse" @click="requestDeletePlannerPallet(selectedPlannerPallet.id)"><Trash2 :size="15" />删除货堆</button>
+        </div>
+        <span v-if="deletePileError" data-testid="planner-delete-error" role="alert" class="planner-delete-error">{{ deletePileError }} <button type="button" @click="loadActualInventory()">重试</button></span>
         <div class="planner-zoom-controls" aria-label="画布缩放">
           <button data-testid="planner-zoom-out" type="button" aria-label="缩小画布" :disabled="plannerZoom <= 10" @click="changePlannerZoom(plannerZoom - 25)"><Minus :size="15" /></button>
           <button data-testid="planner-zoom-reset" type="button" aria-label="恢复 100% 缩放" @click="changePlannerZoom(100)">{{ plannerZoom }}%</button>
@@ -679,6 +761,8 @@ onBeforeUnmount(() => {
           @select-pallet="selectPlannerPallet"
           @select-zone="selectPlannerZone"
           @move-pallet="movePlannerPallet"
+          @resize-pallet="resizePlannerPallet"
+          @request-delete-pallet="requestDeletePlannerPallet"
           @create-pallet="createPlannerPallet"
           @pan-minimap="panPlannerFromMinimap"
         />
@@ -709,6 +793,15 @@ onBeforeUnmount(() => {
       </aside>
     </section>
     <p v-if="notice" role="status" class="planner-toast">{{ notice }}</p>
+    <AccessibleDialog :open="pendingPileDeletion !== null" :title="`删除货堆 ${pendingPileDeletion?.name ?? ''}？`" test-id="delete-pallet-dialog" body-test-id="delete-pallet-body" footer-test-id="delete-pallet-footer" close-test-id="delete-pallet-close" panel-class="warehouse-delete-dialog" @cancel="pendingPileDeletion = null">
+      <div v-if="pendingPileDeletion" class="planner-delete-body">
+        <p v-if="pendingPileDeletion.allocations.length">该货堆关联 {{ pendingPileDeletion.allocations.length }} 种 SKU，实际库存共 {{ deletingPileUnits }} 个。确认后会解除全部关联（包括 0 库存 SKU），正数库存转回“待分配”；仓库总库存不变。</p>
+        <p v-else>该货堆没有关联 SKU。确认后会从规划草稿中移除，保存前可撤销。</p>
+        <p v-if="pendingPileDeletion.allocations.length && !canEditInventory" class="planner-delete-permission" role="alert">没有库存编辑权限，无法解除该货堆的 SKU 关联。</p>
+        <p>删除将在保存规划时生效。</p>
+      </div>
+      <template #footer><button data-testid="delete-pallet-cancel" type="button" @click="pendingPileDeletion = null">取消</button><button data-testid="delete-pallet-confirm" class="danger-button" type="button" :disabled="Boolean(pendingPileDeletion?.allocations.length) && !canEditInventory" @click="confirmDeletePlannerPallet">确认删除</button></template>
+    </AccessibleDialog>
     <section v-if="props.demo" class="legacy-editor" aria-hidden="true">
     <header class="page-header">
       <div><h1>仓库画布 <span class="area-badge">{{ state.areas.length }} 个区域</span></h1><p>绘制区域并放入 SKU；库存仅以“个”为权威值。</p></div>
@@ -821,6 +914,14 @@ onBeforeUnmount(() => {
 .planner-canvas-scroll.with-layout-controls.with-context-toolbar {height:calc(100% - 144px);}
 .planner-context-bar {display:flex;align-items:center;min-height:44px;padding:4px 16px;border-bottom:1px solid #e2e8f0;background:#fff;}
 .planner-context-toolbar {display:flex;flex:1;align-items:center;min-width:0;overflow-x:auto;}
+.planner-pile-actions {display:flex;flex-shrink:0;align-items:center;padding-inline:10px;}
+.planner-pile-actions button {display:inline-flex;min-height:30px;align-items:center;gap:5px;border:1px solid #fecdd3;border-radius:6px;padding:4px 9px;background:#fff7f7;color:#b42338;font-size:12px;white-space:nowrap;cursor:pointer;}
+.planner-pile-actions button:hover:not(:disabled) {background:#ffe9eb;}
+.planner-pile-actions button:disabled {opacity:.45;cursor:not-allowed;}
+.planner-delete-error {min-width:0;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#b42338;font-size:11px;}
+.planner-delete-error button {min-height:28px;border:0;padding:0 4px;background:transparent;color:#4663ee;font-size:11px;cursor:pointer;}
+.planner-delete-body {max-width:480px;color:#536176;font-size:13px;line-height:1.6;}
+.planner-delete-body .planner-delete-permission {color:#b42338;}
 .planner-zoom-controls {display:flex;flex-shrink:0;align-items:center;gap:3px;margin-left:auto;border-left:1px solid #e2e8f0;padding-left:12px;}
 .planner-zoom-controls button {min-width:30px;min-height:30px;height:30px;border:0;padding:4px;background:transparent;color:#536176;font-size:12px;cursor:pointer;}
 .planner-zoom-controls button:hover:not(:disabled) {background:#eef2ff;color:#4663ee;}
