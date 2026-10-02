@@ -578,6 +578,21 @@ describe('WarehouseBlueprintScene', () => {
     } finally { wrapper.unmount() }
   })
 
+  it('does not resize an off-grid pile when a handle is only clicked', async () => {
+    const pile = { ...warehousePlannerScene.palletGroups[0]!, left: 40, top: 40, width: 10.3, height: 10 }
+    const wrapper = mount(WarehouseBlueprintScene, { props: {
+      gridSnapping: true, measurementEnabled: false, selectedPalletId: pile.id,
+      goodsEditing: true, palletGroups: [pile],
+      structure: { ...createWarehouseStructure(), zones: [], partitions: [], doors: [], elevators: [], columns: [] },
+    } })
+    try {
+      const board = setDrawingBoardBounds(wrapper)
+      await wrapper.get('[data-testid="pallet-resize-handle-e"]').trigger('pointerdown', { button: 0, pointerId: 49, clientX: 500, clientY: 360 })
+      await board.trigger('pointerup', { pointerId: 49, clientX: 500, clientY: 360 })
+      expect(wrapper.emitted('resize-pallet')).toBeUndefined()
+    } finally { wrapper.unmount() }
+  })
+
   it('requests deletion only when the selected pile is focused in goods edit mode', async () => {
     const pile = warehousePlannerScene.palletGroups[0]!
     const wrapper = mount(WarehouseBlueprintScene, { props: {

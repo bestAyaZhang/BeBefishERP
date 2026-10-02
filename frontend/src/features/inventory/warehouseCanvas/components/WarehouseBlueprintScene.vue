@@ -491,6 +491,10 @@ function movePalletResize(event: PointerEvent) {
 function stopPalletResize(event: PointerEvent) {
   const resize = palletResize.value
   if (!resize || resize.pointerId !== event.pointerId) return
+  if (Math.abs(event.clientX - resize.startClientX) < 3 && Math.abs(event.clientY - resize.startClientY) < 3) {
+    cancelPalletResize(event)
+    return
+  }
   clearScheduledPreview()
   const rect = resizePreview({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY }, resize, props.gridSnapping)
   const conflictingIds = palletConflictIds(resize.pallet, rect)

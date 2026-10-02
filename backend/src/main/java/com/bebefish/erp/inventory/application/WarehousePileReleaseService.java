@@ -81,14 +81,14 @@ public class WarehousePileReleaseService {
         }
         for (var palletId : removed) {
             var actualForPile = actual.get(palletId);
-            if (!actualForPile.isEmpty() && !canEditInventory()) {
-                throw new BusinessException("PILE_RELEASE_FORBIDDEN", HttpStatus.FORBIDDEN,
-                        "没有解除货堆 SKU 分配的权限");
-            }
             if (!sameAllocations(actualForPile, expected.get(palletId))) {
                 throw new BusinessException(expected.containsKey(palletId)
                         ? "PILE_ALLOCATIONS_CHANGED" : "PILE_CONFIRMATION_REQUIRED",
                         HttpStatus.CONFLICT, "货堆 SKU 分配已变化，请刷新库存后重新确认删除");
+            }
+            if (!actualForPile.isEmpty() && !canEditInventory()) {
+                throw new BusinessException("PILE_RELEASE_FORBIDDEN", HttpStatus.FORBIDDEN,
+                        "没有解除货堆 SKU 分配的权限");
             }
         }
 

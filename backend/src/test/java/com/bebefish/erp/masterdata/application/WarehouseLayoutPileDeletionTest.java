@@ -144,6 +144,21 @@ class WarehouseLayoutPileDeletionTest {
     }
 
     @Test
+    void changedAllocationConflictsBeforePermissionCheck() throws Exception {
+        var acknowledged = deletionCommand(List.of(confirmation(
+                new WarehousePileReleaseService.AllocationSnapshot(skuId, new BigDecimal("24")))));
+        jdbc.update("update inventory_location_balance set quantity = 25 where warehouse_id = ? and pallet_id = 'pallet-c018' and sku_id = ?", warehouseId, skuId);
+        jdbc.update("update inventory_location_balance set quantity = 75 where warehouse_id = ? and pallet_id = 'UNALLOCATED' and sku_id = ?", warehouseId, skuId);
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(
+                "planner", "unused", "warehouse:edit"));
+
+        assertThatThrownBy(() -> layouts.save(warehouseId, acknowledged))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.code()).isEqualTo("PILE_ALLOCATIONS_CHANGED"));
+        assertThat(layouts.load(warehouseId).revision()).isEqualTo(1);
+    }
+
+    @Test
     void emptyPileNeedsOnlyWarehouseEdit() throws Exception {
         jdbc.update("delete from inventory_location_balance where warehouse_id = ? and pallet_id = 'pallet-c018'", warehouseId);
         jdbc.update("update inventory_location_balance set quantity = 100 where warehouse_id = ? and pallet_id = 'UNALLOCATED' and sku_id = ?", warehouseId, skuId);
