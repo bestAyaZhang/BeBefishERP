@@ -110,7 +110,7 @@ function skuError(index: number) {
 
     <div class="mt-3 flex h-[66px] items-center gap-3 rounded-lg bg-[#f1f4ff] px-4 text-xs font-normal text-[#64748b]">
       <span class="h-2 w-2 rounded-full bg-[#536dff]"></span>
-      已添加 {{ state.skus.length }} 个 SKU。规格组合、SKU 货号及单杯条码不可重复。
+      已添加 {{ state.skus.length }} 个 SKU。规格组合、SKU 货号不可重复；单杯条码选填，填写后不可重复。
     </div>
 
     <SkuEditorDialog

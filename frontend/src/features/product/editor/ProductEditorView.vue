@@ -46,6 +46,7 @@ const imageUploading = ref(false);
 const loadError = ref('');
 const optionError = ref('');
 const createdProduct = ref<Product | null>(null);
+const isDraft = ref(false);
 const initialSnapshot = ref(serializeState(state.value));
 let latestProductRequestId = 0;
 let latestOptionRequestId = 0;
@@ -59,7 +60,7 @@ let saveNavigationAuthorization: {
 } | null = null;
 
 const currentStep = computed(() => stepDefinitions[currentStepIndex.value] ?? stepDefinitions[0]);
-const isEdit = computed(() => route.name === 'product-edit');
+const isEdit = computed(() => route.name === 'product-edit' || state.value.productId !== null);
 const selectedSupplierIds = computed(() => new Set(
   state.value.skus.flatMap((sku) => (sku.supplierQuotes ?? []).map((quote) => quote.supplierId))
 ));
@@ -121,6 +122,7 @@ async function loadOptions() {
 
 function setInitialState(product?: Product) {
   state.value = createEditorState(product);
+  isDraft.value = product?.status === 'draft';
   currentStepIndex.value = 0;
   validationErrors.value = {};
   imageUploading.value = false;
@@ -180,11 +182,14 @@ async function focusFirstError(errors: Record<string, string>) {
   document.querySelector<HTMLElement>(selector)?.focus();
 }
 
-function firstInvalidStep(targetIndex = productEditorSteps.length - 1) {
+function firstInvalidStep(targetIndex = productEditorSteps.length - 1, allowDefaultSku = false) {
   for (let index = 0; index <= targetIndex; index += 1) {
     const step = productEditorSteps[index];
     if (!step) continue;
     const errors = stepErrors(step);
+    if (allowDefaultSku && step === 'sku' && state.value.productType === 'simple' && state.value.skus.length === 0) {
+      delete errors.skus;
+    }
     if (Object.keys(errors).length > 0) return { index, errors };
   }
   return null;
@@ -224,14 +229,14 @@ function previousStep() {
   validationErrors.value = {};
 }
 
-async function submit() {
+async function submit(asDraft = false) {
   if (imageUploading.value) {
     currentStepIndex.value = productEditorSteps.indexOf('images');
     message.error('图片正在上传，请等待上传完成后再保存');
     return;
   }
   if (saving.value) return;
-  const invalid = firstInvalidStep();
+  const invalid = firstInvalidStep(productEditorSteps.length - 1, asDraft);
   if (invalid) {
     currentStepIndex.value = invalid.index;
     validationErrors.value = invalid.errors;
@@ -246,10 +251,22 @@ async function submit() {
   saving.value = true;
   try {
     const payload = toProductPayload(state.value);
+    if (asDraft) payload.status = 'draft';
     const saved = state.value.productId === null
       ? await productService.createProduct(payload)
       : await productService.updateProduct(state.value.productId, payload);
     if (!componentActive || requestId !== latestSaveRequestId || routeGeneration !== sourceRouteGeneration) return;
+    if (asDraft) {
+      const packagingMode = state.value.packagingMode;
+      const intendedStatus = state.value.status;
+      state.value = createEditorState(saved);
+      state.value.packagingMode = packagingMode;
+      state.value.status = intendedStatus;
+      isDraft.value = true;
+      initialSnapshot.value = serializeState(state.value);
+      message.success('草稿已保存，可在商品列表中继续编辑');
+      return;
+    }
     initialSnapshot.value = serializeState(state.value);
     message.success(wasCreate ? '商品已创建' : '商品已更新');
     if (wasCreate) {
@@ -319,8 +336,7 @@ function cancel() {
 }
 
 function saveDraft() {
-  initialSnapshot.value = serializeState(state.value);
-  message.success('草稿已保存');
+  void submit(true);
 }
 
 function handleBeforeUnload(event: BeforeUnloadEvent) {
@@ -377,12 +393,12 @@ onBeforeUnmount(() => {
       <section data-testid="product-editor-wizard" class="h-[904px] min-w-[1132px]">
         <header data-testid="product-editor-header" class="flex h-16 items-center justify-between">
           <div class="min-w-0">
-            <h1 class="text-page-title text-[#25314d]">{{ isEdit ? '编辑商品' : '新增商品' }}</h1>
+            <h1 class="text-page-title text-[#25314d]">{{ isDraft ? '编辑商品草稿' : isEdit ? '编辑商品' : '新增商品' }}</h1>
             <p data-testid="product-editor-subtitle" class="mt-1 text-xs font-normal leading-5 text-[#8292ae]">第 {{ currentStepIndex + 1 }} 步，共 6 步 · {{ currentStep.description }}</p>
           </div>
           <div class="inline-flex h-8 items-center gap-2 rounded-lg bg-[#f8fafc] px-3 text-xs font-medium text-[#64748b]">
             <span class="h-2 w-2 rounded-full bg-[#32c5a4]"></span>
-            草稿自动保存
+            {{ saving ? '保存中...' : dirty || state.productId === null ? '资料待保存' : '资料已保存' }}
           </div>
         </header>
 
@@ -411,7 +427,7 @@ onBeforeUnmount(() => {
           </ol>
         </nav>
 
-        <section data-testid="product-editor-stage" class="relative mt-4 h-[620px] overflow-hidden rounded-lg border border-[#dbe4f1] bg-white p-6">
+        <fieldset data-testid="product-editor-stage" :disabled="saving" :aria-label="currentStep.title" class="relative mt-4 h-[620px] min-w-0 overflow-hidden rounded-lg border border-[#dbe4f1] bg-white p-6">
           <div class="flex h-[50px] items-center justify-between gap-4">
             <div class="min-w-0">
               <h2 data-testid="editor-step-title" class="text-[18px] font-semibold leading-[26px] text-[#25314d]">{{ currentStep.title }}</h2>
@@ -421,19 +437,22 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="mt-4 h-[490px] overflow-y-auto overflow-x-hidden">
-            <ProductBasicStep v-if="currentStep.id === 'basic'" v-model="state" :categories="availableCategories" :errors="validationErrors" :service="productService" @update:uploading="imageUploading = $event" />
+            <ProductBasicStep v-if="currentStep.id === 'basic'" v-model="state" :draft="isDraft" :categories="availableCategories" :errors="validationErrors" :service="productService" @update:uploading="imageUploading = $event" />
             <ProductSkuStep v-else-if="currentStep.id === 'sku'" v-model="state" :errors="validationErrors" :service="productService" @update:uploading="imageUploading = $event" />
             <ProductProcurementStep v-else-if="currentStep.id === 'procurement'" v-model="state" :suppliers="availableSuppliers" :errors="validationErrors" />
             <ProductPackagingStep v-else-if="currentStep.id === 'packaging'" v-model="state" :errors="validationErrors" :service="productService" @update:uploading="imageUploading = $event" />
             <ProductImagesStep v-else-if="currentStep.id === 'images'" v-model="state" :service="productService" @update:uploading="imageUploading = $event" />
             <ProductConfirmStep v-else :state="state" :categories="availableCategories" :suppliers="availableSuppliers" />
           </div>
-        </section>
+        </fieldset>
 
         <footer data-testid="product-editor-footer" class="mt-4 flex h-20 items-center justify-between rounded-lg border border-[#dbe4f1] bg-white px-4">
           <div class="flex items-center gap-2.5">
             <button data-testid="cancel-product" type="button" class="h-10 w-[88px] rounded-lg border border-[#dbe4f1] bg-white text-sm font-medium text-[#25314d] hover:border-[#b9c8df]" @click="cancel">取消</button>
-            <button data-testid="save-product-draft" type="button" class="h-10 w-28 rounded-lg border border-[#dbe4f1] bg-white text-sm font-medium text-[#25314d] hover:border-[#b9c8df]" @click="saveDraft">保存草稿</button>
+            <button data-testid="save-product-draft" type="button" :disabled="saving || imageUploading" class="inline-flex h-10 w-28 items-center justify-center gap-2 rounded-lg border border-[#dbe4f1] bg-white text-sm font-medium text-[#25314d] hover:border-[#b9c8df] disabled:cursor-not-allowed disabled:opacity-60" @click="saveDraft">
+              <LoaderCircle v-if="saving" class="h-4 w-4 animate-spin" aria-hidden="true" />
+              {{ saving ? '保存中...' : '保存草稿' }}
+            </button>
             <p v-if="imageUploading" data-testid="image-upload-blocker" class="text-xs font-medium text-amber-700">图片正在上传，请等待完成后继续</p>
           </div>
           <div class="flex gap-2.5">
@@ -445,9 +464,9 @@ onBeforeUnmount(() => {
               下一步
               <ChevronRight class="h-4 w-4" aria-hidden="true" />
             </button>
-            <button v-else data-testid="submit-product" type="button" :disabled="saving || imageUploading" class="inline-flex h-10 w-28 items-center justify-center gap-2 rounded-lg bg-[#536dff] text-sm font-medium text-white hover:bg-[#465eea] disabled:cursor-not-allowed disabled:opacity-60" @click="submit">
+            <button v-else data-testid="submit-product" type="button" :disabled="saving || imageUploading" class="inline-flex h-10 w-28 items-center justify-center gap-2 rounded-lg bg-[#536dff] text-sm font-medium text-white hover:bg-[#465eea] disabled:cursor-not-allowed disabled:opacity-60" @click="submit()">
               <LoaderCircle v-if="saving" class="h-4 w-4 animate-spin" aria-hidden="true" />
-              {{ saving ? '保存中...' : isEdit ? '保存修改' : '创建商品' }}
+              {{ saving ? '保存中...' : isDraft ? '提交商品' : isEdit ? '保存修改' : '创建商品' }}
             </button>
           </div>
         </footer>

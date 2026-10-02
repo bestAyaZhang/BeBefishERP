@@ -39,7 +39,7 @@ export function mapProductToPrototype(product: Product, categoryName: string): P
     safetyStock: 0,
     price: money(sku?.defaultSalePrice ?? null),
     cost: money(sku?.standardCost ?? null),
-    status: enabled ? '在售' : '已停用',
+    status: product.status === 'draft' ? '草稿' : enabled ? '在售' : '已停用',
     audit: product.mainImageFileId ? '资料完整' : '待补主图',
     updated: '刚刚更新',
     sales: '0',

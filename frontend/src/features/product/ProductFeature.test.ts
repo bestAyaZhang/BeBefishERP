@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter, type LocationQueryRaw } from 'vue-router';
 import type { Category } from '../masterdata/types';
 import { httpProductService } from './httpProductService';
+import { createMockProductService } from './mockProductService';
 import { productFixture, productPage } from './productTestFixtures';
 import type { Product, ProductFormPayload, ProductService } from './types';
 import ProductList from './components/ProductList.vue';
@@ -517,7 +518,7 @@ describe('Task 8 product catalog list', () => {
     expect(push).toHaveBeenCalledWith(expect.objectContaining({
       query: expect.objectContaining({ categoryId: '12', page: '1', size: '20' })
     }));
-    expect(listProducts).toHaveBeenLastCalledWith({ page: 1, size: 20, categoryId: 12 });
+    expect(listProducts).toHaveBeenLastCalledWith({ page: 1, size: 20, categoryId: 12, status: 'published' });
   });
 
   it('keeps matching category nodes and ancestors, then restores expansion after clearing search', async () => {
@@ -629,7 +630,51 @@ describe('Task 8 product catalog list', () => {
     expect(categoryCell.text()).not.toContain('未分类');
   });
 
-  it('keeps item number or sku as the only right-side query field and searches on Enter', async () => {
+  it('separates formal products from drafts and restores the draft filter through navigation', async () => {
+    const service = createMockProductService([
+      catalogProduct(41, '正式启用商品'),
+      catalogProduct(42, '正式停用商品', { status: 'disabled' }),
+      catalogProduct(43, '未提交草稿', { status: 'draft', completenessStatus: 'complete' })
+    ]);
+    const { router, wrapper } = await mountCatalog({ service });
+
+    expect(wrapper.text()).toContain('正式启用商品');
+    expect(wrapper.text()).toContain('正式停用商品');
+    expect(wrapper.text()).not.toContain('未提交草稿');
+    await wrapper.get('[data-testid="product-filter-draft"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.query.status).toBe('draft');
+    expect(wrapper.text()).toContain('未提交草稿');
+    expect(wrapper.text()).not.toContain('正式启用商品');
+    expect(wrapper.text()).not.toContain('正式停用商品');
+    expect(wrapper.get('[data-testid="product-cell-completenessStatus-43"]').text()).toBe('草稿');
+
+    await wrapper.get('[data-testid="product-filter-all"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('正式启用商品');
+    expect(wrapper.text()).toContain('正式停用商品');
+    expect(wrapper.text()).toContain('未提交草稿');
+    router.back();
+    await flushPromises();
+    expect(wrapper.get('[data-testid="product-filter-draft"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.text()).not.toContain('正式启用商品');
+  });
+
+  it('resets pagination and retains category and keyword when switching the publication filter', async () => {
+    const service = catalogService(vi.fn().mockImplementation((query) => (
+      Promise.resolve(productPage([], 200, query.page, query.size))
+    )));
+    const { router, wrapper } = await mountCatalog({
+      query: { categoryId: '12', keyword: 'SKU', page: '4', size: '50' }, service
+    });
+    await wrapper.get('[data-testid="product-filter-draft"]').trigger('click');
+    await flushPromises();
+
+    expect(router.currentRoute.value.query).toEqual({ categoryId: '12', keyword: 'SKU', page: '1', size: '50', status: 'draft' });
+    expect(service.listProducts).toHaveBeenLastCalledWith({ categoryId: 12, keyword: 'SKU', page: 1, size: 50, status: 'draft' });
+  });
+
+  it('searches item number or SKU alongside the publication filter', async () => {
     const listProducts = vi.fn<ProductService['listProducts']>().mockImplementation((query) => (
       Promise.resolve(productPage([], 0, query.page, query.size))
     ));
@@ -642,7 +687,7 @@ describe('Task 8 product catalog list', () => {
     expect(wrapper.find('[data-testid="product-filter-brand-button"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="product-filter-supplier-button"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="product-filter-category-button"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="product-status-tabs"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="product-status-tabs"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="current-category-strip"]').exists()).toBe(false);
 
     await wrapper.get('[data-testid="product-keyword"]').setValue(' SKU-42 ');
@@ -655,12 +700,12 @@ describe('Task 8 product catalog list', () => {
       page: '1',
       size: '20'
     });
-    expect(listProducts).toHaveBeenLastCalledWith({ page: 1, size: 20, categoryId: 12, keyword: 'SKU-42' });
+    expect(listProducts).toHaveBeenLastCalledWith({ page: 1, size: 20, categoryId: 12, keyword: 'SKU-42', status: 'published' });
 
     await wrapper.get('[data-testid="product-reset"]').trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.query).toEqual({ categoryId: '12', page: '1', size: '20' });
-    expect(listProducts).toHaveBeenLastCalledWith({ page: 1, size: 20, categoryId: 12 });
+    expect(listProducts).toHaveBeenLastCalledWith({ page: 1, size: 20, categoryId: 12, status: 'published' });
   });
 
   it('does not request while the keyword is only a draft', async () => {
@@ -693,7 +738,7 @@ describe('Task 8 product catalog list', () => {
     expect(replace).toHaveBeenCalledWith({ query: { page: '1', size: '20' } });
     expect(router.currentRoute.value.query).toEqual({ page: '1', size: '20' });
     expect(listProducts).toHaveBeenCalledTimes(1);
-    expect(listProducts).toHaveBeenCalledWith({ page: 1, size: 20 });
+    expect(listProducts).toHaveBeenCalledWith({ page: 1, size: 20, status: 'published' });
   });
 
   it('restores valid route state and safely normalizes array or negative query values', async () => {
@@ -707,7 +752,7 @@ describe('Task 8 product catalog list', () => {
 
     expect(wrapper.get<HTMLInputElement>('[data-testid="product-keyword"]').element.value).toBe('GLASS');
     expect(wrapper.get('[data-testid="category-node-13"]').attributes('aria-pressed')).toBe('true');
-    expect(listProducts).toHaveBeenLastCalledWith({ page: 3, size: 50, categoryId: 13, keyword: 'GLASS' });
+    expect(listProducts).toHaveBeenLastCalledWith({ page: 3, size: 50, categoryId: 13, keyword: 'GLASS', status: 'published' });
 
     await router.push({
       name: 'products',
@@ -715,12 +760,12 @@ describe('Task 8 product catalog list', () => {
     });
     await flushPromises();
     expect(wrapper.get<HTMLInputElement>('[data-testid="product-keyword"]').element.value).toBe('');
-    expect(listProducts).toHaveBeenLastCalledWith({ page: 1, size: 20 });
+    expect(listProducts).toHaveBeenLastCalledWith({ page: 1, size: 20, status: 'published' });
 
     router.back();
     await flushPromises();
     expect(wrapper.get<HTMLInputElement>('[data-testid="product-keyword"]').element.value).toBe('GLASS');
-    expect(listProducts).toHaveBeenLastCalledWith({ page: 3, size: 50, categoryId: 13, keyword: 'GLASS' });
+    expect(listProducts).toHaveBeenLastCalledWith({ page: 3, size: 50, categoryId: 13, keyword: 'GLASS', status: 'published' });
   });
 
   it('paginates with ellipses, keeps filters, and resets the page when size changes', async () => {
@@ -740,7 +785,7 @@ describe('Task 8 product catalog list', () => {
     await wrapper.get('[data-testid="product-page-size"]').setValue('50');
     await flushPromises();
     expect(router.currentRoute.value.query).toEqual({ categoryId: '12', keyword: 'CUP', page: '1', size: '50' });
-    expect(listProducts).toHaveBeenLastCalledWith({ page: 1, size: 50, categoryId: 12, keyword: 'CUP' });
+    expect(listProducts).toHaveBeenLastCalledWith({ page: 1, size: 50, categoryId: 12, keyword: 'CUP', status: 'published' });
   });
 
   it('corrects an out-of-range page once when the result total shrinks', async () => {
@@ -911,7 +956,7 @@ describe('Task 8 product catalog list', () => {
       categoryId: '12', keyword: 'CUP', page: '1', size: '50'
     });
     expect(listProducts).toHaveBeenLastCalledWith({
-      page: 1, size: 50, categoryId: 12, keyword: 'CUP'
+      page: 1, size: 50, categoryId: 12, keyword: 'CUP', status: 'published'
     });
   });
 

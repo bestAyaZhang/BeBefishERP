@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ProductService {
     private static final Set<String> STATUSES = Set.of("enabled", "disabled");
+    private static final Set<String> PRODUCT_STATUSES = Set.of("enabled", "disabled", "draft");
     private static final Set<String> PRODUCT_DIMENSION_NAMES = Set.of("口径", "高度", "容量", "重量");
     private final ProductRepository repository;
     private final SkuCombinationGenerator combinationGenerator;
@@ -91,7 +92,7 @@ public class ProductService {
 
     @Transactional
     public Product changeStatus(long id, String status) {
-        return repository.save(getProduct(id).withStatus(normalizeStatus(status)));
+        return repository.save(getProduct(id).withStatus(normalizeProductStatus(status)));
     }
 
     private Product saveProductWithSupplierQuotes(Product product, List<SaveSkuCommand> skuCommands) {
@@ -399,7 +400,7 @@ public class ProductService {
         if (requestedStatus == null || requestedStatus.isBlank()) {
             return existing == null ? "enabled" : existing.status();
         }
-        return normalizeStatus(requestedStatus);
+        return normalizeProductStatus(requestedStatus);
     }
 
     private void ensureUniqueProduct(String code, String itemNo, Long id) {
@@ -455,7 +456,15 @@ public class ProductService {
     }
 
     private String normalizeOptionalStatus(String status) {
-        return status == null || status.isBlank() ? null : normalizeStatus(status);
+        if (status == null || status.isBlank()) return null;
+        if ("published".equalsIgnoreCase(status.trim())) return "published";
+        return normalizeProductStatus(status);
+    }
+
+    private String normalizeProductStatus(String status) {
+        var value = required(status, "产品状态不能为空").toLowerCase();
+        if (!PRODUCT_STATUSES.contains(value)) throw validation("产品状态无效");
+        return value;
     }
 
     private String normalizeStatus(String status) {

@@ -1,6 +1,8 @@
 import type { PageResult, RecordStatus } from '../masterdata/types';
 
 export type ProductType = 'simple' | 'variant';
+export type ProductStatus = RecordStatus | 'draft';
+export type ProductQueryStatus = ProductStatus | 'published';
 
 export interface ProductSpecification {
   name: string;
@@ -58,7 +60,7 @@ export interface ProductFormPayload {
   categoryId: number | null;
   brand: string;
   productType: ProductType;
-  status: RecordStatus;
+  status: ProductStatus;
   mainImageFileId: number | null;
   remark: string;
   specifications: ProductSpecification[];
@@ -140,7 +142,7 @@ export interface Product {
   completenessPercent: number;
   completenessStatus: ProductCompletenessStatus;
   missingGroups: string[];
-  status: RecordStatus;
+  status: ProductStatus;
   remark: string | null;
   specifications: ProductSpecification[];
   skus: ProductSku[];
@@ -154,7 +156,7 @@ export interface ProductQuery {
   keyword?: string;
   categoryId?: number;
   supplierId?: number;
-  status?: RecordStatus;
+  status?: ProductQueryStatus;
 }
 
 export interface SkuSummary {
@@ -188,7 +190,7 @@ export interface ProductService {
   getProduct(id: number): Promise<Product>;
   createProduct(payload: ProductFormPayload): Promise<Product>;
   updateProduct(id: number, payload: ProductFormPayload): Promise<Product>;
-  changeProductStatus(id: number, status: RecordStatus): Promise<Product>;
+  changeProductStatus(id: number, status: ProductStatus): Promise<Product>;
   listSupplierQuotes(skuId: number): Promise<ProductSupplierQuote[]>;
   saveSupplierQuote(skuId: number, payload: SaveSupplierQuotePayload, quoteId?: number): Promise<ProductSupplierQuote>;
   setDefaultSupplierQuote(skuId: number, quoteId: number, syncStandardCost: boolean): Promise<ProductSupplierQuote>;

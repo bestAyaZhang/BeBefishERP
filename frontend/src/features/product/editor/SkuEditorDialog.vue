@@ -94,7 +94,7 @@ function updateStatus() {
       <div class="space-y-3">
         <label class="sku-dialog-field"><span>SKU 货号 <em>*</em></span><input v-model="draft.skuCode" data-testid="sku-dialog-sku-code" maxlength="50" placeholder="请输入 SKU 货号" /></label>
         <label class="sku-dialog-field"><span>规格组合 <em>*</em></span><input v-model="draft.skuName" data-testid="sku-dialog-name" maxlength="200" :class="errors.skuName ? 'border-[#ef476f]' : ''" placeholder="请输入颜色、功率、尺寸等规格" /><small v-if="errors.skuName">{{ errors.skuName }}</small></label>
-        <label class="sku-dialog-field"><span>单杯条码 <em>*</em></span><input v-model="draft.barcode" data-testid="sku-dialog-barcode" maxlength="100" placeholder="请输入 13 位商品条码" /></label>
+        <label class="sku-dialog-field"><span>单杯条码（选填）</span><input v-model="draft.barcode" data-testid="sku-dialog-barcode" maxlength="100" placeholder="可留空，或输入商品条码" /></label>
       </div>
     </div>
 
@@ -110,7 +110,7 @@ function updateStatus() {
       <label class="sku-dialog-field"><span>SKU 状态 <em>*</em></span><select v-model="draft.status" data-testid="sku-dialog-status" @change="updateStatus"><option value="enabled">启用</option><option value="disabled">停用</option></select></label>
     </div>
 
-    <div class="mt-4 flex h-[58px] items-center gap-3 rounded-lg bg-[#f1f4ff] px-4 text-xs text-[#536dff]"><span class="text-base">i</span>SKU 货号、规格组合和条码不可重复，保存后将加入当前商品。</div>
+    <div class="mt-4 flex h-[58px] items-center gap-3 rounded-lg bg-[#f1f4ff] px-4 text-xs text-[#536dff]"><span class="text-base">i</span>SKU 货号、规格组合不可重复；条码选填，填写后不可重复。</div>
 
     <div class="sr-only" aria-hidden="true">
       <input v-model="specificationText" data-testid="sku-dialog-specification" tabindex="-1" />

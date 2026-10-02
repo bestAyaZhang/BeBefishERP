@@ -16,6 +16,7 @@ import ProductPagination from './ProductPagination.vue';
 import ProductTable from './ProductTable.vue';
 
 interface CatalogRouteState {
+  status: 'published' | 'draft' | 'all';
   categoryId?: number;
   keyword?: string;
   page: number;
@@ -24,6 +25,11 @@ interface CatalogRouteState {
 
 const allowedPageSizes = [10, 20, 50] as const;
 const defaultPageSize = 20;
+const publicationFilters = [
+  { value: 'published', label: '正式商品' },
+  { value: 'draft', label: '草稿' },
+  { value: 'all', label: '全部' }
+] as const;
 
 const props = withDefaults(defineProps<{
   service: ProductService;
@@ -70,6 +76,8 @@ function positiveInteger(value: unknown) {
 }
 
 const routeState = computed<CatalogRouteState>(() => {
+  const requestedStatus = singleQueryValue(route.query.status);
+  const status = requestedStatus === 'draft' || requestedStatus === 'all' ? requestedStatus : 'published';
   const categoryId = positiveInteger(route.query.categoryId);
   const keyword = singleQueryValue(route.query.keyword)?.trim() || undefined;
   const page = positiveInteger(route.query.page) ?? 1;
@@ -77,11 +85,12 @@ const routeState = computed<CatalogRouteState>(() => {
   const size = allowedPageSizes.includes(requestedSize as (typeof allowedPageSizes)[number])
     ? requestedSize!
     : defaultPageSize;
-  return { categoryId, keyword, page, size };
+  return { categoryId, keyword, page, size, status };
 });
 
 function serializeRouteState(state: CatalogRouteState): Record<string, string> {
   return {
+    ...(state.status !== 'published' ? { status: state.status } : {}),
     ...(state.categoryId ? { categoryId: String(state.categoryId) } : {}),
     ...(state.keyword ? { keyword: state.keyword } : {}),
     page: String(state.page),
@@ -103,6 +112,7 @@ function isCanonicalQuery(query: Record<string, unknown>, canonical: Record<stri
 
 function productQuery(state: CatalogRouteState): ProductQuery {
   return {
+    ...(state.status !== 'all' ? { status: state.status } : {}),
     page: state.page,
     size: state.size,
     ...(state.categoryId ? { categoryId: state.categoryId } : {}),
@@ -141,6 +151,10 @@ function updateRoute(nextState: CatalogRouteState) {
 
 function selectCategory(categoryId?: number) {
   void updateRoute({ ...routeState.value, categoryId, page: 1 });
+}
+
+function selectPublicationStatus(status: CatalogRouteState['status']) {
+  void updateRoute({ ...routeState.value, status, page: 1 });
 }
 
 function searchProducts() {
@@ -244,8 +258,11 @@ onBeforeUnmount(() => {
           data-testid="product-list-heading"
           class="flex h-12 min-w-0 shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-4"
         >
-          <h2 class="text-card-title text-[#25314d]">商品列表</h2>
-          <p data-testid="product-list-total" class="shrink-0 text-sm text-slate-500">共 {{ result.total }} 件商品</p>
+          <h2 class="sr-only text-card-title text-[#25314d]">商品列表</h2>
+          <div data-testid="product-status-tabs" class="flex h-full min-w-0 items-center gap-5" role="group" aria-label="商品状态筛选">
+            <button v-for="filter in publicationFilters" :key="filter.value" :data-testid="`product-filter-${filter.value}`" type="button" class="h-full border-b-2 px-1 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#536dff]" :class="routeState.status === filter.value ? 'border-[#536dff] text-[#536dff]' : 'border-transparent text-slate-500 hover:text-[#25314d]'" :aria-pressed="routeState.status === filter.value" @click="selectPublicationStatus(filter.value)">{{ filter.label }}</button>
+          </div>
+          <p data-testid="product-list-total" class="shrink-0 text-sm text-slate-500">共 {{ result.total }} 件{{ routeState.status === 'draft' ? '草稿' : '商品' }}</p>
         </header>
 
         <div

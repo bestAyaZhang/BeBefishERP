@@ -129,6 +129,7 @@ function productTypeLabel(product: Product) {
 }
 
 function recordStatusLabel(product: Product) {
+  if (product.status === 'draft') return '草稿';
   return product.status === 'enabled' ? '启用' : '停用';
 }
 
@@ -176,6 +177,9 @@ function isNumericColumn(columnId: ProductCatalogColumnId) {
 }
 
 function displayStatus(product: Product) {
+  if (product.status === 'draft') {
+    return { label: '草稿', background: 'bg-violet-100/80', dot: 'bg-violet-500', text: 'text-violet-700' };
+  }
   if (product.status !== 'enabled') {
     return {
       label: '已停用',

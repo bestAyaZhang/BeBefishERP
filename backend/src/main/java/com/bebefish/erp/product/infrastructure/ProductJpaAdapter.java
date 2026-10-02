@@ -191,7 +191,9 @@ public class ProductJpaAdapter implements ProductRepository {
                     + "where sku.product_id = product.id and quote.supplier_id = ? and quote.status = 'enabled')");
             parameters.add(supplierId);
         }
-        if (status != null) {
+        if ("published".equals(status)) {
+            where.add("product.status in ('enabled', 'disabled')");
+        } else if (status != null) {
             where.add("product.status = ?");
             parameters.add(status);
         }

@@ -12,6 +12,7 @@ import {
 
 const state = defineModel<ProductEditorState>({ required: true });
 defineProps<{
+  draft?: boolean;
   categories: Category[];
   errors: Record<string, string>;
   service: ProductService;
@@ -78,7 +79,7 @@ const defaultSalesUnit = computed(() => {
         <small v-if="errors.categoryId">{{ errors.categoryId }}</small>
       </label>
       <label class="wizard-field">
-        <span>商品状态</span>
+        <span>{{ draft ? '提交后状态' : '商品状态' }}</span>
         <select data-testid="product-status" v-model="state.status" class="border-[#dbe4f1]">
           <option value="enabled">启用</option>
           <option value="disabled">停用</option>

@@ -103,7 +103,7 @@ onBeforeUnmount(() => {
         <template v-if="product && !loading && !errorMessage">
           <div class="mt-1 flex min-w-0 items-center gap-3">
             <h1 data-testid="product-detail-title" class="min-w-0 truncate text-[24px] font-bold leading-8 text-[#25314d]">{{ product.productName }}</h1>
-            <span class="inline-flex h-7 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-medium leading-[18px]" :class="product.status === 'enabled' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-200/70 text-[#64748b]'">
+            <span class="inline-flex h-7 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-medium leading-[18px]" :class="product.status === 'draft' ? 'bg-violet-50 text-violet-700' : product.status === 'enabled' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-200/70 text-[#64748b]'">
               <span class="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true"></span>
               {{ formatProductStatus(product.status) }}
             </span>

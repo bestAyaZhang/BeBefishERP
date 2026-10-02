@@ -231,7 +231,7 @@ export function createMockProductService(seed: Product[] = defaultSeed, categori
   function page(query: ProductQuery): PageResult<Product> {
     const keyword = query.keyword?.trim().toLowerCase() ?? '';
     const filtered = products.filter((product) =>
-      (!query.status || product.status === query.status)
+      (!query.status || (query.status === 'published' ? product.status !== 'draft' : product.status === query.status))
       && (!query.categoryId || product.categoryId === query.categoryId)
       && (!keyword || [
         product.productCode,

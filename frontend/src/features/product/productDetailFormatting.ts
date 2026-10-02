@@ -90,6 +90,7 @@ export function formatRecordStatus(status: string | null | undefined): string {
 }
 
 export function formatProductStatus(status: string | null | undefined): string {
+  if (status === 'draft') return '草稿';
   if (status === 'enabled') return '在售';
   if (status === 'disabled') return '已停用';
   return formatText(status);

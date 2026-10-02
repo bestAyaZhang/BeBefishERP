@@ -19,7 +19,7 @@ const selectedSupplierNames = computed(() => {
 });
 const checks = computed(() => [
   { title: '基本资料', detail: `${props.state.productName || '未填写商品名称'} · ${props.categories.find((item) => item.id === props.state.categoryId)?.categoryName ?? '未选择分类'}`, done: Boolean(props.state.itemNo && props.state.productName && props.state.categoryId) },
-  { title: 'SKU 信息', detail: `${props.state.skus.length} 个 SKU · 条码校验${props.state.skus.every((sku) => sku.barcode) ? '通过' : '待补充'}`, done: props.state.skus.length > 0 },
+  { title: 'SKU 信息', detail: `${props.state.skus.length} 个 SKU · 条码选填`, done: props.state.skus.length > 0 },
   { title: '采购与渠道', detail: `${selectedSupplierNames.value.join('、') || '未选择供应商'} · ${quoteCount.value} 条报价`, done: quoteCount.value > 0 },
   { title: '包装与重量', detail: props.state.packagingMode === 'unified' ? '全部 SKU 统一维护' : '按 SKU 单独维护', done: packagingComplete.value },
   { title: '图片资料', detail: `${imageCount.value} / 3 张图片`, done: imageCount.value === 3 },

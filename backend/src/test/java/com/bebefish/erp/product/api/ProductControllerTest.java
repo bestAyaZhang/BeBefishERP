@@ -94,6 +94,62 @@ class ProductControllerTest {
     }
 
     @Test
+    void separatesDraftsFromPublishedProductsAndPublishesWithoutDuplicatingTheProductOrSku() throws Exception {
+        var request = requestBody(null, "EW432-DRAFT", "商品草稿", null);
+        request.put("status", "draft");
+        request.put("skus", List.of());
+        var response = mvc.perform(post("/api/products")
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("draft"))
+                .andExpect(jsonPath("$.data.skus[0].status").value("enabled"))
+                .andReturn().getResponse().getContentAsString();
+        var draft = objectMapper.readTree(response).path("data");
+        var productId = draft.path("id").asLong();
+        var skuId = draft.path("skus").get(0).path("id").asLong();
+
+        for (var productStatus : List.of("enabled", "disabled")) {
+            var formal = requestBody(null, "EW432-" + productStatus, "正式商品", null);
+            formal.put("status", productStatus);
+            mvc.perform(post("/api/products")
+                            .header("Authorization", bearer(editToken))
+                            .contentType(APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(formal)))
+                    .andExpect(status().isOk());
+        }
+        mvc.perform(get("/api/products").header("Authorization", bearer(viewToken))
+                        .param("categoryId", Long.toString(categoryId)).param("status", "published"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(2));
+        mvc.perform(get("/api/products").header("Authorization", bearer(viewToken))
+                        .param("categoryId", Long.toString(categoryId)).param("status", "draft"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.records[0].id").value(productId));
+
+        var submitted = requestBody(null, "EW432-DRAFT", "已提交商品", skuId);
+        submitted.put("status", "enabled");
+        mvc.perform(put("/api/products/{id}", productId)
+                        .header("Authorization", bearer(editToken))
+                        .contentType(APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(submitted)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(productId))
+                .andExpect(jsonPath("$.data.status").value("enabled"))
+                .andExpect(jsonPath("$.data.skus[0].id").value(skuId));
+        mvc.perform(get("/api/products").header("Authorization", bearer(viewToken))
+                        .param("categoryId", Long.toString(categoryId)).param("status", "draft"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(0));
+        mvc.perform(get("/api/products").header("Authorization", bearer(viewToken))
+                        .param("categoryId", Long.toString(categoryId)).param("status", "published"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(3));
+    }
+
+    @Test
     void createsListsReadsUpdatesAndChangesProductStatus() throws Exception {
         JsonNode created = createProduct();
         var productId = created.path("id").asLong();

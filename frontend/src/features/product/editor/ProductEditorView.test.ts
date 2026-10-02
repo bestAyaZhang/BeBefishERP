@@ -5,8 +5,10 @@ import { clearMessages, messages } from '../../../components/feedback/message';
 import { masterdataService } from '../../masterdata/masterdataService';
 import type { Category, MasterdataService, Supplier } from '../../masterdata/types';
 import { productFixture } from '../productTestFixtures';
+import { createMockProductService } from '../mockProductService';
 import { productService } from '../productService';
 import type { Product, ProductService } from '../types';
+import ProductListView from '../views/ProductListView.vue';
 import ProductEditorView from './ProductEditorView.vue';
 
 vi.mock('../productService', () => ({
@@ -149,11 +151,11 @@ function page<T>(records: T[], pageNumber = 1, total = records.length) {
   return { records, page: pageNumber, pageSize: 100, total };
 }
 
-async function mountEditor(path = '/products/new') {
+async function mountEditor(path = '/products/new', showProductList = false) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/products', name: 'products', component: { template: '<div data-testid="products-page" />' } },
+      { path: '/products', name: 'products', component: showProductList ? ProductListView : { template: '<div data-testid="products-page" />' } },
       { path: '/products/new', name: 'product-new', component: ProductEditorView },
       { path: '/products/:id/edit', name: 'product-edit', component: ProductEditorView },
       { path: '/products/:id', name: 'product-detail', component: { template: '<div data-testid="product-detail-page" />' } },
@@ -221,6 +223,134 @@ describe('Task 10 product editor', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('persists a basic draft and displays it in the product list for continued editing', async () => {
+    const store = createMockProductService([], [enabledCategory]);
+    vi.mocked(productService.createProduct).mockImplementation(store.createProduct);
+    vi.mocked(productService.listProducts).mockImplementation(store.listProducts);
+    vi.mocked(productService.getCategoryCounts).mockImplementation(store.getCategoryCounts);
+    vi.mocked(productService.getProduct).mockImplementation(store.getProduct);
+    const { router, wrapper } = await mountEditor('/products/new', true);
+    await fillBasic(wrapper);
+
+    await wrapper.get('[data-testid="save-product-draft"]').trigger('click');
+    await flushPromises();
+    expect((await store.getProduct(100)).status).toBe('draft');
+    expect(messages.value.at(-1)?.type).toBe('success');
+    expect(wrapper.find('[data-testid="product-create-success-dialog"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="cancel-product"]').trigger('click');
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe('products');
+    expect(wrapper.text()).not.toContain('BBF-021');
+    await wrapper.get('[data-testid="product-filter-draft"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('BBF-021');
+    expect(wrapper.text()).toContain('按压瓶');
+    expect(wrapper.text()).toContain('草稿');
+    expect(window.confirm).not.toHaveBeenCalled();
+
+    await router.push('/products/100/edit');
+    await flushPromises();
+    expect(wrapper.get<HTMLInputElement>('[data-testid="product-name"]').element.value).toBe('按压瓶');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="product-item-no"]').element.value).toBe('BBF-021');
+  });
+
+  it('updates the same product and SKU when saving a draft again and submitting it', async () => {
+    const store = createMockProductService([], [enabledCategory]);
+    vi.mocked(productService.createProduct).mockImplementation(store.createProduct);
+    vi.mocked(productService.updateProduct).mockImplementation(store.updateProduct);
+    const { router, wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await next(wrapper);
+    await addSku(wrapper, '透明款', '6970001');
+
+    await wrapper.get('[data-testid="save-product-draft"]').trigger('click');
+    await flushPromises();
+    expect((await store.getProduct(100)).status).toBe('draft');
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('SKU 信息');
+    await wrapper.get('[data-testid="step-basic"]').trigger('click');
+    await wrapper.get('[data-testid="product-name"]').setValue('更新后的按压瓶');
+    await wrapper.get('[data-testid="save-product-draft"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    await flushPromises();
+
+    const result = await store.listProducts({ page: 1, size: 20 });
+    expect(result.total).toBe(1);
+    expect(result.records[0]).toMatchObject({
+      id: 100,
+      status: 'enabled',
+      productName: '更新后的按压瓶',
+      skus: [expect.objectContaining({ id: 1000, skuName: '透明款', barcode: '6970001' })]
+    });
+    expect(router.currentRoute.value).toMatchObject({ name: 'product-detail', params: { id: '100' } });
+  });
+
+  it.each(['enabled', 'disabled'] as const)('submits a loaded draft with the intended %s product status', async (status) => {
+    vi.mocked(productService.getProduct).mockResolvedValue(completeProduct({ status: 'draft' }));
+    const { wrapper } = await mountEditor('/products/42/edit');
+    expect(wrapper.get('[data-testid="product-editor-header"]').text()).toContain('草稿');
+    await wrapper.get('[data-testid="product-status"]').setValue(status);
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    expect(wrapper.get('[data-testid="submit-product"]').text()).toBe('提交商品');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    await flushPromises();
+
+    expect(productService.updateProduct).toHaveBeenCalledWith(42, expect.objectContaining({ status }));
+  });
+
+  it('validates the required basic fields before saving a draft', async () => {
+    const { wrapper } = await mountEditor();
+    await wrapper.get('[data-testid="save-product-draft"]').trigger('click');
+    await flushPromises();
+
+    expect(productService.createProduct).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('请输入货号');
+    expect(wrapper.text()).toContain('请输入商品名称');
+    expect(wrapper.text()).toContain('请选择商品分类');
+    expect(messages.value.some((item) => item.type === 'success')).toBe(false);
+  });
+
+  it('retains unsaved changes and permits retry when draft persistence fails', async () => {
+    vi.mocked(productService.createProduct).mockRejectedValueOnce(new Error('草稿保存失败'));
+    const { router, wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await wrapper.get('[data-testid="save-product-draft"]').trigger('click');
+    await flushPromises();
+
+    expect(messages.value.at(-1)).toMatchObject({ type: 'error', text: '草稿保存失败' });
+    expect(wrapper.get<HTMLInputElement>('[data-testid="product-name"]').element.value).toBe('按压瓶');
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="save-product-draft"]').element.disabled).toBe(false);
+    vi.mocked(window.confirm).mockReturnValueOnce(false);
+    await router.push('/products');
+    expect(window.confirm).toHaveBeenCalled();
+    expect(router.currentRoute.value.name).toBe('product-new');
+
+    await wrapper.get('[data-testid="save-product-draft"]').trigger('click');
+    await flushPromises();
+    expect(messages.value.at(-1)?.type).toBe('success');
+  });
+
+  it('prevents duplicate draft saves and navigation while persistence is pending', async () => {
+    const pending = deferred<Product>();
+    vi.mocked(productService.createProduct).mockReturnValueOnce(pending.promise);
+    const { router, wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await wrapper.get('[data-testid="save-product-draft"]').trigger('click');
+    await wrapper.get('[data-testid="save-product-draft"]').trigger('click');
+    await router.push('/products');
+
+    expect(productService.createProduct).toHaveBeenCalledTimes(1);
+    expect(router.currentRoute.value.name).toBe('product-new');
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="save-product-draft"]').element.disabled).toBe(true);
+    expect(wrapper.get<HTMLFieldSetElement>('[data-testid="product-editor-stage"]').element.disabled).toBe(true);
+    pending.resolve(completeProduct({ id: 77 }));
+    await flushPromises();
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="save-product-draft"]').element.disabled).toBe(false);
+    expect(wrapper.get<HTMLFieldSetElement>('[data-testid="product-editor-stage"]').element.disabled).toBe(false);
   });
 
   it('moves through exactly six steps and submits a complete product', async () => {
@@ -357,6 +487,36 @@ describe('Task 10 product editor', () => {
       productType: 'variant',
       status: 'disabled'
     }));
+  });
+
+  it('saves and submits a product with an optional blank barcode without prompting for completion', async () => {
+    const store = createMockProductService([], [enabledCategory]);
+    vi.mocked(productService.createProduct).mockImplementation(store.createProduct);
+    vi.mocked(productService.updateProduct).mockImplementation(store.updateProduct);
+    const { router, wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await next(wrapper);
+    await wrapper.get('[data-testid="add-sku"]').trigger('click');
+    const barcodeInput = wrapper.get('[data-testid="sku-dialog-barcode"]');
+    expect(barcodeInput.element.closest('label')?.querySelector('em')).toBeNull();
+    expect(barcodeInput.attributes('required')).toBeUndefined();
+    await wrapper.get('[data-testid="sku-dialog-name"]').setValue('透明款');
+    await wrapper.get('[data-testid="sku-dialog-save"]').trigger('click');
+    await wrapper.get('[data-testid="save-product-draft"]').trigger('click');
+    await flushPromises();
+    expect(await store.getProduct(100)).toMatchObject({
+      status: 'draft',
+      skus: [expect.objectContaining({ barcode: null })]
+    });
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    expect(wrapper.text()).not.toContain('条码校验待补充');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    await flushPromises();
+    expect(await store.getProduct(100)).toMatchObject({
+      status: 'enabled',
+      skus: [expect.objectContaining({ barcode: null })]
+    });
+    expect(router.currentRoute.value.name).toBe('product-detail');
   });
 
   it('keeps SKU item number and barcode distinct through create and edit', async () => {
@@ -1000,6 +1160,8 @@ describe('Task 10 product editor', () => {
 
     expect(wrapper.get('[data-testid="image-upload-blocker"]').text()).toContain('图片正在上传');
     expect(wrapper.get<HTMLButtonElement>('[data-testid="next-step"]').element.disabled).toBe(true);
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="save-product-draft"]').element.disabled).toBe(true);
+    await wrapper.get('[data-testid="save-product-draft"]').trigger('click');
     await wrapper.get('[data-testid="step-confirm"]').trigger('click');
     expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('图片资料');
     expect(productService.createProduct).not.toHaveBeenCalled();
@@ -1009,6 +1171,7 @@ describe('Task 10 product editor', () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="image-upload-blocker"]').exists()).toBe(false);
     expect(wrapper.get<HTMLButtonElement>('[data-testid="next-step"]').element.disabled).toBe(false);
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="save-product-draft"]').element.disabled).toBe(false);
   });
 
   it('blocks every step, route, and browser exit while an upload is active', async () => {

@@ -387,7 +387,7 @@ export function createEditorState(product?: Product): ProductEditorState {
   return {
     productId: product?.id ?? null,
     productType: payload?.productType ?? 'simple',
-    status: payload?.status ?? 'enabled',
+    status: payload?.status === 'draft' ? 'enabled' : payload?.status ?? 'enabled',
     itemNo: payload?.itemNo ?? '',
     productName: payload?.productName ?? '',
     categoryId: payload?.categoryId ?? null,
