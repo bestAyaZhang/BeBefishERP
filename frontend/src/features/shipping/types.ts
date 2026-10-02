@@ -8,7 +8,8 @@ export const SHIPMENT_STATUSES = [
 ] as const;
 
 export type ShipmentStatus = typeof SHIPMENT_STATUSES[number]['value'];
-export type LogisticsOrderState = 'processing' | 'succeeded' | 'rejected' | 'unknown';
+export type LogisticsOrderState = 'processing' | 'succeeded' | 'rejected' | 'unknown'
+  | 'cancel_processing' | 'cancel_rejected' | 'cancel_unknown' | 'cancelled';
 
 export interface RecipientFields {
   recipientName: string;
@@ -141,6 +142,7 @@ export interface ShippingService {
   logisticsAvailability(): Promise<LogisticsAvailability>;
   getLogisticsOrder(id: number): Promise<LogisticsOrder | null>;
   placeLogisticsOrder(id: number, request: PlaceLogisticsOrder): Promise<LogisticsOrder>;
+  cancelLogisticsOrder(id: number, request: { version: number }): Promise<LogisticsOrder>;
 }
 
 export function todayDate() {
@@ -185,7 +187,11 @@ export function logisticsOrderStatus(value?: LogisticsOrderState | null) {
     processing: { label: '下单中', tone: 'bg-blue-50 text-blue-700' },
     succeeded: { label: '下单成功', tone: 'bg-emerald-50 text-emerald-700' },
     rejected: { label: '下单失败', tone: 'bg-rose-50 text-rose-600' },
-    unknown: { label: '结果待核实', tone: 'bg-amber-50 text-amber-700' }
+    unknown: { label: '结果待核实', tone: 'bg-amber-50 text-amber-700' },
+    cancel_processing: { label: '取消中', tone: 'bg-blue-50 text-blue-700' },
+    cancel_rejected: { label: '取消失败', tone: 'bg-rose-50 text-rose-600' },
+    cancel_unknown: { label: '取消待核实', tone: 'bg-amber-50 text-amber-700' },
+    cancelled: { label: '已取消', tone: 'bg-slate-100 text-slate-600' }
   } as const)[value];
 }
 

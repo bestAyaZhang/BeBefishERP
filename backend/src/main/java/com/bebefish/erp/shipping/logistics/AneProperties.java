@@ -26,6 +26,11 @@ public class AneProperties {
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean value) { enabled = value; }
     public URI getOrderUrl() { return orderUrl; }
+    public URI getUpdateUrl() {
+        if (orderUrl == null || !orderUrl.getPath().endsWith("/new"))
+            throw new IllegalStateException("安能下单地址无法派生取消接口");
+        return orderUrl.resolve(orderUrl.getPath().replaceFirst("/new$", "/update"));
+    }
     public void setOrderUrl(URI value) { orderUrl = value; }
     public String getCode() { return code; }
     public void setCode(String value) { code = value; }

@@ -9,6 +9,14 @@ function ok(data: unknown) {
 }
 
 describe('shipping HTTP contract', () => {
+  it('cancels through the dedicated route with only the saved version', async () => {
+    const fetcher = vi.fn().mockResolvedValue(ok({ state: 'cancelled' }));
+    vi.stubGlobal('fetch', fetcher);
+    await httpShippingService.cancelLogisticsOrder(8, { version: 3 });
+    expect(fetcher).toHaveBeenCalledWith('/api/shipments/8/logistics-order/cancel', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ version: 3 })
+    }));
+  });
   it('loads summary and form options from the dedicated routes', async () => {
     const fetcher = vi.fn().mockImplementation(() => Promise.resolve(ok({})));
     vi.stubGlobal('fetch', fetcher);
