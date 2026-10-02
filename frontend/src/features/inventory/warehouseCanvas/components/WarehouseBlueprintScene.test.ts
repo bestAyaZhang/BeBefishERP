@@ -473,4 +473,132 @@ describe('WarehouseBlueprintScene', () => {
 
     expect(wrapper.emitted('move-pallet')).toBeUndefined()
   })
+
+  it('resizes a selected pile from its east handle without triggering a move', async () => {
+    runAnimationFramesImmediately()
+    const pile = { ...warehousePlannerScene.palletGroups[0]!, left: 40, top: 40, width: 10, height: 10 }
+    const wrapper = mount(WarehouseBlueprintScene, { props: {
+      gridSnapping: false, measurementEnabled: false, selectedPalletId: pile.id,
+      goodsEditing: true, palletGroups: [pile],
+      structure: { ...createWarehouseStructure(), zones: [], partitions: [], doors: [], elevators: [], columns: [] },
+    } })
+    try {
+      const board = setDrawingBoardBounds(wrapper)
+      const pallet = wrapper.get(`[data-testid="planner-pallet-${pile.id}"]`)
+      await wrapper.get('[data-testid="pallet-resize-handle-e"]').trigger('pointerdown', { button: 0, pointerId: 41, clientX: 500, clientY: 360 })
+      await board.trigger('pointermove', { pointerId: 41, clientX: 550, clientY: 360 })
+      expect(pallet.attributes('style')).toContain('width: 15%')
+      await board.trigger('pointerup', { pointerId: 41, clientX: 550, clientY: 360 })
+      expect(wrapper.emitted('resize-pallet')?.[0]).toEqual([{ id: pile.id, left: 40, top: 40, width: 15, height: 10 }])
+      expect(wrapper.emitted('move-pallet')).toBeUndefined()
+    } finally { wrapper.unmount() }
+  })
+
+  it('commits the same board size at 100% and 200% zoom', async () => {
+    runAnimationFramesImmediately()
+    const pile = { ...warehousePlannerScene.palletGroups[0]!, left: 40, top: 40, width: 10, height: 10 }
+    const results = []
+    for (const [zoom, boardWidth, movement] of [[100, 1000, 50], [200, 2000, 100]]) {
+      const wrapper = mount(WarehouseBlueprintScene, { props: {
+        gridSnapping: false, measurementEnabled: false, selectedPalletId: pile.id,
+        goodsEditing: true, zoomPercent: zoom, palletGroups: [pile],
+        structure: { ...createWarehouseStructure(), zones: [], partitions: [], doors: [], elevators: [], columns: [] },
+      } })
+      try {
+        const board = setDrawingBoardBounds(wrapper, boardWidth, 800)
+        await wrapper.get('[data-testid="pallet-resize-handle-e"]').trigger('pointerdown', { button: 0, pointerId: zoom, clientX: 500, clientY: 360 })
+        await board.trigger('pointerup', { pointerId: zoom, clientX: 500 + movement, clientY: 360 })
+        results.push(wrapper.emitted('resize-pallet')?.[0]?.[0])
+      } finally { wrapper.unmount() }
+    }
+    expect(results).toEqual([{ id: pile.id, left: 40, top: 40, width: 15, height: 10 }, { id: pile.id, left: 40, top: 40, width: 15, height: 10 }])
+  })
+
+  it('rejects overlapping resize, highlights both piles, then restores the original size', async () => {
+    runAnimationFramesImmediately()
+    const pile = { ...warehousePlannerScene.palletGroups[0]!, id: 'resize-a', left: 40, top: 40, width: 10, height: 10 }
+    const blocker = { ...pile, id: 'resize-b', left: 54, top: 40 }
+    const wrapper = mount(WarehouseBlueprintScene, { props: {
+      gridSnapping: false, measurementEnabled: false, selectedPalletId: pile.id,
+      goodsEditing: true, palletGroups: [pile, blocker],
+      structure: { ...createWarehouseStructure(), zones: [], partitions: [], doors: [], elevators: [], columns: [] },
+    } })
+    try {
+      const board = setDrawingBoardBounds(wrapper)
+      const moving = wrapper.get('[data-testid="planner-pallet-resize-a"]')
+      await wrapper.get('[data-testid="pallet-resize-handle-e"]').trigger('pointerdown', { button: 0, pointerId: 43, clientX: 500, clientY: 360 })
+      await board.trigger('pointermove', { pointerId: 43, clientX: 560, clientY: 360 })
+      expect(moving.classes()).toContain('overlapping')
+      expect(wrapper.get('[data-testid="planner-pallet-resize-b"]').classes()).toContain('overlapping')
+      await board.trigger('pointerup', { pointerId: 43, clientX: 560, clientY: 360 })
+      expect(wrapper.emitted('resize-pallet')).toBeUndefined()
+      expect(moving.attributes('style')).toContain('width: 10%')
+    } finally { wrapper.unmount() }
+  })
+
+  it('rejects a resize crossing a protected passage', async () => {
+    runAnimationFramesImmediately()
+    const pile = { ...warehousePlannerScene.palletGroups[0]!, id: 'resize-route', left: 40, top: 40, width: 10, height: 10 }
+    const wrapper = mount(WarehouseBlueprintScene, { props: {
+      gridSnapping: false, measurementEnabled: false, selectedPalletId: pile.id,
+      goodsEditing: true, palletGroups: [pile],
+      structure: { ...createWarehouseStructure(), partitions: [], doors: [], elevators: [], columns: [], zones: [
+        { id: 'route', label: '通道', tone: 'blue', kind: 'aisle', left: 54, top: 40, width: 5, height: 10 },
+      ] },
+    } })
+    try {
+      const board = setDrawingBoardBounds(wrapper)
+      const original = wrapper.get('[data-testid="planner-pallet-resize-route"]').attributes('style')
+      await wrapper.get('[data-testid="pallet-resize-handle-e"]').trigger('pointerdown', { button: 0, pointerId: 45, clientX: 500, clientY: 360 })
+      await board.trigger('pointermove', { pointerId: 45, clientX: 560, clientY: 360 })
+      expect(wrapper.get('[data-testid="planner-zone-route"]').classes()).toContain('invalid')
+      await board.trigger('pointerup', { pointerId: 45, clientX: 560, clientY: 360 })
+      expect(wrapper.emitted('resize-pallet')).toBeUndefined()
+      expect(wrapper.get('[data-testid="planner-pallet-resize-route"]').attributes('style')).toBe(original)
+    } finally { wrapper.unmount() }
+  })
+
+  it('cancels resize with Escape and keeps edit controls out of detail mode', async () => {
+    runAnimationFramesImmediately()
+    const pile = { ...warehousePlannerScene.palletGroups[0]!, left: 40, top: 40, width: 10, height: 10 }
+    const wrapper = mount(WarehouseBlueprintScene, { props: {
+      gridSnapping: false, measurementEnabled: false, selectedPalletId: pile.id,
+      goodsEditing: true, palletGroups: [pile],
+    } })
+    try {
+      const board = setDrawingBoardBounds(wrapper)
+      await wrapper.get('[data-testid="pallet-resize-handle-se"]').trigger('pointerdown', { button: 0, pointerId: 44, clientX: 500, clientY: 400 })
+      await board.trigger('pointermove', { pointerId: 44, clientX: 560, clientY: 440 })
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      await board.trigger('pointerup', { pointerId: 44, clientX: 560, clientY: 440 })
+      expect(wrapper.emitted('resize-pallet')).toBeUndefined()
+      expect(wrapper.get(`[data-testid="planner-pallet-${pile.id}"]`).attributes('style')).toContain('width: 10%')
+      await wrapper.setProps({ inventoryDetailsVisible: true })
+      expect(wrapper.find('[data-testid="pallet-resize-handle-se"]').exists()).toBe(false)
+    } finally { wrapper.unmount() }
+  })
+
+  it('requests deletion only when the selected pile is focused in goods edit mode', async () => {
+    const pile = warehousePlannerScene.palletGroups[0]!
+    const wrapper = mount(WarehouseBlueprintScene, { props: {
+      gridSnapping: false, measurementEnabled: false, selectedPalletId: pile.id,
+      goodsEditing: true, palletGroups: [pile],
+    }, attachTo: document.body })
+    try {
+      const pallet = wrapper.get(`[data-testid="planner-pallet-${pile.id}"]`)
+      ;(pallet.element as HTMLElement).focus()
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+      expect(wrapper.emitted('request-delete-pallet')?.[0]).toEqual([pile.id])
+      const input = document.createElement('input')
+      document.body.append(input)
+      input.focus()
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+      expect(wrapper.emitted('request-delete-pallet')).toHaveLength(1)
+      input.remove()
+      await wrapper.setProps({ goodsEditing: false })
+      ;(pallet.element as HTMLElement).focus()
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+      expect(wrapper.emitted('request-delete-pallet')).toHaveLength(1)
+    } finally { wrapper.unmount() }
+  })
 })

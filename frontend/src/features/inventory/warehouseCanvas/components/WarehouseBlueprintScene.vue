@@ -7,6 +7,8 @@ import WarehouseStructureLayer from './WarehouseStructureLayer.vue'
 import WarehouseZoneLayer from './WarehouseZoneLayer.vue'
 import { createWarehouseStructure, palletStructureConflicts, validatePlannerLayout } from '../warehouseStructure'
 import type { WarehouseStructure, StructureIssue } from '../warehouseStructure'
+import { resizePalletRect } from '../palletResize'
+import type { ResizeHandle } from '../palletResize'
 
 const props = defineProps<{
   gridSnapping: boolean
@@ -35,6 +37,8 @@ const emit = defineEmits<{
   'select-zone': [id: string | null]
   'create-pallet': [rect: PlannerRect]
   'move-pallet': [move: { id: string; left: number; top: number }]
+  'resize-pallet': [rect: { id: string; left: number; top: number; width: number; height: number }]
+  'request-delete-pallet': [id: string]
   'change-structure': [structure: WarehouseStructure]
   'structure-issues': [issues: StructureIssue[]]
   'structure-busy': [busy: boolean]
@@ -76,7 +80,7 @@ function creationPoint(event: PointerEvent, bounds: DOMRect) {
   return props.gridSnapping ? { x: Math.round(x*1.2)/1.2, y: Math.round(y*.8)/.8 } : { x, y }
 }
 function startPileCreation(event: PointerEvent) {
-  if (!props.goodsEditing || props.inventoryDetailsVisible || event.button !== 0 || palletDrag.value || (event.target as Element).closest('button, input, [role="button"]')) return
+  if (!props.goodsEditing || props.inventoryDetailsVisible || event.button !== 0 || palletDrag.value || palletResize.value || (event.target as Element).closest('button, input, [role="button"]')) return
   const bounds = drawingBoard.value!.getBoundingClientRect()
   if (!bounds.width || !bounds.height) return
   const { x, y } = creationPoint(event, bounds)
@@ -206,8 +210,21 @@ type PalletDrag = {
   guides: { x?: number; y?: number }
   overlappingIds: string[]
 }
+type PalletResize = {
+  pointerId: number
+  startClientX: number
+  startClientY: number
+  boardWidth: number
+  boardHeight: number
+  pallet: PlannerPalletGroup
+  handle: ResizeHandle
+  preview: PlannerRect
+  overlappingIds: string[]
+}
 type PointerSample = { pointerId: number; clientX: number; clientY: number }
 const palletDrag = ref<PalletDrag | null>(null)
+const palletResize = ref<PalletResize | null>(null)
+const resizeHandles: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 const collisionFeedbackIds = ref<string[]>([])
 let pendingDragSample: PointerSample | null = null
 let dragFrameId: number | null = null
@@ -227,21 +244,23 @@ function rectStyle(rect: PlannerRect) {
 }
 
 function palletStyle(pallet: PlannerPalletGroup) {
+  const resizing = palletResize.value?.pallet.id === pallet.id ? palletResize.value : null
   const drag = palletDrag.value?.pallet.id === pallet.id ? palletDrag.value : null
   const scale = Math.max((props.zoomPercent ?? 100) / 100, 0.01)
   const transform = drag
     ? `translate3d(${roundPosition((drag.preview.left - pallet.left) / 100 * drag.boardWidth / scale)}px, ${roundPosition((drag.preview.top - pallet.top) / 100 * drag.boardHeight / scale)}px, 0)`
     : undefined
   return {
-    ...rectStyle(pallet),
+    ...rectStyle(resizing?.preview ?? pallet),
     '--pallet-columns': String(pallet.columns),
     '--pallet-rows': String(pallet.rows),
     transform,
-    zIndex: drag ? 21 : undefined,
+    zIndex: drag || resizing ? 21 : undefined,
   }
 }
 
 function displayedPallet(pallet: PlannerPalletGroup): PlannerPalletGroup {
+  if (palletResize.value?.pallet.id === pallet.id) return { ...pallet, ...palletResize.value.preview }
   return palletDrag.value?.pallet.id === pallet.id
     ? { ...pallet, ...palletDrag.value.preview }
     : pallet
@@ -287,26 +306,32 @@ function nearestAlignment(moving: number[], others: number[][], boardSize: numbe
   return best
 }
 
-function overlappingPalletIds(pallet: PlannerPalletGroup, position: { left: number; top: number }) {
-  const right = position.left + pallet.width
-  const bottom = position.top + pallet.height
+function palletConflictIds(pallet: PlannerPalletGroup, rect: PlannerRect) {
+  const right = rect.left + rect.width
+  const bottom = rect.top + rect.height
   const ids = palletGroups.value
     .filter((other) => other.id !== pallet.id)
     .filter((other) => (
-      position.left < other.left + other.width
+      rect.left < other.left + other.width
       && right > other.left
-      && position.top < other.top + other.height
+      && rect.top < other.top + other.height
       && bottom > other.top
     ))
     .map((other) => other.id)
-  return [...ids, ...palletStructureConflicts(currentStructure.value, { ...pallet, ...position })]
+  return [...ids, ...palletStructureConflicts(currentStructure.value, { ...pallet, ...rect })]
+}
+
+function overlappingPalletIds(pallet: PlannerPalletGroup, position: { left: number; top: number }) {
+  return palletConflictIds(pallet, { ...pallet, ...position })
 }
 
 function palletIsOverlapping(id: string) {
-  if (persistentConflictIds.value.has(id) && palletDrag.value?.pallet.id !== id) return true
+  if (persistentConflictIds.value.has(id) && palletDrag.value?.pallet.id !== id && palletResize.value?.pallet.id !== id) return true
   if (collisionFeedbackIds.value.includes(id)) return true
   const drag = palletDrag.value
-  return Boolean(drag?.overlappingIds.length && (drag.pallet.id === id || drag.overlappingIds.includes(id)))
+  const resize = palletResize.value
+  return Boolean((drag?.overlappingIds.length && (drag.pallet.id === id || drag.overlappingIds.includes(id)))
+    || (resize?.overlappingIds.length && (resize.pallet.id === id || resize.overlappingIds.includes(id))))
 }
 
 function clearCollisionFeedback() {
@@ -390,19 +415,27 @@ function schedulePalletPreview(sample: PointerSample) {
     const next = pendingDragSample
     pendingDragSample = null
     const drag = palletDrag.value
-    if (!next || !drag || drag.pointerId !== next.pointerId) return
-    const { preview, guides, overlappingIds } = dragPreview(next, drag)
-    palletDrag.value = { ...drag, preview, guides, overlappingIds }
+    if (!next) return
+    if (drag && drag.pointerId === next.pointerId) {
+      const { preview, guides, overlappingIds } = dragPreview(next, drag)
+      palletDrag.value = { ...drag, preview, guides, overlappingIds }
+    }
+    const resize = palletResize.value
+    if (resize && resize.pointerId === next.pointerId) {
+      const preview = resizePreview(next, resize, false)
+      palletResize.value = { ...resize, preview, overlappingIds: palletConflictIds(resize.pallet, preview) }
+    }
   })
   if (dragFrameId !== null) dragFrameId = scheduledId
 }
 
 function startPalletDrag(event: PointerEvent, pallet: PlannerPalletGroup) {
-  if (props.inventoryDetailsVisible || props.structureEditing || props.zoneEditing) return
+  if (props.inventoryDetailsVisible || props.structureEditing || props.zoneEditing || palletResize.value) return
   if (event.button !== 0) return
   const bounds = drawingBoard.value?.getBoundingClientRect()
   if (!bounds || bounds.width <= 0 || bounds.height <= 0) return
   event.preventDefault()
+  ;(event.currentTarget as HTMLElement | null)?.focus()
   clearCollisionFeedback()
   emit('select-pallet', pallet.id)
   palletDrag.value = {
@@ -418,6 +451,65 @@ function startPalletDrag(event: PointerEvent, pallet: PlannerPalletGroup) {
   }
   emit('structure-busy', true)
   drawingBoard.value?.setPointerCapture?.(event.pointerId)
+}
+
+function resizePreview(sample: PointerSample, resize: PalletResize, snap: boolean) {
+  return resizePalletRect(resize.pallet, resize.handle, {
+    x: (sample.clientX - resize.startClientX) / resize.boardWidth * 100,
+    y: (sample.clientY - resize.startClientY) / resize.boardHeight * 100,
+  }, snap)
+}
+
+function startPalletResize(event: PointerEvent, pallet: PlannerPalletGroup, handle: ResizeHandle) {
+  if (!props.goodsEditing || props.inventoryDetailsVisible || event.button !== 0 || palletDrag.value || palletResize.value) return
+  const bounds = drawingBoard.value?.getBoundingClientRect()
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0) return
+  event.preventDefault()
+  event.stopPropagation()
+  ;(event.currentTarget as HTMLElement | null)?.parentElement?.focus()
+  clearCollisionFeedback()
+  palletResize.value = {
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    boardWidth: bounds.width,
+    boardHeight: bounds.height,
+    pallet: { ...pallet, contents: pallet.contents.map(item => ({ ...item })) },
+    handle,
+    preview: { left: pallet.left, top: pallet.top, width: pallet.width, height: pallet.height },
+    overlappingIds: [],
+  }
+  emit('structure-busy', true)
+  drawingBoard.value?.setPointerCapture?.(event.pointerId)
+}
+
+function movePalletResize(event: PointerEvent) {
+  if (palletResize.value?.pointerId !== event.pointerId) return
+  schedulePalletPreview({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY })
+}
+
+function stopPalletResize(event: PointerEvent) {
+  const resize = palletResize.value
+  if (!resize || resize.pointerId !== event.pointerId) return
+  clearScheduledPreview()
+  const rect = resizePreview({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY }, resize, props.gridSnapping)
+  const conflictingIds = palletConflictIds(resize.pallet, rect)
+  if (conflictingIds.length) showCollisionFeedback([resize.pallet.id, ...conflictingIds])
+  else if (rect.left !== resize.pallet.left || rect.top !== resize.pallet.top
+    || rect.width !== resize.pallet.width || rect.height !== resize.pallet.height) {
+    emit('resize-pallet', { id: resize.pallet.id, ...rect })
+  }
+  palletResize.value = null
+  emit('structure-busy', false)
+  drawingBoard.value?.releasePointerCapture?.(event.pointerId)
+}
+
+function cancelPalletResize(event: Pick<PointerEvent, 'pointerId'>) {
+  if (palletResize.value?.pointerId !== event.pointerId) return
+  clearScheduledPreview()
+  palletResize.value = null
+  emit('structure-busy', false)
+  drawingBoard.value?.releasePointerCapture?.(event.pointerId)
 }
 
 function movePalletDrag(event: PointerEvent) {
@@ -456,14 +548,23 @@ function cancelPalletDrag(event: Pick<PointerEvent, 'pointerId'>) {
 }
 function cancelPalletWithEscape(event: KeyboardEvent) {
   if (event.key === 'Escape' && drawingPile.value) { event.preventDefault(); cancelPileCreation(); return }
+  if (event.key === 'Escape' && palletResize.value) { event.preventDefault(); cancelPalletResize({ pointerId: palletResize.value.pointerId }); return }
   if(event.key !== 'Escape' || !palletDrag.value) return
   event.preventDefault()
   cancelPalletDrag({pointerId:palletDrag.value.pointerId})
 }
-onMounted(() => window.addEventListener('keydown', cancelPalletWithEscape))
+function deleteFocusedPallet(event: KeyboardEvent) {
+  if (event.key !== 'Delete' || !props.goodsEditing || props.inventoryDetailsVisible || palletDrag.value || palletResize.value) return
+  const focused = document.activeElement
+  if (!focused || focused.tagName !== 'BUTTON' || focused.getAttribute('data-testid') !== `planner-pallet-${props.selectedPalletId}`) return
+  event.preventDefault()
+  emit('request-delete-pallet', props.selectedPalletId!)
+}
+function handleKeydown(event: KeyboardEvent) { cancelPalletWithEscape(event); deleteFocusedPallet(event) }
+onMounted(() => window.addEventListener('keydown', handleKeydown))
 
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', cancelPalletWithEscape)
+  window.removeEventListener('keydown', handleKeydown)
   clearScheduledPreview()
   clearCollisionFeedback()
 })
@@ -524,10 +625,10 @@ onBeforeUnmount(() => {
       ref="drawingBoard"
       class="drawing-board"
       @pointerdown="startPileCreation"
-      @pointermove="movePalletDrag($event); movePileCreation($event)"
-      @pointerup="stopPalletDrag($event); finishPileCreation($event)"
-      @pointercancel="cancelPalletDrag($event); cancelPileCreation()"
-      @lostpointercapture="cancelPileCreation"
+      @pointermove="movePalletDrag($event); movePalletResize($event); movePileCreation($event)"
+      @pointerup="stopPalletDrag($event); stopPalletResize($event); finishPileCreation($event)"
+      @pointercancel="cancelPalletDrag($event); cancelPalletResize($event); cancelPileCreation()"
+      @lostpointercapture="cancelPileCreation(); cancelPalletResize($event)"
     >
       <div v-if="drawingPile" data-testid="pile-creation-preview" class="pile-creation-preview" :class="{ invalid: creationConflicts.length }" :style="rectStyle(drawingPile.rect)"></div>
       <p v-if="goodsEditing && !inventoryDetailsVisible" class="pile-creation-hint" role="status">{{ creationMessage || '在空白处按住鼠标拖动创建货物堆 · Esc 取消' }}</p>
@@ -535,7 +636,7 @@ onBeforeUnmount(() => {
         :toolbar-target="toolbarTarget"
         :pallets="palletGroups"
         :structure="committedStructure" :editing="Boolean(structureEditing) && !inventoryDetailsVisible"
-        :grid-snapping="gridSnapping" :issues="planningIssues.concat(collisionFeedbackIds.length ? [{id:'drop-conflict',objectIds:collisionFeedbackIds,message:'位置冲突'}] : [], palletDrag?.overlappingIds.length ? [{id:'drag-conflict',objectIds:palletDrag.overlappingIds,message:'位置冲突'}] : [])"
+        :grid-snapping="gridSnapping" :issues="planningIssues.concat(collisionFeedbackIds.length ? [{id:'drop-conflict',objectIds:collisionFeedbackIds,message:'位置冲突'}] : [], palletDrag?.overlappingIds.length ? [{id:'drag-conflict',objectIds:palletDrag.overlappingIds,message:'位置冲突'}] : [], palletResize?.overlappingIds.length ? [{id:'resize-conflict',objectIds:palletResize.overlappingIds,message:'位置冲突'}] : [])"
         :focused-id="focusedStructureId"
         @preview="structurePreview = $event" @commit="emit('change-structure', $event)" @busy="emit('structure-busy', $event)"
         @conflict="showCollisionFeedback"
@@ -547,7 +648,7 @@ onBeforeUnmount(() => {
         :structure="committedStructure" :editing="Boolean(zoneEditing) && !inventoryDetailsVisible"
         :viewing="Boolean(detailMode)" :selected-zone-id="selectedZoneId"
         :grid-snapping="gridSnapping" :focused-id="focusedStructureId"
-        :issues="planningIssues.concat(collisionFeedbackIds.length ? [{ id: 'drop-conflict', objectIds: collisionFeedbackIds, message: '位置冲突' }] : [], palletDrag?.overlappingIds.length ? [{ id: 'drag-conflict', objectIds: palletDrag.overlappingIds, message: '位置冲突' }] : [])"
+        :issues="planningIssues.concat(collisionFeedbackIds.length ? [{ id: 'drop-conflict', objectIds: collisionFeedbackIds, message: '位置冲突' }] : [], palletDrag?.overlappingIds.length ? [{ id: 'drag-conflict', objectIds: palletDrag.overlappingIds, message: '位置冲突' }] : [], palletResize?.overlappingIds.length ? [{ id: 'resize-conflict', objectIds: palletResize.overlappingIds, message: '位置冲突' }] : [])"
         @preview="structurePreview = $event" @commit="emit('change-structure', $event)" @busy="emit('structure-busy', $event)" @conflict="showCollisionFeedback" @select="emit('select-zone', $event)"
       />
 
@@ -560,7 +661,7 @@ onBeforeUnmount(() => {
         :key="pallet.id"
         :data-testid="`planner-pallet-${pallet.id}`"
         class="pallet-group"
-        :class="{ selected: selectedPalletId === pallet.id, dragging: palletDrag?.pallet.id === pallet.id, overlapping: palletIsOverlapping(pallet.id) }"
+        :class="{ selected: selectedPalletId === pallet.id, dragging: palletDrag?.pallet.id === pallet.id, resizing: palletResize?.pallet.id === pallet.id, overlapping: palletIsOverlapping(pallet.id) }"
         :data-selected="selectedPalletId === pallet.id ? 'true' : 'false'"
         :data-overlapping="palletIsOverlapping(pallet.id) ? 'true' : 'false'"
         :aria-pressed="selectedPalletId === pallet.id"
@@ -574,11 +675,11 @@ onBeforeUnmount(() => {
           <i v-for="cell in pallet.columns * pallet.rows" :key="cell" data-testid="pallet-box-cell" class="pallet-cell" />
         </span>
         <span class="sr-only">{{ pallet.name }} · {{ pallet.contents.length }} 种商品 · 共 {{ palletTotalUnits(pallet) }} 个</span>
-        <template v-if="selectedPalletId === pallet.id && !structureEditing && !zoneEditing && !inventoryDetailsVisible">
-          <i v-for="handle in 8" :key="handle" class="selection-handle" :class="`handle-${handle}`" aria-hidden="true" />
+        <template v-if="selectedPalletId === pallet.id && goodsEditing && !structureEditing && !zoneEditing && !inventoryDetailsVisible">
+          <i v-for="handle in resizeHandles" :key="handle" class="selection-handle" :class="`handle-${handle}`" :data-testid="`pallet-resize-handle-${handle}`" aria-hidden="true" @pointerdown.stop.prevent="startPalletResize($event, pallet, handle)" @click.stop />
           <i class="rotation-handle" aria-hidden="true">↻</i>
         </template>
-        <span v-if="persistentConflictIds.has(pallet.id) && !palletDrag" class="pile-issue-label">{{ palletStructureConflicts(currentStructure,pallet).includes('outline') ? '超出仓库边界' : '位置冲突' }}</span>
+        <span v-if="persistentConflictIds.has(pallet.id) && !palletDrag && !palletResize" class="pile-issue-label">{{ palletStructureConflicts(currentStructure,pallet).includes('outline') ? '超出仓库边界' : '位置冲突' }}</span>
       </button>
 
       <i
@@ -596,7 +697,7 @@ onBeforeUnmount(() => {
         aria-hidden="true"
       />
 
-      <template v-if="measurementEnabled && selectedPallet && !palletDrag">
+      <template v-if="measurementEnabled && selectedPallet && !palletDrag && !palletResize">
         <div data-testid="planner-measurement-width" class="measurement width-measure" :style="{ left: `${selectedPallet.left}%`, top: `${selectedPallet.top - 2}%`, width: `${selectedPallet.width}%` }">
           <span>{{ selectedPallet.lengthMeters }}m</span>
         </div>
@@ -606,7 +707,7 @@ onBeforeUnmount(() => {
       </template>
 
       <WarehousePlannerInspector
-        v-if="inventoryDetailsVisible && !detailMode && selectedPallet && !palletDrag"
+        v-if="inventoryDetailsVisible && !detailMode && selectedPallet && !palletDrag && !palletResize"
         class="scene-inspector"
         :style="inspectorStyle(selectedPallet)"
         :pallet="selectedPallet"
@@ -686,12 +787,12 @@ onBeforeUnmount(() => {
 .pallet-cells {position:absolute;inset:2px;display:grid;grid-template-columns:repeat(var(--pallet-columns),minmax(0,1fr));grid-template-rows:repeat(var(--pallet-rows),minmax(0,1fr));gap:2px;pointer-events:none;overflow:hidden;}
 .pallet-cell {display:block;min-width:0;min-height:0;border:1px solid rgba(139,117,68,.3);border-radius:1px;background:linear-gradient(135deg,#dfd0aa 0%,#cbb789 100%);box-shadow:inset 1px 1px rgba(255,255,255,.42),0 1px rgba(91,75,43,.13);}
 .details-visible .pallet-group { cursor: pointer; }
-.pallet-group.dragging { z-index: 19; cursor: grabbing; will-change: transform; }
+.pallet-group.dragging, .pallet-group.resizing { z-index: 19; cursor: grabbing; will-change: transform,width,height,left,top; }
 .pallet-group:hover { border-color: #7c6c45; filter: brightness(1.02); }.pallet-group:focus-visible { outline: 2px solid #536dff; outline-offset: 2px; }
 .pallet-group.selected { z-index: 15; border: 2px solid #12a9ac; box-shadow: 0 0 0 1px rgba(18,169,172,.18); }
 .pallet-group.overlapping { z-index: 20; border: 2px solid #e5484d; box-shadow: 0 0 0 3px rgba(229,72,77,.18),0 3px 10px rgba(139,35,40,.16); }
-.selection-handle { position: absolute; width: 7px; height: 7px; border: 1px solid white; background: #12a9ac; box-shadow: 0 0 0 1px #12a9ac; }
-.handle-1{left:-4px;top:-4px}.handle-2{left:50%;top:-4px}.handle-3{right:-4px;top:-4px}.handle-4{right:-4px;top:50%}.handle-5{right:-4px;bottom:-4px}.handle-6{left:50%;bottom:-4px}.handle-7{left:-4px;bottom:-4px}.handle-8{left:-4px;top:50%}
+.selection-handle { position: absolute; z-index: 2; width: 10px; height: 10px; border: 1px solid white; background: #12a9ac; box-shadow: 0 0 0 1px #12a9ac; touch-action:none; }
+.handle-nw{left:-5px;top:-5px;cursor:nwse-resize}.handle-n{left:50%;top:-5px;transform:translateX(-50%);cursor:ns-resize}.handle-ne{right:-5px;top:-5px;cursor:nesw-resize}.handle-e{right:-5px;top:50%;transform:translateY(-50%);cursor:ew-resize}.handle-se{right:-5px;bottom:-5px;cursor:nwse-resize}.handle-s{left:50%;bottom:-5px;transform:translateX(-50%);cursor:ns-resize}.handle-sw{left:-5px;bottom:-5px;cursor:nesw-resize}.handle-w{left:-5px;top:50%;transform:translateY(-50%);cursor:ew-resize}
 .rotation-handle { position: absolute; left: 50%; top: -25px; display: grid; place-items: center; width: 17px; height: 17px; border: 1px solid #12a9ac; border-radius: 50%; background: white; color: #12a9ac; font-size: 12px; font-style: normal; transform: translateX(-50%); }
 .rotation-handle::after { content: ''; position: absolute; top: 16px; width: 1px; height: 8px; background: #12a9ac; }
 .alignment-guide { position: absolute; z-index: 18; display: block; pointer-events: none; background: #0bb4b7; box-shadow: 0 0 0 1px rgba(11,180,183,.12); }
