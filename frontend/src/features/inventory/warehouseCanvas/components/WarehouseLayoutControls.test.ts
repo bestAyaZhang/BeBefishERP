@@ -17,6 +17,7 @@ describe('WarehouseLayoutControls', () => {
       await wrapper.findAll('button').find(button => button.text() === '保存规划')!.trigger('click')
       await flushPromises()
       expect(service.save).toHaveBeenCalledWith(7,{revision:2,document:edited})
+      expect(wrapper.emitted('saved')).toEqual([[7]])
       expect(wrapper.text()).toContain('已保存')
     } finally { wrapper.unmount() }
   })
@@ -31,10 +32,32 @@ describe('WarehouseLayoutControls', () => {
       await wrapper.findAll('button').find(button => button.text() === '保存规划')!.trigger('click'); await flushPromises()
       expect(wrapper.get('[role="alert"]').text()).toContain('规划已被其他人修改')
       expect(wrapper.get('[role="status"]').text()).toBe('未保存')
+      expect(wrapper.emitted('saved')).toBeUndefined()
       await wrapper.get('[data-testid="warehouse-layout-selector"]').trigger('click')
       await wrapper.get('[data-testid="warehouse-layout-option-2"]').trigger('click'); await flushPromises()
       expect(service.load).toHaveBeenCalledTimes(1)
       expect(wrapper.get('[data-testid="warehouse-layout-selector"]').text()).toContain('A')
     } finally { wrapper.unmount(); confirm.mockRestore() }
+  })
+
+  it('forwards confirmed release metadata on save and reports success afterward', async () => {
+    const document = blankWarehouseLayout()
+    const releasedPileAllocations = [{ palletId: 'pallet-a01', allocations: [{ skuId: 101, units: 24 }, { skuId: 999, units: 0 }] }]
+    const service = { load: vi.fn().mockResolvedValue({ revision: 2, document }), save: vi.fn().mockResolvedValue({ revision: 3, document }) }
+    const wrapper = mount(WarehouseLayoutControls, {
+      props: { document, busy: false, releasedPileAllocations },
+      global: { provide: {
+        masterdataService: { listWarehouses: vi.fn().mockResolvedValue({ records: [{ id: 7, warehouseName: '正式仓库', defaultWarehouse: true }], total: 1 }) },
+        warehouseLayoutService: service,
+      } },
+    })
+    try {
+      await flushPromises()
+      const edited = { ...document, structure: { ...document.structure, zones: [{ id: 'area', label: 'A', tone: 'blue' as const, left: 10, top: 10, width: 10, height: 10 }] } }
+      await wrapper.setProps({ document: edited })
+      expect(await (wrapper.vm as unknown as { saveDocument: () => Promise<boolean> }).saveDocument()).toBe(true)
+      expect(service.save).toHaveBeenCalledWith(7, { revision: 2, document: edited, releasedPileAllocations })
+      expect(wrapper.emitted('saved')).toEqual([[7]])
+    } finally { wrapper.unmount() }
   })
 })

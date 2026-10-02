@@ -1,5 +1,6 @@
 import { request } from '../../../services/http'
 import { createService } from '../../../services/serviceFactory'
+import type { ReleasedPileAllocation } from './warehouseLayoutService'
 
 export type WarehouseInventoryAllocation = {
   zoneId: string | null
@@ -38,6 +39,10 @@ export type WarehouseInventoryService = {
   allocateToPile: (warehouseId: number, input: WarehousePileAllocationInput) => Promise<WarehouseInventoryLayout>
 }
 
+export type MockWarehouseInventoryService = WarehouseInventoryService & {
+  releaseConfirmedPiles: (warehouseId: number, removedPileIds: string[], confirmations: ReleasedPileAllocation[]) => void
+}
+
 export const httpWarehouseInventoryService: WarehouseInventoryService = {
   load: warehouseId => request<WarehouseInventoryLayout>(`/api/warehouses/${warehouseId}/inventory-layout`),
   listSkuCandidates: (warehouseId, keyword) => request<WarehouseSkuCandidate[]>(
@@ -49,7 +54,7 @@ export const httpWarehouseInventoryService: WarehouseInventoryService = {
   ),
 }
 
-export function createMockWarehouseInventoryService(): WarehouseInventoryService {
+export function createMockWarehouseInventoryService(): MockWarehouseInventoryService {
   const layouts = new Map<number, WarehouseInventoryLayout>()
   const catalog: WarehouseSkuCandidate[] = [
     { skuId: 999, skuCode: 'SKU-ZERO-001', productName: '待入库商品', skuName: '标准款', specification: null, unitsPerCase: 12 },
@@ -93,6 +98,40 @@ export function createMockWarehouseInventoryService(): WarehouseInventoryService
   }
 
   return {
+    releaseConfirmedPiles(warehouseId, removedPileIds, confirmations) {
+      const removed = new Set(removedPileIds)
+      const confirmed = new Map<string, ReleasedPileAllocation>()
+      for (const item of confirmations) {
+        if (!removed.has(item.palletId) || confirmed.has(item.palletId)) throw new Error('货堆删除确认数据无效')
+        confirmed.set(item.palletId, item)
+      }
+      if (!removed.size) return
+
+      const current = storedLayout(warehouseId)
+      const next = cloneLayout(current)
+      for (const palletId of removed) {
+        const actual = next.allocations.filter(item => item.palletId === palletId)
+        const expected = confirmed.get(palletId)?.allocations
+        if (actual.length && !expected) throw new Error('请先确认解除货堆 SKU 分配')
+        if (expected && (actual.length !== expected.length || actual.some(item => (
+          !expected.some(snapshot => snapshot.skuId === item.skuId && snapshot.units === item.units)
+        )) || new Set(expected.map(item => item.skuId)).size !== expected.length)) {
+          throw new Error('货堆 SKU 分配已变化，请刷新库存后重新确认删除')
+        }
+      }
+      const released = next.allocations.filter(item => removed.has(item.palletId))
+      next.allocations = next.allocations.filter(item => !removed.has(item.palletId))
+      for (const item of released) {
+        if (item.units === 0) continue
+        const unallocated = next.allocations.find(row => row.palletId === 'UNALLOCATED' && row.skuId === item.skuId)
+        if (unallocated) unallocated.units += item.units
+        else next.allocations.push({ ...item, zoneId: null, palletId: 'UNALLOCATED' })
+      }
+      next.placedUnits = next.allocations.filter(item => item.palletId !== 'UNALLOCATED').reduce((sum, item) => sum + item.units, 0)
+      next.unallocatedUnits = next.allocations.filter(item => item.palletId === 'UNALLOCATED').reduce((sum, item) => sum + item.units, 0)
+      next.updatedAt = new Date().toISOString()
+      layouts.set(warehouseId, cloneLayout(next))
+    },
     async load(warehouseId) {
       return cloneLayout(storedLayout(warehouseId))
     },

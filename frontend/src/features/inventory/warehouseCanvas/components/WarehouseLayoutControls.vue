@@ -5,14 +5,16 @@ import { masterdataService } from '../../../masterdata/masterdataService'
 import type { MasterdataService, Warehouse } from '../../../masterdata/types'
 import { blankWarehouseLayout, warehouseLayoutService } from '../warehouseLayoutService'
 import type { WarehouseLayoutDocument } from '../warehouseLayoutService'
+import type { ReleasedPileAllocation } from '../warehouseLayoutService'
 import FigmaSelect from '../../../masterdata/components/FigmaSelect.vue'
 
-const props = withDefaults(defineProps<{ document:WarehouseLayoutDocument; busy:boolean; viewing?:boolean; inventoryViewing?:boolean; embedded?:boolean }>(), {
+const props = withDefaults(defineProps<{ document:WarehouseLayoutDocument; busy:boolean; viewing?:boolean; inventoryViewing?:boolean; embedded?:boolean; releasedPileAllocations?:ReleasedPileAllocation[] }>(), {
   viewing: false,
   inventoryViewing: false,
   embedded: false,
+  releasedPileAllocations: () => [],
 })
-const emit = defineEmits<{ loaded:[document:WarehouseLayoutDocument]; name:[name:string]; available:[ready:boolean]; warehouse:[id:number] }>()
+const emit = defineEmits<{ loaded:[document:WarehouseLayoutDocument]; name:[name:string]; available:[ready:boolean]; warehouse:[id:number]; saved:[id:number] }>()
 const warehouses = inject<MasterdataService>('masterdataService',masterdataService)
 const layouts = inject('warehouseLayoutService',warehouseLayoutService)
 const route = inject(routeLocationKey,null)
@@ -86,8 +88,12 @@ async function saveDocument(document = props.document): Promise<boolean> {
   saving.value = true; error.value = ''
   try {
     const snapshot = JSON.parse(JSON.stringify(document)) as WarehouseLayoutDocument
-    const saved = await layouts.save(selected.value,{revision:revision.value,document:snapshot})
+    const releaseSnapshots = props.releasedPileAllocations.length
+      ? { releasedPileAllocations: JSON.parse(JSON.stringify(props.releasedPileAllocations)) as ReleasedPileAllocation[] }
+      : {}
+    const saved = await layouts.save(selected.value,{revision:revision.value,document:snapshot,...releaseSnapshots})
     revision.value = saved.revision; baseline.value = comparable(snapshot)
+    emit('saved', selected.value)
     return true
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '保存失败，请重试'; return false }
   finally { saving.value = false }
