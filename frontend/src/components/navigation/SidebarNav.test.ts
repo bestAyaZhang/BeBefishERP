@@ -18,9 +18,9 @@ const ADMIN_PERMISSIONS = [
   'system:role:view'
 ];
 
-function storeCurrentUser(permissions = ADMIN_PERMISSIONS) {
+function storeCurrentUser(permissions = ADMIN_PERMISSIONS, roles = ['ADMIN']) {
   localStorage.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify({
-    accessToken: 'token', mobile: '13800138000', roles: ['ADMIN'], permissions, loginMethod: 'password'
+    accessToken: 'token', mobile: '13800138000', roles, permissions, loginMethod: 'password'
   }));
 }
 
@@ -56,6 +56,35 @@ describe('SidebarNav', () => {
       expect(wrapper.text()).toContain(label);
     }
     expect(wrapper.text()).not.toContain('销售开单');
+  });
+
+  it('shows every configured menu item to a super administrator with an incomplete permission snapshot', () => {
+    storeCurrentUser([], ['SUPER_ADMIN']);
+    const wrapper = mount(SidebarNav, { global: { plugins: [router] } });
+
+    for (const label of [
+      '工作台',
+      '商品管理',
+      '分类管理',
+      '客户管理',
+      '供应商管理',
+      '仓库管理',
+      '库存管理',
+      '库存余额',
+      '库存流水',
+      '库存调整',
+      '组织架构',
+      '员工管理',
+      '部门管理',
+      '岗位管理',
+      '权限管理',
+      '销售单据',
+      '财务管理',
+      '收款记录',
+      '欠款应收'
+    ]) {
+      expect(wrapper.text()).toContain(label);
+    }
   });
 
   it('shows organization children only with organization permission', () => {

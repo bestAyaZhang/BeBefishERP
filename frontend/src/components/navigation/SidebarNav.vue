@@ -44,11 +44,14 @@ const sidebarIcons = {
 
 const activeRouteName = computed(() => String(route.name ?? ''));
 const expandedGroups = ref<string[]>(['库存管理', '组织架构', '财务管理']);
-const visibleMenuItems = computed<SidebarNavigationItem[]>(() => props.navigationItems.flatMap((item) => {
-  if (item.routeName) return currentUser.value?.permissions.includes(item.permission ?? '') ? [item] : [];
-  const children = item.children?.filter((child) => currentUser.value?.permissions.includes(child.permission)) ?? [];
-  return children.length ? [{ ...item, children }] : [];
-}));
+const visibleMenuItems = computed<SidebarNavigationItem[]>(() => {
+  if (currentUser.value?.roles.includes('SUPER_ADMIN')) return props.navigationItems;
+  return props.navigationItems.flatMap((item) => {
+    if (item.routeName) return currentUser.value?.permissions.includes(item.permission ?? '') ? [item] : [];
+    const children = item.children?.filter((child) => currentUser.value?.permissions.includes(child.permission)) ?? [];
+    return children.length ? [{ ...item, children }] : [];
+  });
+});
 const currentUserMobile = computed(() => currentUser.value?.mobile ?? '未登录');
 const currentUserInitials = computed(() => currentUser.value?.mobile.slice(-2) ?? '--');
 
