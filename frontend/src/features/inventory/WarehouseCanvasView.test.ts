@@ -41,6 +41,31 @@ async function mountPage(routeQuery: Record<string, string> = {}) {
   await flushPromises()
   return wrapper
 }
+async function mountPersistedPlanner(options: {
+  pallets?: typeof warehousePlannerScene.palletGroups
+  inventory?: Awaited<ReturnType<ReturnType<typeof createMockWarehouseInventoryService>['load']>>
+  inventoryLoad?: ReturnType<typeof vi.fn>
+  layoutSave?: ReturnType<typeof vi.fn>
+} = {}) {
+  const pallets = options.pallets ?? warehousePlannerScene.palletGroups.filter(item => item.id === 'pallet-a01')
+  const inventory = options.inventory ?? await createMockWarehouseInventoryService().load(8)
+  const load = options.inventoryLoad ?? vi.fn().mockResolvedValue(inventory)
+  const save = options.layoutSave ?? vi.fn((_id, value) => Promise.resolve({ revision: value.revision + 1, document: value.document }))
+  const wrapper = mount(WarehouseCanvasView, {
+    attachTo: document.body,
+    global: { provide: {
+      [routeLocationKey as symbol]: { query: { warehouseId: '8' } },
+      masterdataService: { listWarehouses: vi.fn().mockResolvedValue({ records: [{ id: 8, warehouseName: '义乌备货仓', defaultWarehouse: true }], total: 1 }) },
+      warehouseLayoutService: { load: vi.fn().mockResolvedValue({ revision: 3, document: { schemaVersion: 1, structure: createWarehouseStructure(), palletGroups: pallets, completed: true } }), save },
+      warehouseInventoryService: { load },
+    } },
+  })
+  mounted.push(wrapper)
+  await flushPromises()
+  await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+  await wrapper.get('[data-testid="planner-tool-goods"]').trigger('click')
+  return { wrapper, save, load }
+}
 beforeEach(() => { previousCurrentUser = currentUser.value })
 afterEach(() => {
   currentUser.value = previousCurrentUser
@@ -866,6 +891,115 @@ describe('Warehouse canvas overview', () => {
 
     await wrapper.get('[data-testid="planner-redo"]').trigger('click')
     expect(pile().attributes('style')).toContain('left: 60%')
+  })
+
+  it('updates a pile rectangle and its derived dimensions in one undoable edit', async () => {
+    const wrapper = await mountPage()
+    const scene = wrapper.getComponent(WarehouseBlueprintScene)
+    const pile = scene.props('palletGroups')!.find(item => item.id === 'pallet-c018')!
+    const rect = { id: pile.id, left: pile.left, top: pile.top, width: pile.width - 2, height: pile.height - 2 }
+    scene.vm.$emit('resize-pallet', rect)
+    await flushPromises()
+    const resized = scene.props('palletGroups')!.find(item => item.id === pile.id)!
+    expect(resized).toMatchObject({ ...rect, lengthMeters: Number((rect.width * .6).toFixed(1)), widthMeters: Number((rect.height * .4).toFixed(1)) })
+    expect(resized.columns).toBe(Math.max(1, Math.round(rect.width * .6)))
+    expect(resized.rows).toBe(Math.max(1, Math.round(rect.height * .4)))
+    expect(resized.contents).toEqual(pile.contents)
+    await wrapper.get('[data-testid="planner-undo"]').trigger('click')
+    expect(scene.props('palletGroups')!.find(item => item.id === pile.id)).toEqual(pile)
+  })
+
+  it('shows a delete action above the canvas and confirms real positive and zero-stock associations', async () => {
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['warehouse:edit', 'inventory:edit'], loginMethod: 'password' }
+    const inventoryService = createMockWarehouseInventoryService()
+    await inventoryService.allocateToPile(8, { palletId: 'pallet-a01', skuId: 999, units: 0 })
+    const inventory = await inventoryService.load(8)
+    const { wrapper, save } = await mountPersistedPlanner({ inventory })
+    await wrapper.get('[data-testid="planner-pallet-pallet-a01"]').trigger('click')
+    const deleteButton = wrapper.get('[data-testid="planner-delete-pallet"]')
+    expect(wrapper.get('.planner-context-bar').element.contains(deleteButton.element)).toBe(true)
+    await deleteButton.trigger('click')
+    expect(wrapper.get('[data-testid="delete-pallet-dialog"]').text()).toContain('2 种 SKU')
+    expect(wrapper.get('[data-testid="delete-pallet-dialog"]').text()).toContain('288 个')
+    expect(wrapper.get('[data-testid="delete-pallet-dialog"]').text()).toContain('0 库存')
+    await wrapper.get('[data-testid="delete-pallet-cancel"]').trigger('click')
+    expect(wrapper.find('[data-testid="planner-pallet-pallet-a01"]').exists()).toBe(true)
+    await deleteButton.trigger('click')
+    await wrapper.get('[data-testid="delete-pallet-confirm"]').trigger('click')
+    expect(wrapper.find('[data-testid="planner-pallet-pallet-a01"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="planner-undo"]').trigger('click')
+    expect(wrapper.find('[data-testid="planner-pallet-pallet-a01"]').exists()).toBe(true)
+    expect(await (wrapper.getComponent(WarehouseLayoutControls).vm as unknown as { saveDocument: () => Promise<boolean> }).saveDocument()).toBe(true)
+    expect(save.mock.calls.at(-1)?.[1]).not.toHaveProperty('releasedPileAllocations')
+  })
+
+  it('sends confirmed release snapshots and refreshes actual inventory after saving', async () => {
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['warehouse:edit', 'inventory:edit'], loginMethod: 'password' }
+    const inventoryService = createMockWarehouseInventoryService()
+    await inventoryService.allocateToPile(8, { palletId: 'pallet-a01', skuId: 999, units: 0 })
+    const { wrapper, save, load } = await mountPersistedPlanner({ inventory: await inventoryService.load(8) })
+    await wrapper.get('[data-testid="planner-pallet-pallet-a01"]').trigger('click')
+    await wrapper.get('[data-testid="planner-delete-pallet"]').trigger('click')
+    await wrapper.get('[data-testid="delete-pallet-confirm"]').trigger('click')
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    await flushPromises()
+    expect(save.mock.calls.at(-1)?.[1].releasedPileAllocations).toEqual([{
+      palletId: 'pallet-a01', allocations: [{ skuId: 101, units: 288 }, { skuId: 999, units: 0 }],
+    }])
+    expect(load).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[data-testid="planner-complete"]').text()).toContain('修改规划')
+  })
+
+  it('allows deleting an unallocated pile without inventory edit permission', async () => {
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['warehouse:edit'], loginMethod: 'password' }
+    const pallets = warehousePlannerScene.palletGroups.filter(item => item.id === 'pallet-a03')
+    const { wrapper } = await mountPersistedPlanner({ pallets })
+    await wrapper.get('[data-testid="planner-pallet-pallet-a03"]').trigger('click')
+    await wrapper.get('[data-testid="planner-delete-pallet"]').trigger('click')
+    expect(wrapper.get('[data-testid="delete-pallet-confirm"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-testid="delete-pallet-confirm"]').trigger('click')
+    expect(wrapper.find('[data-testid="planner-pallet-pallet-a03"]').exists()).toBe(false)
+  })
+
+  it('does not offer deletion without warehouse edit permission', async () => {
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['inventory:edit'], loginMethod: 'password' }
+    const pallets = warehousePlannerScene.palletGroups.filter(item => item.id === 'pallet-a03')
+    const { wrapper } = await mountPersistedPlanner({ pallets })
+    await wrapper.get('[data-testid="planner-pallet-pallet-a03"]').trigger('click')
+    expect(wrapper.get('[data-testid="planner-delete-pallet"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('blocks deletion of an associated pile without inventory edit permission', async () => {
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['warehouse:edit'], loginMethod: 'password' }
+    const { wrapper } = await mountPersistedPlanner()
+    await wrapper.get('[data-testid="planner-pallet-pallet-a01"]').trigger('click')
+    await wrapper.get('[data-testid="planner-delete-pallet"]').trigger('click')
+    expect(wrapper.get('[data-testid="delete-pallet-confirm"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-testid="planner-pallet-pallet-a01"]').exists()).toBe(true)
+  })
+
+  it('blocks deletion when actual inventory failed to load and keeps the pile', async () => {
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['warehouse:edit', 'inventory:edit'], loginMethod: 'password' }
+    const { wrapper } = await mountPersistedPlanner({ inventoryLoad: vi.fn().mockRejectedValue(new Error('库存接口不可用')) })
+    await wrapper.get('[data-testid="planner-pallet-pallet-a01"]').trigger('click')
+    await wrapper.get('[data-testid="planner-delete-pallet"]').trigger('click')
+    expect(wrapper.get('[data-testid="planner-delete-error"]').text()).toContain('实际库存')
+    expect(wrapper.find('[data-testid="delete-pallet-dialog"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="planner-pallet-pallet-a01"]').exists()).toBe(true)
+  })
+
+  it('keeps a rejected delete save as a draft and does not erase confirmation data', async () => {
+    currentUser.value = { accessToken: 'test', mobile: '13800000000', roles: [], permissions: ['warehouse:edit', 'inventory:edit'], loginMethod: 'password' }
+    const save = vi.fn().mockRejectedValue(new Error('货堆 SKU 分配已变化'))
+    const { wrapper } = await mountPersistedPlanner({ layoutSave: save })
+    await wrapper.get('[data-testid="planner-pallet-pallet-a01"]').trigger('click')
+    await wrapper.get('[data-testid="planner-delete-pallet"]').trigger('click')
+    await wrapper.get('[data-testid="delete-pallet-confirm"]').trigger('click')
+    await wrapper.get('[data-testid="planner-complete"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('货堆 SKU 分配已变化')
+    expect(wrapper.find('[data-testid="planner-pallet-pallet-a01"]').exists()).toBe(false)
+    expect(save.mock.calls.at(-1)?.[1].releasedPileAllocations).toEqual([{ palletId: 'pallet-a01', allocations: [{ skuId: 101, units: 288 }] }])
   })
 
   it('shows a visible warning when a non-demo warehouse is requested', async () => {

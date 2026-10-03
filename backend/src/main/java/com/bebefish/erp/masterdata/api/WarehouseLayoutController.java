@@ -19,7 +19,7 @@ public class WarehouseLayoutController {
 
     @PutMapping
     @PreAuthorize("hasAuthority('warehouse:edit')")
-    public ApiResponse<WarehouseLayoutService.Layout> save(@PathVariable long id, @RequestBody WarehouseLayoutService.Layout layout) {
-        return ApiResponse.success(service.save(id, layout));
+    public ApiResponse<WarehouseLayoutService.Layout> save(@PathVariable long id, @RequestBody WarehouseLayoutService.SaveCommand command) {
+        return ApiResponse.success(service.save(id, command));
     }
 }
