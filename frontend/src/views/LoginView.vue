@@ -9,6 +9,7 @@ import {
 } from 'lucide-vue-next';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import IcpFooter from '../components/IcpFooter.vue';
 import { beginFeishuLogin, getFeishuStatus, loginWithPassword, logout } from '../services/auth';
 import { clearCurrentUser, saveCurrentUser } from '../services/authSession';
 import { ACCESS_TOKEN_STORAGE_KEY, type LoginResult } from '../types/auth';
@@ -196,15 +197,15 @@ async function handleLogout() {
 </script>
 
 <template>
-  <main class="min-h-screen bg-white text-ink">
+  <main class="flex min-h-dvh flex-col bg-white text-ink">
     <div
       data-testid="template-login-shell"
       data-color-scheme="black-white"
-      class="grid min-h-screen grid-cols-1 sm:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]"
+      class="grid flex-1 grid-cols-1 sm:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]"
     >
       <section
         data-testid="animated-characters-panel"
-        class="relative flex min-h-[420px] flex-col justify-between overflow-hidden bg-black p-6 text-white sm:min-h-screen lg:p-12"
+        class="relative flex min-h-[420px] flex-col justify-between overflow-hidden bg-black p-6 text-white lg:p-12"
       >
         <div class="relative z-20 flex items-center gap-2 text-lg font-semibold">
           <div class="flex min-w-0 items-center gap-4">
@@ -335,9 +336,9 @@ async function handleLogout() {
 
       <section
         data-testid="login-form-panel"
-        class="flex items-center justify-center bg-white px-6 py-10 sm:px-8 lg:px-12"
+        class="grid min-w-0 grid-rows-[1fr_auto] items-center justify-items-center bg-white px-6 sm:px-8 lg:px-12"
       >
-        <div class="w-full max-w-[420px]">
+        <div class="w-full max-w-[420px] py-10">
           <div class="mb-10 text-center">
             <div class="mx-auto mb-5 flex h-11 w-11 items-center justify-center rounded-md bg-pine/10 text-pine sm:hidden">
               <ShieldCheck class="h-5 w-5" aria-hidden="true" />
@@ -456,6 +457,7 @@ async function handleLogout() {
           </div>
 
         </div>
+        <IcpFooter class="w-full" />
       </section>
     </div>
   </main>

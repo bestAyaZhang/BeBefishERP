@@ -161,6 +161,21 @@ describe('ErpLayout', () => {
     ]));
   });
 
+  it.each(['/products', '/inventory/warehouse-canvas'])('shows the ICP footer without overlaying the scrollable workspace at %s', async (path) => {
+    ({ router, wrapper } = await mountLayout(path));
+    const main = wrapper.get('[data-testid="erp-main"]');
+    const content = main.get('[data-testid="erp-page-content"]');
+    const footer = main.get('[data-testid="icp-footer"]');
+
+    expect(footer.get('a').text()).toBe('浙ICP备2026075333号-1');
+    expect(footer.get('a').attributes('href')).toBe('https://beian.miit.gov.cn/');
+    expect(content.element.nextElementSibling).toBe(footer.element);
+    expect(footer.classes()).toEqual(expect.arrayContaining(['shrink-0', 'print:hidden']));
+    expect(footer.classes()).not.toContain('fixed');
+    expect(footer.classes()).not.toContain('absolute');
+    expect(content.classes()).toEqual(expect.arrayContaining(['min-h-0', 'flex-1', 'overflow-y-auto']));
+  });
+
   it('keeps warehouse planning inside the content area with system navigation', async () => {
     ({ router, wrapper } = await mountLayout('/inventory/warehouse-canvas'));
 

@@ -74,6 +74,22 @@ describe('LoginView', () => {
     expect(wrapper.find('[data-testid="send-code-button"]').exists()).toBe(false);
   });
 
+  it('shows the ICP registration as a safe external link outside the login form', () => {
+    const wrapper = mountLoginView();
+    const footer = wrapper.get('[data-testid="icp-footer"]');
+    const link = footer.get('a');
+
+    expect(link.text()).toBe('浙ICP备2026075333号-1');
+    expect(link.attributes('href')).toBe('https://beian.miit.gov.cn/');
+    expect(link.attributes('target')).toBe('_blank');
+    expect(link.attributes('rel')?.split(' ')).toEqual(expect.arrayContaining(['noopener', 'noreferrer']));
+    expect(wrapper.get('[data-testid="login-form-panel"]').get('[data-testid="icp-footer"]').element).toBe(footer.element);
+    expect(wrapper.get('[data-testid="temporary-login-form"]').find('[data-testid="icp-footer"]').exists()).toBe(false);
+    expect(footer.classes()).toContain('print:hidden');
+    expect(footer.classes()).not.toContain('fixed');
+    expect(footer.classes()).not.toContain('absolute');
+  });
+
   it('prevents duplicate feishu redirects', async () => {
     const wrapper = mountLoginView();
     await flushPromises();

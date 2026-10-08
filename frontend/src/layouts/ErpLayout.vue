@@ -4,6 +4,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } f
 import { useRoute, useRouter } from 'vue-router';
 import SidebarNav from '../components/navigation/SidebarNav.vue';
 import MessageHost from '../components/feedback/MessageHost.vue';
+import IcpFooter from '../components/IcpFooter.vue';
 import { getCurrentUser } from '../services/auth';
 import { clearCurrentUser, currentUser, saveCurrentUser } from '../services/authSession';
 import { ACCESS_TOKEN_STORAGE_KEY } from '../types/auth';
@@ -211,6 +212,7 @@ async function handleLogout() {
         <div data-testid="erp-page-content" class="min-h-0 min-w-0 flex-1 overflow-y-auto" :class="route.meta.flushContent === true ? 'p-0' : 'p-4 lg:px-8 lg:pb-3 lg:pt-8'">
           <RouterView />
         </div>
+        <IcpFooter />
       </section>
     </div>
 
