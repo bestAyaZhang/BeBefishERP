@@ -1,11 +1,14 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
+import { clearMessages, messages } from '../../components/feedback/message';
 import ShipmentListView from './ShipmentListView.vue';
 import type { Shipment } from './types';
 
-const service = vi.hoisted(() => ({ list: vi.fn(), summary: vi.fn(), getFilterOptions: vi.fn().mockResolvedValue({ platforms: [], shops: [] }) }));
+const service = vi.hoisted(() => ({ list: vi.fn(), summary: vi.fn(), get: vi.fn(), updatePreparation: vi.fn(), getFilterOptions: vi.fn().mockResolvedValue({ platforms: [], shops: [] }) }));
+enableAutoUnmount(afterEach);
+afterEach(clearMessages);
 vi.mock('./shippingService', () => ({ shippingService: service }));
 
 function record(id = 8): Shipment {
@@ -39,12 +42,59 @@ async function render(permissions = ['shipping:view', 'shipping:create', 'shippi
 }
 
 beforeEach(() => {
+  clearMessages();
   clearCurrentUser();
   service.summary.mockReset().mockResolvedValue({ todayCount: 7, unfinishedCount: 3, completedCount: 2, outOfStockCount: 1, partiallyShippedCount: 1 });
   service.list.mockReset().mockResolvedValue({ records: [record()], page: 1, pageSize: 20, total: 1 });
 });
 
 describe('ShipmentListView', () => {
+  it('defaults to unfinished shipments across all dates', async () => {
+    const { wrapper } = await render();
+    expect(service.list).toHaveBeenCalledWith(expect.objectContaining({ status: 'unfinished', dateFrom: '', dateTo: '', incompleteOnly: false }));
+    expect(wrapper.get('[data-testid="shipment-filter-status"]').element).toHaveProperty('value', 'unfinished');
+    expect(wrapper.get('[data-testid="shipment-date-from"]').element).toHaveProperty('value', '');
+    expect(wrapper.get('[data-testid="shipment-date-to"]').element).toHaveProperty('value', '');
+    wrapper.unmount();
+  });
+  it('does not offer preparation feedback based only on a matching name or general edit permission', async () => {
+    const item = { ...record(), preparerEmployeeIds: [43] };
+    service.list.mockResolvedValue({ records: [item], page: 1, pageSize: 20, total: 1 });
+    const { wrapper } = await render(['shipping:view', 'shipping:prepare', 'shipping:edit']);
+    saveCurrentUser({ accessToken: 'test', employeeId: 42, mobile: null, displayName: '小周', roles: [],
+      permissions: ['shipping:view', 'shipping:prepare', 'shipping:edit'], loginMethod: 'feishu' });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="shipment-prepare-8"]').exists()).toBe(false);
+    saveCurrentUser({ accessToken: 'test', employeeId: 42, mobile: null, displayName: '管理员', roles: ['SUPER_ADMIN'],
+      permissions: ['shipping:view', 'shipping:prepare'], loginMethod: 'feishu' });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="shipment-prepare-8"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+  it('lets assigned preparers save status and actual weight on the list', async () => {
+    const item = { ...record(), preparerEmployeeIds: [42] };
+    const updated = { ...item, version: 4, content: { ...item.content, status: 'completed' },
+      preparation: { actualWeight: 19.235, updatedBy: '李主管', updatedAt: '2026-09-24T11:00:00' } };
+    service.list.mockResolvedValueOnce({ records: [item], page: 1, pageSize: 20, total: 1 });
+    service.get.mockResolvedValue(item);
+    service.updatePreparation.mockResolvedValue(updated);
+    service.list.mockResolvedValue({ records: [updated], page: 1, pageSize: 20, total: 1 });
+    const { wrapper } = await render(['shipping:view', 'shipping:prepare']);
+    saveCurrentUser({ accessToken: 'test', employeeId: 42, mobile: null, displayName: '李主管', roles: [],
+      permissions: ['shipping:view', 'shipping:prepare'], loginMethod: 'feishu' });
+    await flushPromises();
+    await wrapper.get('[data-testid="shipment-prepare-8"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="preparation-status"]').setValue('completed');
+    await wrapper.get('[data-testid="preparation-actual-weight"]').setValue('19.235');
+    await wrapper.get('[data-testid="preparation-save"]').trigger('click'); await flushPromises();
+    expect(service.updatePreparation).toHaveBeenCalledWith(8, { status: 'completed', actualWeight: 19.235, version: 3 });
+    expect(wrapper.get('[data-testid="shipment-preparation-status-8"]').text()).toContain('已完成');
+    expect(wrapper.get('[data-testid="shipment-actual-weight-8"]').text()).toContain('19.235 kg');
+    expect(wrapper.get('[data-testid="shipment-logistics-status-8"]').text()).toContain('下单成功');
+    expect(messages.value).toEqual([expect.objectContaining({ type: 'success', text: '备货状态与实际重量已保存' })]);
+    expect(wrapper.text()).not.toContain('备货状态与实际重量已保存');
+    wrapper.unmount();
+  });
   it('shows cancelled orders without presenting the historical waybill as active', async () => {
     const item = record();
     item.logisticsOrderState = 'cancelled' as Shipment['logisticsOrderState'];
@@ -105,7 +155,7 @@ describe('ShipmentListView', () => {
     wrapper.unmount();
   });
 
-  it('supports incomplete, explicit filters, pagination and reset-to-today', async () => {
+  it('supports incomplete, explicit filters, pagination and resets to unfinished without dates', async () => {
     service.list.mockResolvedValue({ records: [record()], page: 1, pageSize: 20, total: 45 });
     const { wrapper } = await render();
     await wrapper.get('[data-testid="shipment-scope-incomplete"]').trigger('click'); await flushPromises();
@@ -118,7 +168,7 @@ describe('ShipmentListView', () => {
     await wrapper.get('[data-testid="shipment-next-page"]').trigger('click'); await flushPromises();
     expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }));
     await wrapper.get('[data-testid="shipment-reset"]').trigger('click'); await flushPromises();
-    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, incompleteOnly: false }));
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, status: 'unfinished', dateFrom: '', dateTo: '', incompleteOnly: false }));
     wrapper.unmount();
   });
 

@@ -9,6 +9,14 @@ function ok(data: unknown) {
 }
 
 describe('shipping HTTP contract', () => {
+  it('writes preparation feedback through a dedicated route without sending the ANE draft', async () => {
+    const fetcher = vi.fn().mockResolvedValue(ok({}));
+    vi.stubGlobal('fetch', fetcher);
+    await httpShippingService.updatePreparation(8, { status: 'completed', actualWeight: 12.345, version: 3 });
+    expect(fetcher).toHaveBeenCalledWith('/api/shipments/8/preparation', expect.objectContaining({
+      method: 'PATCH', body: JSON.stringify({ status: 'completed', actualWeight: 12.345, version: 3 })
+    }));
+  });
   it('cancels through the dedicated route with only the saved version', async () => {
     const fetcher = vi.fn().mockResolvedValue(ok({ state: 'cancelled' }));
     vi.stubGlobal('fetch', fetcher);
@@ -32,7 +40,8 @@ describe('shipping HTTP contract', () => {
     const form = emptyShipmentForm();
     await httpShippingService.update(7, form, 'partially_shipped', 3);
     expect(fetcher.mock.calls[0][0]).toBe('/api/shipments/7');
-    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ form, status: 'partially_shipped', version: 3 });
+    const { preparerEmployeeIds, ...fields } = form;
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ form: fields, preparerEmployeeIds, status: 'partially_shipped', version: 3 });
   });
 
   it('submits only the saved shipment version to one-click ordering', async () => {

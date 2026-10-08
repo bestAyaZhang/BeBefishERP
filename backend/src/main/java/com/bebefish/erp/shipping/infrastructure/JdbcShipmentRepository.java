@@ -46,20 +46,22 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                     recipient_province, recipient_city, recipient_county, recipient_detail_address, recipient_address,
                     logistics_company, weight, volume, piece_amount, product_type_id, goods_type, pay_type,
                     tracking_no, platform, shop_name, platform_id, shop_id, estimated_freight, cargo_name, pack_type, logistics_remark,
-                    preparation_content, remark, status, preparer, preparers_json, orderer, version_no,
+                    preparation_content, remark, status, preparer, preparers_json, preparer_employee_ids_json,
+                    actual_weight, preparation_updated_by, preparation_employee_id, preparation_updated_at, orderer, version_no,
                     created_by, updated_by, created_at, updated_at)
                 values (:shipmentNo, :shipmentDate, :senderName, :senderPhone, :senderProvince,
                     :senderCity, :senderCounty, :senderDetailAddress, :recipientName, :recipientPhone,
                     :recipientProvince, :recipientCity, :recipientCounty, :recipientDetailAddress, :recipientAddress,
                     :logisticsCompany, :weight, :volume, :pieceAmount, :productTypeId, :goodsType, :payType,
                     :trackingNo, :platform, :shopName, :platformId, :shopId, :estimatedFreight, :cargoName, :packType, :logisticsRemark,
-                    :preparationContent, :remark, :status, :preparer, cast(:preparersJson as json), :orderer, :version,
+                    :preparationContent, :remark, :status, :preparer, cast(:preparersJson as json), cast(:preparerEmployeeIdsJson as json),
+                    :actualWeight, :preparationUpdatedBy, :preparationEmployeeId, :preparationUpdatedAt, :orderer, :version,
                     :createdBy, :updatedBy, :createdAt, :updatedAt)
                 """, parameters(shipment), keys, new String[]{"id"});
         if (keys.getKey() == null) throw new IllegalStateException("发货单保存后未返回编号");
         return new Shipment(keys.getKey().longValue(), shipment.shipmentNo(), shipment.content(), shipment.version(),
                 shipment.createdBy(), shipment.updatedBy(), shipment.createdAt(), shipment.updatedAt(),
-                shipment.logisticsOrderState());
+                shipment.logisticsOrderState(), shipment.preparerEmployeeIds(), shipment.preparation());
     }
 
     @Override
@@ -72,7 +74,10 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                     recipient_province=:recipientProvince, recipient_city=:recipientCity, recipient_county=:recipientCounty,
                     recipient_detail_address=:recipientDetailAddress, recipient_address=:recipientAddress,
                     platform=:platform, shop_name=:shopName, platform_id=:platformId, shop_id=:shopId, preparer=:preparer,
-                    preparers_json=cast(:preparersJson as json), estimated_freight=:estimatedFreight,
+                    preparers_json=cast(:preparersJson as json), preparer_employee_ids_json=cast(:preparerEmployeeIdsJson as json),
+                    actual_weight=:actualWeight, preparation_updated_by=:preparationUpdatedBy,
+                    preparation_employee_id=:preparationEmployeeId, preparation_updated_at=:preparationUpdatedAt,
+                    estimated_freight=:estimatedFreight,
                     cargo_name=:cargoName, pack_type=:packType, weight=:weight, volume=:volume,
                     piece_amount=:pieceAmount, product_type_id=:productTypeId, goods_type=:goodsType,
                     pay_type=:payType, logistics_remark=:logisticsRemark,
@@ -182,7 +187,12 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                 .addValue("packType", draft.packType()).addValue("logisticsRemark", draft.logisticsRemark())
                 .addValue("preparationContent", c.preparationContent()).addValue("remark", c.remark())
                 .addValue("status", c.status()).addValue("preparer", String.join("、", c.preparers()))
-                .addValue("preparersJson", writePreparers(c.preparers())).addValue("orderer", c.orderer())
+                .addValue("preparersJson", writeJson(c.preparers())).addValue("orderer", c.orderer())
+                .addValue("preparerEmployeeIdsJson", writeJson(shipment.preparerEmployeeIds()))
+                .addValue("actualWeight", shipment.preparation().actualWeight())
+                .addValue("preparationUpdatedBy", shipment.preparation().updatedBy())
+                .addValue("preparationEmployeeId", shipment.preparation().employeeId())
+                .addValue("preparationUpdatedAt", shipment.preparation().updatedAt())
                 .addValue("version", shipment.version()).addValue("createdBy", shipment.createdBy())
                 .addValue("updatedBy", shipment.updatedBy()).addValue("createdAt", shipment.createdAt())
                 .addValue("updatedAt", shipment.updatedAt());
@@ -204,7 +214,10 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                 rs.getString("sender_detail_address"));
         return new Shipment(rs.getLong("id"), rs.getString("shipment_no"), content, rs.getLong("version_no"),
                 rs.getString("created_by"), rs.getString("updated_by"), rs.getTimestamp("created_at").toLocalDateTime(),
-                rs.getTimestamp("updated_at").toLocalDateTime(), rs.getString("logistics_order_state"));
+                rs.getTimestamp("updated_at").toLocalDateTime(), rs.getString("logistics_order_state"),
+                readEmployeeIds(rs.getString("preparer_employee_ids_json")), new PreparationProgress(rs.getBigDecimal("actual_weight"),
+                rs.getString("preparation_updated_by"), rs.getObject("preparation_employee_id", Long.class),
+                rs.getTimestamp("preparation_updated_at") == null ? null : rs.getTimestamp("preparation_updated_at").toLocalDateTime()));
     }
 
     private Integer getInteger(ResultSet rs, String column) throws SQLException {
@@ -212,13 +225,18 @@ public class JdbcShipmentRepository implements ShipmentRepository {
         return rs.wasNull() ? null : value;
     }
 
-    private String writePreparers(List<String> preparers) {
-        try { return mapper.writeValueAsString(preparers); }
+    private String writeJson(List<?> values) {
+        try { return mapper.writeValueAsString(values); }
         catch (JsonProcessingException failure) { throw new IllegalStateException("无法保存备货人", failure); }
     }
 
     private List<String> readPreparers(String json) throws SQLException {
         try { return json == null || json.isBlank() ? List.of() : mapper.readValue(json, new TypeReference<>() {}); }
         catch (JsonProcessingException failure) { throw new SQLException("无法读取备货人", failure); }
+    }
+
+    private List<Long> readEmployeeIds(String json) throws SQLException {
+        try { return json == null || json.isBlank() ? List.of() : mapper.readValue(json, new TypeReference<>() {}); }
+        catch (JsonProcessingException failure) { throw new SQLException("无法读取备货账号", failure); }
     }
 }

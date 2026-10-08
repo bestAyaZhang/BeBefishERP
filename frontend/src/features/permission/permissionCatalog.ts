@@ -16,7 +16,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   { key: 'warehouse', label: '仓库', description: '维护仓库资料及仓库导出信息', supportedActions: STANDARD },
   { key: 'inventory', label: '库存', description: '维护库存资料、审核库存并导出信息', supportedActions: INVENTORY },
   { key: 'sales', label: '销售', description: '维护销售单据、审核销售并导出信息', supportedActions: SALES },
-  { key: 'shipping', label: '发货管理', description: '维护发货记录及物流下单', supportedActions: ['view', 'create', 'edit', 'order'] },
+  { key: 'shipping', label: '发货管理', description: '维护发货记录、物流下单和备货反馈', supportedActions: ['view', 'create', 'edit', 'order', 'prepare'] },
   { key: 'finance', label: '财务', description: '维护财务资料、审核财务并导出信息', supportedActions: FINANCE },
   { key: 'organization', label: '组织架构', description: '维护组织架构资料、导出与飞书同步', supportedActions: [...STANDARD, 'sync'] }
 ];

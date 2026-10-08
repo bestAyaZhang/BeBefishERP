@@ -1,12 +1,14 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
+import { clearMessages, messages } from '../../components/feedback/message';
 import ShipmentFormView from './ShipmentFormView.vue';
 import type { Shipment } from './types';
 
 const service = vi.hoisted(() => ({ formOptions: vi.fn(), logisticsAvailability: vi.fn(), get: vi.fn(),
   getLogisticsOrder: vi.fn(), create: vi.fn(), update: vi.fn(), placeLogisticsOrder: vi.fn() }));
+enableAutoUnmount(afterEach);
 vi.mock('./shippingService', () => ({ shippingService: service }));
 
 function shipment(overrides: Partial<Shipment> = {}): Shipment {
@@ -50,6 +52,7 @@ async function fillRequired(wrapper: ReturnType<typeof mount>) {
 }
 
 beforeEach(() => {
+  clearMessages();
   localStorage.clear();
   clearCurrentUser();
   saveCurrentUser({ accessToken: 'test', mobile: null, displayName: '李主管', roles: [],
@@ -73,9 +76,32 @@ beforeEach(() => {
     trackingNo: 'ANE202609180018', childTrackingNos: '', message: '成功', updatedAt: '2026-09-24T10:00:00', testEnvironment: false });
 });
 
-afterEach(clearCurrentUser);
+afterEach(() => { clearCurrentUser(); clearMessages(); });
 
 describe('ShipmentFormView', () => {
+  it.each([['SHIPMENT_VERSION_CONFLICT', 'warning'], ['VALIDATION_FAILED', 'warning'], ['SERVICE_UNAVAILABLE', 'error']])('keeps form input and shows %s with the appropriate message', async (code, type) => {
+    service.update.mockRejectedValue(Object.assign(new Error('请核对后重新保存'), { code }));
+    const { wrapper, router } = await render('/shipping/18/edit');
+    await wrapper.get('[data-testid="shipment-preparation-content"]').setValue('本次新增备货内容');
+    await wrapper.get('[data-testid="shipment-save-only"]').trigger('click'); await flushPromises();
+    expect(messages.value.at(-1)).toMatchObject({ type, text: '请核对后重新保存' });
+    expect(router.currentRoute.value.name).toBe('shipping-edit');
+    expect(wrapper.get('[data-testid="shipment-preparation-content"]').element).toHaveProperty('value', '本次新增备货内容');
+    expect(wrapper.get('[data-testid="shipment-save-only"]').attributes('disabled')).toBeUndefined();
+    wrapper.unmount();
+  });
+  it('can clear stale employee accounts and reassign an unsubmitted shipment to active preparers', async () => {
+    const previous = shipment({ preparerEmployeeIds: [99] });
+    previous.content.preparers = ['停用备货员'];
+    service.get.mockResolvedValue(previous);
+    service.getLogisticsOrder.mockResolvedValue(null);
+    const { wrapper } = await render('/shipping/18/edit');
+    await wrapper.get('[data-testid="shipment-reselect-preparers"]').trigger('click');
+    await fillRequired(wrapper);
+    await wrapper.get('[data-testid="shipment-save-only"]').trigger('click'); await flushPromises();
+    expect(service.update).toHaveBeenCalledWith(18, expect.objectContaining({ preparerEmployeeIds: [1, 2], preparers: ['小周', '阿杰'] }), 'unfinished', 0);
+    wrapper.unmount();
+  });
   it('defaults sender fields from configuration and saves the edited shipment snapshot', async () => {
     const { wrapper } = await render();
 
@@ -128,7 +154,7 @@ describe('ShipmentFormView', () => {
 
     await wrapper.get('[data-testid="shipment-save-only"]').trigger('click');
 
-    expect(wrapper.get('[role="alert"]').text()).toContain('请至少选择一名备货人');
+    expect(messages.value.at(-1)).toMatchObject({ type: 'warning', text: '请至少选择一名备货人' });
     expect(service.create).not.toHaveBeenCalled();
     wrapper.unmount();
   });
@@ -145,6 +171,7 @@ describe('ShipmentFormView', () => {
     expect(service.create).toHaveBeenCalledWith(expect.objectContaining({ shopName: '贝贝鱼淘宝旗舰店',
       preparers: ['小周', '阿杰'], preparationContent: '水族箱 × 2\n滤材 × 6' }));
     expect(router.currentRoute.value.name).toBe('shipping-detail');
+    expect(messages.value.at(-1)).toMatchObject({ type: 'success', text: '发货单已保存' });
     wrapper.unmount();
   });
 
@@ -205,7 +232,7 @@ describe('ShipmentFormView', () => {
     expect(service.get).toHaveBeenCalledWith(18);
     expect(service.getLogisticsOrder).toHaveBeenCalledWith(18);
     expect(router.currentRoute.value).toMatchObject({ name: 'shipping-edit', params: { id: '18' } });
-    expect(wrapper.get('[role="alert"]').text()).toContain('发货单已保存');
+    expect(messages.value.at(-1)).toMatchObject({ type: 'warning', text: expect.stringContaining('发货单已保存') });
     expect(wrapper.get('[data-testid="shipment-platform"]').attributes('disabled')).toBeDefined();
     wrapper.unmount();
   });
@@ -222,6 +249,20 @@ describe('ShipmentFormView', () => {
     expect(wrapper.get('[data-testid="shipment-save-and-order"]').attributes('disabled')).toBeDefined();
     expect(wrapper.get('[data-testid="shipment-save-only"]').attributes('disabled')).toBeDefined();
     release(shipment()); await flushPromises();
+    wrapper.unmount();
+  });
+  it.each([['rejected', 'error'], ['unknown', 'warning']])('preserves a %s order message after routing to detail', async (state, type) => {
+    service.placeLogisticsOrder.mockResolvedValue({ shipmentId: 18, orderNo: 'BF018', state, trackingNo: '',
+      childTrackingNos: '', message: '请核对物流订单', updatedAt: '2026-09-24T10:00:00', testEnvironment: false });
+    const { wrapper, router } = await render();
+    await fillRequired(wrapper);
+    await wrapper.get('[data-testid="ane-cargo-name"]').setValue('水族用品');
+    await wrapper.get('[data-testid="ane-weight"]').setValue('18.5');
+    await wrapper.get('[data-testid="ane-volume"]').setValue('0.12');
+    await wrapper.get('[data-testid="shipment-save-and-order"]').trigger('click'); await flushPromises();
+    expect(router.currentRoute.value.name).toBe('shipping-detail');
+    expect(messages.value.at(-1)).toMatchObject({ type, text: expect.stringContaining('请核对物流订单') });
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

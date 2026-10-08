@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, Info, Save, Send } from 'lucide-vue-next';
 import { currentUser } from '../../services/authSession';
+import { message } from '../../components/feedback/message';
 import PreparerMultiSelect from './PreparerMultiSelect.vue';
 import RecipientRecognitionCard from './RecipientRecognitionCard.vue';
 import ShipmentSuccessDialog from './ShipmentSuccessDialog.vue';
@@ -41,6 +42,10 @@ let generation = 0;
 const isEdit = computed(() => route.name === 'shipping-edit');
 const locked = computed(() => !!existingOrder.value && existingOrder.value.state !== 'rejected');
 const canOrder = computed(() => currentUser.value?.permissions.includes('shipping:order') ?? false);
+const canLinkLegacyPreparers = computed(() => isEdit.value && !shipment.value?.preparerEmployeeIds?.length && currentUser.value?.roles.includes('SUPER_ADMIN'));
+const canReselectPreparers = computed(() => isEdit.value && !locked.value
+  && (!!shipment.value?.preparerEmployeeIds?.length || currentUser.value?.roles.includes('SUPER_ADMIN')));
+function reselectPreparers() { form.value.preparers = []; form.value.preparerEmployeeIds = []; }
 const recipient = computed<RecipientFields>({
   get: () => ({ recipientName: form.value.recipientName, recipientPhone: form.value.recipientPhone,
     recipientProvince: form.value.recipientProvince, recipientCity: form.value.recipientCity,
@@ -51,7 +56,7 @@ const recipient = computed<RecipientFields>({
 function formFromShipment(value: Shipment): ShipmentFormInput {
   const { shipmentDate: _date, status: _status, orderer: _orderer, logisticsCompany: _company,
     trackingNo: _tracking, ...editable } = value.content;
-  return structuredClone(editable);
+  return { ...structuredClone(editable), preparerEmployeeIds: value.preparerEmployeeIds?.length ? [...value.preparerEmployeeIds] : undefined };
 }
 function numberOrNull(value: unknown) {
   if (value === '' || value == null) return null;
@@ -145,7 +150,7 @@ async function persist(andOrder: boolean) {
   error.value = '';
   const value = payload();
   const invalid = validateShipment(value) || (andOrder ? validateOrder(value) : '');
-  if (invalid) { error.value = invalid; return; }
+  if (invalid) { message.warning(invalid); return; }
   busy.value = true;
   try {
     const saved = isEdit.value && shipment.value
@@ -154,17 +159,19 @@ async function persist(andOrder: boolean) {
     shipment.value = saved;
     form.value = formFromShipment(saved);
     status.value = saved.content.status;
-    if (!andOrder) { await router.push({ name: 'shipping-detail', params: { id: String(saved.id) } }); return; }
+    if (!andOrder) { message.success('发货单已保存'); await router.push({ name: 'shipping-detail', params: { id: String(saved.id) } }); return; }
     try {
       const placed = await shippingService.placeLogisticsOrder(saved.id, { version: saved.version });
       existingOrder.value = placed;
       if (placed.state === 'succeeded') result.value = placed;
       else {
-        error.value = `发货单已保存，当前下单状态：${placed.message || placed.state}。请在详情页刷新核对。`;
+        const feedback = `发货单已保存，当前下单状态：${placed.message || placed.state}。请在详情页刷新核对。`;
+        if (placed.state === 'rejected') message.error(feedback, 6000);
+        else message.warning(feedback, 6000);
         await router.push({ name: 'shipping-detail', params: { id: String(saved.id) } });
       }
     } catch (cause) {
-      error.value = `发货单已保存，但安能下单失败：${cause instanceof Error ? cause.message : '请稍后重试'}`;
+      message.warning(`发货单已保存，安能下单请求异常：${cause instanceof Error ? cause.message : '请稍后重试'}。请核实下单状态，勿重复下单。`, 6000);
       try {
         const [latest, latestOrder] = await Promise.all([
           shippingService.get(saved.id),
@@ -180,8 +187,10 @@ async function persist(andOrder: boolean) {
       await router.replace({ name: 'shipping-edit', params: { id: String(saved.id) } });
     }
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '保存失败，请重试';
     const code = (cause as { code?: string })?.code;
+    const feedback = cause instanceof Error ? cause.message : '保存失败，请重试';
+    if (['SHIPMENT_VERSION_CONFLICT', 'VALIDATION_FAILED', 'SHIPMENT_PREPARER_SELECTION_INVALID', 'PLATFORM_DISABLED', 'PLATFORM_SHOP_DISABLED'].includes(code ?? '')) message.warning(feedback, 6000);
+    else message.error(feedback, 6000);
     if (code === 'PLATFORM_DISABLED' || code === 'PLATFORM_SHOP_DISABLED') {
       try { options.value = await shippingService.formOptions(); } catch { /* Preserve the original save error and form. */ }
     }
@@ -213,8 +222,14 @@ onBeforeUnmount(() => { generation++; });
       <section class="form-card"><div class="section-heading"><span>01</span><div><h2>发货单信息</h2><p>选择来源平台、店铺和本次参与备货的人员，并核对发货人资料。</p></div></div><div class="mt-5 grid gap-4 lg:grid-cols-3">
         <label class="field-label">平台 <span class="text-rose-500">*</span><select v-model="form.platformId" data-testid="shipment-platform" :disabled="busy || locked" class="field-input" @change="platformChanged"><option v-if="!originalSource" :value="null">请选择平台</option><option v-if="originalSource" :value="shipment?.content.platformId">{{ shipment?.content.platform || '历史未关联' }}（原记录）</option><option v-for="p in (options.platforms ?? []).filter(p => !originalSource || p.id !== shipment?.content.platformId)" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
         <label class="field-label">门店选项 <span class="text-rose-500">*</span><select v-model="form.shopId" data-testid="shipment-shop" :disabled="busy || locked || (!originalSource && !form.platformId)" class="field-input" @change="shopChanged"><option v-if="!originalSource" :value="null">请选择店铺</option><option v-if="originalSource" :value="shipment?.content.shopId">{{ shipment?.content.shopName || '历史未关联' }}（原记录）</option><option v-for="s in availableShops.filter(s => !originalSource || s.id !== shipment?.content.shopId)" :key="s.id" :value="s.id">{{ s.optionLabel || s.name }}</option></select></label>
-        <label class="field-label">备货人（可多选） <span class="text-rose-500">*</span><PreparerMultiSelect v-model="form.preparers" class="mt-1.5" :options="options.preparers" :disabled="busy || locked" /></label>
+        <label class="field-label">备货人（可多选） <span class="text-rose-500">*</span><PreparerMultiSelect v-model="form.preparers" v-model:employee-ids="form.preparerEmployeeIds" class="mt-1.5" :options="options.preparers" :disabled="busy || locked" /></label>
       </div>
+        <button v-if="canReselectPreparers" data-testid="shipment-reselect-preparers" type="button" :disabled="busy" class="mt-3 text-xs font-medium text-[#536dff] disabled:opacity-40" @click="reselectPreparers">重新选择备货人</button>
+        <div v-if="canLinkLegacyPreparers" class="mt-3 text-xs leading-6 text-amber-700">
+          <p>历史单尚未关联备货账号，请确认原备货人对应的员工账号后保存。已下单记录仅允许关联原备货人。</p>
+          <button v-if="form.preparerEmployeeIds === undefined" data-testid="shipment-link-preparers" type="button" class="font-medium text-[#536dff]" @click="form.preparerEmployeeIds = []">确认备货账号</button>
+          <PreparerMultiSelect v-else v-model="form.preparers" v-model:employee-ids="form.preparerEmployeeIds" class="mt-2 max-w-lg" :options="options.preparers" :disabled="busy" />
+        </div>
         <div data-testid="shipment-sender" class="mt-5 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
           <div class="flex flex-wrap items-center justify-between gap-2"><p class="text-sm font-bold text-[#25314d]">发货人信息</p><span class="text-xs text-indigo-600">默认读取安能配置，可按本单修改</span></div>
           <div class="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">

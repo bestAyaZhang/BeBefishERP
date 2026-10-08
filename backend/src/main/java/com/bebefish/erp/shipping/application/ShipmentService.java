@@ -9,6 +9,11 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Set;
 import java.util.UUID;
+import java.math.BigDecimal;
+import com.bebefish.erp.common.security.ErpPrincipal;
+import java.util.List;
+import java.util.HashSet;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -23,29 +28,49 @@ public class ShipmentService {
     private final Clock clock;
     private final ShipmentEditPolicy editPolicy;
     private final com.bebefish.erp.platform.application.ShippingSourceResolver sources;
+    private final ShipmentPreparerAssignments assignments;
 
     public ShipmentService(ShipmentRepository repository, Validator validator, Clock clock, ShipmentEditPolicy editPolicy,
                            com.bebefish.erp.platform.application.ShippingSourceResolver sources) {
+        this(repository, validator, clock, editPolicy, sources, null);
+    }
+
+    @Autowired
+    public ShipmentService(ShipmentRepository repository, Validator validator, Clock clock, ShipmentEditPolicy editPolicy,
+                           com.bebefish.erp.platform.application.ShippingSourceResolver sources, ShipmentPreparerAssignments assignments) {
         this.repository = repository;
         this.validator = validator;
         this.clock = clock;
         this.editPolicy = editPolicy;
         this.sources = sources;
+        this.assignments = assignments;
     }
 
     @Transactional
     public Shipment create(ShipmentFormInput input, String auditOperator, String displayOperator) {
+        return create(input, null, auditOperator, displayOperator);
+    }
+
+    @Transactional
+    public Shipment create(ShipmentFormInput input, List<Long> preparerEmployeeIds, String auditOperator, String displayOperator) {
         var form = validate(input);
         form = form.withSource(sources.resolveForCreate(input.platformId(), input.shopId()));
         var now = LocalDateTime.now(clock);
         var number = "FH" + now.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "-"
                 + UUID.randomUUID().toString().replace("-", "").toUpperCase();
         var content = ShipmentContent.from(LocalDate.now(clock), form, "unfinished", clean(displayOperator), "", "");
-        return repository.insert(new Shipment(null, number, content, 0, auditOperator, auditOperator, now, now));
+        var ids = preparerEmployeeIds == null ? List.<Long>of() : assignments.validate(preparerEmployeeIds, form.preparers());
+        return repository.insert(new Shipment(null, number, content, 0, auditOperator, auditOperator, now, now, null, ids, null));
     }
 
     @Transactional
     public Shipment update(long id, ShipmentFormInput input, String status, long version, String auditOperator) {
+        return update(id, input, status, version, auditOperator, null, false);
+    }
+
+    @Transactional
+    public Shipment update(long id, ShipmentFormInput input, String status, long version, String auditOperator,
+                           List<Long> preparerEmployeeIds, boolean administrator) {
         var form = validate(input);
         validateStatus(status);
         var previous = repository.findByIdForUpdate(id).orElseThrow(() ->
@@ -59,11 +84,46 @@ public class ShipmentService {
             platformId=previous.content().platformId(); shopId=previous.content().shopId();
         }
         form=form.withSource(sources.resolveForUpdate(previous.content().form().source(),platformId,shopId));
-        editPolicy.assertAllowed(previous.content(), form, repository.hasNonRejectedLogisticsOrder(id));
+        boolean ordered = repository.hasNonRejectedLogisticsOrder(id);
+        editPolicy.assertAllowed(previous.content(), form, ordered);
+        var ids = previous.preparerEmployeeIds();
+        boolean sameNames = new HashSet<>(form.preparers()).equals(new HashSet<>(previous.content().preparers()));
+        if (preparerEmployeeIds != null && (!new HashSet<>(preparerEmployeeIds).equals(new HashSet<>(ids)) || !sameNames)) {
+            if (ids.isEmpty() && !administrator)
+                throw new BusinessException("SHIPMENT_PREPARER_LINK_FORBIDDEN", HttpStatus.FORBIDDEN, "历史单请超级管理员确认备货账号关联");
+            if (ordered && !ids.isEmpty())
+                throw new BusinessException("SHIPMENT_ALREADY_ORDERED", HttpStatus.CONFLICT, "已提交物流，不能修改备货账号");
+            ids = assignments.validate(preparerEmployeeIds, form.preparers());
+        } else if (preparerEmployeeIds == null && !sameNames) {
+            ids = List.of();
+        }
         var content = ShipmentContent.from(previous.content().shipmentDate(), form, status, previous.content().orderer(),
                 previous.content().logisticsCompany(), previous.content().trackingNo());
         var next = new Shipment(id, previous.shipmentNo(), content, version + 1, previous.createdBy(), auditOperator,
-                previous.createdAt(), LocalDateTime.now(clock), previous.logisticsOrderState());
+                previous.createdAt(), LocalDateTime.now(clock), previous.logisticsOrderState(), ids, previous.preparation());
+        if (!repository.update(next, version)) throw conflict();
+        return next;
+    }
+
+    @Transactional
+    public Shipment updatePreparation(long id, String status, BigDecimal actualWeight, long version, ErpPrincipal operator) {
+        var previous = repository.findByIdForUpdate(id).orElseThrow(() ->
+                new BusinessException("SHIPMENT_NOT_FOUND", HttpStatus.NOT_FOUND, "发货单不存在"));
+        if (!operator.roles().contains("SUPER_ADMIN") && !previous.preparerEmployeeIds().contains(operator.employeeId()))
+            throw new BusinessException("SHIPMENT_PREPARATION_FORBIDDEN", HttpStatus.FORBIDDEN, "只能更新分配给自己的发货单；历史单请管理员先关联备货账号");
+        if (version < 0 || previous.version() != version) throw conflict();
+        validateStatus(status);
+        if (actualWeight != null && (actualWeight.signum() <= 0 || actualWeight.scale() > 3
+                || actualWeight.compareTo(new BigDecimal("999999999.999")) > 0))
+            throw invalid("实际重量必须大于零，最多9位整数、3位小数");
+        var now = LocalDateTime.now(clock);
+        var displayName = clean(operator.displayName());
+        if (displayName.isBlank()) displayName = operator.operatorIdentifier();
+        var content = ShipmentContent.from(previous.content().shipmentDate(), previous.content().form(), status,
+                previous.content().orderer(), previous.content().logisticsCompany(), previous.content().trackingNo());
+        var next = new Shipment(id, previous.shipmentNo(), content, version + 1, previous.createdBy(), operator.operatorIdentifier(),
+                previous.createdAt(), now, previous.logisticsOrderState(), previous.preparerEmployeeIds(),
+                new PreparationProgress(actualWeight == null ? previous.preparation().actualWeight() : actualWeight, displayName, operator.employeeId(), now));
         if (!repository.update(next, version)) throw conflict();
         return next;
     }

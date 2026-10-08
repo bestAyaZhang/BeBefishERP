@@ -110,7 +110,7 @@ class FlywayMigrationTest {
         )).isEqualTo(1);
         assertThat(jdbc.queryForList(
                 "select code from sys_permission where module_key = 'shipping' order by code", String.class
-        )).containsExactly("shipping:cancel", "shipping:create", "shipping:edit", "shipping:order", "shipping:view");
+        )).containsExactly("shipping:cancel", "shipping:create", "shipping:edit", "shipping:order", "shipping:prepare", "shipping:view");
         assertThat(jdbc.queryForList("""
                 select r.code from sys_role r join sys_role_permission rp on rp.role_id=r.id
                 join sys_permission p on p.id=rp.permission_id where p.code='shipping:cancel'
@@ -331,7 +331,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("25");
+        )).isEqualTo("26");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId

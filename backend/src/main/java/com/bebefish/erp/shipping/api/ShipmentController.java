@@ -57,7 +57,7 @@ public class ShipmentController {
     @PostMapping
     @PreAuthorize("hasAuthority('shipping:create')")
     public ApiResponse<Shipment> create(@Valid @RequestBody SaveShipmentRequest request, @AuthenticationPrincipal ErpPrincipal principal) {
-        return ApiResponse.success(service.create(request.form(), principal.operatorIdentifier(), operatorDisplayName(principal)));
+        return ApiResponse.success(service.create(request.form(), request.preparerEmployeeIds(), principal.operatorIdentifier(), operatorDisplayName(principal)));
     }
 
     @PutMapping("/{id}")
@@ -67,7 +67,15 @@ public class ShipmentController {
         if (request.version() == null) throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "缺少发货单版本，请重新打开后再保存");
         if (request.status() == null || request.status().isBlank())
             throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "请选择备货状态");
-        return ApiResponse.success(service.update(id, request.form(), request.status(), request.version(), principal.operatorIdentifier()));
+        return ApiResponse.success(service.update(id, request.form(), request.status(), request.version(), principal.operatorIdentifier(),
+                request.preparerEmployeeIds(), principal.roles().contains("SUPER_ADMIN")));
+    }
+
+    @PatchMapping("/{id}/preparation")
+    @PreAuthorize("hasAuthority('shipping:view') and hasAuthority('shipping:prepare')")
+    public ApiResponse<Shipment> updatePreparation(@PathVariable long id, @Valid @RequestBody UpdatePreparationRequest request,
+                                                    @AuthenticationPrincipal ErpPrincipal principal) {
+        return ApiResponse.success(service.updatePreparation(id, request.status(), request.actualWeight(), request.version(), principal));
     }
 
     private static String operatorDisplayName(ErpPrincipal principal) {

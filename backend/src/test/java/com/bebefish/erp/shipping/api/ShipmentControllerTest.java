@@ -49,8 +49,14 @@ class ShipmentControllerTest {
         @Bean ShipmentRepository repository() { return mock(ShipmentRepository.class); }
         @Bean Clock clock() { return Clock.fixed(Instant.parse("2026-09-24T02:00:00Z"), ZoneId.of("Asia/Shanghai")); }
         @Bean ShipmentEditPolicy shipmentEditPolicy() { return new ShipmentEditPolicy(); }
-        @Bean ShipmentService service(ShipmentRepository repository, Clock clock, ShipmentEditPolicy policy) {
-            return new ShipmentService(repository, Validation.buildDefaultValidatorFactory().getValidator(), clock, policy, com.bebefish.erp.support.TestShippingSources.resolver());
+        @Bean com.bebefish.erp.shipping.application.ShipmentPreparerAssignments assignments() {
+            var employees = mock(com.bebefish.erp.shipping.infrastructure.JdbcShippingFormOptionsRepository.class);
+            when(employees.findActivePreparers()).thenReturn(List.of(new ShippingFormOptions.PreparerOption(42, "小周"), new ShippingFormOptions.PreparerOption(43, "阿杰")));
+            return new com.bebefish.erp.shipping.application.ShipmentPreparerAssignments(employees);
+        }
+        @Bean ShipmentService service(ShipmentRepository repository, Clock clock, ShipmentEditPolicy policy,
+                                     com.bebefish.erp.shipping.application.ShipmentPreparerAssignments assignments) {
+            return new ShipmentService(repository, Validation.buildDefaultValidatorFactory().getValidator(), clock, policy, com.bebefish.erp.support.TestShippingSources.resolver(), assignments);
         }
         @Bean ShippingFormOptionsService optionsService() { return mock(ShippingFormOptionsService.class); }
         @Bean ShipmentController controller(ShipmentService service, ShippingFormOptionsService optionsService) {
@@ -73,12 +79,99 @@ class ShipmentControllerTest {
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         when(repository.insert(any())).thenAnswer(call -> {
             Shipment s = call.getArgument(0);
-            return new Shipment(17L, s.shipmentNo(), s.content(), 0, s.createdBy(), s.updatedBy(), s.createdAt(), s.updatedAt());
+            return new Shipment(17L, s.shipmentNo(), s.content(), 0, s.createdBy(), s.updatedBy(), s.createdAt(), s.updatedAt(),
+                    s.logisticsOrderState(), s.preparerEmployeeIds(), s.preparation());
         });
     }
 
     @AfterEach
     void cleanup() { SecurityContextHolder.clearContext(); context.close(); }
+
+    @Test
+    void statusOnlyFeedbackKeepsAnAlreadyRecordedActualWeight() throws Exception {
+        login("小周", "shipping:view", "shipping:prepare");
+        var form = mapper.convertValue(validForm("测试收件人"), ShipmentFormInput.class);
+        var now = java.time.LocalDateTime.of(2026, 9, 24, 9, 0);
+        var previous = new Shipment(17L, "FH-17", ShipmentContent.from(LocalDate.of(2026,9,24), form,
+                "unfinished", "录入人", "", ""), 3, "employee:1", "employee:1", now, now,
+                null, List.of(42L), new PreparationProgress(new java.math.BigDecimal("19.235"), "另一位备货人", 43L, now));
+        when(repository.findByIdForUpdate(17)).thenReturn(java.util.Optional.of(previous));
+        when(repository.update(any(), eq(3L))).thenReturn(true);
+        mvc.perform(patch("/api/shipments/17/preparation").contentType(APPLICATION_JSON)
+                        .content("{\"status\":\"completed\",\"version\":3}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.preparation.actualWeight").value(19.235));
+    }
+
+    @Test
+    void savesAccountAssignmentsAlongsidePreparerNameSnapshots() throws Exception {
+        login("录入人", "shipping:create");
+        mvc.perform(post("/api/shipments").contentType(APPLICATION_JSON).content(mapper.writeValueAsString(
+                        Map.of("form", validForm("收件人"), "preparerEmployeeIds", List.of(42, 43)))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.preparerEmployeeIds[0]").value(42))
+                .andExpect(jsonPath("$.data.preparerEmployeeIds[1]").value(43));
+    }
+
+    @Test
+    void preparationPermissionAndEmployeeAssignmentAreBothRequired() throws Exception {
+        var form = mapper.convertValue(validForm("测试收件人"), ShipmentFormInput.class);
+        var now = java.time.LocalDateTime.of(2026, 9, 24, 9, 0);
+        var assigned = new Shipment(17L, "FH-17", ShipmentContent.from(LocalDate.of(2026,9,24), form,
+                "unfinished", "录入人", "安能物流", "710001"), 3, "employee:1", "employee:1", now, now,
+                "succeeded", List.of(43L), null);
+        when(repository.findByIdForUpdate(17)).thenReturn(java.util.Optional.of(assigned));
+        String payload = "{\"status\":\"out_of_stock\",\"version\":3}";
+        login("小周", "shipping:view", "shipping:edit");
+        mvc.perform(patch("/api/shipments/17/preparation").contentType(APPLICATION_JSON).content(payload))
+                .andExpect(status().isForbidden());
+        login("小周", "shipping:prepare");
+        mvc.perform(patch("/api/shipments/17/preparation").contentType(APPLICATION_JSON).content(payload))
+                .andExpect(status().isForbidden());
+        login("小周", "shipping:view", "shipping:prepare");
+        mvc.perform(patch("/api/shipments/17/preparation").contentType(APPLICATION_JSON).content(payload))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("SHIPMENT_PREPARATION_FORBIDDEN"));
+        verify(repository, never()).update(any(), anyLong());
+        var own = new Shipment(17L, "FH-17", assigned.content(), 3, "employee:1", "employee:1", now, now,
+                "succeeded", List.of(42L, 43L), null);
+        when(repository.findByIdForUpdate(17)).thenReturn(java.util.Optional.of(own));
+        when(repository.update(any(), eq(3L))).thenReturn(true);
+        mvc.perform(patch("/api/shipments/17/preparation").contentType(APPLICATION_JSON).content(payload))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.content.status").value("out_of_stock"))
+                .andExpect(jsonPath("$.data.preparation.actualWeight").doesNotExist());
+        mvc.perform(patch("/api/shipments/17/preparation").contentType(APPLICATION_JSON)
+                        .content("{\"status\":\"completed\",\"actualWeight\":0,\"version\":3}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(patch("/api/shipments/17/preparation").contentType(APPLICATION_JSON)
+                        .content("{\"status\":\"completed\",\"actualWeight\":1.2345,\"version\":3}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(patch("/api/shipments/17/preparation").contentType(APPLICATION_JSON)
+                        .content("{\"status\":\"completed\",\"version\":2}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("SHIPMENT_VERSION_CONFLICT"));
+    }
+
+    @Test
+    void administratorCanWritePreparationWithoutChangingCarrierWeightOrState() throws Exception {
+        var principal = new ErpPrincipal(42, null, "管理员", List.of("SUPER_ADMIN"), List.of("shipping:view", "shipping:prepare"));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal, null,
+                principal.permissions().stream().map(SimpleGrantedAuthority::new).toList()));
+        var form = mapper.convertValue(validForm("测试收件人"), ShipmentFormInput.class);
+        var now = java.time.LocalDateTime.of(2026, 9, 24, 9, 0);
+        var previous = new Shipment(17L, "FH-17", ShipmentContent.from(LocalDate.of(2026,9,24), form,
+                "unfinished", "录入人", "安能物流", "710001"), 3, "employee:1", "employee:1", now, now, "succeeded");
+        when(repository.findByIdForUpdate(17)).thenReturn(java.util.Optional.of(previous));
+        when(repository.update(any(), eq(3L))).thenReturn(true);
+        mvc.perform(patch("/api/shipments/17/preparation").contentType(APPLICATION_JSON)
+                        .content("{\"status\":\"completed\",\"actualWeight\":19.235,\"version\":3}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content.status").value("completed"))
+                .andExpect(jsonPath("$.data.preparation.actualWeight").value(19.235))
+                .andExpect(jsonPath("$.data.preparation.updatedBy").value("管理员"))
+                .andExpect(jsonPath("$.data.preparation.updatedAt").value("2026-09-24T10:00:00"))
+                .andExpect(jsonPath("$.data.content.orderDraft.weight").value(18.5))
+                .andExpect(jsonPath("$.data.content.trackingNo").value("710001"))
+                .andExpect(jsonPath("$.data.logisticsOrderState").value("succeeded"))
+                .andExpect(jsonPath("$.data.version").value(4));
+    }
 
     @Test
     void createUsesServerDefaultsAndAuthenticatedDisplayName() throws Exception {
