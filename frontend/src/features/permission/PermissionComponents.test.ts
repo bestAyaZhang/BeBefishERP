@@ -10,6 +10,14 @@ import RoleMembersPanel from './components/RoleMembersPanel.vue';
 import { PERMISSION_MODULES } from './permissionCatalog';
 import type { PermissionRoleSummary, RoleMemberPage } from './types';
 
+describe('shipping preparation permission', () => {
+  it('grants preparation feedback with view permission but no general editing', async () => {
+    const wrapper = mount(PermissionMatrix, { props: { modules: PERMISSION_MODULES, modelValue: [], readonly: false } });
+    await wrapper.get('[data-testid="permission-shipping-prepare"]').setValue(true);
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([['shipping:prepare', 'shipping:view']]);
+  });
+});
+
 describe('FeishuRoleMappingPanel', () => {
   it('never presents sensitive roles as mapping targets and emits a save payload', async () => {
     const wrapper = mount(FeishuRoleMappingPanel, {

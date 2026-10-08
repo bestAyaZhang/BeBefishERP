@@ -1,10 +1,13 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ShipmentDetailView from './ShipmentDetailView.vue';
 import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
+import { clearMessages, messages } from '../../components/feedback/message';
 
-const service = vi.hoisted(() => ({ get: vi.fn(), getLogisticsOrder: vi.fn(), cancelLogisticsOrder: vi.fn() }));
+const service = vi.hoisted(() => ({ get: vi.fn(), getLogisticsOrder: vi.fn(), cancelLogisticsOrder: vi.fn(), updatePreparation: vi.fn() }));
+enableAutoUnmount(afterEach);
+afterEach(clearMessages);
 vi.mock('./shippingService', () => ({ shippingService: service }));
 
 const shipment = {
@@ -32,6 +35,7 @@ async function render() {
 }
 
 beforeEach(() => {
+  clearMessages();
   clearCurrentUser();
   saveCurrentUser({ accessToken: 'test', mobile: null, displayName: '测试用户', roles: [],
     permissions: ['shipping:view', 'shipping:cancel'], loginMethod: 'feishu' });
@@ -42,6 +46,26 @@ beforeEach(() => {
 });
 
 describe('ShipmentDetailView', () => {
+  it('updates preparation feedback and operator details without changing the carrier status', async () => {
+    saveCurrentUser({ accessToken: 'test', employeeId: 42, mobile: null, displayName: '小周', roles: [],
+      permissions: ['shipping:view', 'shipping:prepare'], loginMethod: 'feishu' });
+    service.get.mockResolvedValue({ ...shipment, preparerEmployeeIds: [42] });
+    service.updatePreparation.mockResolvedValue({ ...shipment, preparerEmployeeIds: [42], version: 4,
+      content: { ...shipment.content, status: 'completed' },
+      preparation: { actualWeight: 19.235, updatedBy: '小周', updatedAt: '2026-10-08T11:00:00' } });
+    const { wrapper } = await render();
+    await wrapper.get('[data-testid="shipment-detail-prepare"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="preparation-status"]').setValue('completed');
+    await wrapper.get('[data-testid="preparation-actual-weight"]').setValue('19.235');
+    await wrapper.get('[data-testid="preparation-save"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('[data-testid="shipment-detail-actual-weight"]').text()).toBe('19.235 kg');
+    expect(wrapper.get('[data-testid="shipment-detail-preparation-status"]').text()).toContain('已完成');
+    expect(wrapper.get('[data-testid="shipment-detail-logistics-status"]').text()).toContain('下单成功');
+    expect(wrapper.text()).toContain('小周');
+    expect(messages.value).toEqual([expect.objectContaining({ type: 'success', text: '备货状态与实际重量已保存' })]);
+    expect(wrapper.text()).not.toContain('备货状态与实际重量已保存');
+    wrapper.unmount();
+  });
   it('disables duplicate confirmations while the cancellation request is pending', async () => {
     let resolve!: (value: unknown) => void;
     service.cancelLogisticsOrder.mockReturnValue(new Promise(done => { resolve = done; }));
@@ -58,6 +82,7 @@ describe('ShipmentDetailView', () => {
     await flushPromises();
     expect(wrapper.get('[data-testid="shipment-detail-logistics-status"]').text()).toContain('取消待核实');
     expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(false);
+    expect(messages.value).toEqual([expect.objectContaining({ type: 'warning', text: '取消待核实' })]);
     wrapper.unmount();
   });
   it('confirms before cancellation then shows the cancelled waybill as history without changing preparation', async () => {
@@ -79,6 +104,7 @@ describe('ShipmentDetailView', () => {
     expect(wrapper.get('[data-testid="shipment-detail-logistics-status"]').text()).toContain('已取消');
     expect(wrapper.get('[data-testid="shipment-real-tracking"]').text()).toContain('已作废');
     expect(wrapper.get('[data-testid="shipment-detail-preparation-status"]').text()).toContain('部分发货');
+    expect(messages.value).toEqual([expect.objectContaining({ type: 'success', text: '订单已取消' })]);
     expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(false);
     wrapper.unmount();
   });
@@ -106,7 +132,8 @@ describe('ShipmentDetailView', () => {
     service.getLogisticsOrder.mockRejectedValue(new Error('连接中断'));
     await wrapper.get('[data-testid="cancel-order-confirm"]').trigger('click'); await flushPromises();
     expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(false);
-    expect(wrapper.get('[data-testid="shipment-cancel-feedback"]').text()).toContain('核实');
+    expect(messages.value).toEqual([expect.objectContaining({ type: 'warning', text: expect.stringContaining('核实') })]);
+    expect(wrapper.text()).toContain('物流状态尚未核实');
     wrapper.unmount();
   });
 
@@ -120,6 +147,7 @@ describe('ShipmentDetailView', () => {
     await wrapper.get('[data-testid="cancel-order-confirm"]').trigger('click'); await flushPromises();
     expect(wrapper.get('[data-testid="shipment-real-tracking"]').text()).toBe('ANE001');
     expect(wrapper.get('[data-testid="shipment-order-message"]').text()).toContain('已揽收');
+    expect(messages.value).toEqual([expect.objectContaining({ type: 'error', text: '已揽收，无法取消' })]);
     expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(true);
     wrapper.unmount();
   });

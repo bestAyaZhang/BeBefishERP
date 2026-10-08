@@ -47,6 +47,7 @@ export interface ShipmentFormInput extends RecipientFields, SenderFields {
   platform: string;
   shopName: string;
   preparers: string[];
+  preparerEmployeeIds?: number[];
   preparationContent: string;
   remark: string;
   estimatedFreight: number | null;
@@ -71,6 +72,8 @@ export interface Shipment {
   updatedBy: string;
   createdAt: string;
   updatedAt: string;
+  preparerEmployeeIds?: number[];
+  preparation?: { actualWeight: number | null; updatedBy: string | null; employeeId?: number | null; updatedAt: string | null };
 }
 
 export interface ShipmentQuery {
@@ -139,6 +142,7 @@ export interface ShippingService {
   get(id: number): Promise<Shipment>;
   create(form: ShipmentFormInput): Promise<Shipment>;
   update(id: number, form: ShipmentFormInput, status: ShipmentStatus, version: number): Promise<Shipment>;
+  updatePreparation(id: number, request: { status: ShipmentStatus; actualWeight: number | null; version: number }): Promise<Shipment>;
   logisticsAvailability(): Promise<LogisticsAvailability>;
   getLogisticsOrder(id: number): Promise<LogisticsOrder | null>;
   placeLogisticsOrder(id: number, request: PlaceLogisticsOrder): Promise<LogisticsOrder>;
@@ -152,7 +156,7 @@ export function todayDate() {
 
 export function emptyShipmentForm(): ShipmentFormInput {
   return {
-    platform: '', shopName: '', preparers: [], recipientName: '', recipientPhone: '',
+    platform: '', shopName: '', preparers: [], preparerEmployeeIds: [], recipientName: '', recipientPhone: '',
     recipientProvince: '', recipientCity: '', recipientCounty: '', recipientDetailAddress: '',
     senderName: '', senderPhone: '', senderProvince: '', senderCity: '', senderCounty: '', senderDetailAddress: '',
     preparationContent: '', remark: '', estimatedFreight: null,

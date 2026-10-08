@@ -3,7 +3,10 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { AlertTriangle, Boxes, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Plus, RotateCcw, Search, Truck } from 'lucide-vue-next';
 import { currentUser } from '../../services/authSession';
+import { message } from '../../components/feedback/message';
 import { shippingService } from './shippingService';
+import ShipmentPreparationDialog from './ShipmentPreparationDialog.vue';
+import { canUpdatePreparation } from './preparationAccess';
 import { freightText, logisticsOrderStatus, recipientFullAddress, shipmentStatus, SHIPMENT_STATUSES, todayDate,
   type Shipment, type ShipmentQuery, type ShipmentSummary } from './types';
 
@@ -20,9 +23,15 @@ const loading = ref(false);
 const error = ref('');
 const summaryError = ref('');
 const summary = ref<ShipmentSummary>({ todayCount: 0, unfinishedCount: 0, completedCount: 0, outOfStockCount: 0, partiallyShippedCount: 0 });
-const query = reactive<ShipmentQuery>({ page: 1, size: 20, keyword: '', status: '', dateFrom: todayDate(), dateTo: todayDate(), platform: '', incompleteOnly: false });
+const query = reactive<ShipmentQuery>({ page: 1, size: 20, keyword: '', status: 'unfinished', dateFrom: '', dateTo: '', platform: '', incompleteOnly: false });
 const canCreate = computed(() => currentUser.value?.permissions.includes('shipping:create'));
 const canEdit = computed(() => currentUser.value?.permissions.includes('shipping:edit'));
+const preparingId = ref<number | null>(null);
+async function preparationSaved() {
+  preparingId.value = null;
+  message.success('备货状态与实际重量已保存');
+  await Promise.all([load(), loadSummary()]);
+}
 const pages = computed(() => Math.max(1, Math.ceil(total.value / query.size)));
 let listRequest = 0;
 let summaryRequest = 0;
@@ -51,7 +60,7 @@ async function load() {
 function search() { query.page = 1; query.incompleteOnly = false; void load(); }
 function showToday() { Object.assign(query, { page: 1, dateFrom: todayDate(), dateTo: todayDate(), incompleteOnly: false }); void load(); }
 function showIncomplete() { Object.assign(query, { page: 1, dateFrom: '', dateTo: '', status: '', incompleteOnly: true }); void load(); }
-function reset() { Object.assign(query, { page: 1, keyword: '', status: '', dateFrom: todayDate(), dateTo: todayDate(), platform: '', platformId: undefined, shopId: undefined, unlinkedOnly: false, incompleteOnly: false }); void load(); }
+function reset() { Object.assign(query, { page: 1, keyword: '', status: 'unfinished', dateFrom: '', dateTo: '', platform: '', platformId: undefined, shopId: undefined, unlinkedOnly: false, incompleteOnly: false }); void load(); }
 function pageTo(page: number) { query.page = page; void load(); }
 function maskPhone(value: string) { return /^\d{11}$/.test(value) ? `${value.slice(0, 3)}****${value.slice(-4)}` : value; }
 function compactShipmentNo(value: string) { return value.length > 18 ? `${value.slice(0, 17)}…` : value; }
@@ -110,15 +119,16 @@ onBeforeUnmount(() => { listRequest++; summaryRequest++; });
             <td class="table-cell"><p class="font-medium text-slate-800">{{ row.content.recipientName }} <span class="ml-2 font-normal text-slate-500">{{ maskPhone(row.content.recipientPhone) }}</span></p><p class="mt-1.5 max-w-72 break-words text-xs leading-5 text-slate-500">{{ recipientFullAddress(row.content) }}</p></td>
             <td class="table-cell"><p :data-testid="`shipment-preparation-${row.id}`" :title="row.content.preparationContent" class="line-clamp-3 max-w-72 whitespace-pre-wrap break-words leading-6 text-slate-700">{{ row.content.preparationContent }}</p><p v-if="row.content.remark" :data-testid="`shipment-remark-${row.id}`" :title="`备注：${row.content.remark}`" class="mt-1 line-clamp-1 max-w-72 text-xs text-slate-400">备注：{{ row.content.remark }}</p></td>
             <td class="table-cell"><p class="text-slate-700">{{ row.content.logisticsCompany || '待下单' }}</p><p class="mt-1 max-w-40 break-all text-xs text-slate-400">{{ row.logisticsOrderState === 'cancelled' ? '原运单已作废' : row.content.trackingNo || '暂无物流单号' }}</p></td>
-            <td class="table-cell whitespace-nowrap"><p>{{ row.content.orderDraft.weight == null ? '未填写' : `${row.content.orderDraft.weight} kg` }}</p><p class="mt-1 text-xs text-slate-400">{{ freightText(row.content.estimatedFreight) }}</p></td>
-            <td class="table-cell"><div class="space-y-2"><div><p class="mb-1 text-[11px] text-slate-400">安能下单</p><span :data-testid="`shipment-logistics-status-${row.id}`" class="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium" :class="logisticsOrderStatus(row.logisticsOrderState).tone">{{ logisticsOrderStatus(row.logisticsOrderState).label }}</span></div><div><p class="mb-1 text-[11px] text-slate-400">备货</p><span :data-testid="`shipment-preparation-status-${row.id}`" class="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium" :class="shipmentStatus(row.content.status).tone">{{ shipmentStatus(row.content.status).label }}</span></div></div></td>
+            <td class="table-cell whitespace-nowrap"><p :data-testid="`shipment-actual-weight-${row.id}`" class="font-medium">实际：{{ row.preparation?.actualWeight == null ? '未称重' : `${row.preparation.actualWeight} kg` }}</p><p class="mt-1 text-xs text-slate-500">下单：{{ row.content.orderDraft.weight == null ? '未填写' : `${row.content.orderDraft.weight} kg` }}</p><p class="mt-1 text-xs text-slate-400">{{ freightText(row.content.estimatedFreight) }}</p></td>
+            <td class="table-cell"><div class="flex items-start gap-3"><div class="shrink-0"><p class="mb-1 whitespace-nowrap text-[11px] text-slate-400">安能下单</p><span :data-testid="`shipment-logistics-status-${row.id}`" class="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium" :class="logisticsOrderStatus(row.logisticsOrderState).tone">{{ logisticsOrderStatus(row.logisticsOrderState).label }}</span></div><div class="shrink-0"><p class="mb-1 whitespace-nowrap text-[11px] text-slate-400">备货</p><span :data-testid="`shipment-preparation-status-${row.id}`" class="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium" :class="shipmentStatus(row.content.status).tone">{{ shipmentStatus(row.content.status).label }}</span></div></div></td>
             <td class="table-cell"><p class="max-w-36 break-words text-slate-700">{{ row.content.preparers.join('、') || '未指定' }}</p><p class="mt-1 text-xs text-slate-400">{{ row.content.orderer || '—' }}</p></td>
-            <td class="table-cell whitespace-nowrap text-right"><button :data-testid="`shipment-detail-${row.id}`" type="button" class="font-medium text-[#536dff]" @click="openDetail(row.id)">查看详情</button><button v-if="canEdit" :data-testid="`shipment-edit-${row.id}`" type="button" class="ml-3 font-medium text-[#536dff]" @click="openEdit(row.id)">编辑</button></td>
+            <td class="table-cell text-right"><div class="flex items-center justify-end gap-2 whitespace-nowrap"><button :data-testid="`shipment-detail-${row.id}`" type="button" class="shipment-action-button" @click="openDetail(row.id)">查看详情</button><button v-if="canEdit" :data-testid="`shipment-edit-${row.id}`" type="button" class="shipment-action-button" @click="openEdit(row.id)">编辑</button><button v-if="canUpdatePreparation(row, currentUser)" :data-testid="`shipment-prepare-${row.id}`" type="button" class="shipment-action-button" @click="preparingId = row.id">更新备货</button></div></td>
           </tr></tbody>
         </table>
       </div>
       <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4 text-sm text-slate-500"><span>{{ error ? '—' : `共 ${total} 条记录` }}</span><div class="flex items-center gap-3"><button aria-label="上一页" :disabled="loading || !!error || query.page <= 1" type="button" class="page-button" @click="pageTo(query.page - 1)"><ChevronLeft :size="16" /></button><span>{{ query.page }} / {{ pages }}</span><button data-testid="shipment-next-page" aria-label="下一页" :disabled="loading || !!error || query.page >= pages" type="button" class="page-button" @click="pageTo(query.page + 1)"><ChevronRight :size="16" /></button></div></footer>
     </div>
+    <ShipmentPreparationDialog :shipment-id="preparingId" @close="preparingId = null" @saved="preparationSaved" />
   </section>
 </template>
 
@@ -130,5 +140,6 @@ onBeforeUnmount(() => { listRequest++; summaryRequest++; });
 .filter-input { @apply h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/10; }
 .shortcut-button { @apply rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700; }
 .table-cell { @apply px-5 py-4; }
+.shipment-action-button { @apply inline-flex h-8 min-w-20 items-center justify-center whitespace-nowrap rounded-md border border-indigo-200 bg-white px-3 text-xs font-medium text-[#536dff] transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2; }
 .page-button { @apply rounded-md border border-slate-200 p-1.5 disabled:opacity-30; }
 </style>
