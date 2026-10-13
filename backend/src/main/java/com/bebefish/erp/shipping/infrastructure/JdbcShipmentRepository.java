@@ -48,7 +48,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                     tracking_no, platform, shop_name, platform_id, shop_id, estimated_freight, cargo_name, pack_type, logistics_remark,
                     preparation_content, remark, status, preparer, preparers_json, preparer_employee_ids_json,
                     actual_weight, preparation_updated_by, preparation_employee_id, preparation_updated_at, orderer, version_no,
-                    created_by, updated_by, created_at, updated_at)
+                    created_by, updated_by, created_at, updated_at, creator_employee_id)
                 values (:shipmentNo, :shipmentDate, :senderName, :senderPhone, :senderProvince,
                     :senderCity, :senderCounty, :senderDetailAddress, :recipientName, :recipientPhone,
                     :recipientProvince, :recipientCity, :recipientCounty, :recipientDetailAddress, :recipientAddress,
@@ -56,12 +56,12 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                     :trackingNo, :platform, :shopName, :platformId, :shopId, :estimatedFreight, :cargoName, :packType, :logisticsRemark,
                     :preparationContent, :remark, :status, :preparer, cast(:preparersJson as json), cast(:preparerEmployeeIdsJson as json),
                     :actualWeight, :preparationUpdatedBy, :preparationEmployeeId, :preparationUpdatedAt, :orderer, :version,
-                    :createdBy, :updatedBy, :createdAt, :updatedAt)
+                    :createdBy, :updatedBy, :createdAt, :updatedAt, :creatorEmployeeId)
                 """, parameters(shipment), keys, new String[]{"id"});
         if (keys.getKey() == null) throw new IllegalStateException("发货单保存后未返回编号");
         return new Shipment(keys.getKey().longValue(), shipment.shipmentNo(), shipment.content(), shipment.version(),
                 shipment.createdBy(), shipment.updatedBy(), shipment.createdAt(), shipment.updatedAt(),
-                shipment.logisticsOrderState(), shipment.preparerEmployeeIds(), shipment.preparation());
+                shipment.logisticsOrderState(), shipment.preparerEmployeeIds(), shipment.preparation(), shipment.creatorEmployeeId());
     }
 
     @Override
@@ -82,7 +82,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                     piece_amount=:pieceAmount, product_type_id=:productTypeId, goods_type=:goodsType,
                     pay_type=:payType, logistics_remark=:logisticsRemark,
                     preparation_content=:preparationContent, remark=:remark, status=:status,
-                    orderer=:orderer, version_no=:version, updated_by=:updatedBy, updated_at=:updatedAt
+                    orderer=:orderer, version_no=:version, updated_by=:updatedBy, updated_at=:updatedAt, creator_employee_id=:creatorEmployeeId
                 where id=:id and version_no=:expectedVersion
                     and (not exists (select 1 from shipment_logistics_order o where o.shipment_id=:id and o.state <> 'rejected')
                         or (sender_name=:senderName and sender_phone=:senderPhone
@@ -195,7 +195,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                 .addValue("preparationUpdatedAt", shipment.preparation().updatedAt())
                 .addValue("version", shipment.version()).addValue("createdBy", shipment.createdBy())
                 .addValue("updatedBy", shipment.updatedBy()).addValue("createdAt", shipment.createdAt())
-                .addValue("updatedAt", shipment.updatedAt());
+                .addValue("updatedAt", shipment.updatedAt()).addValue("creatorEmployeeId", shipment.creatorEmployeeId());
     }
 
     private Shipment map(ResultSet rs, int row) throws SQLException {
@@ -217,7 +217,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                 rs.getTimestamp("updated_at").toLocalDateTime(), rs.getString("logistics_order_state"),
                 readEmployeeIds(rs.getString("preparer_employee_ids_json")), new PreparationProgress(rs.getBigDecimal("actual_weight"),
                 rs.getString("preparation_updated_by"), rs.getObject("preparation_employee_id", Long.class),
-                rs.getTimestamp("preparation_updated_at") == null ? null : rs.getTimestamp("preparation_updated_at").toLocalDateTime()));
+                rs.getTimestamp("preparation_updated_at") == null ? null : rs.getTimestamp("preparation_updated_at").toLocalDateTime()), rs.getObject("creator_employee_id", Long.class));
     }
 
     private Integer getInteger(ResultSet rs, String column) throws SQLException {

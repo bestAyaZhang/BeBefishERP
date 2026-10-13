@@ -68,6 +68,49 @@ class ShipmentPreparationIntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from sys_role_permission rp join sys_role r on r.id=rp.role_id join sys_permission p on p.id=rp.permission_id where r.code='SUPER_ADMIN' and p.code='shipping:prepare'", Integer.class)).isEqualTo(1);
     }
 
+    @Test
+    void creatorContentUpdatesPersistWithoutChangingPreparationFeedbackOrTheCarrierSnapshot() {
+        long ownerId = employee("下单员"), preparerId = employee("备货员");
+        var created = shipments.create(form("备货员"), List.of(preparerId), "employee:" + ownerId, "下单员");
+        jdbc.update("insert into shipment_logistics_order (shipment_id,order_no,state,test_environment,request_snapshot,tracking_no,child_tracking_nos,message,operator_id,created_at,updated_at) values (?,?,'succeeded',true,'{}','710TEST','','成功','test',now(3),now(3))", created.id(), "CONTENT-" + created.id());
+        var preparer = new ErpPrincipal(preparerId, null, "备货员", List.of(), List.of("shipping:view", "shipping:prepare"));
+        shipments.updatePreparation(created.id(), "out_of_stock", new BigDecimal("12.345"), 0, preparer);
+        var prepared = shipments.get(created.id());
+        var owner = new ErpPrincipal(ownerId, null, "下单员", List.of(), List.of("shipping:view"));
+        shipments.updatePreparationContent(created.id(), "新物品5件", "", prepared.version(), owner);
+        var reloaded = shipments.get(created.id());
+        assertThat(reloaded.content().preparationContent()).isEqualTo("新物品5件");
+        assertThat(reloaded.content().remark()).isEmpty();
+        assertThat(reloaded.content()).usingRecursiveComparison().ignoringFields("preparationContent", "remark").isEqualTo(prepared.content());
+        assertThat(reloaded.preparation()).isEqualTo(prepared.preparation());
+        assertThat(reloaded.preparerEmployeeIds()).containsExactly(preparerId);
+        assertThat(reloaded.createdBy()).isEqualTo("employee:" + ownerId);
+        assertThat(reloaded.creatorEmployeeId()).isEqualTo(ownerId);
+        assertThat(reloaded.updatedBy()).isEqualTo("employee:" + ownerId);
+        assertThat(reloaded.logisticsOrderState()).isEqualTo("succeeded");
+        assertThat(jdbc.queryForObject("select request_snapshot from shipment_logistics_order where shipment_id=?", String.class, created.id())).isEqualTo("{}");
+        var completed = shipments.updatePreparation(created.id(), "completed", null, reloaded.version(), preparer);
+        assertThatThrownBy(() -> shipments.updatePreparationContent(created.id(), "不应保存", "新备注", completed.version(), owner))
+                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.code()).isEqualTo("SHIPMENT_PREPARATION_COMPLETED"));
+        assertThat(shipments.get(created.id()).content().preparationContent()).isEqualTo("新物品5件");
+    }
+
+    @Test
+    void historicalPhoneOwnershipRequiresAdministratorConfirmationAndRemainsStableAfterPhoneChanges() {
+        long ownerId = employee("历史下单员");
+        var created = shipments.create(form("备货员"), "13800000000", "历史下单员");
+        var holder = new ErpPrincipal(ownerId, "13800000000", "历史下单员", List.of(), List.of("shipping:view"));
+        assertThatThrownBy(() -> shipments.updatePreparationContent(created.id(), "新物品", "", 0, holder))
+                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.code()).isEqualTo("SHIPMENT_CONTENT_FORBIDDEN"));
+        var admin = new ErpPrincipal(ownerId, null, "管理员", List.of("SUPER_ADMIN"), List.of("shipping:view", "shipping:edit"));
+        var linked = shipments.confirmCreator(created.id(), ownerId, 0, admin);
+        assertThat(shipments.get(created.id()).creatorEmployeeId()).isEqualTo(ownerId);
+        assertThat(linked.createdBy()).isEqualTo("13800000000");
+        var changedPhone = new ErpPrincipal(ownerId, "13900000000", "历史下单员", List.of(), List.of("shipping:view"));
+        shipments.updatePreparationContent(created.id(), "新物品", "新备注", linked.version(), changedPhone);
+        assertThat(shipments.get(created.id()).content().preparationContent()).isEqualTo("新物品");
+    }
+
     private long employee(String name) {
         String no = "PREP-" + java.util.UUID.randomUUID();
         jdbc.update("insert into employee (employee_no,name,employment_type,status,source,created_at,updated_at) values (?,?,'formal','active','manual',now(3),now(3))", no, name);

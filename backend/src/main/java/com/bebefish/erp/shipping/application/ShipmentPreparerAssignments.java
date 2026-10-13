@@ -24,4 +24,9 @@ public class ShipmentPreparerAssignments {
     private BusinessException invalid() {
         return new BusinessException("SHIPMENT_PREPARER_SELECTION_INVALID", HttpStatus.BAD_REQUEST, "请重新选择在职备货人员，核对姓名与员工账号");
     }
+
+    public void validateCreator(long employeeId) {
+        if (employeeId <= 0 || employees.findActivePreparers().stream().noneMatch(option -> option.employeeId() == employeeId))
+            throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "请选择在职员工账号并核对原下单人");
+    }
 }

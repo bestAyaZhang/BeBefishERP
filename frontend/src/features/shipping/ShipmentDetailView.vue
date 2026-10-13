@@ -7,7 +7,8 @@ import { currentUser } from '../../services/authSession';
 import { message } from '../../components/feedback/message';
 import AccessibleDialog from '../../components/AccessibleDialog.vue';
 import ShipmentPreparationDialog from './ShipmentPreparationDialog.vue';
-import { canUpdatePreparation } from './preparationAccess';
+
+import { canConfirmCreator, canEditPreparationContent, canUpdatePreparation } from './preparationAccess';
 import { freightText, logisticsStateLabel, recipientFullAddress, shipmentSenderFullAddress, shipmentStatus,
   type LogisticsOrder, type Shipment } from './types';
 
@@ -21,15 +22,38 @@ const orderVerified = ref(false);
 const cancelOpen = ref(false);
 const cancelling = ref(false);
 const preparationOpen = ref(false);
+
+const creatorLinkOpen = ref(false);
+const creatorOptions = ref<import('./types').PreparerOption[]>([]);
+const creatorEmployeeId = ref('');
+const creatorConfirmed = ref(false);
+const linkingCreator = ref(false);
+async function openCreatorLink() {
+  creatorLinkOpen.value = true; creatorEmployeeId.value = ''; creatorConfirmed.value = false;
+  try { creatorOptions.value = (await shippingService.formOptions()).preparers; }
+  catch (cause) { message.error(cause instanceof Error ? cause.message : '员工账号加载失败'); }
+}
+async function confirmCreator() {
+  if (!shipment.value || !canConfirmCreator(shipment.value, currentUser.value) || linkingCreator.value || !creatorConfirmed.value || !creatorEmployeeId.value) return;
+  linkingCreator.value = true;
+  try {
+    shipment.value = await shippingService.confirmCreator(shipment.value.id, { employeeId: Number(creatorEmployeeId.value), version: shipment.value.version });
+    creatorLinkOpen.value = false;
+    message.success('历史单下单账号已确认');
+  } catch (cause) {
+    message.warning(cause instanceof Error ? cause.message : '确认失败，请刷新后核对', 6000);
+  } finally { linkingCreator.value = false; }
+}
+
 function preparationSaved(updated: Shipment) {
   shipment.value = updated;
   preparationOpen.value = false;
   message.success('备货状态与实际重量已保存');
 }
-const canEdit = computed(() => currentUser.value?.permissions.includes('shipping:edit'));
+const canEdit = computed(() => currentUser.value?.permissions.includes('shipping:edit') || (!!shipment.value && canEditPreparationContent(shipment.value, currentUser.value)));
 const canCancel = computed(() => orderVerified.value && currentUser.value?.permissions.includes('shipping:cancel')
   && !!order.value && ['succeeded', 'cancel_rejected'].includes(order.value.state));
-const editLabel = computed(() => order.value && order.value.state !== 'rejected' ? '编辑发货单' : '编辑并下单');
+const editLabel = computed(() => !currentUser.value?.permissions.includes('shipping:edit') || (order.value && order.value.state !== 'rejected') ? '编辑发货单' : '编辑并下单');
 let generation = 0;
 
 async function load() {
@@ -82,6 +106,15 @@ onBeforeUnmount(() => { generation++; });
       <div class="flex items-center gap-3"><button data-testid="shipment-back-list" type="button" class="rounded-lg border border-slate-200 bg-white p-2 text-slate-500" @click="back"><ArrowLeft :size="18" /></button><div><h1 class="text-2xl font-bold text-[#25314d]">发货单详情</h1><p class="mt-1 text-sm text-slate-500">{{ shipment?.shipmentNo || '查看发货资料与物流进度' }}</p></div></div>
       <div class="flex gap-3"><button data-testid="shipment-refresh-order" type="button" :disabled="loading || cancelling" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 disabled:opacity-40" @click="load"><RefreshCw :size="15" />刷新状态</button><button v-if="shipment && canEdit" data-testid="shipment-detail-edit" type="button" :disabled="cancelling" class="rounded-lg bg-[#536dff] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40" @click="edit">{{ editLabel }}</button></div>
     </header>
+    <div v-if="shipment && canConfirmCreator(shipment, currentUser)" class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      <p>历史单尚未关联下单账号，原下单人：{{ shipment.content.orderer }}。请核实后关联；所选账号可在备货完成前修改本单物品和备注。</p>
+      <button v-if="!creatorLinkOpen" data-testid="creator-link-open" type="button" :disabled="loading || cancelling" class="mt-2 font-medium underline disabled:opacity-40" @click="openCreatorLink">确认下单账号</button>
+      <div v-else class="mt-3 space-y-3">
+        <label class="block">下单人账号<select v-model="creatorEmployeeId" data-testid="creator-employee" :disabled="linkingCreator" class="ml-3 h-10 rounded-lg border border-amber-200 bg-white px-3"><option value="">请选择已核实的员工</option><option v-for="employee in creatorOptions" :key="employee.employeeId" :value="String(employee.employeeId)">{{ employee.employeeName }}（员工 #{{ employee.employeeId }}）</option></select></label>
+        <label class="flex items-center gap-2"><input v-model="creatorConfirmed" data-testid="creator-confirmed" type="checkbox" :disabled="linkingCreator" />我已核实所选员工为本单下单人</label>
+        <button data-testid="creator-link-save" type="button" :disabled="linkingCreator || !creatorEmployeeId || !creatorConfirmed" class="rounded-lg bg-[#536dff] px-4 py-2 text-sm text-white disabled:opacity-40" @click="confirmCreator">{{ linkingCreator ? '正在确认…' : '保存账号关联' }}</button>
+      </div>
+    </div>
     <p v-if="shipment && !loading && !orderVerified" class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">物流状态尚未核实，请点击“刷新状态”后核对，勿重复取消或重新下单。</p>
     <div v-if="loading" role="status" class="rounded-xl border border-slate-200 bg-white py-24 text-center text-sm text-slate-500">正在加载发货单…</div>
     <div v-else-if="error" data-testid="shipment-detail-error" role="alert" class="rounded-xl border border-rose-100 bg-white py-20 text-center"><p class="text-sm text-rose-600">{{ error }}</p><button data-testid="shipment-detail-retry" type="button" class="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 px-5 py-2 text-sm text-[#536dff]" @click="load"><RefreshCw :size="15" />重新加载</button></div>
@@ -95,7 +128,7 @@ onBeforeUnmount(() => { generation++; });
           <div class="card-title"><MapPin :size="18" />收件人信息</div>
           <div class="mt-5 grid gap-5 sm:grid-cols-2"><div><p class="meta-label">姓名</p><p class="meta-value">{{ shipment.content.recipientName }}</p></div><div><p class="meta-label">电话</p><p class="meta-value">{{ shipment.content.recipientPhone }}</p></div><div class="sm:col-span-2"><p class="meta-label">完整地址</p><p class="meta-value break-words leading-7">{{ recipientFullAddress(shipment.content) }}</p></div></div>
         </article>
-        <article class="detail-card"><div class="card-title"><Box :size="18" />备货清单</div><p class="mt-5 min-h-36 whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-4 text-sm leading-7 text-slate-700">{{ shipment.content.preparationContent }}</p><div class="mt-5 border-t border-slate-100 pt-4"><p class="meta-label">备注</p><p class="meta-value whitespace-pre-wrap break-words">{{ shipment.content.remark || '暂无备注' }}</p></div></article>
+        <article class="detail-card"><div class="flex items-center justify-between gap-3"><div class="card-title"><Box :size="18" />备货清单</div></div><p class="mt-5 min-h-36 whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-4 text-sm leading-7 text-slate-700">{{ shipment.content.preparationContent }}</p><div class="mt-5 border-t border-slate-100 pt-4"><p class="meta-label">备注</p><p class="meta-value whitespace-pre-wrap break-words">{{ shipment.content.remark || '暂无备注' }}</p></div></article>
         <article class="detail-card"><div class="card-title"><PackageCheck :size="18" />发货记录</div><dl class="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"><div><dt class="meta-label">平台</dt><dd class="meta-value">{{ shipment.content.platform || '未填写' }}</dd></div><div><dt class="meta-label">店铺</dt><dd class="meta-value">{{ shipment.content.shopName }}</dd></div><div><dt class="meta-label">发货日期</dt><dd class="meta-value">{{ shipment.content.shipmentDate }}</dd></div><div><dt class="meta-label">备货人</dt><dd class="meta-value">{{ shipment.content.preparers.join('、') || '未指定' }}</dd></div><div><dt class="meta-label">下单人</dt><dd class="meta-value">{{ shipment.content.orderer }}</dd></div><div><dt class="meta-label">运费预测</dt><dd class="meta-value">{{ freightText(shipment.content.estimatedFreight) }}</dd></div></dl></article>
       </main>
       <aside class="space-y-5 lg:sticky lg:top-5">

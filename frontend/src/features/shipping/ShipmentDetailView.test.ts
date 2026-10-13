@@ -5,7 +5,7 @@ import ShipmentDetailView from './ShipmentDetailView.vue';
 import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
 import { clearMessages, messages } from '../../components/feedback/message';
 
-const service = vi.hoisted(() => ({ get: vi.fn(), getLogisticsOrder: vi.fn(), cancelLogisticsOrder: vi.fn(), updatePreparation: vi.fn() }));
+const service = vi.hoisted(() => ({ get: vi.fn(), getLogisticsOrder: vi.fn(), cancelLogisticsOrder: vi.fn(), updatePreparation: vi.fn(), formOptions: vi.fn(), confirmCreator: vi.fn() }));
 enableAutoUnmount(afterEach);
 afterEach(clearMessages);
 vi.mock('./shippingService', () => ({ shippingService: service }));
@@ -26,6 +26,7 @@ const shipment = {
 async function render() {
   const router = createRouter({ history: createMemoryHistory(), routes: [
     { path: '/shipping/list', name: 'shipping-list', component: { template: '<div>list</div>' } },
+    { path: '/shipping/:id/edit', name: 'shipping-edit', component: { template: '<div>edit</div>' } },
     { path: '/shipping/:id', name: 'shipping-detail', component: ShipmentDetailView }
   ] });
   await router.push('/shipping/8'); await router.isReady();
@@ -46,6 +47,32 @@ beforeEach(() => {
 });
 
 describe('ShipmentDetailView', () => {
+  it('requires administrator selection and explicit verification before linking a historical creator', async () => {
+    const historical = { ...shipment, createdBy: '13800000000' };
+    service.get.mockResolvedValue(historical);
+    service.formOptions.mockResolvedValue({ preparers: [{ employeeId: 2, employeeName: '原下单人' }] });
+    service.confirmCreator.mockResolvedValue({ ...historical, creatorEmployeeId: 2, version: 4 });
+    saveCurrentUser({ accessToken: 'test', employeeId: 1, mobile: null, displayName: '管理员', roles: ['SUPER_ADMIN'], permissions: ['shipping:view', 'shipping:edit'], loginMethod: 'feishu' });
+    const { wrapper } = await render();
+    await wrapper.get('[data-testid="creator-link-open"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="creator-employee"]').setValue('2');
+    expect(wrapper.get('[data-testid="creator-link-save"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="creator-confirmed"]').setValue(true);
+    await wrapper.get('[data-testid="creator-link-save"]').trigger('click'); await flushPromises();
+    expect(service.confirmCreator).toHaveBeenCalledWith(8, { employeeId: 2, version: 3 });
+    expect(wrapper.find('[data-testid="creator-link-open"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="shipment-detail-content-edit"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+  it('routes the creator to the shipment edit page through the existing header action', async () => {
+    saveCurrentUser({ accessToken: 'test', employeeId: 1, mobile: null, displayName: '下单员', roles: [], permissions: ['shipping:view'], loginMethod: 'feishu' });
+    const { wrapper, router } = await render();
+    expect(wrapper.find('[data-testid="shipment-detail-content-edit"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="shipment-detail-edit"]').trigger('click'); await flushPromises();
+    expect(router.currentRoute.value).toMatchObject({ name: 'shipping-edit', params: { id: '8' } });
+    expect(wrapper.find('[data-testid="content-dialog"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
   it('updates preparation feedback and operator details without changing the carrier status', async () => {
     saveCurrentUser({ accessToken: 'test', employeeId: 42, mobile: null, displayName: '小周', roles: [],
       permissions: ['shipping:view', 'shipping:prepare'], loginMethod: 'feishu' });

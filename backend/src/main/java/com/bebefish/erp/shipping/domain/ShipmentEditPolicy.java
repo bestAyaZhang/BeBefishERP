@@ -8,6 +8,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class ShipmentEditPolicy {
     public void assertAllowed(ShipmentContent previous, ShipmentFormInput next, boolean ordered) {
+        if ("completed".equals(previous.status()) && (!Objects.equals(previous.preparationContent(), next.preparationContent())
+                || !Objects.equals(previous.remark(), next.remark()))) {
+            throw new BusinessException("SHIPMENT_PREPARATION_COMPLETED", HttpStatus.CONFLICT, "备货已完成，不能修改备货物品和备注");
+        }
         if (!ordered) return;
         var current = previous.form();
         boolean immutableChanged = !Objects.equals(current.platformId(), next.platformId())

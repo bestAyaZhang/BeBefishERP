@@ -56,6 +56,13 @@ describe('ERP router', () => {
     expect(route.meta.requiredPermission).toBe('system:role:view');
   });
 
+  it('allows a shipment viewer into the edit page for record-level creator authorization', async () => {
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, 'test-token');
+    saveCurrentUser({ accessToken: 'test-token', employeeId: 1, mobile: null, roles: [], permissions: ['shipping:view'], loginMethod: 'feishu' });
+    await router.push('/shipping/18/edit');
+    expect(router.currentRoute.value.name).toBe('shipping-edit');
+  });
+
   it('keeps the feishu result route public', () => {
     const route = router.resolve('/auth/feishu/result?ticket=one-time');
 

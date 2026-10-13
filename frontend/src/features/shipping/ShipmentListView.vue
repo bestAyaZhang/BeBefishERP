@@ -6,7 +6,8 @@ import { currentUser } from '../../services/authSession';
 import { message } from '../../components/feedback/message';
 import { shippingService } from './shippingService';
 import ShipmentPreparationDialog from './ShipmentPreparationDialog.vue';
-import { canUpdatePreparation } from './preparationAccess';
+
+import { canEditPreparationContent, canUpdatePreparation } from './preparationAccess';
 import { freightText, logisticsOrderStatus, recipientFullAddress, shipmentStatus, SHIPMENT_STATUSES, todayDate,
   type Shipment, type ShipmentQuery, type ShipmentSummary } from './types';
 
@@ -27,6 +28,7 @@ const query = reactive<ShipmentQuery>({ page: 1, size: 20, keyword: '', status: 
 const canCreate = computed(() => currentUser.value?.permissions.includes('shipping:create'));
 const canEdit = computed(() => currentUser.value?.permissions.includes('shipping:edit'));
 const preparingId = ref<number | null>(null);
+
 async function preparationSaved() {
   preparingId.value = null;
   message.success('备货状态与实际重量已保存');
@@ -122,7 +124,7 @@ onBeforeUnmount(() => { listRequest++; summaryRequest++; });
             <td class="table-cell whitespace-nowrap"><p :data-testid="`shipment-actual-weight-${row.id}`" class="font-medium">实际：{{ row.preparation?.actualWeight == null ? '未称重' : `${row.preparation.actualWeight} kg` }}</p><p class="mt-1 text-xs text-slate-500">下单：{{ row.content.orderDraft.weight == null ? '未填写' : `${row.content.orderDraft.weight} kg` }}</p><p class="mt-1 text-xs text-slate-400">{{ freightText(row.content.estimatedFreight) }}</p></td>
             <td class="table-cell"><div class="flex items-start gap-3"><div class="shrink-0"><p class="mb-1 whitespace-nowrap text-[11px] text-slate-400">安能下单</p><span :data-testid="`shipment-logistics-status-${row.id}`" class="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium" :class="logisticsOrderStatus(row.logisticsOrderState).tone">{{ logisticsOrderStatus(row.logisticsOrderState).label }}</span></div><div class="shrink-0"><p class="mb-1 whitespace-nowrap text-[11px] text-slate-400">备货</p><span :data-testid="`shipment-preparation-status-${row.id}`" class="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium" :class="shipmentStatus(row.content.status).tone">{{ shipmentStatus(row.content.status).label }}</span></div></div></td>
             <td class="table-cell"><p class="max-w-36 break-words text-slate-700">{{ row.content.preparers.join('、') || '未指定' }}</p><p class="mt-1 text-xs text-slate-400">{{ row.content.orderer || '—' }}</p></td>
-            <td class="table-cell text-right"><div class="flex items-center justify-end gap-2 whitespace-nowrap"><button :data-testid="`shipment-detail-${row.id}`" type="button" class="shipment-action-button" @click="openDetail(row.id)">查看详情</button><button v-if="canEdit" :data-testid="`shipment-edit-${row.id}`" type="button" class="shipment-action-button" @click="openEdit(row.id)">编辑</button><button v-if="canUpdatePreparation(row, currentUser)" :data-testid="`shipment-prepare-${row.id}`" type="button" class="shipment-action-button" @click="preparingId = row.id">更新备货</button></div></td>
+            <td class="table-cell text-right"><div class="flex items-center justify-end gap-2 whitespace-nowrap"><button :data-testid="`shipment-detail-${row.id}`" type="button" class="shipment-action-button" @click="openDetail(row.id)">查看详情</button><button v-if="canEdit || canEditPreparationContent(row, currentUser)" :data-testid="`shipment-edit-${row.id}`" type="button" class="shipment-action-button" @click="openEdit(row.id)">编辑</button><button v-if="canUpdatePreparation(row, currentUser)" :data-testid="`shipment-prepare-${row.id}`" type="button" class="shipment-action-button" @click="preparingId = row.id">更新备货</button></div></td>
           </tr></tbody>
         </table>
       </div>

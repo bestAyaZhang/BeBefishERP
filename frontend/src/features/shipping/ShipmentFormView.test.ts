@@ -7,7 +7,7 @@ import ShipmentFormView from './ShipmentFormView.vue';
 import type { Shipment } from './types';
 
 const service = vi.hoisted(() => ({ formOptions: vi.fn(), logisticsAvailability: vi.fn(), get: vi.fn(),
-  getLogisticsOrder: vi.fn(), create: vi.fn(), update: vi.fn(), placeLogisticsOrder: vi.fn() }));
+  getLogisticsOrder: vi.fn(), create: vi.fn(), update: vi.fn(), updatePreparationContent: vi.fn(), placeLogisticsOrder: vi.fn() }));
 enableAutoUnmount(afterEach);
 vi.mock('./shippingService', () => ({ shippingService: service }));
 
@@ -72,6 +72,7 @@ beforeEach(() => {
   service.getLogisticsOrder.mockReset().mockResolvedValue(null);
   service.create.mockReset().mockResolvedValue(shipment());
   service.update.mockReset().mockResolvedValue(shipment({ version: 1 }));
+  service.updatePreparationContent.mockReset().mockResolvedValue(shipment({ version: 1 }));
   service.placeLogisticsOrder.mockReset().mockResolvedValue({ shipmentId: 18, orderNo: 'BF018', state: 'succeeded',
     trackingNo: 'ANE202609180018', childTrackingNos: '', message: '成功', updatedAt: '2026-09-24T10:00:00', testEnvironment: false });
 });
@@ -79,6 +80,91 @@ beforeEach(() => {
 afterEach(() => { clearCurrentUser(); clearMessages(); });
 
 describe('ShipmentFormView', () => {
+  it('lets the creator use the edit page to save only items and remark without general edit permission', async () => {
+    saveCurrentUser({ accessToken: 'test', employeeId: 1, mobile: '13900000000', roles: [],
+      permissions: ['shipping:view', 'shipping:order'], loginMethod: 'password' });
+    const item = shipment({ createdBy: '13800000000', creatorEmployeeId: 1 });
+    // Historical unrelated fields must not prevent a content-only correction.
+    item.content.recipientPhone = '';
+    item.content.preparers = [];
+    service.get.mockResolvedValue(item);
+    const { wrapper, router } = await render('/shipping/18/edit');
+    expect(wrapper.get('[data-testid="shipment-platform"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="sender-name"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="recipient-name"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="ane-weight"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('[data-testid="shipment-status"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="shipment-reselect-preparers"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="shipment-save-and-order"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="shipment-preparation-content"]').setValue('修改商品 × 3');
+    await wrapper.get('[data-testid="shipment-remark"]').setValue('分两批备货');
+    await wrapper.get('[data-testid="shipment-save-only"]').trigger('click'); await flushPromises();
+    expect(service.updatePreparationContent).toHaveBeenCalledWith(18, { preparationContent: '修改商品 × 3', remark: '分两批备货', version: 0 });
+    expect(service.update).not.toHaveBeenCalled();
+    expect(service.create).not.toHaveBeenCalled();
+    expect(service.placeLogisticsOrder).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.name).toBe('shipping-detail');
+    expect(messages.value.at(-1)).toMatchObject({ type: 'success', text: '备货清单与备注已保存' });
+  });
+  it.each(['other-creator', 'completed', 'reassigned-phone'])('blocks a content-only editor when %s', async reason => {
+    saveCurrentUser({ accessToken: 'test', employeeId: 1, mobile: '13800000000', roles: [], permissions: ['shipping:view'], loginMethod: 'password' });
+    const item = shipment({ creatorEmployeeId: reason === 'completed' ? 1 : 2, createdBy: reason === 'reassigned-phone' ? '13800000000' : 'employee:2' });
+    if (reason === 'completed') item.content.status = 'completed';
+    service.get.mockResolvedValue(item);
+    const { wrapper } = await render('/shipping/18/edit');
+    expect(wrapper.get('[data-testid="shipment-preparation-content"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="shipment-remark"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="shipment-save-only"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="shipment-save-only"]').trigger('click'); await flushPromises();
+    expect(service.updatePreparationContent).not.toHaveBeenCalled();
+    expect(service.update).not.toHaveBeenCalled();
+    expect(service.create).not.toHaveBeenCalled();
+  });
+  it('retains content on a version conflict and requires loading the latest state before saving again', async () => {
+    saveCurrentUser({ accessToken: 'test', employeeId: 1, mobile: null, roles: [], permissions: ['shipping:view'], loginMethod: 'feishu' });
+    service.updatePreparationContent.mockRejectedValue(Object.assign(new Error('发货单已更新'), { code: 'SHIPMENT_VERSION_CONFLICT' }));
+    const { wrapper } = await render('/shipping/18/edit');
+    await wrapper.get('[data-testid="shipment-preparation-content"]').setValue('保留本次输入');
+    await wrapper.get('[data-testid="shipment-save-only"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('[data-testid="shipment-preparation-content"]').element).toHaveProperty('value', '保留本次输入');
+    expect(wrapper.get('[data-testid="shipment-save-only"]').attributes('disabled')).toBeDefined();
+    service.get.mockResolvedValue({ ...shipment(), version: 1, content: { ...shipment().content, status: 'completed' } });
+    await wrapper.get('[data-testid="shipment-edit-reload"]').trigger('click'); await flushPromises();
+    expect(wrapper.text()).toContain('备货已完成');
+    expect(wrapper.get('[data-testid="shipment-preparation-content"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="shipment-save-only"]').attributes('disabled')).toBeDefined();
+  });
+  it('does not create a new shipment when an edit record fails to load', async () => {
+    service.get.mockRejectedValue(new Error('发货单不存在'));
+    const { wrapper } = await render('/shipping/18/edit');
+    expect(wrapper.get('[data-testid="shipment-save-only"]').attributes('disabled')).toBeDefined();
+    expect(service.create).not.toHaveBeenCalled();
+  });
+  it('keeps a retry path when reloading a content conflict fails temporarily', async () => {
+    saveCurrentUser({ accessToken: 'test', employeeId: 1, mobile: null, roles: [], permissions: ['shipping:view'], loginMethod: 'feishu' });
+    service.updatePreparationContent.mockRejectedValue(Object.assign(new Error('发货单已更新'), { code: 'SHIPMENT_VERSION_CONFLICT' }));
+    const { wrapper } = await render('/shipping/18/edit');
+    await wrapper.get('[data-testid="shipment-preparation-content"]').setValue('本次未保存内容');
+    await wrapper.get('[data-testid="shipment-save-only"]').trigger('click'); await flushPromises();
+    service.get.mockRejectedValueOnce(new Error('临时网络异常'));
+    await wrapper.get('[data-testid="shipment-edit-reload"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('[data-testid="shipment-save-only"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="shipment-preparation-content"]').element).toHaveProperty('value', '本次未保存内容');
+    service.get.mockResolvedValue(shipment({ version: 2 }));
+    await wrapper.get('[data-testid="shipment-form-retry"]').trigger('click'); await flushPromises();
+    expect(wrapper.get('[data-testid="shipment-save-only"]').attributes('disabled')).toBeUndefined();
+    expect(wrapper.get('[data-testid="shipment-preparation-content"]').element).toHaveProperty('value', shipment().content.preparationContent);
+    expect(wrapper.find('[data-testid="shipment-edit-reload"]').exists()).toBe(false);
+  });
+  it('locks preparation items and remark after preparation is completed', async () => {
+    const completed = shipment();
+    completed.content.status = 'completed';
+    service.get.mockResolvedValue(completed);
+    const { wrapper } = await render('/shipping/18/edit');
+    expect(wrapper.get('[data-testid="shipment-preparation-content"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="shipment-remark"]').attributes('disabled')).toBeDefined();
+    wrapper.unmount();
+  });
   it.each([['SHIPMENT_VERSION_CONFLICT', 'warning'], ['VALIDATION_FAILED', 'warning'], ['SERVICE_UNAVAILABLE', 'error']])('keeps form input and shows %s with the appropriate message', async (code, type) => {
     service.update.mockRejectedValue(Object.assign(new Error('请核对后重新保存'), { code }));
     const { wrapper, router } = await render('/shipping/18/edit');

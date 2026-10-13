@@ -53,6 +53,11 @@ public class ShipmentService {
 
     @Transactional
     public Shipment create(ShipmentFormInput input, List<Long> preparerEmployeeIds, String auditOperator, String displayOperator) {
+        return create(input, preparerEmployeeIds, auditOperator, displayOperator, legacyEmployeeId(auditOperator));
+    }
+
+    @Transactional
+    public Shipment create(ShipmentFormInput input, List<Long> preparerEmployeeIds, String auditOperator, String displayOperator, Long creatorEmployeeId) {
         var form = validate(input);
         form = form.withSource(sources.resolveForCreate(input.platformId(), input.shopId()));
         var now = LocalDateTime.now(clock);
@@ -60,7 +65,7 @@ public class ShipmentService {
                 + UUID.randomUUID().toString().replace("-", "").toUpperCase();
         var content = ShipmentContent.from(LocalDate.now(clock), form, "unfinished", clean(displayOperator), "", "");
         var ids = preparerEmployeeIds == null ? List.<Long>of() : assignments.validate(preparerEmployeeIds, form.preparers());
-        return repository.insert(new Shipment(null, number, content, 0, auditOperator, auditOperator, now, now, null, ids, null));
+        return repository.insert(new Shipment(null, number, content, 0, auditOperator, auditOperator, now, now, null, ids, null, creatorEmployeeId));
     }
 
     @Transactional
@@ -100,7 +105,7 @@ public class ShipmentService {
         var content = ShipmentContent.from(previous.content().shipmentDate(), form, status, previous.content().orderer(),
                 previous.content().logisticsCompany(), previous.content().trackingNo());
         var next = new Shipment(id, previous.shipmentNo(), content, version + 1, previous.createdBy(), auditOperator,
-                previous.createdAt(), LocalDateTime.now(clock), previous.logisticsOrderState(), ids, previous.preparation());
+                previous.createdAt(), LocalDateTime.now(clock), previous.logisticsOrderState(), ids, previous.preparation(), previous.creatorEmployeeId());
         if (!repository.update(next, version)) throw conflict();
         return next;
     }
@@ -123,7 +128,7 @@ public class ShipmentService {
                 previous.content().orderer(), previous.content().logisticsCompany(), previous.content().trackingNo());
         var next = new Shipment(id, previous.shipmentNo(), content, version + 1, previous.createdBy(), operator.operatorIdentifier(),
                 previous.createdAt(), now, previous.logisticsOrderState(), previous.preparerEmployeeIds(),
-                new PreparationProgress(actualWeight == null ? previous.preparation().actualWeight() : actualWeight, displayName, operator.employeeId(), now));
+                new PreparationProgress(actualWeight == null ? previous.preparation().actualWeight() : actualWeight, displayName, operator.employeeId(), now), previous.creatorEmployeeId());
         if (!repository.update(next, version)) throw conflict();
         return next;
     }
@@ -132,6 +137,28 @@ public class ShipmentService {
     public Shipment get(long id) {
         return repository.findById(id).orElseThrow(() ->
                 new BusinessException("SHIPMENT_NOT_FOUND", HttpStatus.NOT_FOUND, "发货单不存在"));
+    }
+
+    @Transactional
+    public Shipment updatePreparationContent(long id, String preparationContent, String remark, long version, ErpPrincipal operator) {
+        var previous = repository.findByIdForUpdate(id).orElseThrow(() ->
+                new BusinessException("SHIPMENT_NOT_FOUND", HttpStatus.NOT_FOUND, "发货单不存在"));
+        Long creatorId = previous.creatorEmployeeId() == null ? legacyEmployeeId(previous.createdBy()) : previous.creatorEmployeeId();
+        boolean creator = creatorId != null && creatorId == operator.employeeId();
+        if (!creator) throw new BusinessException("SHIPMENT_CONTENT_FORBIDDEN", HttpStatus.FORBIDDEN, "只有本单下单人可以修改备货物品和备注");
+        if (version < 0 || previous.version() != version) throw conflict();
+        if ("completed".equals(previous.content().status()))
+            throw new BusinessException("SHIPMENT_PREPARATION_COMPLETED", HttpStatus.CONFLICT, "备货已完成，不能修改备货物品和备注");
+        var items = clean(preparationContent);
+        var note = remark == null ? clean(previous.content().remark()) : clean(remark);
+        if (items.isBlank() || items.length() > 10000 || note.length() > 5000) throw invalid("请填写备货物品，备货物品最多10000字，备注最多5000字");
+        var form = previous.content().form().withPreparationContent(items, note);
+        var content = ShipmentContent.from(previous.content().shipmentDate(), form, previous.content().status(),
+                previous.content().orderer(), previous.content().logisticsCompany(), previous.content().trackingNo());
+        var next = new Shipment(id, previous.shipmentNo(), content, version + 1, previous.createdBy(), operator.operatorIdentifier(),
+                previous.createdAt(), LocalDateTime.now(clock), previous.logisticsOrderState(), previous.preparerEmployeeIds(), previous.preparation(), previous.creatorEmployeeId());
+        if (!repository.update(next, version)) throw conflict();
+        return next;
     }
 
     @Transactional(readOnly = true)
@@ -166,6 +193,24 @@ public class ShipmentService {
     }
 
     private static String clean(String value) { return value == null ? "" : value.strip(); }
+    @Transactional
+    public Shipment confirmCreator(long id, long employeeId, long version, ErpPrincipal administrator) {
+        if (!administrator.roles().contains("SUPER_ADMIN"))
+            throw new BusinessException("SHIPMENT_CREATOR_CONFIRM_FORBIDDEN", HttpStatus.FORBIDDEN, "只有超级管理员可确认历史单下单账号");
+        var previous = repository.findByIdForUpdate(id).orElseThrow(() -> new BusinessException("SHIPMENT_NOT_FOUND", HttpStatus.NOT_FOUND, "发货单不存在"));
+        if (version < 0 || previous.version() != version) throw conflict();
+        if (previous.creatorEmployeeId() != null || legacyEmployeeId(previous.createdBy()) != null)
+            throw new BusinessException("SHIPMENT_CREATOR_ALREADY_CONFIRMED", HttpStatus.CONFLICT, "本单已记录下单账号，不能重新关联");
+        assignments.validateCreator(employeeId);
+        var next = new Shipment(id, previous.shipmentNo(), previous.content(), version + 1, previous.createdBy(), administrator.operatorIdentifier(),
+                previous.createdAt(), LocalDateTime.now(clock), previous.logisticsOrderState(), previous.preparerEmployeeIds(), previous.preparation(), employeeId);
+        if (!repository.update(next, version)) throw conflict();
+        return next;
+    }
+    private static Long legacyEmployeeId(String identifier) {
+        if (identifier == null || !identifier.matches("employee:[1-9][0-9]{0,18}")) return null;
+        try { return Long.valueOf(identifier.substring(9)); } catch (NumberFormatException invalid) { return null; }
+    }
     private BusinessException invalid(String message) { return new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, message); }
     private BusinessException conflict() { return new BusinessException("SHIPMENT_VERSION_CONFLICT", HttpStatus.CONFLICT,
             "发货单已更新，或已有物流订单且关键资料不能直接修改。请重新打开核对；当前填写内容已保留"); }

@@ -57,7 +57,7 @@ public class ShipmentController {
     @PostMapping
     @PreAuthorize("hasAuthority('shipping:create')")
     public ApiResponse<Shipment> create(@Valid @RequestBody SaveShipmentRequest request, @AuthenticationPrincipal ErpPrincipal principal) {
-        return ApiResponse.success(service.create(request.form(), request.preparerEmployeeIds(), principal.operatorIdentifier(), operatorDisplayName(principal)));
+        return ApiResponse.success(service.create(request.form(), request.preparerEmployeeIds(), principal.operatorIdentifier(), operatorDisplayName(principal), principal.employeeId() > 0 ? principal.employeeId() : null));
     }
 
     @PutMapping("/{id}")
@@ -78,9 +78,23 @@ public class ShipmentController {
         return ApiResponse.success(service.updatePreparation(id, request.status(), request.actualWeight(), request.version(), principal));
     }
 
+    @PatchMapping("/{id}/preparation-content")
+    @PreAuthorize("hasAuthority('shipping:view')")
+    public ApiResponse<Shipment> updatePreparationContent(@PathVariable long id, @Valid @RequestBody UpdatePreparationContentRequest request,
+                                                         @AuthenticationPrincipal ErpPrincipal principal) {
+        return ApiResponse.success(service.updatePreparationContent(id, request.preparationContent(), request.remark(), request.version(), principal));
+    }
+
     private static String operatorDisplayName(ErpPrincipal principal) {
         if (principal.displayName() != null && !principal.displayName().isBlank()) return principal.displayName().strip();
         if (principal.mobile() != null && !principal.mobile().isBlank()) return principal.mobile().strip();
         return "员工#" + principal.employeeId();
+    }
+
+    @PatchMapping("/{id}/creator")
+    @PreAuthorize("hasAuthority('shipping:view') and hasAuthority('shipping:edit')")
+    public ApiResponse<Shipment> confirmCreator(@PathVariable long id, @Valid @RequestBody ConfirmShipmentCreatorRequest request,
+                                               @AuthenticationPrincipal ErpPrincipal principal) {
+        return ApiResponse.success(service.confirmCreator(id, request.employeeId(), request.version(), principal));
     }
 }

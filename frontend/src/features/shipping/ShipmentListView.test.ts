@@ -33,6 +33,7 @@ async function render(permissions = ['shipping:view', 'shipping:create', 'shippi
   saveCurrentUser({ accessToken: 'test', mobile: null, displayName: '李主管', roles: [], permissions, loginMethod: 'feishu' });
   const router = createRouter({ history: createMemoryHistory(), routes: [
     { path: '/shipping/list', name: 'shipping-list', component: ShipmentListView },
+    { path: '/shipping/:id/edit', name: 'shipping-edit', component: { template: '<div>edit</div>' } },
     { path: '/shipping/:id', name: 'shipping-detail', component: { template: '<div>detail</div>' } }
   ] });
   await router.push('/shipping/list'); await router.isReady();
@@ -49,6 +50,39 @@ beforeEach(() => {
 });
 
 describe('ShipmentListView', () => {
+  it('keeps content ownership after a phone change and never grants it to the next holder of the old phone', async () => {
+    service.list.mockResolvedValue({ records: [{ ...record(), createdBy: '13800000000', creatorEmployeeId: 1 }], page: 1, pageSize: 20, total: 1 });
+    const { wrapper } = await render(['shipping:view']);
+    saveCurrentUser({ accessToken: 'test', employeeId: 2, mobile: '13800000000', roles: [], permissions: ['shipping:view'], loginMethod: 'password' });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="shipment-edit-8"]').exists()).toBe(false);
+    saveCurrentUser({ accessToken: 'test', employeeId: 1, mobile: '13900000000', roles: [], permissions: ['shipping:view'], loginMethod: 'password' });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="shipment-edit-8"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+  it('routes the creator through the existing edit action without a separate content dialog', async () => {
+    const { wrapper, router } = await render(['shipping:view']);
+    saveCurrentUser({ accessToken: 'test', employeeId: 1, mobile: null, displayName: '下单人', roles: [], permissions: ['shipping:view'], loginMethod: 'feishu' });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="shipment-content-edit-8"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="shipment-edit-8"]').trigger('click'); await flushPromises();
+    expect(router.currentRoute.value).toMatchObject({ name: 'shipping-edit', params: { id: '8' } });
+    expect(wrapper.find('[data-testid="content-dialog"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+  it('hides content editing from other creators and completed preparation even when display names match', async () => {
+    service.list.mockResolvedValue({ records: [record(), { ...record(9), content: { ...record(9).content, status: 'completed' } }], page: 1, pageSize: 20, total: 2 });
+    const { wrapper } = await render(['shipping:view']);
+    saveCurrentUser({ accessToken: 'test', employeeId: 2, mobile: null, displayName: '李主管', roles: [], permissions: ['shipping:view'], loginMethod: 'feishu' });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="shipment-edit-8"]').exists()).toBe(false);
+    saveCurrentUser({ accessToken: 'test', employeeId: 1, mobile: null, roles: [], permissions: ['shipping:view'], loginMethod: 'feishu' });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="shipment-edit-8"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="shipment-edit-9"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
   it('defaults to unfinished shipments across all dates', async () => {
     const { wrapper } = await render();
     expect(service.list).toHaveBeenCalledWith(expect.objectContaining({ status: 'unfinished', dateFrom: '', dateTo: '', incompleteOnly: false }));

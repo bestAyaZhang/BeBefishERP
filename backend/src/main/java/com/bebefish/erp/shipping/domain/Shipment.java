@@ -5,10 +5,15 @@ import java.util.List;
 
 public record Shipment(Long id, String shipmentNo, ShipmentContent content, long version,
                        String createdBy, String updatedBy, LocalDateTime createdAt, LocalDateTime updatedAt,
-                       String logisticsOrderState, List<Long> preparerEmployeeIds, PreparationProgress preparation) {
+                       String logisticsOrderState, List<Long> preparerEmployeeIds, PreparationProgress preparation, Long creatorEmployeeId) {
     public Shipment {
         preparerEmployeeIds = preparerEmployeeIds == null ? List.of() : List.copyOf(preparerEmployeeIds);
         preparation = preparation == null ? PreparationProgress.empty() : preparation;
+    }
+    public Shipment(Long id, String shipmentNo, ShipmentContent content, long version,
+                    String createdBy, String updatedBy, LocalDateTime createdAt, LocalDateTime updatedAt,
+                    String logisticsOrderState, List<Long> preparerEmployeeIds, PreparationProgress preparation) {
+        this(id, shipmentNo, content, version, createdBy, updatedBy, createdAt, updatedAt, logisticsOrderState, preparerEmployeeIds, preparation, null);
     }
     public Shipment(Long id, String shipmentNo, ShipmentContent content, long version,
                     String createdBy, String updatedBy, LocalDateTime createdAt, LocalDateTime updatedAt,

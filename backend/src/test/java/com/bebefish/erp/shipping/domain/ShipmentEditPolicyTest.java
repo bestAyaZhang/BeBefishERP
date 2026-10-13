@@ -43,6 +43,18 @@ class ShipmentEditPolicyTest {
         return ShipmentContent.from(LocalDate.of(2026, 9, 18), form, "unfinished", "陈小鱼", "", "");
     }
 
+    @Test
+    void completedPreparationCannotBeChangedThroughTheGeneralEditorEvenBeforeCarrierOrdering() {
+        var saved = ShipmentContent.from(LocalDate.of(2026, 9, 18), form("示例路1号", "原备货", "原备注"), "completed", "下单人", "", "");
+        for (boolean ordered : List.of(false, true)) {
+            assertThatThrownBy(() -> policy.assertAllowed(saved, form("示例路1号", "新备货", "原备注"), ordered))
+                    .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.code()).isEqualTo("SHIPMENT_PREPARATION_COMPLETED"));
+            assertThatThrownBy(() -> policy.assertAllowed(saved, form("示例路1号", "原备货", "新备注"), ordered))
+                    .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.code()).isEqualTo("SHIPMENT_PREPARATION_COMPLETED"));
+            assertThatCode(() -> policy.assertAllowed(saved, saved.form(), ordered)).doesNotThrowAnyException();
+        }
+    }
+
     private ShipmentFormInput form(String address, String preparation, String remark) {
         return form(address, preparation, remark, "测试发货人");
     }

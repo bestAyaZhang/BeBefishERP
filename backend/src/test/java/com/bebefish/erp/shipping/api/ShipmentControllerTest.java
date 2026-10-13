@@ -80,7 +80,7 @@ class ShipmentControllerTest {
         when(repository.insert(any())).thenAnswer(call -> {
             Shipment s = call.getArgument(0);
             return new Shipment(17L, s.shipmentNo(), s.content(), 0, s.createdBy(), s.updatedBy(), s.createdAt(), s.updatedAt(),
-                    s.logisticsOrderState(), s.preparerEmployeeIds(), s.preparation());
+                    s.logisticsOrderState(), s.preparerEmployeeIds(), s.preparation(), s.creatorEmployeeId());
         });
     }
 
@@ -100,6 +100,109 @@ class ShipmentControllerTest {
         mvc.perform(patch("/api/shipments/17/preparation").contentType(APPLICATION_JSON)
                         .content("{\"status\":\"completed\",\"version\":3}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.preparation.actualWeight").value(19.235));
+    }
+
+    @Test
+    void creatorCanEditOnlyPreparationContentAndRemarkWithoutGeneralEditPermission() throws Exception {
+        login("下单人", "shipping:view");
+        var previous = contentRecord("employee:42", "partially_shipped");
+        when(repository.findByIdForUpdate(17)).thenReturn(java.util.Optional.of(previous));
+        when(repository.update(any(), eq(3L))).thenReturn(true);
+        mvc.perform(patch("/api/shipments/17/preparation-content").contentType(APPLICATION_JSON)
+                        .content("{\"preparationContent\":\" 修改后的物品 3件 \",\"remark\":\" 先发第一批 \",\"version\":3,\"status\":\"completed\",\"actualWeight\":99}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content.preparationContent").value("修改后的物品 3件"))
+                .andExpect(jsonPath("$.data.content.remark").value("先发第一批"))
+                .andExpect(jsonPath("$.data.content.status").value("partially_shipped"))
+                .andExpect(jsonPath("$.data.content.trackingNo").value("710001"))
+                .andExpect(jsonPath("$.data.logisticsOrderState").value("succeeded"))
+                .andExpect(jsonPath("$.data.preparation.actualWeight").value(19.235))
+                .andExpect(jsonPath("$.data.createdBy").value("employee:42"))
+                .andExpect(jsonPath("$.data.version").value(4));
+    }
+
+    @Test
+    void contentEditsRequireTheCreatorAndViewPermissionAndRejectCompletedOrStaleOrders() throws Exception {
+        String body = "{\"preparationContent\":\"修改物品\",\"remark\":\"\",\"version\":3}";
+        when(repository.findByIdForUpdate(17)).thenReturn(java.util.Optional.of(contentRecord("employee:43", "unfinished")));
+        login("同名下单人", "shipping:view", "shipping:edit");
+        mvc.perform(patch("/api/shipments/17/preparation-content").contentType(APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("SHIPMENT_CONTENT_FORBIDDEN"));
+        when(repository.findByIdForUpdate(17)).thenReturn(java.util.Optional.of(contentRecord("employee:42", "completed")));
+        mvc.perform(patch("/api/shipments/17/preparation-content").contentType(APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("SHIPMENT_PREPARATION_COMPLETED"));
+        when(repository.findByIdForUpdate(17)).thenReturn(java.util.Optional.of(contentRecord("employee:42", "unfinished")));
+        mvc.perform(patch("/api/shipments/17/preparation-content").contentType(APPLICATION_JSON)
+                        .content("{\"preparationContent\":\"修改物品\",\"version\":2}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("SHIPMENT_VERSION_CONFLICT"));
+        mvc.perform(patch("/api/shipments/17/preparation-content").contentType(APPLICATION_JSON)
+                        .content("{\"preparationContent\":\" \",\"version\":3}"))
+                .andExpect(status().isBadRequest());
+        login("下单人", "shipping:create");
+        mvc.perform(patch("/api/shipments/17/preparation-content").contentType(APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+        verify(repository, never()).update(any(), anyLong());
+    }
+
+    private Shipment contentRecord(String creator, String status) {
+        var form = mapper.convertValue(validForm("测试收件人"), ShipmentFormInput.class);
+        var now = java.time.LocalDateTime.of(2026, 9, 24, 9, 0);
+        return new Shipment(17L, "FH-17", ShipmentContent.from(LocalDate.of(2026,9,24), form,
+                status, "同名下单人", "安能物流", "710001"), 3, creator, creator, now, now,
+                "succeeded", List.of(43L), new PreparationProgress(new java.math.BigDecimal("19.235"), "备货人", 43L, now));
+    }
+
+    @Test
+    void creationCapturesTheStableEmployeeIdEvenWhenTheAuditIdentifierIsAMobile() throws Exception {
+        var principal = new ErpPrincipal(42, "13800000000", "下单人", List.of(), List.of("shipping:create"));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal, null,
+                principal.permissions().stream().map(SimpleGrantedAuthority::new).toList()));
+        mvc.perform(post("/api/shipments").contentType(APPLICATION_JSON).content(body(validForm("收件人"), null, null)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.creatorEmployeeId").value(42));
+    }
+
+    @Test
+    void ownershipUsesTheStoredEmployeeIdAcrossPhoneChangesAndRejectsPhoneOnlyLegacyRecords() throws Exception {
+        var old = contentRecord("13800000000", "unfinished");
+        var previous = new Shipment(old.id(), old.shipmentNo(), old.content(), old.version(), old.createdBy(), old.updatedBy(),
+                old.createdAt(), old.updatedAt(), old.logisticsOrderState(), old.preparerEmployeeIds(), old.preparation(), 42L);
+        when(repository.findByIdForUpdate(17)).thenReturn(java.util.Optional.of(previous));
+        when(repository.update(any(), eq(3L))).thenReturn(true);
+        String body = "{\"preparationContent\":\"修改物品\",\"remark\":\"\",\"version\":3}";
+        for (var principal : List.of(new ErpPrincipal(42, "13900000000", "原下单人", List.of(), List.of("shipping:view")),
+                new ErpPrincipal(43, "13800000000", "新手机号持有人", List.of(), List.of("shipping:view")))) {
+            SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal, null,
+                    principal.permissions().stream().map(SimpleGrantedAuthority::new).toList()));
+            mvc.perform(patch("/api/shipments/17/preparation-content").contentType(APPLICATION_JSON).content(body))
+                    .andExpect(status().is(principal.employeeId() == 42 ? 200 : 403));
+        }
+        when(repository.findByIdForUpdate(17)).thenReturn(java.util.Optional.of(old));
+        mvc.perform(patch("/api/shipments/17/preparation-content").contentType(APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void onlyAnAdministratorMayBindAnUnlinkedHistoricalCreatorAndConfirmedOwnershipCannotBeReassigned() throws Exception {
+        var previous = contentRecord("13800000000", "unfinished");
+        when(repository.findByIdForUpdate(17)).thenReturn(java.util.Optional.of(previous));
+        when(repository.update(any(), eq(3L))).thenReturn(true);
+        String body = "{\"employeeId\":43,\"version\":3}";
+        login("普通编辑员", "shipping:view", "shipping:edit");
+        mvc.perform(patch("/api/shipments/17/creator").contentType(APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+        verify(repository, never()).update(any(), anyLong());
+        var admin = new ErpPrincipal(42, null, "管理员", List.of("SUPER_ADMIN"), List.of("shipping:view", "shipping:edit"));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(admin, null,
+                admin.permissions().stream().map(SimpleGrantedAuthority::new).toList()));
+        mvc.perform(patch("/api/shipments/17/creator").contentType(APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.creatorEmployeeId").value(43))
+                .andExpect(jsonPath("$.data.createdBy").value("13800000000"))
+                .andExpect(jsonPath("$.data.content.preparationContent").value(previous.content().preparationContent()));
+        var linked = new Shipment(previous.id(), previous.shipmentNo(), previous.content(), 4, previous.createdBy(), previous.updatedBy(),
+                previous.createdAt(), previous.updatedAt(), previous.logisticsOrderState(), previous.preparerEmployeeIds(), previous.preparation(), 43L);
+        when(repository.findByIdForUpdate(17)).thenReturn(java.util.Optional.of(linked));
+        mvc.perform(patch("/api/shipments/17/creator").contentType(APPLICATION_JSON).content("{\"employeeId\":42,\"version\":4}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("SHIPMENT_CREATOR_ALREADY_CONFIRMED"));
     }
 
     @Test

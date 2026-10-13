@@ -2,7 +2,7 @@ import { currentUser } from '../../services/authSession';
 import type { Shipment, ShippingService, ShipmentStatus } from './types';
 import { todayDate } from './types';
 import { mockCatalogOptions } from '../platform/mockPlatformService';
-import { canUpdatePreparation } from './preparationAccess';
+import { canConfirmCreator, canEditPreparationContent, canUpdatePreparation, shipmentOperatorIdentifier } from './preparationAccess';
 
 const STORAGE_KEY = 'bebefish_mock_shipments_v2';
 
@@ -55,9 +55,10 @@ export function createMockShippingService(): ShippingService {
       const record: Shipment = {
         id, shipmentNo: `FH-DEMO-${String(id).padStart(6, '0')}`,
         logisticsOrderState: null,
+        creatorEmployeeId: currentUser.value?.employeeId ?? null,
         preparerEmployeeIds: form.preparerEmployeeIds ?? [],
         content: { ...structuredClone(form), shipmentDate: todayDate(), status: 'unfinished', orderer: operator(), logisticsCompany: '', trackingNo: '' },
-        version: 0, createdAt: now, updatedAt: now, createdBy: operator(), updatedBy: operator()
+        version: 0, createdAt: now, updatedAt: now, createdBy: shipmentOperatorIdentifier(currentUser.value) || 'demo', updatedBy: shipmentOperatorIdentifier(currentUser.value) || 'demo'
       };
       write([...records, record]);
       return record;
@@ -67,9 +68,36 @@ export function createMockShippingService(): ShippingService {
       const previous = records.find(row => row.id === id);
       if (!previous) throw new Error('发货单不存在');
       if (previous.version !== version) throw new Error('发货单已被其他人修改，请重新打开后再保存；当前填写内容已保留');
+      if (previous.content.status === 'completed' && (form.preparationContent !== previous.content.preparationContent || form.remark !== previous.content.remark))
+        throw Object.assign(new Error('备货已完成，不能修改备货物品和备注'), { code: 'SHIPMENT_PREPARATION_COMPLETED' });
       const updated: Shipment = { ...previous, preparerEmployeeIds: form.preparerEmployeeIds ?? previous.preparerEmployeeIds ?? [], content: { ...structuredClone(form), shipmentDate: previous.content.shipmentDate,
         status, orderer: previous.content.orderer, logisticsCompany: previous.content.logisticsCompany,
         trackingNo: previous.content.trackingNo }, version: version + 1, updatedAt: new Date().toISOString(), updatedBy: operator() };
+      write(records.map(row => row.id === id ? updated : row));
+      return updated;
+    },
+    async confirmCreator(id, payload) {
+      const records = read();
+      const previous = records.find(row => row.id === id);
+      if (!previous) throw new Error('发货单不存在');
+      if (!canConfirmCreator(previous, currentUser.value)) throw new Error('只有超级管理员可确认尚未关联的历史单下单账号');
+      if (previous.version !== payload.version) throw Object.assign(new Error('发货单已更新，请重新加载核对'), { code: 'SHIPMENT_VERSION_CONFLICT' });
+      if (!Number.isInteger(payload.employeeId) || payload.employeeId <= 0) throw new Error('请选择员工账号');
+      const updated: Shipment = { ...previous, creatorEmployeeId: payload.employeeId, version: previous.version + 1,
+        updatedBy: shipmentOperatorIdentifier(currentUser.value), updatedAt: new Date().toISOString() };
+      write(records.map(row => row.id === id ? updated : row));
+      return updated;
+    },
+    async updatePreparationContent(id, payload) {
+      const records = read();
+      const previous = records.find(row => row.id === id);
+      if (!previous) throw new Error('发货单不存在');
+      if (previous.content.status === 'completed') throw Object.assign(new Error('备货已完成，不能修改备货物品和备注'), { code: 'SHIPMENT_PREPARATION_COMPLETED' });
+      if (!canEditPreparationContent(previous, currentUser.value)) throw Object.assign(new Error('只有本单下单人可以修改备货物品和备注'), { code: 'SHIPMENT_CONTENT_FORBIDDEN' });
+      if (previous.version !== payload.version) throw Object.assign(new Error('发货单已更新，请重新加载核对；当前填写内容已保留'), { code: 'SHIPMENT_VERSION_CONFLICT' });
+      if (!payload.preparationContent.trim() || payload.preparationContent.length > 10000 || payload.remark.length > 5000) throw Object.assign(new Error('备货物品和备注格式无效'), { code: 'VALIDATION_FAILED' });
+      const updated: Shipment = { ...previous, content: { ...previous.content, preparationContent: payload.preparationContent.trim(), remark: payload.remark.trim() },
+        version: previous.version + 1, updatedBy: shipmentOperatorIdentifier(currentUser.value), updatedAt: new Date().toISOString() };
       write(records.map(row => row.id === id ? updated : row));
       return updated;
     },

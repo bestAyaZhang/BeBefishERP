@@ -9,6 +9,14 @@ function ok(data: unknown) {
 }
 
 describe('shipping HTTP contract', () => {
+  it('patches only preparation items, remark and the saved version', async () => {
+    const fetcher = vi.fn().mockResolvedValue(ok({}));
+    vi.stubGlobal('fetch', fetcher);
+    await httpShippingService.updatePreparationContent(8, { preparationContent: '商品3件', remark: '', version: 3 });
+    expect(fetcher).toHaveBeenCalledWith('/api/shipments/8/preparation-content', expect.objectContaining({
+      method: 'PATCH', body: JSON.stringify({ preparationContent: '商品3件', remark: '', version: 3 })
+    }));
+  });
   it('writes preparation feedback through a dedicated route without sending the ANE draft', async () => {
     const fetcher = vi.fn().mockResolvedValue(ok({}));
     vi.stubGlobal('fetch', fetcher);

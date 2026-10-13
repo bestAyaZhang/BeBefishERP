@@ -103,6 +103,19 @@ class FlywayMigrationTest {
     }
 
     @Test
+    void creatorMigrationOnlyBindsExplicitEmployeeIdentifiersAndPreservesHistoricalAudits() {
+        flyway().clean();
+        Flyway.configure().dataSource(dataSource).target("26").load().migrate();
+        for (String creator : java.util.List.of("employee:42", "13800000000", "同名下单人", "employee:9999999999999999999")) {
+            jdbc.update("insert into shipment(shipment_no,shipment_date,recipient_name,recipient_phone,recipient_address,preparation_content,remark,preparers_json,created_by,updated_by,created_at,updated_at) values(?,current_date(),'测试收件人','13800000000','测试地址','物品2件','原备注',json_array(),?,'test',now(3),now(3))", "CREATOR-" + creator, creator);
+        }
+        flyway().migrate();
+        assertThat(jdbc.queryForObject("select creator_employee_id from shipment where created_by='employee:42'", Long.class)).isEqualTo(42L);
+        assertThat(jdbc.queryForObject("select count(*) from shipment where creator_employee_id is not null", Long.class)).isEqualTo(1L);
+        assertThat(jdbc.queryForList("select created_by from shipment order by id", String.class)).containsExactly("employee:42", "13800000000", "同名下单人", "employee:9999999999999999999");
+    }
+
+    @Test
     void seedsAuthenticationRolesAndPermissionsWithoutAUniversalAdministrator() {
         assertThat(jdbc.queryForObject(
                 "select count(*) from sys_permission where code = 'system:role:manage'",
@@ -331,7 +344,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("26");
+        )).isEqualTo("27");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId

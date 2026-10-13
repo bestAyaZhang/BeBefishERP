@@ -69,6 +69,7 @@ export interface Shipment {
   content: ShipmentContent;
   version: number;
   createdBy: string;
+  creatorEmployeeId?: number | null;
   updatedBy: string;
   createdAt: string;
   updatedAt: string;
@@ -143,6 +144,8 @@ export interface ShippingService {
   create(form: ShipmentFormInput): Promise<Shipment>;
   update(id: number, form: ShipmentFormInput, status: ShipmentStatus, version: number): Promise<Shipment>;
   updatePreparation(id: number, request: { status: ShipmentStatus; actualWeight: number | null; version: number }): Promise<Shipment>;
+  updatePreparationContent(id: number, request: { preparationContent: string; remark: string; version: number }): Promise<Shipment>;
+  confirmCreator(id: number, request: { employeeId: number; version: number }): Promise<Shipment>;
   logisticsAvailability(): Promise<LogisticsAvailability>;
   getLogisticsOrder(id: number): Promise<LogisticsOrder | null>;
   placeLogisticsOrder(id: number, request: PlaceLogisticsOrder): Promise<LogisticsOrder>;
