@@ -1,6 +1,7 @@
 package com.bebefish.erp.shipping.domain;
 
 import com.bebefish.erp.common.api.BusinessException;
+import java.math.BigDecimal;
 import java.util.Objects;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -31,11 +32,24 @@ public class ShipmentEditPolicy {
                 || !Objects.equals(current.recipientCity(), next.recipientCity())
                 || !Objects.equals(current.recipientCounty(), next.recipientCounty())
                 || !Objects.equals(current.recipientDetailAddress(), next.recipientDetailAddress())
-                || !Objects.equals(current.estimatedFreight(), next.estimatedFreight())
-                || !Objects.equals(current.orderDraft(), next.orderDraft());
+                || !sameNumber(current.estimatedFreight(), next.estimatedFreight())
+                || !Objects.equals(comparableDraft(current.orderDraft()), comparableDraft(next.orderDraft()));
         if (immutableChanged) {
             throw new BusinessException("SHIPMENT_ALREADY_ORDERED", HttpStatus.CONFLICT,
                     "发货单已下单，平台、店铺、备货人、发货人、收件与物流资料不能修改");
         }
+    }
+
+    private static boolean sameNumber(BigDecimal left, BigDecimal right) {
+        return left == null || right == null ? left == right : left.compareTo(right) == 0;
+    }
+
+    private static AneOrderDraft comparableDraft(AneOrderDraft draft) {
+        if (draft == null) return null;
+        // Browser JSON omits decimal padding returned by MySQL. Compare numeric values without changing the saved draft.
+        return new AneOrderDraft(draft.cargoName(), draft.packType(),
+                draft.weight() == null ? null : draft.weight().stripTrailingZeros(),
+                draft.volume() == null ? null : draft.volume().stripTrailingZeros(),
+                draft.pieceAmount(), draft.productTypeId(), draft.goodsType(), draft.payType(), draft.logisticsRemark());
     }
 }

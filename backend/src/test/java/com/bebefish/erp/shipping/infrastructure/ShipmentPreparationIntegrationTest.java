@@ -6,6 +6,8 @@ import com.bebefish.erp.platform.api.PlatformDtos;
 import com.bebefish.erp.platform.application.PlatformCatalogService;
 import com.bebefish.erp.shipping.application.ShipmentService;
 import com.bebefish.erp.shipping.domain.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -23,6 +25,33 @@ class ShipmentPreparationIntegrationTest {
     @Autowired ShipmentService shipments;
     @Autowired PlatformCatalogService catalog;
     @Autowired JdbcTemplate jdbc;
+    @Autowired ObjectMapper mapper;
+
+    @Test
+    void generalEditorCanSaveItemsAndRemarkAfterDatabaseNumbersRoundTripThroughBrowserJson() throws Exception {
+        long preparerId = employee("备货测试员");
+        var created = shipments.create(form("备货测试员"), List.of(preparerId), "test", "录入员");
+        jdbc.update("update shipment set estimated_freight=36.00 where id=?", created.id());
+        jdbc.update("insert into shipment_logistics_order (shipment_id,order_no,state,test_environment,request_snapshot,tracking_no,child_tracking_nos,message,operator_id,created_at,updated_at) values (?,?,'succeeded',true,'{}','710TEST','','成功','test',now(3),now(3))", created.id(), "BROWSER-" + created.id());
+        var persisted = shipments.get(created.id());
+        ObjectNode browserForm = mapper.valueToTree(persisted.content().form());
+        browserForm.put("estimatedFreight", persisted.content().estimatedFreight().doubleValue());
+        var draft = (ObjectNode) browserForm.get("orderDraft");
+        draft.put("weight", persisted.content().orderDraft().weight().doubleValue());
+        draft.put("volume", persisted.content().orderDraft().volume().doubleValue());
+        browserForm.put("preparationContent", "编辑页修改商品3件");
+        browserForm.put("remark", "编辑页修改备注");
+        var input = mapper.treeToValue(browserForm, ShipmentFormInput.class);
+        shipments.update(created.id(), input, persisted.content().status(), persisted.version(), "editor", List.of(preparerId), false);
+        var saved = shipments.get(created.id());
+        assertThat(saved.content().preparationContent()).isEqualTo("编辑页修改商品3件");
+        assertThat(saved.content().remark()).isEqualTo("编辑页修改备注");
+        assertThat(saved.content()).usingRecursiveComparison().ignoringFields("preparationContent", "remark").isEqualTo(persisted.content());
+        assertThat(saved.preparerEmployeeIds()).isEqualTo(persisted.preparerEmployeeIds());
+        assertThat(saved.preparation()).isEqualTo(persisted.preparation());
+        assertThat(saved.logisticsOrderState()).isEqualTo("succeeded");
+        assertThat(jdbc.queryForObject("select request_snapshot from shipment_logistics_order where shipment_id=?", String.class, created.id())).isEqualTo("{}");
+    }
 
     @Test
     void persistsFeedbackWithoutChangingTheSubmittedWeightAndKeepsItAcrossGeneralEdits() {
