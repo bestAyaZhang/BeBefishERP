@@ -1,13 +1,15 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clearMessages, messages } from '../../components/feedback/message';
 import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
 import router from '../../router';
 import SalesCreateView from './SalesCreateView.vue';
+import type { CustomerAccountService } from '../masterdata/customerAccountService';
 
 const { printSalesDocumentMock } = vi.hoisted(() => ({ printSalesDocumentMock: vi.fn() }));
 
 vi.mock('./salesPrint', () => ({ printSalesDocument: printSalesDocumentMock }));
+vi.mock('../masterdata/customerAccountService', () => ({ customerAccountService: { listPrices: async () => [] } }));
 
 const catalog = {
   customers: [{
@@ -55,6 +57,11 @@ function mountView(service: ReturnType<typeof createService>, orderService = cre
   return mount(SalesCreateView, { props: { service, orderService }, global: { plugins: [router] } });
 }
 
+async function selectCustomer(wrapper: VueWrapper, id: number) {
+  await wrapper.get('[data-testid="sales-customer"]').trigger('focus');
+  await wrapper.get(`[data-testid="sales-customer-option-${id}"]`).trigger('click');
+}
+
 function getPrintDocument() {
   const element = globalThis.document.body.querySelector<HTMLElement>('[data-testid="sales-print-document"]');
   if (!element) throw new Error('打印文档未渲染');
@@ -62,6 +69,41 @@ function getPrintDocument() {
 }
 
 describe('SalesCreateView', () => {
+  it('uses a zero customer price and reprices existing lines when switching customers', async () => {
+    const service = { loadCatalog: vi.fn().mockResolvedValue({ ...catalog, customers: [...catalog.customers, { ...catalog.customers[0], id: 6, customerName: '另一客户' }] }) };
+    const accountService = { listPrices: vi.fn().mockImplementation(async (id: number) => id === 5 ? [{ skuId: 2001, unitPrice: 0 }] : []) } as unknown as CustomerAccountService;
+    const wrapper = mount(SalesCreateView, { props: { service, orderService: createOrderService(), accountService }, global: { plugins: [router] } });
+    await flushPromises();
+    await selectCustomer(wrapper, 5);
+    await flushPromises();
+    await wrapper.get('[data-testid="sales-product-input"]').trigger('focus');
+    await wrapper.get('[data-testid="sales-product-option-2001"]').trigger('click');
+    await wrapper.get('[data-testid="sales-add-product"]').trigger('click');
+    expect(wrapper.get('[data-testid="sales-total"]').text()).toBe('¥0.00');
+    await selectCustomer(wrapper, 6);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="sales-total"]').text()).toBe('¥12.00');
+    expect(accountService.listPrices).toHaveBeenLastCalledWith(6);
+    wrapper.unmount();
+  });
+
+  it('ignores a stale price response after switching customer', async () => {
+    let resolveFirst!: (prices: unknown[]) => void;
+    const service = { loadCatalog: vi.fn().mockResolvedValue({ ...catalog, customers: [...catalog.customers, { ...catalog.customers[0], id: 6 }] }) };
+    const accountService = { listPrices: vi.fn().mockImplementation((id: number) => id === 5 ? new Promise(resolve => { resolveFirst = resolve; }) : Promise.resolve([{ skuId: 2001, unitPrice: 7 }])) } as unknown as CustomerAccountService;
+    const wrapper = mount(SalesCreateView, { props: { service, orderService: createOrderService(), accountService }, global: { plugins: [router] } });
+    await flushPromises();
+    await selectCustomer(wrapper, 5);
+    await selectCustomer(wrapper, 6);
+    await flushPromises();
+    resolveFirst([{ skuId: 2001, unitPrice: 99 }]); await flushPromises();
+    await wrapper.get('[data-testid="sales-product-input"]').trigger('focus');
+    await wrapper.get('[data-testid="sales-product-option-2001"]').trigger('click');
+    await wrapper.get('[data-testid="sales-add-product"]').trigger('click');
+    expect(wrapper.get('[data-testid="sales-total"]').text()).toBe('¥7.00');
+    wrapper.unmount();
+  });
+
   afterEach(() => {
     clearMessages();
     clearCurrentUser();
@@ -76,10 +118,73 @@ describe('SalesCreateView', () => {
     await flushPromises();
 
     expect(wrapper.get('[data-testid="sales-create-page"]').text()).toContain('销售开单');
-    expect(wrapper.get('[data-testid="sales-customer"]').text()).toContain('杭州酒店用品店');
+    await wrapper.get('[data-testid="sales-customer"]').trigger('focus');
+    expect(wrapper.get('[data-testid="sales-customer-options"]').text()).toContain('杭州酒店用品店');
     expect(wrapper.get('[data-testid="sales-warehouse"]').text()).toContain('杭州主仓');
     expect((wrapper.get('[data-testid="sales-warehouse"]').element as HTMLSelectElement).value).toBe('8');
     expect(wrapper.get('[data-testid="sales-product-input"]').attributes('placeholder')).toContain('输入货号、SKU或商品名称');
+  });
+
+  it('searches customers by name, number, contact and phone and applies the chosen customer defaults', async () => {
+    const service = { loadCatalog: vi.fn().mockResolvedValue({ ...catalog, customers: [...catalog.customers,
+      { ...catalog.customers[0], id: 6, customerNo: 'CUS-SH-002', customerName: '上海日用百货', contactPerson: '李四', mobile: '13912345678', transportMethod: 'pickup', settlementCycle: 'daily' }
+    ] }) };
+    const accountService = { listPrices: vi.fn().mockResolvedValue([]) } as unknown as CustomerAccountService;
+    const wrapper = mount(SalesCreateView, { props: { service, orderService: createOrderService(), accountService }, global: { plugins: [router] } });
+    await flushPromises();
+    const input = wrapper.get('[data-testid="sales-customer"]');
+    for (const query of ['上海', 'cus-sh', '李四', '12345678']) {
+      await input.setValue(query);
+      expect(wrapper.find('[data-testid="sales-customer-option-5"]').exists()).toBe(false);
+      expect(wrapper.get('[data-testid="sales-customer-option-6"]').text()).toContain('上海日用百货');
+    }
+    await wrapper.get('[data-testid="sales-customer-option-6"]').trigger('click');
+    await flushPromises();
+    expect((input.element as HTMLInputElement).value).toBe('CUS-SH-002 · 上海日用百货');
+    expect(wrapper.find('[data-testid="sales-customer-options"]').exists()).toBe(false);
+    expect((wrapper.get('[data-testid="sales-transport"]').element as HTMLSelectElement).value).toBe('pickup');
+    expect((wrapper.get('[data-testid="sales-settlement"]').element as HTMLSelectElement).value).toBe('daily');
+    expect(accountService.listPrices).toHaveBeenCalledWith(6);
+    wrapper.unmount();
+  });
+
+  it('requires a new selection after editing or clearing the selected customer', async () => {
+    const orderService = createOrderService();
+    const wrapper = mountView(createService(), orderService);
+    await flushPromises();
+    await selectCustomer(wrapper, 5);
+    const input = wrapper.get('[data-testid="sales-customer"]');
+    await input.setValue('不存在的客户');
+    expect(wrapper.get('[data-testid="sales-customer-no-results"]').text()).toContain('未找到匹配客户');
+    await wrapper.get('[data-testid="sales-order-form"]').trigger('submit');
+    await flushPromises();
+    expect(orderService.saveDraft).not.toHaveBeenCalled();
+    expect(messages.value.at(-1)?.text).toBe('请选择客户');
+    await wrapper.get('[data-testid="sales-customer-clear"]').trigger('click');
+    expect((input.element as HTMLInputElement).value).toBe('');
+    expect(wrapper.get('[data-testid="sales-customer-option-5"]').text()).toContain('杭州酒店用品店');
+    wrapper.unmount();
+  });
+
+  it('selects search results by keyboard without submitting the order and closes on Escape or blur', async () => {
+    const orderService = createOrderService();
+    const wrapper = mountView(createService(), orderService);
+    await flushPromises();
+    const input = wrapper.get('[data-testid="sales-customer"]');
+    await input.setValue('杭州');
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    expect(input.attributes('aria-activedescendant')).toBe('sales-customer-option-5');
+    await input.trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    expect((input.element as HTMLInputElement).value).toContain('杭州酒店用品店');
+    expect(orderService.saveDraft).not.toHaveBeenCalled();
+    await input.trigger('focus');
+    await input.trigger('keydown', { key: 'Escape' });
+    expect(input.attributes('aria-expanded')).toBe('false');
+    await input.trigger('focus');
+    await input.trigger('blur');
+    expect(wrapper.find('[data-testid="sales-customer-options"]').exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it('filters SKU choices by typing and adds the selected product', async () => {
@@ -105,7 +210,7 @@ describe('SalesCreateView', () => {
     const wrapper = mountView(createService());
     await flushPromises();
 
-    await wrapper.get('[data-testid="sales-customer"]').setValue('5');
+    await selectCustomer(wrapper, 5);
     await wrapper.get('[data-testid="sales-product-input"]').trigger('focus');
     await wrapper.get('[data-testid="sales-product-option-2001"]').trigger('click');
     await wrapper.get('[data-testid="sales-add-product"]').trigger('click');
@@ -124,7 +229,7 @@ describe('SalesCreateView', () => {
     const wrapper = mountView(createService(), orderService);
     await flushPromises();
 
-    await wrapper.get('[data-testid="sales-customer"]').setValue('5');
+    await selectCustomer(wrapper, 5);
     await wrapper.get('[data-testid="sales-product-input"]').trigger('focus');
     await wrapper.get('[data-testid="sales-product-option-2001"]').trigger('click');
     await wrapper.get('[data-testid="sales-add-product"]').trigger('click');
@@ -145,7 +250,7 @@ describe('SalesCreateView', () => {
     const wrapper = mountView(createService(), orderService);
     await flushPromises();
 
-    await wrapper.get('[data-testid="sales-customer"]').setValue('5');
+    await selectCustomer(wrapper, 5);
     await wrapper.get('[data-testid="sales-product-input"]').trigger('focus');
     await wrapper.get('[data-testid="sales-product-option-2001"]').trigger('click');
     await wrapper.get('[data-testid="sales-add-product"]').trigger('click');
@@ -167,7 +272,7 @@ describe('SalesCreateView', () => {
     const wrapper = mountView(createService(), orderService);
     await flushPromises();
 
-    await wrapper.get('[data-testid="sales-customer"]').setValue('5');
+    await selectCustomer(wrapper, 5);
     await wrapper.get('[data-testid="sales-product-input"]').trigger('focus');
     await wrapper.get('[data-testid="sales-product-option-2001"]').trigger('click');
     await wrapper.get('[data-testid="sales-add-product"]').trigger('click');
@@ -220,7 +325,7 @@ describe('SalesCreateView', () => {
       loginMethod: 'password'
     });
 
-    await wrapper.get('[data-testid="sales-customer"]').setValue('5');
+    await selectCustomer(wrapper, 5);
     await wrapper.get('[data-testid="sales-transport"]').setValue('delivery');
     await wrapper.get('[data-testid="sales-settlement"]').setValue('monthly');
     await wrapper.get('[data-testid="sales-product-input"]').trigger('focus');

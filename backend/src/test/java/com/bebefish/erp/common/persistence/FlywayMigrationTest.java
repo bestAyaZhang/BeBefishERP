@@ -25,6 +25,10 @@ import org.springframework.test.context.ActiveProfiles;
 })
 @ActiveProfiles("test")
 class FlywayMigrationTest {
+    // Migration tests deliberately bootstrap before tables exist; background recovery must not query them.
+    @org.springframework.boot.test.mock.mockito.MockBean
+    com.bebefish.erp.organization.application.FeishuDirectorySyncTaskService directorySyncTasks;
+
     @Autowired
     JdbcTemplate jdbc;
 
@@ -87,7 +91,7 @@ class FlywayMigrationTest {
         );
 
         assertThat(tables).containsExactlyInAnyOrder(
-                "product_category", "customer", "supplier", "warehouse",
+                "product_category", "customer", "customer_sku_price", "supplier", "warehouse", "pdd_sku_cost_plan",
                 "product_spu", "product_sku", "product_spec", "product_spec_value",
                 "product_sku_spec_value", "sku_supplier_quote", "supplier_quote_allowed_state",
                 "file_asset", "business_code_sequence",
@@ -344,7 +348,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("27");
+        )).isEqualTo("29");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId

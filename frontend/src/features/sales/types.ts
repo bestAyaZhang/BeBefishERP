@@ -61,6 +61,7 @@ export interface SavedSalesOrder {
 export interface SalesOrderService {
   saveDraft(payload: ConfirmSalesOrderPayload): Promise<SavedSalesOrder>;
   confirmOrder(payload: ConfirmSalesOrderPayload): Promise<ConfirmedSalesOrder>;
+  confirmSavedOrder?(id: number): Promise<SalesOrderDetail>;
   listOrders?(query: SalesOrderListQuery): Promise<PageResult<SalesOrderListItem>>;
   getOrder?(id: number): Promise<SalesOrderDetail>;
   deleteOrder?(id: number): Promise<void>;

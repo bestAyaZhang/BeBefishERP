@@ -24,7 +24,7 @@ const successMessage = computed(() => {
   if (typeof deletedOrderNo === 'string' && deletedOrderNo) return `销售单 ${deletedOrderNo} 已删除`;
   const orderNo = route.query.created;
   if (typeof orderNo !== 'string' || !orderNo) return '';
-  return route.query.type === 'draft' ? `销售单 ${orderNo} 草稿已保存` : `销售单 ${orderNo} 已创建成功`;
+  return route.query.type === 'draft' ? `销售单 ${orderNo} 草稿已保存` : `销售单 ${orderNo} 已确认，库存已扣减`;
 });
 
 async function loadOrders() {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   Boxes,
+  Calculator,
   ChevronDown,
   ChevronRight,
   FileText,
@@ -15,11 +16,12 @@ import {
   WalletCards,
   Warehouse
 } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { navigationService } from '../../features/navigation/navigationService';
 import type { SidebarNavigationItem } from '../../features/navigation/types';
 import { currentUser, restoreCurrentUser } from '../../services/authSession';
+import { expandedSidebarGroup, toggleSidebarGroup } from '../../services/sidebarExpansion';
 
 const props = withDefaults(defineProps<{ navigationItems?: SidebarNavigationItem[] }>(), {
   navigationItems: () => navigationService.getCatalog().sidebar
@@ -32,6 +34,7 @@ restoreCurrentUser();
 const sidebarIcons = {
   dashboard: LayoutDashboard,
   product: Package,
+  tools: Calculator,
   category: FolderTree,
   customer: UsersRound,
   supplier: Truck,
@@ -46,7 +49,6 @@ const sidebarIcons = {
 };
 
 const activeRouteName = computed(() => String(route.name ?? ''));
-const expandedGroups = ref<string[]>(['库存管理', '组织架构', '财务管理', '发货管理']);
 const visibleMenuItems = computed<SidebarNavigationItem[]>(() => {
   if (currentUser.value?.roles.includes('SUPER_ADMIN')) return props.navigationItems;
   return props.navigationItems.flatMap((item) => {
@@ -66,13 +68,17 @@ function isActive(item: SidebarNavigationItem) {
 }
 
 function isExpanded(item: SidebarNavigationItem) {
-  return expandedGroups.value.includes(item.label);
+  return expandedSidebarGroup.value === item.id;
 }
 
 function toggleGroup(item: SidebarNavigationItem) {
-  expandedGroups.value = isExpanded(item)
-    ? expandedGroups.value.filter((label) => label !== item.label)
-    : [...expandedGroups.value, item.label];
+  toggleSidebarGroup(item.id);
+}
+
+function reopenTool(routeName: string) {
+  if (routeName === 'product-pdd-cost' && activeRouteName.value === routeName) {
+    window.dispatchEvent(new Event('erp:open-pdd-cost'));
+  }
 }
 </script>
 
@@ -99,7 +105,7 @@ function toggleGroup(item: SidebarNavigationItem) {
           <ChevronRight v-if="isActive(item)" class="ml-auto h-4 w-4 text-slate-400" aria-hidden="true" />
         </RouterLink>
         <div v-else class="mb-1">
-          <button type="button" class="group relative flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-slate-400 transition hover:bg-slate-50 hover:text-[#25314d]" :class="{ 'bg-[#f4f6ff] text-[#25314d]': isActive(item) }" @click="toggleGroup(item)">
+          <button type="button" :aria-expanded="isExpanded(item)" class="group relative flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-slate-400 transition hover:bg-slate-50 hover:text-[#25314d]" :class="{ 'bg-[#f4f6ff] text-[#25314d]': isActive(item) }" @click="toggleGroup(item)">
             <span v-if="isActive(item)" class="absolute -left-4 h-7 w-1 rounded-r-full bg-[#536dff]"></span>
             <component :is="sidebarIcons[item.icon]" class="h-4 w-4 shrink-0" aria-hidden="true" />
             <span>{{ item.label }}</span>
@@ -112,7 +118,7 @@ function toggleGroup(item: SidebarNavigationItem) {
             :to="{ name: child.routeName }"
             class="ml-6 flex h-9 items-center rounded-lg px-3 text-sm font-semibold text-slate-400 transition hover:bg-slate-50 hover:text-[#25314d]"
             :class="{ 'bg-blue-50 text-[#536dff]': child.routeName === activeRouteName }"
-            @click="$emit('navigate')"
+            @click="reopenTool(child.routeName); $emit('navigate')"
           >
             {{ child.label }}
           </RouterLink>

@@ -32,6 +32,7 @@ export interface Category extends MasterdataRow {
 export type SaveCategoryPayload = Pick<Category, 'categoryName' | 'sortOrder' | 'remark'>;
 
 export interface Customer extends MasterdataRow {
+  platformId?: number | null;
   customerNo: string;
   customerName: string;
   contactPerson: string;
@@ -49,6 +50,7 @@ export interface Customer extends MasterdataRow {
 }
 
 export interface SaveCustomerPayload {
+  platformId?: number | null;
   customerName: string;
   contactPerson: string;
   mobile: string;
@@ -103,6 +105,7 @@ export interface MasterdataService {
   createCategory(payload: SaveCategoryPayload): Promise<Category>;
   updateCategory(id: number, payload: SaveCategoryPayload): Promise<Category>;
   changeCategoryStatus(id: number, status: RecordStatus): Promise<Category>;
+  getCustomer?(id: number): Promise<Customer>;
   listCustomers(query: ListQuery): Promise<PageResult<Customer>>;
   createCustomer(payload: SaveCustomerPayload): Promise<Customer>;
   updateCustomer(id: number, payload: SaveCustomerPayload): Promise<Customer>;

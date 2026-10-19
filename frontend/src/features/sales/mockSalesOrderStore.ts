@@ -1,4 +1,6 @@
-import type { ConfirmSalesOrderPayload, SalesOrderDetail, SalesOrderListItem, SalesOrderStatus } from './types';
+import type { ConfirmSalesOrderPayload, SalesCatalog, SalesOrderDetail, SalesOrderListItem, SalesOrderStatus } from './types';
+
+const details = new Map<number, Partial<SalesOrderDetail>>();
 
 let orders: SalesOrderListItem[] = [
   { id: 1, orderNo: 'SO-20260713-001', orderDate: '2026-07-13', customerName: '杭州酒店用品店', warehouseName: '杭州主仓', totalAmount: 2850, receivedAmount: 2850, status: 'confirmed' },
@@ -9,7 +11,24 @@ export function listMockSalesOrders() {
   return orders.map((order) => ({ ...order }));
 }
 
-export function addMockSalesOrder(id: number, orderNo: string, payload: ConfirmSalesOrderPayload, status: SalesOrderStatus = 'confirmed') {
+export function addMockSalesOrder(id: number, orderNo: string, payload: ConfirmSalesOrderPayload, status: SalesOrderStatus = 'confirmed', catalog?: SalesCatalog) {
+  const customer = catalog?.customers.find(c => c.id === payload.customerId);
+  details.set(id, {
+    customerId: payload.customerId, warehouseId: payload.warehouseId,
+    transportMethod: payload.transportMethod, settlementCycle: payload.settlementCycle,
+    deliveryAddress: customer ? [customer.province, customer.city, customer.district, customer.detailAddress].filter(Boolean).join('') : '',
+    freight: payload.freight, goodsAmount: payload.totalAmount - payload.freight,
+    outstandingAmount: payload.receivableAmount, remark: payload.remark,
+    items: payload.lines.map(line => {
+      const p = catalog?.products.find(p => p.skuId === line.skuId);
+      return { id: null, skuId: line.skuId, quantity: line.quantity, unitPrice: line.unitPrice,
+        defaultUnitPrice: p?.defaultSalePrice ?? line.unitPrice, amount: line.amount, discountRate: 0,
+        standardCostSnapshot: null, itemNoSnapshot: p?.itemNo ?? '', productNameSnapshot: p?.productName ?? '',
+        skuCodeSnapshot: p?.skuCode ?? '', skuNameSnapshot: p?.skuName ?? '', specificationSnapshot: p?.specification ?? '',
+        packagingSnapshot: p?.packagingMethod ?? '', cartonQuantitySnapshot: p?.cartonQuantity ?? null,
+        barcodeSnapshot: p?.barcode ?? '', salesUnitSnapshot: p?.salesUnit ?? '件' };
+    })
+  });
   orders = [{
     id,
     orderNo,
@@ -27,8 +46,8 @@ export function getMockSalesOrder(id: number): SalesOrderDetail | undefined {
   if (!order) return undefined;
   return {
     ...order,
-    customerId: 1,
-    warehouseId: 1,
+    customerId: 5,
+    warehouseId: 8,
     salespersonMobile: '13800138000',
     transportMethod: 'delivery',
     settlementCycle: 'monthly',
@@ -46,14 +65,24 @@ export function getMockSalesOrder(id: number): SalesOrderDetail | undefined {
     remark: null,
     createdAt: `${order.orderDate}T09:00:00`,
     updatedAt: `${order.orderDate}T09:00:00`,
-    items: []
+    items: [],
+    ...details.get(id)
   };
 }
 
 export function deleteMockSalesOrder(id: number) {
+  details.delete(id);
   orders = orders.filter((order) => order.id !== id);
 }
 
 export function voidMockSalesOrder(id: number) {
   orders = orders.map((order) => order.id === id ? { ...order, status: 'void' as const } : order);
+}
+
+export function confirmMockSalesOrder(id: number) {
+  const order = orders.find(order => order.id === id);
+  if (!order) throw new Error('销售单不存在');
+  if (order.status !== 'draft') throw new Error('销售单已确认，请勿重复操作');
+  orders = orders.map(order => order.id === id ? { ...order, status: 'confirmed' as const } : order);
+  return getMockSalesOrder(id)!;
 }

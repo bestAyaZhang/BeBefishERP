@@ -3,7 +3,12 @@ import type { NavigationCatalog } from './types';
 const mockNavigationCatalog: NavigationCatalog = {
   sidebar: [
     { id: 'workbench', label: '工作台', icon: 'dashboard', routeName: 'workbench', permission: 'dashboard:view' },
-    { id: 'products', label: '商品管理', icon: 'product', routeName: 'products', permission: 'product:view' },
+    { id: 'products', label: '商品管理', icon: 'product', children: [
+      { label: '商品资料', routeName: 'products', permission: 'product:view' }
+    ] },
+    { id: 'software-tools', label: '软件工具', icon: 'tools', children: [
+      { label: '拼多多成本计算', routeName: 'product-pdd-cost', permission: 'product:view' }
+    ] },
     { id: 'categories', label: '分类管理', icon: 'category', routeName: 'categories', permission: 'masterdata:view' },
     { id: 'customers', label: '客户管理', icon: 'customer', routeName: 'customers', permission: 'masterdata:view' },
     { id: 'suppliers', label: '供应商管理', icon: 'supplier', routeName: 'suppliers', permission: 'masterdata:view' },

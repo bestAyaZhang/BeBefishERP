@@ -34,7 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SalesDraftService {
     private static final Set<String> TRANSPORT_METHODS = Set.of("pickup", "delivery", "consignment", "freight", "express");
-    private static final Set<String> SETTLEMENT_CYCLES = Set.of("daily", "monthly", "quarterly", "yearly", "annual");
+    private static final Set<String> SETTLEMENT_CYCLES = Set.of("cash", "daily", "monthly", "quarterly", "yearly", "annual");
     private final CustomerService customerService;
     private final WarehouseService warehouseService;
     private final ProductRepository productRepository;
@@ -42,6 +42,7 @@ public class SalesDraftService {
     private final SalesOrderNumberGenerator numberGenerator;
     private final SalesAmountCalculator amountCalculator;
     private final InventoryService inventoryService;
+    private final com.bebefish.erp.masterdata.domain.CustomerPriceRepository customerPrices;
 
     public SalesDraftService(
             CustomerService customerService,
@@ -50,7 +51,8 @@ public class SalesDraftService {
             SalesOrderRepository orderRepository,
             SalesOrderNumberGenerator numberGenerator,
             SalesAmountCalculator amountCalculator,
-            InventoryService inventoryService
+            InventoryService inventoryService,
+            com.bebefish.erp.masterdata.domain.CustomerPriceRepository customerPrices
     ) {
         this.customerService = customerService;
         this.warehouseService = warehouseService;
@@ -59,6 +61,7 @@ public class SalesDraftService {
         this.numberGenerator = numberGenerator;
         this.amountCalculator = amountCalculator;
         this.inventoryService = inventoryService;
+        this.customerPrices = customerPrices;
     }
 
     @Transactional
@@ -72,7 +75,7 @@ public class SalesDraftService {
 
     @Transactional
     public SalesOrder update(long id, SaveSalesOrderCommand command, String salespersonMobile) {
-        var existing = get(id);
+        var existing = getForUpdate(id);
         ensureDraft(existing, "已确认销售单不能直接修改");
         var salesDate = command == null || command.salesDate() == null ? existing.salesDate() : command.salesDate();
         return orderRepository.save(buildOrder(
@@ -80,8 +83,9 @@ public class SalesDraftService {
         ));
     }
 
+    @Transactional
     public SalesOrder update(long id, SaveSalesOrderCommand command) {
-        var existing = get(id);
+        var existing = getForUpdate(id);
         return update(id, command, existing.salespersonMobile());
     }
 
@@ -99,14 +103,14 @@ public class SalesDraftService {
 
     @Transactional
     public void delete(long id) {
-        var existing = get(id);
+        var existing = getForUpdate(id);
         ensureDraft(existing, "已确认销售单不能删除");
         orderRepository.deleteById(id);
     }
 
     @Transactional
     public SalesOrder confirm(long id, String operatorMobile) {
-        var existing = get(id);
+        var existing = getForUpdate(id);
         ensureDraft(existing, "销售单已确认，请勿重复操作");
         inventoryService.decrease(
                 existing.warehouseId(),
@@ -121,7 +125,7 @@ public class SalesDraftService {
 
     @Transactional
     public SalesOrder voidOrder(long id, String reason, String operatorMobile) {
-        var existing = get(id);
+        var existing = getForUpdate(id);
         if (!"confirmed".equals(existing.status())) {
             throw new BusinessException("SALES_ORDER_NOT_CONFIRMED", HttpStatus.BAD_REQUEST, "只有已确认销售单才能作废");
         }
@@ -135,6 +139,12 @@ public class SalesDraftService {
                 operatorMobile
         );
         return orderRepository.save(withStatus(existing, "void", voidReason));
+    }
+
+    private SalesOrder getForUpdate(long id) {
+        return orderRepository.findByIdForUpdate(id).orElseThrow(() -> new BusinessException(
+                "SALES_ORDER_NOT_FOUND", HttpStatus.NOT_FOUND, "销售单不存在"
+        ));
     }
 
     private SalesOrder withStatus(SalesOrder order, String status, String remark) {
@@ -175,7 +185,7 @@ public class SalesDraftService {
         var lines = command.lines();
         if (lines.isEmpty()) throw validation("销售单至少需要一条明细");
         var skuIds = new HashSet<Long>();
-        var snapshots = lines.stream().map(line -> snapshot(line, skuIds)).toList();
+        var snapshots = lines.stream().map(line -> snapshot(line, skuIds, customer.id())).toList();
         var amountInputs = snapshots.stream()
                 .map(line -> new SalesLineInput(line.quantity(), line.unitPrice(), line.discountRate()))
                 .toList();
@@ -195,7 +205,7 @@ public class SalesDraftService {
         );
     }
 
-    private SalesOrderItem snapshot(SaveSalesOrderLineCommand line, Set<Long> skuIds) {
+    private SalesOrderItem snapshot(SaveSalesOrderLineCommand line, Set<Long> skuIds, long customerId) {
         if (line == null || line.skuId() <= 0 || !skuIds.add(line.skuId())) {
             throw validation("销售商品不能为空且不能重复");
         }
@@ -206,7 +216,7 @@ public class SalesDraftService {
         var sku = product.skus().stream().filter(value -> value.id().equals(line.skuId())).findFirst()
                 .orElseThrow(() -> new BusinessException("SKU_NOT_FOUND", HttpStatus.NOT_FOUND, "SKU 不存在"));
         ensureEnabled(sku.status(), "SKU_DISABLED", "SKU 已停用");
-        var defaultPrice = moneyOrZero(sku.defaultSalePrice());
+        var defaultPrice = customerPrices.findPrice(customerId, line.skuId()).orElseGet(() -> moneyOrZero(sku.defaultSalePrice()));
         var unitPrice = line.unitPrice() == null ? defaultPrice : line.unitPrice();
         var discountRate = line.discountRate() == null ? BigDecimal.ZERO : line.discountRate();
         var amount = line.quantity() == null || unitPrice == null

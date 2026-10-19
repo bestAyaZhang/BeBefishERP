@@ -313,6 +313,10 @@ describe('application routes', () => {
   });
 
   it('opens the customer full-page form for a data-heavy new record', async () => {
+    const user = { accessToken: 'test-token', mobile: '13800138000', roles: [],
+      permissions: ['customer:view', 'customer:create'], loginMethod: 'password' as const };
+    saveCurrentUser(user);
+    vi.mocked(getCurrentUser).mockResolvedValue(user);
     await router.push('/customers');
     await router.isReady();
     wrapper = mount(App, { global: { plugins: [router] } });

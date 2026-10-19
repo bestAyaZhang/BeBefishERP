@@ -53,6 +53,7 @@ function createTestRouter() {
     routes: [
       { path: '/workbench', name: 'workbench', component: TestPage },
       { path: '/products', name: 'products', component: TestPage },
+      { path: '/tools/pdd-cost', alias: '/products/pdd-cost', name: 'product-pdd-cost', component: TestPage },
       { path: '/products/new', name: 'product-new', component: TestPage },
       { path: '/products/:id/edit', name: 'product-edit', component: TestPage },
       { path: '/products/:id', name: 'product-detail', component: TestPage },
@@ -185,6 +186,13 @@ describe('ErpLayout', () => {
     expect(wrapper.find('[data-testid="erp-topbar"]').exists()).toBe(true);
     expect(wrapper.get('[data-testid="erp-breadcrumb"]').classes()).not.toContain('sr-only');
     expect(wrapper.get('[data-testid="erp-page-content"]').classes()).toContain('p-0');
+  });
+
+  it('uses the software tools breadcrumb for the PDD calculator', async () => {
+    ({ router, wrapper } = await mountLayout('/tools/pdd-cost'));
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').text()).toBe('软件工具');
+    expect(wrapper.get('[data-testid="breadcrumb-current"]').text()).toBe('拼多多成本计算');
+    expect(wrapper.get('[data-testid="breadcrumb-group"]').attributes('href')).toBe('/tools/pdd-cost');
   });
 
   it('keeps the 320px topbar shrink-safe while preserving full desktop actions', async () => {
@@ -327,6 +335,7 @@ describe('ErpLayout', () => {
     ({ router, wrapper } = await mountLayout());
     const trigger = await openMobileNavigation(wrapper);
 
+    await wrapper.get('[data-testid="erp-mobile-drawer"]').findAll('button').find(button => button.text() === '商品管理')!.trigger('click');
     await wrapper.get('[data-testid="erp-mobile-drawer"] a[href="/products"]').trigger('click');
     await flushPromises();
 

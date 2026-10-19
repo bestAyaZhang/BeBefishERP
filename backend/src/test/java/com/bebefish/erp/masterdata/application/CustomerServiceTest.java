@@ -27,6 +27,25 @@ class CustomerServiceTest {
     }
 
     @Test
+    void validatesPlatformAndKeepsExistingDisabledPlatform() {
+        repository.platforms.put(1L, "enabled");
+        var command = platformCommand(1L);
+        var customer = service.create(command);
+        assertThat(customer.platformId()).isEqualTo(1L);
+        repository.platforms.put(1L, "disabled");
+        assertThat(service.update(customer.id(), command).platformId()).isEqualTo(1L);
+        assertThat(service.changeStatus(customer.id(), "disabled").platformId()).isEqualTo(1L);
+        assertThatThrownBy(() -> service.create(command)).hasMessageContaining("启用的平台");
+        assertThatThrownBy(() -> service.update(customer.id(), platformCommand(999L))).hasMessageContaining("启用的平台");
+        assertThat(service.update(customer.id(), platformCommand(null)).platformId()).isNull();
+    }
+
+    private SaveCustomerCommand platformCommand(Long platformId) {
+        return new SaveCustomerCommand(null, "平台客户", "张经理", "13800138000", null,
+                "浙江省", "杭州市", "西湖区", "文三路88号", "consignment", "cash", null, platformId);
+    }
+
+    @Test
     void createsCustomerWithDefaultDeliveryPreferences() {
         var customer = service.create(command("C0001", "杭州万象家居", "delivery", "monthly"));
 
@@ -113,6 +132,10 @@ class CustomerServiceTest {
     private static final class FakeCustomerRepository implements CustomerRepository {
         private final AtomicLong sequence = new AtomicLong();
         private final Map<Long, Customer> values = new LinkedHashMap<>();
+        private final Map<Long, String> platforms = new LinkedHashMap<>();
+
+        @Override
+        public Optional<String> findPlatformStatus(long id) { return Optional.ofNullable(platforms.get(id)); }
 
         @Override
         public boolean existsByNumber(String number, Long excludedId) {
@@ -127,7 +150,7 @@ class CustomerServiceTest {
                     id, customer.number(), customer.name(), customer.contactPerson(), customer.mobile(),
                     customer.telephone(), customer.province(), customer.city(), customer.district(),
                     customer.detailAddress(), customer.transportMethod(), customer.settlementCycle(),
-                    customer.system(), customer.status(), customer.remark()
+                    customer.system(), customer.status(), customer.remark(), customer.platformId()
             );
             values.put(id, saved);
             return saved;

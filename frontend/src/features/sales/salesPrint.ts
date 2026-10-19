@@ -1,4 +1,4 @@
-import printJS from 'print-js';
+import { showPrintPreview } from '../../components/printing/printPreview';
 import salesPrintStyle from './sales-print.css?raw';
 
 export interface SalesPrintOptions {
@@ -11,7 +11,7 @@ export function printSalesDocument(element: HTMLElement | null, options: SalesPr
     throw new Error('打印文档未准备好');
   }
 
-  printJS({
+  showPrintPreview({
     printable: element.outerHTML,
     type: 'raw-html',
     documentTitle: '出库送货单',

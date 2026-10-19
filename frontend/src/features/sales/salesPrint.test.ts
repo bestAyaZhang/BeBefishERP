@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const { printJsMock } = vi.hoisted(() => ({ printJsMock: vi.fn() }));
 
-vi.mock('print-js', () => ({ default: printJsMock }));
+vi.mock('../../components/printing/printPreview', () => ({ showPrintPreview: printJsMock }));
 vi.mock('./sales-print.css?raw', () => ({ default: '@page { size: A4; margin: 0; } .sales-print-document { padding: 12mm; } .sales-print-lines { table-layout: fixed; }' }));
 
 import { printSalesDocument } from './salesPrint';
@@ -13,7 +13,7 @@ describe('salesPrint', () => {
     printJsMock.mockReset();
   });
 
-  it('prints the complete sales document through an isolated print iframe', () => {
+  it('prints the complete sales document in a visible preview before opening the print dialog', () => {
     const documentElement = document.createElement('article');
     documentElement.id = 'sales-print-document';
     documentElement.innerHTML = '<section>出库送货单</section><strong>¥22.00</strong>';

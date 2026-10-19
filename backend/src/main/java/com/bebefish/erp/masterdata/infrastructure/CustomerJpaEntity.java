@@ -27,17 +27,19 @@ public class CustomerJpaEntity {
     @Column(name = "updated_by") private Long updatedBy;
     @Column(name = "updated_at", nullable = false) private LocalDateTime updatedAt;
 
+    @Column(name = "platform_id") private Long platformId;
+
     protected CustomerJpaEntity() {}
     CustomerJpaEntity(Customer value) { apply(value); }
     void apply(Customer v) {
         customerNo = v.number(); customerName = v.name(); contactPerson = v.contactPerson(); mobile = v.mobile();
         telephone = v.telephone(); province = v.province(); city = v.city(); district = v.district();
         detailAddress = v.detailAddress(); transportMethod = v.transportMethod(); settlementCycle = v.settlementCycle();
-        system = v.system(); status = v.status(); remark = v.remark();
+        system = v.system(); status = v.status(); remark = v.remark(); platformId = v.platformId();
     }
     Customer toDomain() {
         return new Customer(id, customerNo, customerName, contactPerson, mobile, telephone, province, city,
-                district, detailAddress, transportMethod, settlementCycle, system, status, remark);
+                district, detailAddress, transportMethod, settlementCycle, system, status, remark, platformId);
     }
     @PrePersist void prePersist() { var now = LocalDateTime.now(); createdAt = now; updatedAt = now; }
     @PreUpdate void preUpdate() { updatedAt = LocalDateTime.now(); }

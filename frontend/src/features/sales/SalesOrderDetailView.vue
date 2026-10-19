@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ArrowLeft, FileText, Trash2 } from 'lucide-vue-next';
+import { ArrowLeft, Check, FileText, Printer, Trash2 } from 'lucide-vue-next';
 import { onMounted, ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { message } from '../../components/feedback/message';
+import { currentUser } from '../../services/authSession';
+import { printSavedSalesOrder } from '../masterdata/customerPrint';
 import { salesOrderService } from './salesOrderService';
 import type { SalesOrderDetail, SalesOrderService, SalesOrderStatus } from './types';
 
@@ -12,6 +14,7 @@ const service = props.service ?? salesOrderService;
 const order = ref<SalesOrderDetail | null>(null);
 const loading = ref(true);
 const deleting = ref(false);
+const confirming = ref(false);
 const voiding = ref(false);
 const voidDialogOpen = ref(false);
 const voidReason = ref('');
@@ -27,15 +30,36 @@ const transportLabels: Record<string, string> = {
   pickup: '自提',
   delivery: '送货上门',
   consignment: '托运',
+  freight: '托运',
   express: '快递'
 };
 
 const settlementLabels: Record<string, string> = {
+  cash: '现结',
   monthly: '月结',
   daily: '日结',
   quarterly: '季度',
-  annual: '年结'
+  annual: '年结',
+  yearly: '年结'
 };
+
+function printOrder() {
+  if (!order.value) return;
+  try { printSavedSalesOrder(order.value); }
+  catch (e) { message.error(e instanceof Error ? e.message : '打印失败'); }
+}
+
+async function confirmDraft() {
+  if (!order.value || order.value.status !== 'draft' || !service.confirmSavedOrder || confirming.value || deleting.value) return;
+  if (!window.confirm(`确认销售单 ${order.value.orderNo}？将从「${order.value.warehouseName}」扣减货品库存。`)) return;
+  confirming.value = true;
+  try {
+    order.value = await service.confirmSavedOrder(order.value.id);
+    message.success('销售单已确认，对应仓库库存已扣减');
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '确认下单失败');
+  } finally { confirming.value = false; }
+}
 
 function formatMoney(value: number) {
   return `¥${Number(value || 0).toFixed(2)}`;
@@ -62,7 +86,7 @@ async function load() {
 }
 
 async function deleteDraft() {
-  if (!order.value?.id || !service.deleteOrder) return;
+  if (!order.value?.id || order.value.status !== 'draft' || !service.deleteOrder || deleting.value || confirming.value) return;
   deleting.value = true;
   try {
     await service.deleteOrder(order.value.id);
@@ -118,15 +142,16 @@ onMounted(() => {
         <p class="mt-1 text-sm font-medium text-slate-400">查看客户、商品明细、金额和交付信息。</p>
       </div>
       <div v-if="order" class="flex items-center gap-3">
-        <span class="rounded-full px-3 py-1 text-xs font-black" :class="statusClass(order.status)">{{ statusLabels[order.status] }}</span>
-        <button v-if="order.status === 'draft' && service.deleteOrder" data-testid="sales-order-detail-delete" type="button" :disabled="deleting" class="inline-flex h-10 items-center gap-2 rounded-xl border border-rose-200 px-4 text-sm font-black text-rose-500 transition hover:bg-rose-50 disabled:cursor-wait disabled:opacity-60" @click="deleteDraft"><Trash2 class="h-4 w-4" aria-hidden="true" />{{ deleting ? '删除中...' : '删除草稿' }}</button>
+        <button v-if="order.status === 'confirmed'" data-testid="sales-order-detail-print" type="button" class="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold" @click="printOrder"><Printer class="h-4 w-4" />打印送货单</button>
+        <button v-if="order.status === 'draft' && service.confirmSavedOrder && currentUser?.permissions.includes('sales:create')" data-testid="sales-order-detail-confirm" type="button" :disabled="confirming || deleting" class="inline-flex h-10 items-center gap-2 rounded-xl bg-[#536dff] px-4 text-sm font-bold text-white disabled:opacity-50" @click="confirmDraft"><Check class="h-4 w-4" />{{ confirming ? '确认中...' : '确认下单并扣库存' }}</button><span class="rounded-full px-3 py-1 text-xs font-black" :class="statusClass(order.status)">{{ statusLabels[order.status] }}</span>
+        <button v-if="order.status === 'draft' && service.deleteOrder" data-testid="sales-order-detail-delete" type="button" :disabled="deleting || confirming" class="inline-flex h-10 items-center gap-2 rounded-xl border border-rose-200 px-4 text-sm font-black text-rose-500 transition hover:bg-rose-50 disabled:cursor-wait disabled:opacity-60" @click="deleteDraft"><Trash2 class="h-4 w-4" aria-hidden="true" />{{ deleting ? '删除中...' : '删除草稿' }}</button>
         <button v-if="order.status === 'confirmed' && service.voidOrder" data-testid="sales-order-detail-void" type="button" class="inline-flex h-10 items-center gap-2 rounded-xl border border-rose-200 px-4 text-sm font-black text-rose-500 transition hover:bg-rose-50" @click="openVoidDialog"><Trash2 class="h-4 w-4" aria-hidden="true" />作废单据</button>
       </div>
     </header>
 
     <div v-if="loading" data-testid="sales-order-detail-loading" class="rounded-[22px] border border-slate-200 bg-white px-6 py-16 text-center text-sm font-bold text-slate-400">销售单详情加载中...</div>
     <div v-else-if="errorMessage" data-testid="sales-order-detail-error" class="rounded-[22px] border border-rose-200 bg-rose-50 px-6 py-10 text-center text-sm font-bold text-rose-600">{{ errorMessage }}</div>
-    <template v-else-if="order">
+    <template v-else-if="order"><p data-testid="sales-order-stock-status" class="rounded-xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">{{ order.status === 'draft' ? '草稿暂未扣库存，确认下单后按货品数量扣减所选仓库库存。' : order.status === 'confirmed' ? '已下单：货品库存已从所选仓库扣减。' : '单据已作废，货品库存已退回原仓库。' }}</p>
       <section class="rounded-[22px] border border-slate-200 bg-white p-6 shadow-[0_14px_40px_rgba(31,45,74,0.04)]">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-5"><div class="flex items-center gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#536dff]"><FileText class="h-5 w-5" aria-hidden="true" /></span><div><p class="text-xs font-black text-slate-400">销售单号</p><h2 class="mt-1 text-lg font-black text-[#25314d]">{{ order.orderNo }}</h2></div></div><p class="text-sm font-bold text-slate-400">开单日期：<span class="text-[#25314d]">{{ order.orderDate }}</span></p></div>
         <div class="mt-5 grid gap-4 md:grid-cols-2">
