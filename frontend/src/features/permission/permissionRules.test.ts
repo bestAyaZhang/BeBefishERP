@@ -7,6 +7,7 @@ describe('permissionRules', () => {
 
   it('matches the exact approved module and action catalog', () => {
     expect(PERMISSION_MODULES.map(({ key, label, supportedActions }) => ({ key, label, supportedActions }))).toEqual([
+      { key: 'logistics', label: '物流管理', supportedActions: ['view', 'edit', 'configure', 'template'] },
       { key: 'platform', label: '平台管理', supportedActions: ['view', 'create', 'edit'] },
       { key: 'dashboard', label: '工作台', supportedActions: ['view'] },
       { key: 'product', label: '商品', supportedActions: ['view', 'create', 'edit', 'delete', 'export'] },

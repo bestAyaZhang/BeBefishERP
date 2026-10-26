@@ -7,6 +7,7 @@ const SALES: PermissionAction[] = ['view', 'create', 'edit', 'delete', 'approve'
 const FINANCE: PermissionAction[] = ['view', 'create', 'edit', 'approve', 'export'];
 
 export const PERMISSION_MODULES: PermissionModule[] = [
+  { key: 'logistics', label: '物流管理', description: '维护合作物流公司、接口账号和运费模板', supportedActions: ['view', 'edit', 'configure', 'template'] },
   { key: 'platform', label: '平台管理', description: '维护平台与店铺资料及启停用', supportedActions: ['view', 'create', 'edit'] },
   { key: 'dashboard', label: '工作台', description: '查看工作台经营概览与待办信息', supportedActions: VIEW },
   { key: 'product', label: '商品', description: '维护商品资料及商品导出信息', supportedActions: STANDARD },
