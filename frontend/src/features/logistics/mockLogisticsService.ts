@@ -25,7 +25,7 @@ export function createMockLogisticsService():LogisticsService {
       company(id);const previous=accounts.filter(row=>row.companyId===id).at(-1);version(previous?.version??0,input.version);
       const same=previous?.code===input.code && previous?.customerCode===input.customerCode && previous?.dictId===input.dictId;
       const row:AccountView={id:same?previous!.id:nextId++,companyId:id,environment:'test',version:(previous?.version??0)+1,accountVersionId:nextId++,code:input.code,customerCode:input.customerCode,dictId:input.dictId,orderUrl:input.orderUrl,sender:clone(input.sender),appKeyConfigured:Boolean(input.appKey?.trim()||(same&&previous?.appKeyConfigured)),customerPassConfigured:Boolean(input.customerPass?.trim()||(same&&previous?.customerPassConfigured)),ready:false,message:'本地测试数据，不支持真实接口下单'};
-      if(same)accounts.splice(accounts.indexOf(previous!),1);accounts.push(row);return clone(row);
+      if(same)accounts.splice(accounts.indexOf(previous!),1);accounts.push(row);const parent=company(id);parent.version++;parent.updatedAt=now();return clone(row);
     },
     async listAccounts(id,query){company(id);const rows=accounts.filter(row=>row.companyId===id),p=query?.page??1,size=query?.size??20;return clone({records:rows.slice((p-1)*size,p*size),page:p,pageSize:size,total:rows.length});},
     async listTemplates(id,query){company(id);return page(templates.filter(row=>row.companyId===id),query);},

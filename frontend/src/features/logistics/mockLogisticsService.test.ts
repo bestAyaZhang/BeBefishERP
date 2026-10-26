@@ -29,4 +29,10 @@ describe('controlled local logistics data',()=>{
     expect(provinces).toHaveLength(34);expect(new Set(provinces.map(p=>p.code)).size).toBe(34);
     await expect(service.confirmLogisticsAccount(1,{accountId:1,version:1,confirmed:true})).rejects.toThrow('真实');
   });
+  it('increments the parent company version when account configuration is saved',async()=>{
+    const service=createMockLogisticsService(),saved=await service.createCompany(company);
+    await service.saveAccount(saved.id,{version:0,code:'a',customerCode:'c',dictId:'d',orderUrl:'',sender:{name:'',phone:'',province:'',city:'',county:'',address:''}});
+    expect((await service.getCompany(saved.id)).version).toBe(saved.version+1);
+    await expect(service.updateCompany(saved.id,{...company,version:saved.version})).rejects.toThrow('已更新');
+  });
 });

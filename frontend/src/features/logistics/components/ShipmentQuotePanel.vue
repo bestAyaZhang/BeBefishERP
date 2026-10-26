@@ -6,13 +6,14 @@ import type { Quote, QuoteBatch, QuoteInput } from '../types';
 const props=defineProps<{input:QuoteInput;modelValue:Quote|null;disabled?:boolean}>();
 const emit=defineEmits<{'update:modelValue':[value:Quote|null];loaded:[batch:QuoteBatch];pending:[value:boolean]}>();
 const rows=ref<Quote[]>([]), busy=ref(false), error=ref(''), legacy=ref(false);
+const rowsInput=ref<string|null>(null);
 let generation=0, timer:ReturnType<typeof setTimeout>|undefined;
 const key=(quote:Quote)=>`${quote.companyId}:${quote.productCode}:${quote.templateId}`;
 let preferred=props.modelValue ? key(props.modelValue) : null;
 const complete=computed(()=>Boolean(props.input.senderProvince.trim() && props.input.senderCity.trim()
   && props.input.recipientProvince.trim() && props.input.recipientCity.trim()
   && ((props.input.weight ?? 0)>0 || (props.input.pieceAmount ?? 0)>0)));
-const usable=(quote:Quote)=>quote.available && quote.amount!==null && Boolean(quote.quoteId)
+const usable=(quote:Quote)=>rowsInput.value===JSON.stringify(props.input) && quote.available && quote.amount!==null && Boolean(quote.quoteId)
   && (!quote.expiresAt || Date.parse(quote.expiresAt)>Date.now());
 function pending(value:boolean) { busy.value=value; emit('pending',value); }
 watch(()=>props.modelValue,quote=>{if(quote) preferred=key(quote);});
@@ -21,10 +22,11 @@ async function refresh() {
   const token=++generation;
   if(props.disabled || !complete.value) {pending(false);return;}
   pending(true); error.value='';
+  const inputKey=JSON.stringify(props.input);
   try {
-    const result=await logisticsService.getQuotes(JSON.parse(JSON.stringify(props.input)) as QuoteInput);
+    const result=await logisticsService.getQuotes(JSON.parse(inputKey) as QuoteInput);
     if(token!==generation)return;
-    rows.value=result.quotes; legacy.value=result.legacyOrderingAllowed; emit('loaded',result);
+    rowsInput.value=inputKey;rows.value=result.quotes; legacy.value=result.legacyOrderingAllowed; emit('loaded',result);
     if(preferred) {
       const retained=result.quotes.find(row=>key(row)===preferred && usable(row));
       if(retained && retained.quoteId!==props.modelValue?.quoteId) emit('update:modelValue',retained);

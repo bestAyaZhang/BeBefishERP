@@ -45,5 +45,27 @@ describe('shipment quote selection', () => {
     expect(wrapper.get('[data-testid="quote-select-unknown"]').attributes('disabled')).toBeDefined();
     wrapper.unmount();
   });
+  it('keeps previous-input rows unselectable after recalculation fails and recovers on successful retry', async () => {
+    vi.mocked(logisticsService.getQuotes).mockResolvedValueOnce(batch(quote('old')))
+      .mockRejectedValueOnce(new Error('报价服务暂不可用'))
+      .mockResolvedValueOnce(batch(quote('current')));
+    const wrapper=mount(ShipmentQuotePanel,{props:{input,modelValue:quote('old')}});
+    await vi.runAllTimersAsync();await flushPromises();
+    await wrapper.setProps({input:{...input,weight:99},modelValue:null});
+    await vi.advanceTimersByTimeAsync(300);await flushPromises();
+    expect(wrapper.text()).toContain('报价服务暂不可用');
+    const stale=wrapper.find('[data-testid="quote-select-old"]');
+    if(stale.exists()){
+      expect(stale.attributes('disabled')).toBeDefined();
+      await stale.trigger('click');
+    }
+    expect(wrapper.emitted('update:modelValue')).toEqual([[null]]);
+    await wrapper.get('[data-testid="quote-refresh"]').trigger('click');await flushPromises();
+    expect(wrapper.get('[data-testid="quote-select-current"]').attributes('disabled')).toBeUndefined();
+    await wrapper.get('[data-testid="quote-select-current"]').trigger('click');
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([quote('current')]);
+    expect(wrapper.emitted('update:modelValue')?.some(([row])=>(row as Quote|null)?.quoteId==='old')).toBe(false);
+    wrapper.unmount();
+  });
 });
 

@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import LogisticsManagementView from './LogisticsManagementView.vue';
 import { createMockLogisticsService } from './mockLogisticsService';
 import { currentUser } from '../../services/authSession';
@@ -30,6 +30,50 @@ describe('logistics management',()=>{
     await wrapper.get('[data-testid="status-confirm"]').trigger('click');await flushPromises();
     expect((await service.getCompany(1)).status).toBe('enabled');
     expect(messages.value.some(m=>m.text==='合作状态已更新')).toBe(true);
+    wrapper.unmount();
+  });
+  it('refreshes the backend company version after account save before editing company details',async()=>{
+    permissions(['logistics:view','logistics:edit','logistics:configure']);const service=createMockLogisticsService();
+    const company=await service.createCompany({code:'A',name:'合作甲',provider:'MANUAL',status:'disabled',contactName:'',contactPhone:'',sortOrder:0,remark:'',version:0});
+    // Mirror the real backend independently of the mock's account implementation.
+    let parentVersion=company.version;
+    const saveAccount=service.saveAccount;
+    service.saveAccount=async(id,input)=>{const saved=await saveAccount(id,input);parentVersion++;return saved;};
+    const getCompany=service.getCompany;
+    service.getCompany=async id=>({...await getCompany(id),version:parentVersion});
+    const updateCompany=vi.fn(async(_id,input)=>{
+      if(input.version!==parentVersion)throw new Error('记录已更新，请刷新后重试');
+      return {...company,...input,version:parentVersion+1};
+    });service.updateCompany=updateCompany;
+    const wrapper=mount(LogisticsManagementView,{props:{service}});await flushPromises();
+    await wrapper.get('[data-testid="company-configure-1"]').trigger('click');
+    await wrapper.get('[data-testid="account-tab"]').trigger('click');await flushPromises();
+    await wrapper.get('[data-testid="account-form"]').trigger('submit');await flushPromises();
+    await wrapper.get('nav button').trigger('click');await flushPromises();
+    await wrapper.get('[name="company-name"]').setValue('修改后公司');
+    await wrapper.get('[data-testid="company-form"]').trigger('submit');await flushPromises();
+    expect(updateCompany).toHaveBeenCalledWith(1,expect.objectContaining({version:parentVersion,name:'修改后公司'}));
+    expect(wrapper.text()).not.toContain('记录已更新');
+    wrapper.unmount();
+  });
+  it('reports account success separately when the following company refresh fails and recovers via retry',async()=>{
+    permissions(['logistics:view','logistics:edit','logistics:configure']);const service=createMockLogisticsService();
+    await service.createCompany({code:'A',name:'合作甲',provider:'MANUAL',status:'disabled',contactName:'',contactPhone:'',sortOrder:0,remark:'',version:0});
+    const realGet=service.getCompany;const getCompany=vi.fn().mockRejectedValueOnce(new Error('读取暂不可用')).mockImplementation(realGet);service.getCompany=getCompany;
+    const saveAccount=vi.spyOn(service,'saveAccount');
+    const wrapper=mount(LogisticsManagementView,{props:{service}});await flushPromises();
+    await wrapper.get('[data-testid="company-configure-1"]').trigger('click');
+    await wrapper.get('[data-testid="account-tab"]').trigger('click');await flushPromises();
+    await wrapper.get('[data-testid="account-form"]').trigger('submit');await flushPromises();
+    expect(messages.value.some(m=>m.type==='success'&&m.text==='接口及寄件资料已保存')).toBe(true);
+    expect(wrapper.text()).toContain('账号已保存，但公司资料刷新失败');
+    expect(messages.value.some(m=>m.type==='error')).toBe(false);
+    await wrapper.get('nav button').trigger('click');await flushPromises();
+    expect(wrapper.get('[data-testid="company-form"] fieldset').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="account-metadata-retry"]').trigger('click');await flushPromises();
+    expect(wrapper.find('[data-testid="account-metadata-retry"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="company-form"] fieldset').attributes('disabled')).toBeUndefined();
+    expect(saveAccount).toHaveBeenCalledTimes(1);expect(getCompany).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 });
