@@ -31,11 +31,15 @@ public class AneOrderClient {
     public AneOrderClient(AneProperties properties, ObjectMapper mapper) { this.properties = properties; this.mapper = mapper; }
 
     public AneOrderResult createOrder(Map<String, Object> params) {
+        return createOrder(params, properties);
+    }
+
+    public AneOrderResult createOrder(Map<String, Object> params, AneProperties account) {
         try {
             String json = mapper.writeValueAsString(params);
-            String payload = mapper.writeValueAsString(Map.of("params", json, "code", properties.getCode(),
-                    "timestamp", String.valueOf(System.currentTimeMillis()), "digest", digest(json, properties.getCode(), properties.getAppKey())));
-            var request = HttpRequest.newBuilder(properties.getOrderUrl()).timeout(Duration.ofSeconds(20))
+            String payload = mapper.writeValueAsString(Map.of("params", json, "code", account.getCode(),
+                    "timestamp", String.valueOf(System.currentTimeMillis()), "digest", digest(json, account.getCode(), account.getAppKey())));
+            var request = HttpRequest.newBuilder(account.getOrderUrl()).timeout(Duration.ofSeconds(20))
                     .header("Content-Type", "application/json;charset=UTF-8").POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8)).build();
             var response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() != 200) return AneOrderResult.unknown("安能响应异常，下单结果待核实，请勿重复下单");
@@ -50,38 +54,42 @@ public class AneOrderClient {
     }
 
     public AneCancellationResult cancelOrder(Map<String, Object> params) {
+        return cancelOrder(params, properties);
+    }
+
+    public AneCancellationResult cancelOrder(Map<String, Object> params, AneProperties account) {
         Integer httpStatus = null;
         try {
             String json = mapper.writeValueAsString(params);
-            String payload = mapper.writeValueAsString(Map.of("params", json, "code", properties.getCode(),
-                    "timestamp", String.valueOf(System.currentTimeMillis()), "digest", digest(json, properties.getCode(), properties.getAppKey())));
-            var request = HttpRequest.newBuilder(properties.getUpdateUrl()).timeout(Duration.ofSeconds(20))
+            String payload = mapper.writeValueAsString(Map.of("params", json, "code", account.getCode(),
+                    "timestamp", String.valueOf(System.currentTimeMillis()), "digest", digest(json, account.getCode(), account.getAppKey())));
+            var request = HttpRequest.newBuilder(account.getUpdateUrl()).timeout(Duration.ofSeconds(20))
                     .header("Content-Type", "application/json;charset=UTF-8")
                     .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8)).build();
             var response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             httpStatus = response.statusCode();
             var result = httpStatus != 200 ? AneCancellationResult.unknown("安能 HTTP " + httpStatus)
                     : parseCancellation(response.body(), String.valueOf(params.get("orderNo")));
-            return observeCancellation(params, result, httpStatus, "none");
+            return observeCancellation(params, result, httpStatus, "none", account);
         } catch (HttpTimeoutException timeout) {
-            return observeCancellation(params, AneCancellationResult.unknown("请求超时，未收到明确取消结果"), httpStatus, "timeout");
+            return observeCancellation(params, AneCancellationResult.unknown("请求超时，未收到明确取消结果"), httpStatus, "timeout", account);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            return observeCancellation(params, AneCancellationResult.unknown("请求中断，未收到明确取消结果"), httpStatus, "interrupted");
+            return observeCancellation(params, AneCancellationResult.unknown("请求中断，未收到明确取消结果"), httpStatus, "interrupted", account);
         } catch (IOException networkFailure) {
-            return observeCancellation(params, AneCancellationResult.unknown("网络异常，未收到有效安能响应"), httpStatus, "io_failure");
+            return observeCancellation(params, AneCancellationResult.unknown("网络异常，未收到有效安能响应"), httpStatus, "io_failure", account);
         } catch (Exception failure) {
-            return observeCancellation(params, AneCancellationResult.unknown("取消请求异常"), httpStatus, "request_failure");
+            return observeCancellation(params, AneCancellationResult.unknown("取消请求异常"), httpStatus, "request_failure", account);
         }
     }
 
     private AneCancellationResult observeCancellation(Map<String, Object> params, AneCancellationResult result,
-            Integer httpStatus, String failureType) {
+            Integer httpStatus, String failureType, AneProperties account) {
         if ("cancel_unknown".equals(result.state())) {
             // Only fixed diagnostics, numeric codes and a hashed reference; never log payloads, bodies or exception messages.
             String reference = UUID.nameUUIDFromBytes(String.valueOf(params.get("orderNo")).getBytes(StandardCharsets.UTF_8)).toString();
             log.warn("ANE cancellation uncertain: orderRef={}, environment={}, HTTP={}, failureType={}, detail={}",
-                    reference, properties.testEnvironment() ? "test" : "production", httpStatus, failureType, result.message());
+                    reference, account.testEnvironment() ? "test" : "production", httpStatus, failureType, result.message());
         }
         return result;
     }

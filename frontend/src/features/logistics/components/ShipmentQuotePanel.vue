@@ -3,13 +3,13 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { message } from '../../../components/feedback/message';
 import { logisticsService } from '../logisticsService';
 import type { Quote, QuoteBatch, QuoteInput } from '../types';
-const props=defineProps<{input:QuoteInput;modelValue:Quote|null;disabled?:boolean}>();
+const props=defineProps<{input:QuoteInput;modelValue:Quote|null;disabled?:boolean;preferredSelection?:Quote|null}>();
 const emit=defineEmits<{'update:modelValue':[value:Quote|null];loaded:[batch:QuoteBatch];pending:[value:boolean]}>();
 const rows=ref<Quote[]>([]), busy=ref(false), error=ref(''), legacy=ref(false);
 const rowsInput=ref<string|null>(null);
 let generation=0, timer:ReturnType<typeof setTimeout>|undefined;
 const key=(quote:Quote)=>`${quote.companyId}:${quote.productCode}:${quote.templateId}`;
-let preferred=props.modelValue ? key(props.modelValue) : null;
+let preferred=props.modelValue || props.preferredSelection ? key((props.modelValue ?? props.preferredSelection)!) : null;
 const complete=computed(()=>Boolean(props.input.senderProvince.trim() && props.input.senderCity.trim()
   && props.input.recipientProvince.trim() && props.input.recipientCity.trim()
   && ((props.input.weight ?? 0)>0 || (props.input.pieceAmount ?? 0)>0)));

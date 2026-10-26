@@ -5,10 +5,12 @@ import ShipmentDetailView from './ShipmentDetailView.vue';
 import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
 import { clearMessages, messages } from '../../components/feedback/message';
 
-const service = vi.hoisted(() => ({ get: vi.fn(), getLogisticsOrder: vi.fn(), cancelLogisticsOrder: vi.fn(), updatePreparation: vi.fn(), formOptions: vi.fn(), confirmCreator: vi.fn() }));
+const service = vi.hoisted(() => ({ get: vi.fn(), getLogisticsOrder: vi.fn(), getLogisticsAccountBinding:vi.fn(), cancelLogisticsOrder: vi.fn(), updatePreparation: vi.fn(), formOptions: vi.fn(), confirmCreator: vi.fn() }));
+const freight = vi.hoisted(()=>({getFreightSelection:vi.fn()}));
 enableAutoUnmount(afterEach);
 afterEach(clearMessages);
 vi.mock('./shippingService', () => ({ shippingService: service }));
+vi.mock('../logistics/logisticsService',()=>({logisticsService:freight}));
 
 const shipment = {
   id: 8, shipmentNo: 'FH20260924-8', version: 3, createdBy: 'employee:1', updatedBy: 'employee:2',
@@ -36,6 +38,8 @@ async function render() {
 }
 
 beforeEach(() => {
+  freight.getFreightSelection.mockReset().mockResolvedValue(null);
+  service.getLogisticsAccountBinding.mockReset().mockResolvedValue({companyId:1,accountId:1,accountVersionId:1,linked:true,requiresConfirmation:false});
   clearMessages();
   clearCurrentUser();
   saveCurrentUser({ accessToken: 'test', mobile: null, displayName: '测试用户', roles: [],
@@ -47,6 +51,18 @@ beforeEach(() => {
 });
 
 describe('ShipmentDetailView', () => {
+  it('does not allow a historical cancellation before its original account is verified', async () => {
+    service.getLogisticsAccountBinding.mockResolvedValue({companyId:null,accountId:null,accountVersionId:null,linked:false,requiresConfirmation:true});
+    const {wrapper}=await render();
+    expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('核实原物流账号');
+  });
+  it('keeps cancellation disabled when account verification cannot be loaded', async () => {
+    service.getLogisticsAccountBinding.mockRejectedValue(new Error('临时网络异常'));
+    const {wrapper}=await render();
+    expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('账号信息尚未核实');
+  });
   it('requires administrator selection and explicit verification before linking a historical creator', async () => {
     const historical = { ...shipment, createdBy: '13800000000' };
     service.get.mockResolvedValue(historical);

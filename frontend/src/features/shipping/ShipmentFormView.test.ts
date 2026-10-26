@@ -5,11 +5,27 @@ import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
 import { clearMessages, messages } from '../../components/feedback/message';
 import ShipmentFormView from './ShipmentFormView.vue';
 import type { Shipment } from './types';
+import type { Quote } from '../logistics/types';
 
 const service = vi.hoisted(() => ({ formOptions: vi.fn(), logisticsAvailability: vi.fn(), get: vi.fn(),
   getLogisticsOrder: vi.fn(), create: vi.fn(), update: vi.fn(), updatePreparationContent: vi.fn(), placeLogisticsOrder: vi.fn() }));
+const freight = vi.hoisted(() => ({ getFreightSelection: vi.fn() }));
 enableAutoUnmount(afterEach);
 vi.mock('./shippingService', () => ({ shippingService: service }));
+vi.mock('../logistics/logisticsService', () => ({ logisticsService: freight }));
+vi.mock('../logistics/components/ShipmentQuotePanel.vue', () => ({ default: {
+  name: 'ShipmentQuotePanelStub', props: ['input', 'modelValue', 'disabled'],
+  emits: ['update:modelValue', 'loaded', 'pending'], template: '<div data-testid="quote-panel-stub" />'
+} }));
+
+function quote(apiReady = true): Quote {
+  return { quoteId: 'selected-quote', companyId: 7, companyName: '合作物流验收', provider: apiReady ? 'ANE' : 'MANUAL',
+    accountId: 8, accountVersionId: 9, templateId: 10, templateVersion: 1, productCode: '24', productName: '精准零担',
+    amount: 26.5, billedQuantity: 18.5, chargeMode: 'weight', matchedRegion: '浙江省', lowerExclusive: 0,
+    upperInclusive: null, firstQuantity: 1, firstFee: 9.5, additionalQuantity: 1, additionalFee: 1,
+    renewalCount: 17, available: true, reason: '', apiReady, apiMessage: apiReady ? '' : '需线下下单',
+    recommended: true, expiresAt: '2099-10-26T10:00:00Z' };
+}
 
 function shipment(overrides: Partial<Shipment> = {}): Shipment {
   const base: Shipment = {
@@ -52,6 +68,7 @@ async function fillRequired(wrapper: ReturnType<typeof mount>) {
 }
 
 beforeEach(() => {
+  freight.getFreightSelection.mockReset().mockResolvedValue(null);
   clearMessages();
   localStorage.clear();
   clearCurrentUser();
@@ -80,6 +97,57 @@ beforeEach(() => {
 afterEach(() => { clearCurrentUser(); clearMessages(); });
 
 describe('ShipmentFormView', () => {
+  it('uses the selected carrier sender defaults while retaining an explicitly edited sender', async () => {
+    const { wrapper } = await render();
+    service.logisticsAvailability.mockResolvedValue({ available: true, testEnvironment: true, managedTemplatesEnabled: true,
+      message: '合作账号已配置', sender: {name: '合作发货人', phone: '13900000001', province: '浙江省', city: '杭州市', county: '余杭区', address: '合作仓库8号'} });
+    const panel = wrapper.findComponent({ name: 'ShipmentQuotePanelStub' });
+    panel.vm.$emit('update:modelValue', quote()); await flushPromises();
+    expect(service.logisticsAvailability).toHaveBeenLastCalledWith(7);
+    expect((wrapper.get('[data-testid="sender-name"]').element as HTMLInputElement).value).toBe('合作发货人');
+    await wrapper.get('[data-testid="sender-name"]').setValue('本单指定发货人');
+    service.logisticsAvailability.mockResolvedValue({ available: true, testEnvironment: true, sender: {name: '另一仓库', phone: '13900000002', province: '浙江省', city: '杭州市', county: '余杭区', address: '另一仓库9号'} });
+    panel.vm.$emit('update:modelValue', {...quote(), companyId: 9}); await flushPromises();
+    expect((wrapper.get('[data-testid="sender-name"]').element as HTMLInputElement).value).toBe('本单指定发货人');
+  });
+  it('binds the logistics product to the selected template', async () => {
+    const { wrapper } = await render();
+    wrapper.findComponent({ name: 'ShipmentQuotePanelStub' }).vm.$emit('update:modelValue', quote()); await flushPromises();
+    expect(wrapper.get('[data-testid="shipment-logistics-product"]').attributes('disabled')).toBeDefined();
+  });
+  it('saves the selected company quotation separately from the editable shipment fields', async () => {
+    const { wrapper } = await render();
+    await fillRequired(wrapper);
+    const panel = wrapper.findComponent({ name: 'ShipmentQuotePanelStub' });
+    expect(panel.exists()).toBe(true);
+    panel.vm.$emit('loaded', { quotes: [quote()], legacyOrderingAllowed: false, generatedAt: '2026-10-26T00:00:00Z' });
+    panel.vm.$emit('update:modelValue', quote()); await flushPromises();
+    await wrapper.get('[data-testid="shipment-save-only"]').trigger('click'); await flushPromises();
+    expect(service.create).toHaveBeenCalledWith(expect.objectContaining({
+      logisticsChoice: { quoteId: 'selected-quote', preferredCompanyId: 7, clear: false }, estimatedFreight: 26.5,
+      orderDraft: expect.objectContaining({ productTypeId: 24 })
+    }));
+  });
+  it('can save an offline company quotation while disabling API ordering', async () => {
+    const { wrapper } = await render();
+    await fillRequired(wrapper);
+    const panel = wrapper.findComponent({ name: 'ShipmentQuotePanelStub' });
+    panel.vm.$emit('loaded', { quotes: [quote(false)], legacyOrderingAllowed: false, generatedAt: '2026-10-26T00:00:00Z' });
+    panel.vm.$emit('update:modelValue', quote(false)); await flushPromises();
+    expect(wrapper.get('[data-testid="shipment-save-and-order"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="shipment-save-only"]').trigger('click'); await flushPromises();
+    expect(service.create).toHaveBeenCalled();
+    expect(service.placeLogisticsOrder).not.toHaveBeenCalled();
+  });
+  it('keeps draft saving available when managed pricing has no selected valid quote', async () => {
+    service.logisticsAvailability.mockResolvedValue({ available: true, managedTemplatesEnabled: true, testEnvironment: true, message: '已启用合作报价' });
+    const { wrapper } = await render();
+    await fillRequired(wrapper);
+    expect(wrapper.get('[data-testid="shipment-save-and-order"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="shipment-save-only"]').attributes('disabled')).toBeUndefined();
+    await wrapper.get('[data-testid="shipment-save-only"]').trigger('click'); await flushPromises();
+    expect(service.create).toHaveBeenCalled();
+  });
   it('lets the creator use the edit page to save only items and remark without general edit permission', async () => {
     saveCurrentUser({ accessToken: 'test', employeeId: 1, mobile: '13900000000', roles: [],
       permissions: ['shipping:view', 'shipping:order'], loginMethod: 'password' });

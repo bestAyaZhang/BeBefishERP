@@ -26,7 +26,11 @@ public class FreightQuoteService {
         this.jdbc=jdbc; this.catalog=catalog; this.clock=clock;
     }
     public boolean managedTemplatesEnabled() {
-        return jdbc.queryForObject("select count(*) from logistics_template where environment=? and status='enabled'",Long.class,catalog.runtimeEnvironment())>0;
+        // Adoption is permanent for this environment; disabling a template must not reopen legacy ordering.
+        return jdbc.queryForObject("""
+            select count(*) from logistics_template_version v join logistics_template t on t.id=v.template_id
+            where t.environment=? and json_unquote(json_extract(v.config_json,'$.status'))='enabled'
+            """,Long.class,catalog.runtimeEnvironment())>0;
     }
     public static QuoteInput input(ShipmentFormInput form) {
         if(form==null) throw invalid("缺少发货资料"); var d=form.orderDraft();

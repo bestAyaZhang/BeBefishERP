@@ -4,6 +4,8 @@ import com.bebefish.erp.common.api.*;
 import com.bebefish.erp.common.security.ErpPrincipal;
 import com.bebefish.erp.shipping.application.ShipmentService;
 import com.bebefish.erp.shipping.application.ShippingFormOptionsService;
+import com.bebefish.erp.shipping.application.ShipmentFreightCoordinator;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.bebefish.erp.shipping.domain.*;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
@@ -17,9 +19,15 @@ import org.springframework.web.bind.annotation.*;
 public class ShipmentController {
     private final ShipmentService service;
     private final ShippingFormOptionsService optionsService;
+    private final ShipmentFreightCoordinator freight;
     public ShipmentController(ShipmentService service, ShippingFormOptionsService optionsService) {
+        this(service,optionsService,null);
+    }
+    @Autowired
+    public ShipmentController(ShipmentService service, ShippingFormOptionsService optionsService, ShipmentFreightCoordinator freight) {
         this.service = service;
         this.optionsService = optionsService;
+        this.freight=freight;
     }
 
     @GetMapping
@@ -57,6 +65,7 @@ public class ShipmentController {
     @PostMapping
     @PreAuthorize("hasAuthority('shipping:create')")
     public ApiResponse<Shipment> create(@Valid @RequestBody SaveShipmentRequest request, @AuthenticationPrincipal ErpPrincipal principal) {
+        if(freight!=null) return ApiResponse.success(freight.create(request.form(),request.preparerEmployeeIds(),request.logisticsChoice(),principal));
         return ApiResponse.success(service.create(request.form(), request.preparerEmployeeIds(), principal.operatorIdentifier(), operatorDisplayName(principal), principal.employeeId() > 0 ? principal.employeeId() : null));
     }
 
@@ -67,6 +76,7 @@ public class ShipmentController {
         if (request.version() == null) throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "缺少发货单版本，请重新打开后再保存");
         if (request.status() == null || request.status().isBlank())
             throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "请选择备货状态");
+        if(freight!=null) return ApiResponse.success(freight.update(id,request.form(),request.status(),request.version(),request.preparerEmployeeIds(),request.logisticsChoice(),principal));
         return ApiResponse.success(service.update(id, request.form(), request.status(), request.version(), principal.operatorIdentifier(),
                 request.preparerEmployeeIds(), principal.roles().contains("SUPER_ADMIN")));
     }
@@ -96,5 +106,12 @@ public class ShipmentController {
     public ApiResponse<Shipment> confirmCreator(@PathVariable long id, @Valid @RequestBody ConfirmShipmentCreatorRequest request,
                                                @AuthenticationPrincipal ErpPrincipal principal) {
         return ApiResponse.success(service.confirmCreator(id, request.employeeId(), request.version(), principal));
+    }
+
+    @GetMapping("/{id}/freight-selection")
+    @PreAuthorize("hasAuthority('shipping:view')")
+    public ApiResponse<com.bebefish.erp.logistics.LogisticsDtos.Quote> freightSelection(@PathVariable long id) {
+        service.get(id);
+        return ApiResponse.success(freight==null?null:freight.selection(id));
     }
 }

@@ -42,6 +42,7 @@ export interface AneOrderDraft {
 }
 
 export interface ShipmentFormInput extends RecipientFields, SenderFields {
+  logisticsChoice?: import('../logistics/types').LogisticsChoice;
   platformId?: number | null;
   shopId?: number | null;
   platform: string;
@@ -118,6 +119,7 @@ export interface SenderInfo {
   address: string;
 }
 export interface LogisticsAvailability {
+  managedTemplatesEnabled?: boolean;
   available: boolean;
   testEnvironment: boolean;
   message: string;
@@ -134,6 +136,7 @@ export interface LogisticsOrder {
   testEnvironment: boolean;
 }
 export interface PlaceLogisticsOrder { version: number }
+export interface LogisticsAccountBinding { companyId:number|null; accountId:number|null; accountVersionId:number|null; linked:boolean; requiresConfirmation:boolean }
 
 export interface ShippingService {
   list(query: ShipmentQuery): Promise<PageResult<Shipment>>;
@@ -146,7 +149,8 @@ export interface ShippingService {
   updatePreparation(id: number, request: { status: ShipmentStatus; actualWeight: number | null; version: number }): Promise<Shipment>;
   updatePreparationContent(id: number, request: { preparationContent: string; remark: string; version: number }): Promise<Shipment>;
   confirmCreator(id: number, request: { employeeId: number; version: number }): Promise<Shipment>;
-  logisticsAvailability(): Promise<LogisticsAvailability>;
+  logisticsAvailability(companyId?:number): Promise<LogisticsAvailability>;
+  getLogisticsAccountBinding(id:number):Promise<LogisticsAccountBinding>;
   getLogisticsOrder(id: number): Promise<LogisticsOrder | null>;
   placeLogisticsOrder(id: number, request: PlaceLogisticsOrder): Promise<LogisticsOrder>;
   cancelLogisticsOrder(id: number, request: { version: number }): Promise<LogisticsOrder>;

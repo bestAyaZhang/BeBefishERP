@@ -69,6 +69,12 @@ public record ShipmentFormInput(
 
     public ShipmentSource source() { return new ShipmentSource(platformId, shopId, platform, shopName); }
 
+    public ShipmentFormInput withEstimatedFreight(BigDecimal amount) {
+        return new ShipmentFormInput(platform, shopName, preparers, recipientName, recipientPhone, recipientProvince,
+                recipientCity, recipientCounty, recipientDetailAddress, preparationContent, remark, amount, orderDraft,
+                platformId, shopId, senderName, senderPhone, senderProvince, senderCity, senderCounty, senderDetailAddress);
+    }
+
     public ShipmentFormInput withPreparationContent(String content, String note) {
         return new ShipmentFormInput(platform, shopName, preparers, recipientName, recipientPhone, recipientProvince,
                 recipientCity, recipientCounty, recipientDetailAddress, content, note, estimatedFreight, orderDraft,

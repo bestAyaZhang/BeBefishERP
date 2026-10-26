@@ -14,6 +14,7 @@ export function createMockShippingService(): ShippingService {
     async logisticsAvailability() { return { available: false, testEnvironment: true,
       message: '演示数据不提交真实物流订单', sender: null }; },
     async getLogisticsOrder() { return null; },
+    async getLogisticsAccountBinding() { return { companyId:null,accountId:null,accountVersionId:null,linked:false,requiresConfirmation:false }; },
     async placeLogisticsOrder() { throw new Error('演示数据不能提交真实物流订单'); },
     async cancelLogisticsOrder() { throw new Error('演示数据不能取消真实物流订单'); },
     async formOptions() { const catalog = mockCatalogOptions(); return { ...catalog, shopNames: catalog.shops.map(s => s.name), preparers: [] }; },
@@ -49,6 +50,8 @@ export function createMockShippingService(): ShippingService {
       return record;
     },
     async create(form) {
+      if(form.logisticsChoice?.quoteId) throw new Error('演示数据不能保存真实合作报价，请使用本地后端');
+      const { logisticsChoice: _choice, ...fields } = form;
       const records = read();
       const id = records.reduce((max, row) => Math.max(max, row.id), 0) + 1;
       const now = new Date().toISOString();
@@ -57,20 +60,22 @@ export function createMockShippingService(): ShippingService {
         logisticsOrderState: null,
         creatorEmployeeId: currentUser.value?.employeeId ?? null,
         preparerEmployeeIds: form.preparerEmployeeIds ?? [],
-        content: { ...structuredClone(form), shipmentDate: todayDate(), status: 'unfinished', orderer: operator(), logisticsCompany: '', trackingNo: '' },
+        content: { ...structuredClone(fields), shipmentDate: todayDate(), status: 'unfinished', orderer: operator(), logisticsCompany: '', trackingNo: '' },
         version: 0, createdAt: now, updatedAt: now, createdBy: shipmentOperatorIdentifier(currentUser.value) || 'demo', updatedBy: shipmentOperatorIdentifier(currentUser.value) || 'demo'
       };
       write([...records, record]);
       return record;
     },
     async update(id, form, status, version) {
+      if(form.logisticsChoice?.quoteId) throw new Error('演示数据不能保存真实合作报价，请使用本地后端');
+      const { logisticsChoice: _choice, ...fields } = form;
       const records = read();
       const previous = records.find(row => row.id === id);
       if (!previous) throw new Error('发货单不存在');
       if (previous.version !== version) throw new Error('发货单已被其他人修改，请重新打开后再保存；当前填写内容已保留');
       if (previous.content.status === 'completed' && (form.preparationContent !== previous.content.preparationContent || form.remark !== previous.content.remark))
         throw Object.assign(new Error('备货已完成，不能修改备货物品和备注'), { code: 'SHIPMENT_PREPARATION_COMPLETED' });
-      const updated: Shipment = { ...previous, preparerEmployeeIds: form.preparerEmployeeIds ?? previous.preparerEmployeeIds ?? [], content: { ...structuredClone(form), shipmentDate: previous.content.shipmentDate,
+      const updated: Shipment = { ...previous, preparerEmployeeIds: form.preparerEmployeeIds ?? previous.preparerEmployeeIds ?? [], content: { ...structuredClone(fields), shipmentDate: previous.content.shipmentDate,
         status, orderer: previous.content.orderer, logisticsCompany: previous.content.logisticsCompany,
         trackingNo: previous.content.trackingNo }, version: version + 1, updatedAt: new Date().toISOString(), updatedBy: operator() };
       write(records.map(row => row.id === id ? updated : row));

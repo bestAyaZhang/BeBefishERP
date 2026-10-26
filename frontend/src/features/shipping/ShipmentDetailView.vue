@@ -7,6 +7,10 @@ import { currentUser } from '../../services/authSession';
 import { message } from '../../components/feedback/message';
 import AccessibleDialog from '../../components/AccessibleDialog.vue';
 import ShipmentPreparationDialog from './ShipmentPreparationDialog.vue';
+import HistoricalLogisticsAccount from './HistoricalLogisticsAccount.vue';
+import { logisticsService } from '../logistics/logisticsService';
+import type { Quote } from '../logistics/types';
+import type { LogisticsAccountBinding } from './types';
 
 import { canConfirmCreator, canEditPreparationContent, canUpdatePreparation } from './preparationAccess';
 import { freightText, logisticsStateLabel, recipientFullAddress, shipmentSenderFullAddress, shipmentStatus,
@@ -19,6 +23,9 @@ const order = ref<LogisticsOrder | null>(null);
 const loading = ref(false);
 const error = ref('');
 const orderVerified = ref(false);
+const accountVerified=ref(false);
+const accountBinding=ref<LogisticsAccountBinding|null>(null);
+const freightSelection=ref<Quote|null>(null);
 const cancelOpen = ref(false);
 const cancelling = ref(false);
 const preparationOpen = ref(false);
@@ -51,7 +58,7 @@ function preparationSaved(updated: Shipment) {
   message.success('备货状态与实际重量已保存');
 }
 const canEdit = computed(() => currentUser.value?.permissions.includes('shipping:edit') || (!!shipment.value && canEditPreparationContent(shipment.value, currentUser.value)));
-const canCancel = computed(() => orderVerified.value && currentUser.value?.permissions.includes('shipping:cancel')
+const canCancel = computed(() => orderVerified.value && accountVerified.value && !accountBinding.value?.requiresConfirmation && currentUser.value?.permissions.includes('shipping:cancel')
   && !!order.value && ['succeeded', 'cancel_rejected'].includes(order.value.state));
 const editLabel = computed(() => !currentUser.value?.permissions.includes('shipping:edit') || (order.value && order.value.state !== 'rejected') ? '编辑发货单' : '编辑并下单');
 let generation = 0;
@@ -60,6 +67,7 @@ async function load() {
   const request = ++generation;
   loading.value = true;
   orderVerified.value = false;
+  accountVerified.value=false;
   error.value = '';
   try {
     const record = await shippingService.get(Number(route.params.id));
@@ -71,6 +79,10 @@ async function load() {
       order.value = loadedOrder;
       orderVerified.value = true;
     } catch { /* Preserve a known result, but never allow another cancellation until refresh succeeds. */ }
+    await Promise.all([
+      shippingService.getLogisticsAccountBinding(record.id).then(binding=>{if(request===generation){accountBinding.value=binding;accountVerified.value=true;}}).catch(()=>{}),
+      logisticsService.getFreightSelection(record.id).then(selection=>{if(request===generation)freightSelection.value=selection;}).catch(()=>{})
+    ]);
   } catch (cause) { if (request === generation) error.value = cause instanceof Error ? cause.message : '发货单加载失败'; }
   finally { if (request === generation) loading.value = false; }
 }
@@ -116,6 +128,8 @@ onBeforeUnmount(() => { generation++; });
       </div>
     </div>
     <p v-if="shipment && !loading && !orderVerified" class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">物流状态尚未核实，请点击“刷新状态”后核对，勿重复取消或重新下单。</p>
+    <p v-if="shipment && order && !loading && !accountVerified" class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">物流账号信息尚未核实，请刷新后再取消。</p>
+    <HistoricalLogisticsAccount v-if="shipment&&order&&accountBinding?.requiresConfirmation" :shipment-id="shipment.id" :version="shipment.version" :test-environment="order.testEnvironment" @saved="load"/>
     <div v-if="loading" role="status" class="rounded-xl border border-slate-200 bg-white py-24 text-center text-sm text-slate-500">正在加载发货单…</div>
     <div v-else-if="error" data-testid="shipment-detail-error" role="alert" class="rounded-xl border border-rose-100 bg-white py-20 text-center"><p class="text-sm text-rose-600">{{ error }}</p><button data-testid="shipment-detail-retry" type="button" class="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 px-5 py-2 text-sm text-[#536dff]" @click="load"><RefreshCw :size="15" />重新加载</button></div>
     <div v-else-if="shipment" class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -130,6 +144,7 @@ onBeforeUnmount(() => { generation++; });
         </article>
         <article class="detail-card"><div class="flex items-center justify-between gap-3"><div class="card-title"><Box :size="18" />备货清单</div></div><p class="mt-5 min-h-36 whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-4 text-sm leading-7 text-slate-700">{{ shipment.content.preparationContent }}</p><div class="mt-5 border-t border-slate-100 pt-4"><p class="meta-label">备注</p><p class="meta-value whitespace-pre-wrap break-words">{{ shipment.content.remark || '暂无备注' }}</p></div></article>
         <article class="detail-card"><div class="card-title"><PackageCheck :size="18" />发货记录</div><dl class="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"><div><dt class="meta-label">平台</dt><dd class="meta-value">{{ shipment.content.platform || '未填写' }}</dd></div><div><dt class="meta-label">店铺</dt><dd class="meta-value">{{ shipment.content.shopName }}</dd></div><div><dt class="meta-label">发货日期</dt><dd class="meta-value">{{ shipment.content.shipmentDate }}</dd></div><div><dt class="meta-label">备货人</dt><dd class="meta-value">{{ shipment.content.preparers.join('、') || '未指定' }}</dd></div><div><dt class="meta-label">下单人</dt><dd class="meta-value">{{ shipment.content.orderer }}</dd></div><div><dt class="meta-label">运费预测</dt><dd class="meta-value">{{ freightText(shipment.content.estimatedFreight) }}</dd></div></dl></article>
+        <article v-if="freightSelection" data-testid="shipment-freight-selection" class="detail-card"><div class="card-title">合作物流报价记录</div><p class="meta-value">{{freightSelection.companyName}} / {{freightSelection.productName}} · ¥{{freightSelection.amount?.toFixed(2)}}</p><p class="mt-2 text-xs leading-6 text-slate-500">{{freightSelection.matchedRegion}}，计费量 {{freightSelection.billedQuantity}} {{freightSelection.chargeMode==='piece'?'件':'kg'}}；首费 ¥{{freightSelection.firstFee}}，续费 ¥{{freightSelection.additionalFee}} × {{freightSelection.renewalCount}}。模板版本 {{freightSelection.templateVersion}}，按当次报价留档。</p></article>
       </main>
       <aside class="space-y-5 lg:sticky lg:top-5">
         <article class="detail-card"><div class="card-title"><Truck :size="18" />物流与备货状态</div><dl class="mt-5 space-y-4"><div><dt class="meta-label">安能下单状态</dt><dd data-testid="shipment-detail-logistics-status" class="meta-value">{{ order ? logisticsStateLabel(order.state) : '尚未下单' }}<span v-if="order?.testEnvironment" class="ml-1 text-xs text-amber-600">（测试）</span></dd></div><div><dt class="meta-label">备货状态</dt><dd data-testid="shipment-detail-preparation-status" class="mt-1.5"><span class="inline-flex rounded-full px-2.5 py-1 text-xs font-medium" :class="shipmentStatus(shipment.content.status).tone">{{ shipmentStatus(shipment.content.status).label }}</span></dd></div><div><dt class="meta-label">物流公司</dt><dd class="meta-value">{{ shipment.content.logisticsCompany || '待下单' }}</dd></div><div><dt class="meta-label">物流单号</dt><dd data-testid="shipment-real-tracking" class="meta-value break-all">{{ order?.state === 'cancelled' ? ((order.testEnvironment ? '' : order.trackingNo) || '原运单') + '（已作废）' : (order?.testEnvironment ? '' : order?.trackingNo) || shipment.content.trackingNo || '暂无' }}</dd></div><div v-if="order && !order.testEnvironment"><dt class="meta-label">安能订单号</dt><dd class="meta-value break-all">{{ order.orderNo }}</dd></div></dl></article>

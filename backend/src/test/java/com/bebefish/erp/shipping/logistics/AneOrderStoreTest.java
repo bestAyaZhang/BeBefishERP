@@ -56,9 +56,14 @@ class AneOrderStoreTest {
         when(jdbc.update(anyString(), any(SqlParameterSource.class))).thenReturn(1);
         store.finish(1, new AneOrderResult("succeeded", "620240314001", "", "成功"), "operator");
         var sql = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(jdbc, atLeastOnce()).update(sql.capture(), any(SqlParameterSource.class));
+        var parameters = org.mockito.ArgumentCaptor.forClass(SqlParameterSource.class);
+        verify(jdbc, atLeastOnce()).update(sql.capture(), parameters.capture());
         assertThat(sql.getAllValues()).anyMatch(s -> s.contains("update shipment set tracking_no")
-                && s.contains("logistics_company='安能物流'"));
+                && s.contains("logistics_company=:companyName"));
+        assertThat(parameters.getAllValues()).anySatisfy(p -> {
+            assertThat(p.getValue("companyName")).isEqualTo("安能物流");
+            assertThat(p.getValue("tracking")).isEqualTo("620240314001");
+        });
         assertThat(sql.getAllValues()).noneMatch(s -> s.contains("status='completed'"));
     }
 

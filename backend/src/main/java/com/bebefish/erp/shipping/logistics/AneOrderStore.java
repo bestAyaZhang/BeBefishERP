@@ -38,10 +38,14 @@ public class AneOrderStore {
 
     @Transactional
     public CancellationClaim claimCancellation(long id, long expectedVersion, String operator) {
+        return claimCancellation(id,expectedVersion,operator,config);
+    }
+    @Transactional
+    public CancellationClaim claimCancellation(long id, long expectedVersion, String operator, AneProperties operationConfig) {
         var ids = jdbc.queryForList("select id from shipment where id=:id for update", Map.of("id", id), Long.class);
         if (ids.isEmpty()) throw new BusinessException("SHIPMENT_NOT_FOUND", HttpStatus.NOT_FOUND, "发货单不存在");
         var order = find(id).orElseThrow(() -> new BusinessException("LOGISTICS_ORDER_NOT_FOUND", HttpStatus.NOT_FOUND, "尚未创建安能订单"));
-        if (order.testEnvironment() != config.testEnvironment())
+        if (order.testEnvironment() != operationConfig.testEnvironment())
             throw new BusinessException("LOGISTICS_ENVIRONMENT_CHANGED", HttpStatus.CONFLICT, "当前物流环境与原订单不一致，不能跨环境取消订单");
         if (java.util.Set.of("cancelled", "cancel_processing", "cancel_unknown").contains(order.state()))
             return new CancellationClaim(order, false);
@@ -79,25 +83,33 @@ public class AneOrderStore {
     // Commit a durable reservation before making any remote request; the network call is outside this transaction.
     @Transactional
     public Claim claim(long id, long expectedVersion, String operator) {
+        return claim(id,expectedVersion,operator,config);
+    }
+    @Transactional
+    public Claim claim(long id,long expectedVersion,String operator,AneProperties operationConfig) {
+        return claim(id,expectedVersion,operator,operationConfig,false);
+    }
+    @Transactional
+    public Claim claim(long id,long expectedVersion,String operator,AneProperties operationConfig,boolean managedCarrier) {
         var ids = jdbc.queryForList("select id from shipment where id=:id for update", Map.of("id", id), Long.class);
         if (ids.isEmpty()) throw new BusinessException("SHIPMENT_NOT_FOUND", HttpStatus.NOT_FOUND, "发货单不存在");
         var shipment = shipments.findById(id).orElseThrow();
         var existing = find(id);
         if (existing.isPresent() && !"rejected".equals(existing.get().state())) return new Claim(shipment, existing.get().orderNo(), existing.get());
-        if (existing.isPresent() && existing.get().testEnvironment() != config.testEnvironment())
+        if (existing.isPresent() && existing.get().testEnvironment() != operationConfig.testEnvironment())
             throw new BusinessException("LOGISTICS_ENVIRONMENT_CHANGED", HttpStatus.CONFLICT, "此发货单已在其他物流环境尝试下单，请新建发货单后再提交");
         if (shipment.version() != expectedVersion) throw new BusinessException("SHIPMENT_VERSION_CONFLICT", HttpStatus.CONFLICT, "发货单已更新，请重新打开下单窗口");
         var content = shipment.content();
         if (!content.trackingNo().isBlank()) throw new BusinessException("SHIPMENT_ALREADY_TRACKED", HttpStatus.CONFLICT, "已填写物流单号，请先核实已有运单，不能重复下单");
         if (content.recipientName().length() > 30 || content.recipientPhone().length() > 30)
             throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "安能收件人姓名和电话不能超过30字");
-        if (!content.logisticsCompany().isBlank() && !content.logisticsCompany().contains("安能"))
+        if (!content.logisticsCompany().isBlank() && !content.logisticsCompany().contains("安能") && !managedCarrier)
             throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "当前物流公司不是安能，请先修改发货单的物流公司");
         String orderNo = existing.map(LogisticsOrder::orderNo).orElseGet(() -> "BF" + UUID.nameUUIDFromBytes(shipment.shipmentNo().getBytes(StandardCharsets.UTF_8)).toString().replace("-", "").substring(0, 28));
         String snapshot;
         try { snapshot = mapper.writeValueAsString(content); }
         catch (JsonProcessingException failure) { throw new IllegalStateException("无法保存物流下单资料", failure); }
-        var params = new MapSqlParameterSource("id", id).addValue("orderNo", orderNo).addValue("snapshot", snapshot).addValue("operator", operator).addValue("testEnvironment", config.testEnvironment());
+        var params = new MapSqlParameterSource("id", id).addValue("orderNo", orderNo).addValue("snapshot", snapshot).addValue("operator", operator).addValue("testEnvironment", operationConfig.testEnvironment());
         jdbc.update("""
                 insert into shipment_logistics_order
                     (shipment_id,order_no,state,test_environment,tracking_no,child_tracking_nos,message,request_snapshot,operator_id,created_at,updated_at)
@@ -111,8 +123,12 @@ public class AneOrderStore {
 
     @Transactional
     public LogisticsOrder finish(long id, AneOrderResult result, String operator) {
+        return finish(id,result,operator,"安能物流");
+    }
+    @Transactional
+    public LogisticsOrder finish(long id,AneOrderResult result,String operator,String companyName) {
         var params = new MapSqlParameterSource("id", id).addValue("state", result.state()).addValue("tracking", result.trackingNo())
-                .addValue("children", result.childTrackingNos()).addValue("message", result.message()).addValue("operator", operator);
+                .addValue("children", result.childTrackingNos()).addValue("message", result.message()).addValue("operator", operator).addValue("companyName",companyName);
         // Keep the lock order consistent with claim/update: shipment first, logistics order second.
         jdbc.queryForList("select id from shipment where id=:id for update", params, Long.class);
         var shipment = shipments.findById(id).orElseThrow(() ->
@@ -125,7 +141,7 @@ public class AneOrderStore {
                 """, params);
         if (changed == 1 && "succeeded".equals(result.state())) {
             jdbc.update("""
-                    update shipment set tracking_no=:tracking, logistics_company='安能物流', weight=:weight,
+                    update shipment set tracking_no=:tracking, logistics_company=:companyName, weight=:weight,
                         recipient_address=:address, version_no=version_no+1,
                         updated_by=:operator, updated_at=now(3) where id=:id
                     """, params);

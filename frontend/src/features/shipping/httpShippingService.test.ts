@@ -9,6 +9,15 @@ function ok(data: unknown) {
 }
 
 describe('shipping HTTP contract', () => {
+  it('keeps the chosen quote ID outside form and sends no quote price as an authorization', async () => {
+    const fetcher = vi.fn().mockResolvedValue(ok({})); vi.stubGlobal('fetch', fetcher);
+    const fields = { ...emptyShipmentForm(), logisticsChoice: { quoteId: 'chosen-quote', preferredCompanyId: 7, clear: false } };
+    await httpShippingService.create(fields);
+    const payload = JSON.parse(fetcher.mock.calls[0][1].body);
+    expect(payload.logisticsChoice).toEqual(fields.logisticsChoice);
+    expect(payload.form).not.toHaveProperty('logisticsChoice');
+    expect(payload.logisticsChoice).not.toHaveProperty('amount');
+  });
   it('patches only preparation items, remark and the saved version', async () => {
     const fetcher = vi.fn().mockResolvedValue(ok({}));
     vi.stubGlobal('fetch', fetcher);
