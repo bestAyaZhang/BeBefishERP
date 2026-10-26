@@ -54,6 +54,14 @@ create table logistics_quote (
  constraint fk_logistics_quote_template foreign key(template_id) references logistics_template(id),
  constraint ck_logistics_quote_amount check(amount_cents >= 0)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
+create table logistics_audit (
+ id bigint primary key auto_increment, actor_employee_id bigint not null, actor_identifier varchar(100) not null,
+ action varchar(50) not null, environment varchar(20) not null, company_id bigint not null,
+ account_id bigint null, account_version_id bigint null, template_id bigint null, entity_version bigint null,
+ metadata_json json not null, occurred_at datetime(3) not null,
+ key ix_logistics_audit_company(company_id,occurred_at,id), key ix_logistics_audit_actor(actor_employee_id,occurred_at,id),
+ constraint ck_logistics_audit_environment check(environment in ('test','production'))
+) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 insert into sys_permission(code,module_key,action_key,display_name,created_at,updated_at) values
 ('logistics:view','logistics','view','查看物流管理',now(3),now(3)),
 ('logistics:edit','logistics','edit','管理物流公司',now(3),now(3)),

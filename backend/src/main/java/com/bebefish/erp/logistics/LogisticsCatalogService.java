@@ -3,6 +3,7 @@ package com.bebefish.erp.logistics;
 import static com.bebefish.erp.logistics.LogisticsDtos.*;
 import com.bebefish.erp.common.api.BusinessException;
 import com.bebefish.erp.common.api.PageResponse;
+import com.bebefish.erp.common.security.ErpPrincipal;
 import com.bebefish.erp.logistics.CarrierAccountResolver.ResolvedAccount;
 import com.bebefish.erp.logistics.pricing.FreightCalculator;
 import com.bebefish.erp.logistics.pricing.ProvinceCatalog;
@@ -107,19 +108,30 @@ public class LogisticsCatalogService {
         boolean app=r.getBoolean("app_key_configured"),pass=r.getBoolean("customer_pass_configured");
         boolean ready=ready(r.getString("provider"),c,app,pass) && cipher.available();
         String message=ready?"接口资料已就绪":r.getString("provider").equals("MANUAL")?"该公司仅支持线下发货":!cipher.available()?"未配置物流加密主密钥":"接口资料尚未填写完整";
+        if(ready) {
+            try {
+                String encrypted=r.getString("secret_cipher");
+                if(encrypted==null) throw new IllegalStateException();
+                AccountInput authenticated=read(cipher.decrypt(encrypted,context(r.getLong("account_id"),r.getString("environment"),r.getLong("version_no"))),AccountInput.class);
+                if(!publicConfig(authenticated).equals(c)) throw new IllegalStateException();
+                validateOrderUrl(authenticated.orderUrl());
+            } catch(BusinessException|IllegalStateException e) {
+                ready=false; message="接口密钥无法验证，请检查主密钥与账号配置";
+            }
+        }
         return new AccountView(r.getLong("account_id"),r.getLong("company_id"),r.getString("environment"),r.getLong("version_no"),r.getLong("id"),
                 c.code(),c.customerCode(),c.dictId(),c.orderUrl(),c.sender(),app,pass,ready,message);
     }
     @Transactional public AccountView saveAccount(long companyId,AccountInput in) {
         Company company=lockCompany(companyId); if(in==null) throw invalid("请填写账号资料");
-        long revision=jdbc.queryForObject("select "+revisionColumn()+" from logistics_company where id=?",Long.class,companyId);
+        long revision=jdbc.queryForObject("select "+revisionColumn()+" from logistics_company where id=? for update",Long.class,companyId);
         expected(in.version(),revision);
         AccountInput normalized=normalizeAccount(in,company.provider());
         String hash=hash(normalized.code()+"\u0000"+normalized.customerCode()+"\u0000"+normalized.dictId());
-        Long oldId=currentAccountId(companyId); Long oldVersion=null; String oldHash=null;
+        Long oldId=lockedCurrentAccountId(companyId); Long oldVersion=null; String oldHash=null;
         if(oldId!=null) {
-            oldVersion=jdbc.queryForObject("select current_version_id from logistics_account where id=?",Long.class,oldId);
-            oldHash=jdbc.queryForObject("select identity_hash from logistics_account where id=?",String.class,oldId);
+            oldVersion=jdbc.queryForObject("select current_version_id from logistics_account where id=? for update",Long.class,oldId);
+            oldHash=jdbc.queryForObject("select identity_hash from logistics_account where id=? for update",String.class,oldId);
         }
         String app=clean(normalized.appKey()),pass=clean(normalized.customerPass());
         if(oldId!=null && hash.equals(oldHash) && (app.isEmpty()||pass.isEmpty())) {
@@ -129,7 +141,7 @@ public class LogisticsCatalogService {
         if(company.provider().equals("MANUAL") && (!app.isEmpty()||!pass.isEmpty())) throw invalid("线下物流公司不能配置接口密钥");
         if((!app.isEmpty()||!pass.isEmpty()) && !cipher.available()) throw conflict("LOGISTICS_MASTER_KEY_MISSING","未配置物流加密主密钥，无法保存接口密钥");
         long next=revision+1; Instant now=clock.instant();
-        List<Long> identities=jdbc.query("select id from logistics_account where company_id=? and environment=? and identity_hash=?",(r,n)->r.getLong(1),companyId,environment,hash);
+        List<Long> identities=jdbc.query("select id from logistics_account where company_id=? and environment=? and identity_hash=? for update",(r,n)->r.getLong(1),companyId,environment,hash);
         long accountId=identities.isEmpty()?insert("insert into logistics_account(company_id,environment,identity_hash,created_at) values(?,?,?,?)",companyId,environment,hash,ts(now)):identities.getFirst();
         AccountInput complete=new AccountInput(next,normalized.code(),normalized.customerCode(),normalized.dictId(),app,pass,normalized.orderUrl(),normalized.sender());
         AccountInput publicConfig=publicConfig(complete);
@@ -156,6 +168,7 @@ public class LogisticsCatalogService {
         },versionId).stream().findFirst().orElseThrow(()->missing("物流账号版本不存在"));
     }
     Long currentAccountId(long companyId) { return jdbc.queryForObject("select "+accountColumn()+" from logistics_company where id=?",Long.class,companyId); }
+    private Long lockedCurrentAccountId(long companyId) { return jdbc.queryForObject("select "+accountColumn()+" from logistics_company where id=? for update",Long.class,companyId); }
     private AccountInput normalizeAccount(AccountInput in,String provider) {
         Sender s=in.sender()==null?new Sender("","","","","",""):in.sender();
         s=new Sender(text(s.name(),30,"发件人",false),text(s.phone(),30,"发件电话",false),text(s.province(),30,"发件省份",false),
@@ -193,7 +206,7 @@ public class LogisticsCatalogService {
         return jdbc.query("select * from logistics_template where id=? and environment=? for update",this::templateRow,id,environment).stream().findFirst().orElseThrow(()->missing("运费模板不存在"));
     }
     @Transactional public Template createTemplate(long companyId,TemplateInput input) {
-        lockCompany(companyId); TemplateInput c=validateTemplate(input); Long account=currentAccountId(companyId); Instant now=clock.instant();
+        lockCompany(companyId); TemplateInput c=validateTemplate(input); Long account=lockedCurrentAccountId(companyId); Instant now=clock.instant();
         String slot=c.status().equals("enabled")?slot(c,account):null;
         try {
             long id=insert("insert into logistics_template(company_id,environment,account_id,version_no,status,active_slot,config_json,created_at,updated_at) values(?,?,?,0,?,?,?,?,?)",
@@ -203,10 +216,10 @@ public class LogisticsCatalogService {
         } catch(DuplicateKeyException e) { throw duplicate("同一账号、产品和始发地只能启用一个模板"); }
     }
     @Transactional public Template updateTemplate(long id,TemplateInput input) {
-        Template observed=template(id); lockCompany(observed.companyId()); Template old=template(id);
+        Template observed=template(id); lockCompany(observed.companyId()); Template old=lockTemplate(id);
         if(input==null) throw invalid("请填写模板"); expected(input.version(),old.version()); TemplateInput c=validateTemplate(input);
         long next=old.version()+1; c=new TemplateInput(c.name(),c.productCode(),c.productName(),c.originProvince(),c.originCity(),c.originCounty(),c.rules(),c.status(),c.remark(),next);
-        Long account=c.status().equals("enabled")?currentAccountId(old.companyId()):old.accountId(); Instant now=clock.instant();
+        Long account=c.status().equals("enabled")?lockedCurrentAccountId(old.companyId()):old.accountId(); Instant now=clock.instant();
         try {
             jdbc.update("update logistics_template set account_id=?,version_no=?,status=?,active_slot=?,config_json=?,updated_at=? where id=?",
                 account,next,c.status(),c.status().equals("enabled")?slot(c,account):null,json(c),ts(now),id);
@@ -215,7 +228,7 @@ public class LogisticsCatalogService {
         } catch(DuplicateKeyException e) { throw duplicate("同一账号、产品和始发地只能启用一个模板"); }
     }
     @Transactional public Template templateStatus(long id,StatusInput input) {
-        Template old=template(id); if(input==null||input.version()==null) throw invalid("缺少模板版本");
+        Template observed=template(id); lockCompany(observed.companyId()); Template old=lockTemplate(id); if(input==null||input.version()==null) throw invalid("缺少模板版本");
         return updateTemplate(id,new TemplateInput(old.name(),old.productCode(),old.productName(),old.originProvince(),old.originCity(),old.originCounty(),old.rules(),input.status(),old.remark(),input.version()));
     }
     private TemplateInput validateTemplate(TemplateInput c) {
@@ -235,6 +248,59 @@ public class LogisticsCatalogService {
     }
     private Company companyRow(ResultSet r,int n) throws SQLException { return new Company(r.getLong("id"),r.getString("code"),r.getString("name"),r.getString("provider"),r.getString("status"),r.getString("contact_name"),r.getString("contact_phone"),r.getInt("sort_order"),r.getString("remark"),r.getLong("version_no"),r.getTimestamp("created_at").toInstant(),r.getTimestamp("updated_at").toInstant()); }
     List<Company> enabledCompanies() { return jdbc.query("select * from logistics_company where status='enabled' order by sort_order,id",this::companyRow); }
+    // HTTP configuration operations explicitly supply the authenticated actor. The outer transaction
+    // commits each allowlisted audit event together with the configuration write it describes.
+    @Transactional public Company createCompany(CompanyInput input,ErpPrincipal actor) {
+        requireActor(actor); Company saved=createCompany(input);
+        audit(actor,"COMPANY_CREATED",saved.id(),null,null,null,saved.version(),Map.of("status",saved.status(),"provider",saved.provider())); return saved;
+    }
+    @Transactional public Company updateCompany(long id,CompanyInput input,ErpPrincipal actor) {
+        requireActor(actor); Company saved=updateCompany(id,input);
+        audit(actor,"COMPANY_UPDATED",id,null,null,null,saved.version(),Map.of("status",saved.status(),"provider",saved.provider())); return saved;
+    }
+    @Transactional public Company companyStatus(long id,StatusInput input,ErpPrincipal actor) {
+        requireActor(actor); Company saved=companyStatus(id,input);
+        audit(actor,"COMPANY_STATUS_CHANGED",id,null,null,null,saved.version(),Map.of("status",saved.status())); return saved;
+    }
+    @Transactional public AccountView account(long id,ErpPrincipal actor) {
+        requireActor(actor); AccountView value=account(id);
+        audit(actor,"ACCOUNT_READ",id,value==null?null:value.id(),value==null?null:value.accountVersionId(),null,value==null?null:value.version(),Map.of("configured",value!=null)); return value;
+    }
+    @Transactional public List<AccountView> accounts(long id,ErpPrincipal actor) {
+        requireActor(actor); List<AccountView> values=accounts(id);
+        audit(actor,"ACCOUNT_HISTORY_READ",id,null,null,null,null,Map.of("count",values.size())); return values;
+    }
+    @Transactional public AccountView saveAccount(long id,AccountInput input,ErpPrincipal actor) {
+        requireActor(actor); AccountView saved=saveAccount(id,input);
+        audit(actor,"ACCOUNT_SAVED",id,saved.id(),saved.accountVersionId(),null,saved.version(),Map.of("ready",saved.ready())); return saved;
+    }
+    @Transactional public Template template(long id,ErpPrincipal actor) {
+        requireActor(actor); Template value=template(id);
+        audit(actor,"TEMPLATE_READ",value.companyId(),value.accountId(),null,id,value.version(),Map.of("status",value.status())); return value;
+    }
+    @Transactional public List<Template> templates(long id,ErpPrincipal actor) {
+        requireActor(actor); List<Template> values=templates(id);
+        audit(actor,"TEMPLATE_LIST_READ",id,null,null,null,null,Map.of("count",values.size())); return values;
+    }
+    @Transactional public Template createTemplate(long id,TemplateInput input,ErpPrincipal actor) {
+        requireActor(actor); Template saved=createTemplate(id,input); auditTemplate(actor,saved,"TEMPLATE_SAVED"); return saved;
+    }
+    @Transactional public Template updateTemplate(long id,TemplateInput input,ErpPrincipal actor) {
+        requireActor(actor); Template saved=updateTemplate(id,input); auditTemplate(actor,saved,"TEMPLATE_SAVED"); return saved;
+    }
+    @Transactional public Template templateStatus(long id,StatusInput input,ErpPrincipal actor) {
+        requireActor(actor); Template saved=templateStatus(id,input); auditTemplate(actor,saved,"TEMPLATE_STATUS_CHANGED"); return saved;
+    }
+    private void auditTemplate(ErpPrincipal actor,Template saved,String disabledAction) {
+        audit(actor,"enabled".equals(saved.status())?"TEMPLATE_PUBLISHED":disabledAction,saved.companyId(),saved.accountId(),null,saved.id(),saved.version(),Map.of("status",saved.status()));
+    }
+    private void requireActor(ErpPrincipal actor) {
+        if(actor==null||actor.employeeId()<=0) throw invalid("配置操作需要已认证员工身份");
+    }
+    private void audit(ErpPrincipal actor,String action,long companyId,Long accountId,Long accountVersionId,Long templateId,Long entityVersion,Map<String,?> metadata) {
+        jdbc.update("insert into logistics_audit(actor_employee_id,actor_identifier,action,environment,company_id,account_id,account_version_id,template_id,entity_version,metadata_json,occurred_at) values(?,?,?,?,?,?,?,?,?,?,?)",
+            actor.employeeId(),text(actor.operatorIdentifier(),100,"操作人",true),action,environment,companyId,accountId,accountVersionId,templateId,entityVersion,json(metadata),ts(clock.instant()));
+    }
     private long insert(String sql,Object... values) {
         var keys=new GeneratedKeyHolder();
         jdbc.update(connection->{ var statement=connection.prepareStatement(sql,Statement.RETURN_GENERATED_KEYS); for(int i=0;i<values.length;i++) statement.setObject(i+1,values[i]); return statement; },keys);

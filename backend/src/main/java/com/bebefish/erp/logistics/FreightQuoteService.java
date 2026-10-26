@@ -111,6 +111,7 @@ public class FreightQuoteService {
             Long accountId=r.getObject("account_id",Long.class),versionId=r.getObject("account_version_id",Long.class);
             if(!Objects.equals(accountId,current==null?null:current.id())||!Objects.equals(versionId,current==null?null:current.accountVersionId())||!Objects.equals(template.accountId(),accountId))
                 throw stale("物流账号已变更，请重新报价");
+            if(!clock.instant().isBefore(r.getTimestamp("expires_at").toInstant())) throw stale("报价已超过10分钟，请重新报价");
             return catalog.read(r.getString("result_json"),Quote.class);
         },quoteId).stream().findFirst().orElseThrow(()->stale("报价不存在，请重新报价"));
     }
