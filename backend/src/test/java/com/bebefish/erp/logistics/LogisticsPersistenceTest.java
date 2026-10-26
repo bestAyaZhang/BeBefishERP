@@ -94,4 +94,19 @@ class LogisticsPersistenceTest {
         assertThat(prod.expectedOrderUrl()).isEqualTo("https://opc.ane56.com/aneop/opwb/lb/new");
         assertThat(prod.account(c.id())).isNull();
         assertThatThrownBy(()->prod.resolveVersion(first.accountVersionId())).isInstanceOf(BusinessException.class).hasMessageContaining("运行环境");
+    }    @Test void secretlessAccountDraftCanUpdateSenderWhileLeavingBothSecretsBlank() {
+        Company c=company("SECRETLESS_DRAFT","ANE");
+        var noKey=new LogisticsCatalogService(jdbc,mapper,new LogisticsSecretCipher(""),Clock.systemUTC(),new org.springframework.mock.env.MockEnvironment());
+        AccountView first=noKey.saveAccount(c.id(),account(0,"CUST",null,null));
+        assertThat(first.ready()).isFalse();
+        Sender edited=new Sender("仓库","13800138000","浙江省","杭州市","余杭区","修改后的寄件地址");
+        AccountView second=noKey.saveAccount(c.id(),new AccountInput(first.version(),"PORTAL","CUST","DICT","","",noKey.expectedOrderUrl(),edited));
+        assertThat(second.id()).isEqualTo(first.id());
+        assertThat(second.version()).isEqualTo(2);
+        assertThat(second.ready()).isFalse();
+        assertThat(second.appKeyConfigured()).isFalse();
+        assertThat(second.customerPassConfigured()).isFalse();
+        assertThat(noKey.account(c.id()).sender().address()).isEqualTo("修改后的寄件地址");
+        assertThat(noKey.resolveVersion(first.accountVersionId()).config().sender().address()).isEqualTo("仓库路1号");
+        assertThat(jdbc.queryForObject("select count(*) from logistics_account_version where account_id=? and secret_cipher is not null",Long.class,first.id())).isZero();
     }}

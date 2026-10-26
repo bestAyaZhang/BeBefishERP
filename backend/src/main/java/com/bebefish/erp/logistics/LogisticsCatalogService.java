@@ -136,7 +136,7 @@ public class LogisticsCatalogService {
         String app=clean(normalized.appKey()),pass=clean(normalized.customerPass());
         if(oldId!=null && hash.equals(oldHash) && (app.isEmpty()||pass.isEmpty())) {
             AccountInput previous=resolveVersion(oldVersion).config();
-            if(app.isEmpty()) app=previous.appKey(); if(pass.isEmpty()) pass=previous.customerPass();
+            if(app.isEmpty()) app=clean(previous.appKey()); if(pass.isEmpty()) pass=clean(previous.customerPass());
         }
         if(company.provider().equals("MANUAL") && (!app.isEmpty()||!pass.isEmpty())) throw invalid("线下物流公司不能配置接口密钥");
         if((!app.isEmpty()||!pass.isEmpty()) && !cipher.available()) throw conflict("LOGISTICS_MASTER_KEY_MISSING","未配置物流加密主密钥，无法保存接口密钥");
@@ -247,7 +247,7 @@ public class LogisticsCatalogService {
         return new Template(r.getLong("id"),r.getLong("company_id"),r.getObject("account_id",Long.class),c.name(),c.productCode(),c.productName(),c.originProvince(),c.originCity(),c.originCounty(),c.rules(),r.getString("status"),c.remark(),r.getLong("version_no"),r.getTimestamp("updated_at").toInstant());
     }
     private Company companyRow(ResultSet r,int n) throws SQLException { return new Company(r.getLong("id"),r.getString("code"),r.getString("name"),r.getString("provider"),r.getString("status"),r.getString("contact_name"),r.getString("contact_phone"),r.getInt("sort_order"),r.getString("remark"),r.getLong("version_no"),r.getTimestamp("created_at").toInstant(),r.getTimestamp("updated_at").toInstant()); }
-    List<Company> enabledCompanies() { return jdbc.query("select * from logistics_company where status='enabled' order by sort_order,id",this::companyRow); }
+    public List<Company> enabledCompanies() { return jdbc.query("select * from logistics_company where status='enabled' order by sort_order,id",this::companyRow); }
     // HTTP configuration operations explicitly supply the authenticated actor. The outer transaction
     // commits each allowlisted audit event together with the configuration write it describes.
     @Transactional public Company createCompany(CompanyInput input,ErpPrincipal actor) {
