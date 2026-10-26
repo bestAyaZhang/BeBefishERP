@@ -5,6 +5,7 @@ import { createMockLogisticsService } from './mockLogisticsService';
 import { currentUser } from '../../services/authSession';
 import type {LoginResult} from '../../types/auth';
 import { clearMessages,messages } from '../../components/feedback/message';
+import { newTemplate } from './templateRules';
 const permissions=(codes:string[])=>{currentUser.value={permissions:codes} as LoginResult;};
 afterEach(()=>{currentUser.value=null;clearMessages();});
 describe('logistics management',()=>{
@@ -74,6 +75,19 @@ describe('logistics management',()=>{
     expect(wrapper.find('[data-testid="account-metadata-retry"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="company-form"] fieldset').attributes('disabled')).toBeUndefined();
     expect(saveAccount).toHaveBeenCalledTimes(1);expect(getCompany).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+  it('displays catalog province names for saved template codes while preserving unknown origin values',async()=>{
+    permissions(['logistics:view']);const service=createMockLogisticsService();
+    const company=await service.createCompany({code:'A',name:'合作甲',provider:'MANUAL',status:'disabled',contactName:'',contactPhone:'',sortOrder:0,remark:'',version:0});
+    await service.createTemplate(company.id,{...newTemplate(),name:'代码省份合同',originProvince:'330000',originCity:'金华市',originCounty:'义乌市'});
+    await service.createTemplate(company.id,{...newTemplate(),name:'待修正合同',originProvince:'未知省',originCity:'',originCounty:''});
+    const wrapper=mount(LogisticsManagementView,{props:{service}});await flushPromises();
+    await wrapper.get('[data-testid="company-configure-1"]').trigger('click');
+    await wrapper.findAll('nav button')[1].trigger('click');await flushPromises();
+    const rows=wrapper.findAll('tbody tr');
+    expect(rows[0].findAll('td')[1].text()).toBe('浙江省 金华市 义乌市');
+    expect(rows[1].findAll('td')[1].text()).toBe('未知省');
     wrapper.unmount();
   });
 });
