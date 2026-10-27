@@ -309,6 +309,16 @@ class FlywayMigrationTest {
     }
 
     @Test
+    void addsYimiProviderAndBusinessSnapshotsWithoutCredentialColumnsOnShipments() {
+        var shipmentColumns=jdbc.queryForList("select column_name from information_schema.columns where table_schema=database() and table_name='shipment'",String.class);
+        assertThat(shipmentColumns).contains("yimi_options").doesNotContain("app_secret","app_key","customer_pass");
+        var orderColumns=jdbc.queryForList("select column_name from information_schema.columns where table_schema=database() and table_name='shipment_logistics_order'",String.class);
+        assertThat(orderColumns).contains("carrier_provider","carrier_business_snapshot","carrier_response_metadata");
+        assertThat(jdbc.queryForObject("select column_default from information_schema.columns where table_schema=database() and table_name='shipment_logistics_order' and column_name='carrier_provider'",String.class)).isEqualTo("ANE");
+        assertThat(jdbc.queryForList("select column_name from information_schema.columns where table_schema=database() and table_name='logistics_account_version'",String.class)).contains("app_secret_configured");
+    }
+
+    @Test
     void upgradesRepresentativeLegacyRowsFromV7ToLatestWithoutDataLoss() {
         var v7 = Flyway.configure()
                 .dataSource(dataSource)
@@ -345,7 +355,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("29");
+        )).isEqualTo("31");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId

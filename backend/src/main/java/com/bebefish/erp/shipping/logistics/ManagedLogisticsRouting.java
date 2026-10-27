@@ -7,11 +7,15 @@ import com.bebefish.erp.logistics.CarrierAccountResolver.ResolvedAccount;
 import com.bebefish.erp.logistics.LogisticsDtos.*;
 import com.bebefish.erp.shipping.application.ShipmentFreightCoordinator;
 import com.bebefish.erp.shipping.domain.ShipmentRepository;
+import com.bebefish.erp.shipping.logistics.yimi.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Objects;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -29,11 +33,21 @@ public class ManagedLogisticsRouting {
     private final AneOrderStore store;
     private final NamedParameterJdbcTemplate jdbc;
     private final AneProperties legacy;
+    private final ObjectMapper mapper;
     public ManagedLogisticsRouting(FreightQuoteService quotes,LogisticsCatalogService catalog,CarrierAccountResolver accounts,
-            ShipmentFreightCoordinator freight,ShipmentRepository shipments,AneOrderStore store,NamedParameterJdbcTemplate jdbc,AneProperties legacy) {
-        this.quotes=quotes;this.catalog=catalog;this.accounts=accounts;this.freight=freight;this.shipments=shipments;this.store=store;this.jdbc=jdbc;this.legacy=legacy;
+            ShipmentFreightCoordinator freight,ShipmentRepository shipments,AneOrderStore store,NamedParameterJdbcTemplate jdbc,AneProperties legacy,ObjectMapper mapper) {
+        this.quotes=quotes;this.catalog=catalog;this.accounts=accounts;this.freight=freight;this.shipments=shipments;this.store=store;this.jdbc=jdbc;this.legacy=legacy;this.mapper=mapper;
     }
-    public record Operation(Long companyId,Long accountId,Long accountVersionId,String companyName,AneProperties config) {}
+    public record Operation(Long companyId,Long accountId,Long accountVersionId,String companyName,AneProperties config,
+            YimiProperties yimi,String productCode,Map<String,Object> business) {
+        public Operation(Long companyId,Long accountId,Long accountVersionId,String companyName,AneProperties config) {
+            this(companyId,accountId,accountVersionId,companyName,config,null,null,null);
+        }
+        public String provider(){return yimi==null?"ANE":"YIMI";}
+        public boolean ready(){return yimi==null?config.ready():yimi.ready();}
+        public boolean testEnvironment(){return yimi==null?config.testEnvironment():yimi.testEnvironment();}
+    }
+    public record TraceContext(String waybillNo,YimiProperties account) {}
     public record Placement(AneOrderStore.Claim claim,Operation operation) {}
     public record Cancellation(AneOrderStore.CancellationClaim claim,Operation operation) {}
     public record Binding(Long companyId,Long accountId,Long accountVersionId,boolean linked,boolean requiresConfirmation) {}
@@ -53,12 +67,12 @@ public class ManagedLogisticsRouting {
         var company=catalog.company(companyId);
         var account=catalog.account(companyId);
         if(account==null)return new AneOrderService.Availability(false,!catalog.runtimeEnvironment().equals("production"),"该公司尚未配置接口账号",null,managed);
-        return configuredAvailability(company,account,managed,company.provider().equals("ANE")?"已加载该合作物流的默认寄件资料":"需线下下单");
+        return configuredAvailability(company,account,managed,java.util.Set.of("ANE","YIMI").contains(company.provider())?"已加载该合作物流的默认寄件资料":"需线下下单");
     }
     private AneOrderService.Availability configuredAvailability(Company company,AccountView account,boolean managed,String message) {
         var value=account.sender();
         var info=value==null?null:new AneOrderService.SenderInfo(value.name(),value.phone(),value.province(),value.city(),value.county(),value.address());
-        return new AneOrderService.Availability(company.provider().equals("ANE")&&company.status().equals("enabled")&&account.ready(),
+        return new AneOrderService.Availability(java.util.Set.of("ANE","YIMI").contains(company.provider())&&company.status().equals("enabled")&&account.ready(),
                 account.environment().equals("test"),message,info,managed);
     }
     private static boolean completeSender(Sender sender) {
@@ -76,24 +90,32 @@ public class ManagedLogisticsRouting {
         Operation operation;
         if(selected.quote()!=null) {
             Quote quote=quotes.getForOrder(selected.quote().quoteId(),FreightQuoteService.input(shipment.content().form()));
-            if(!quote.provider().equals("ANE")||!quote.apiReady()||quote.accountVersionId()==null)
+            if(!java.util.Set.of("ANE","YIMI").contains(quote.provider())||!quote.apiReady()||quote.accountVersionId()==null)
                 throw business("LOGISTICS_PROVIDER_NOT_SUPPORTED","所选物流暂未接入接口，请线下下单");
-            if(!Objects.equals(quote.productCode(),String.valueOf(shipment.content().orderDraft().productTypeId())))
+            if(quote.provider().equals("ANE")&&!Objects.equals(quote.productCode(),String.valueOf(shipment.content().orderDraft().productTypeId())))
                 throw business("LOGISTICS_PRODUCT_CHANGED","运输产品与所选报价不一致，请重新选择");
             var account=accounts.resolve(quote.accountVersionId());
-            operation=new Operation(quote.companyId(),account.accountId(),account.accountVersionId(),quote.companyName(),properties(account));
+            if(!account.provider().equals(quote.provider())||account.companyId()!=quote.companyId())
+                throw business("LOGISTICS_ACCOUNT_IDENTITY_MISMATCH","报价与物流账号不一致，请重新选择");
+            operation=operation(account,quote.companyName(),quote.productCode());
         } else {
             if(quotes.managedTemplatesEnabled()||selected.preferredCompanyId()!=null)
                 throw business("LOGISTICS_QUOTE_REQUIRED","请先测算并选择有效合作报价后下单");
             operation=new Operation(null,null,null,"安能物流",copy(legacy));
         }
-        if(!operation.config().ready())throw business("LOGISTICS_NOT_CONFIGURED","物流接口账号或寄件资料未配置完整");
-        AneOrderService.validateOrderContent(shipment.content());
-        var claim=store.claim(id,version,operator,operation.config(),operation.accountId()!=null);
+        if(!operation.ready())throw business("LOGISTICS_NOT_CONFIGURED","物流接口账号或寄件资料未配置完整");
+        if(operation.yimi()!=null) {
+            try{YimiPayloads.validateOrderContent(shipment.content(),operation.productCode());}
+            catch(IllegalArgumentException error){throw new BusinessException("VALIDATION_FAILED",HttpStatus.BAD_REQUEST,error.getMessage());}
+        } else AneOrderService.validateOrderContent(shipment.content());
+        var claim=operation.accountId()==null?store.claim(id,version,operator,operation.config(),false)
+                :store.claim(id,version,operator,operation.testEnvironment(),operation.provider());
         if(claim.existing()==null) {
+            Map<String,Object> business=operation.yimi()==null?null:YimiPayloads.orderParams(claim.shipment().content(),claim.orderNo(),operation.yimi(),operation.productCode());
+            operation=new Operation(operation.companyId(),operation.accountId(),operation.accountVersionId(),operation.companyName(),operation.config(),operation.yimi(),operation.productCode(),business);
             var params=new MapSqlParameterSource("id",id).addValue("company",operation.companyId()).addValue("account",operation.accountId())
-                    .addValue("config",operation.accountVersionId()).addValue("hash",operation.accountId()==null?identity(operation.config()):null);
-            jdbc.update("update shipment_logistics_order set carrier_company_id=:company,carrier_account_id=:account,carrier_account_version_id=:config,legacy_account_identity_hash=:hash where shipment_id=:id",params);
+                    .addValue("config",operation.accountVersionId()).addValue("hash",operation.accountId()==null?identity(operation.config()):null).addValue("business",json(business));
+            jdbc.update("update shipment_logistics_order set carrier_company_id=:company,carrier_account_id=:account,carrier_account_version_id=:config,legacy_account_identity_hash=:hash,carrier_business_snapshot=cast(:business as json) where shipment_id=:id",params);
         }
         return new Placement(claim,operation);
     }
@@ -105,9 +127,10 @@ public class ManagedLogisticsRouting {
         if(java.util.Set.of("cancelled","cancel_processing","cancel_unknown").contains(order.state()))
             return new Cancellation(new AneOrderStore.CancellationClaim(order,false),null);
         Operation operation=cancellationOperation(id);
-        if(!operation.config().ready()) throw business("LOGISTICS_NOT_CONFIGURED","原物流账号凭据不可用，请由管理员核实并更新同一账号凭据");
-        AneOrderService.validateOrderContent(store.cancellationSnapshot(id));
-        var claim=store.claimCancellation(id,version,operator,operation.config());
+        if(!operation.ready()) throw business("LOGISTICS_NOT_CONFIGURED","原物流账号凭据不可用，请由管理员核实并更新同一账号凭据");
+        if(operation.yimi()==null)AneOrderService.validateOrderContent(store.cancellationSnapshot(id));
+        else if(!order.trackingNo().matches("[0-9]{12}"))throw business("LOGISTICS_SNAPSHOT_INVALID","原壹米运单号不完整，请联系网点核实");
+        var claim=store.claimCancellation(id,version,operator,operation.testEnvironment());
         if(claim.claimed())jdbc.update("update shipment_logistics_order set cancellation_account_version_id=:version where shipment_id=:id",
                 new MapSqlParameterSource("id",id).addValue("version",operation.accountVersionId()));
         return new Cancellation(claim,operation);
@@ -150,10 +173,37 @@ public class ManagedLogisticsRouting {
         Binding binding=binding(id);
         if(binding.accountId()!=null) {
             var account=latestAccount(binding.accountId());
-            return new Operation(binding.companyId(),account.accountId(),account.accountVersionId(),"安能物流",properties(account));
+            var order=store.find(id).orElseThrow();
+            if(!Objects.equals(binding.companyId(),account.companyId())||!order.provider().equals(account.provider())
+                    ||order.testEnvironment()!=account.environment().equals("test"))
+                throw business("LOGISTICS_ACCOUNT_IDENTITY_MISMATCH","原订单与关联物流账号不一致，请管理员核实");
+            return operation(account,"",null);
         }
         if(!binding.requiresConfirmation())return new Operation(null,null,null,"安能物流",copy(legacy));
         throw business("LOGISTICS_ACCOUNT_CONFIRMATION_REQUIRED","此历史单尚未核实原物流账号，请超级管理员确认后再取消");
+    }
+    @Transactional
+    public TraceContext traceContext(long id) {
+        lock(id);
+        var order=store.find(id).orElse(null);
+        if(order==null||!"YIMI".equals(order.provider())||!order.trackingNo().matches("[0-9]{12}"))return null;
+        var operation=cancellationOperation(id);
+        if(operation.yimi()==null||!operation.ready())throw business("LOGISTICS_NOT_CONFIGURED","原壹米账号凭据不可用，请更新原账号配置");
+        return new TraceContext(order.trackingNo(),operation.yimi());
+    }
+    private static Operation operation(ResolvedAccount account,String companyName,String productCode) {
+        if(account.provider().equals("YIMI")) {
+            var in=account.config();var ids=in.yimi();
+            var config=new YimiProperties(account.environment().equals("test"),in.orderUrl()==null||in.orderUrl().isBlank()?null:URI.create(in.orderUrl()),
+                in.appKey(),in.appSecret(),ids==null?null:ids.sellerId(),ids==null?null:ids.subscriptionId());
+            return new Operation(account.companyId(),account.accountId(),account.accountVersionId(),companyName,null,config,productCode,null);
+        }
+        if(!account.provider().equals("ANE"))throw business("LOGISTICS_PROVIDER_NOT_SUPPORTED","该物流公司需线下下单");
+        return new Operation(account.companyId(),account.accountId(),account.accountVersionId(),companyName,properties(account));
+    }
+    private String json(Map<String,Object> value) {
+        if(value==null)return null;
+        try{return mapper.writeValueAsString(value);}catch(JsonProcessingException error){throw new IllegalStateException("无法保存物流业务资料",error);}
     }
     private ResolvedAccount latestAccount(long accountId) {
         var ids=jdbc.queryForList("select id from logistics_account_version where account_id=:id order by version_no desc limit 1 for update",new MapSqlParameterSource("id",accountId),Long.class);

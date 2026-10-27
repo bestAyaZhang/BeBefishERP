@@ -4,6 +4,7 @@ import com.bebefish.erp.common.api.BusinessException;
 import com.bebefish.erp.shipping.domain.AneOrderDraft;
 import com.bebefish.erp.shipping.domain.ShipmentContent;
 import com.bebefish.erp.shipping.domain.ShipmentRepository;
+import com.bebefish.erp.shipping.logistics.yimi.*;
 import jakarta.validation.Validator;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
@@ -20,14 +21,19 @@ public class AneOrderService {
     private final ShipmentRepository shipments;
     private final Validator validator;
     private final ManagedLogisticsRouting routing;
+    private final YimiOrderClient yimi;
     public AneOrderService(AneProperties config, AneOrderStore store, AneOrderClient client,
                            ShipmentRepository shipments, Validator validator) {
         this(config,store,client,shipments,validator,null);
     }
-    @Autowired
     public AneOrderService(AneProperties config,AneOrderStore store,AneOrderClient client,ShipmentRepository shipments,Validator validator,ManagedLogisticsRouting routing) {
+        this(config,store,client,shipments,validator,routing,null);
+    }
+    @Autowired
+    public AneOrderService(AneProperties config,AneOrderStore store,AneOrderClient client,ShipmentRepository shipments,Validator validator,ManagedLogisticsRouting routing,YimiOrderClient yimi) {
         this.config = config; this.store = store; this.client = client; this.shipments = shipments; this.validator = validator;
         this.routing=routing;
+        this.yimi=yimi;
     }
     public record SenderInfo(String name, String phone, String province, String city, String county, String address) {}
     public record Availability(boolean available, boolean testEnvironment, String message, SenderInfo sender,boolean managedTemplatesEnabled) {
@@ -49,6 +55,10 @@ public class AneOrderService {
             if(input==null||!validator.validate(input).isEmpty())throw invalid("请提供有效的发货单版本");
             var reserved=routing.claimPlacement(id,input.version(),operator);
             if(reserved.claim().existing()!=null)return reserved.claim().existing();
+            if(reserved.operation().yimi()!=null) {
+                var result=yimi.createOrder(reserved.operation().business(),reserved.operation().yimi(),reserved.claim().orderNo());
+                return store.finish(id,result.order(),operator,reserved.operation().companyName(),result.metadata());
+            }
             var account=reserved.operation().config();
             var params=orderParams(reserved.claim().shipment().content(),reserved.claim().orderNo(),account);
             return store.finish(id,client.createOrder(params,account),operator,reserved.operation().companyName());
@@ -70,6 +80,10 @@ public class AneOrderService {
             if(input==null||!validator.validate(input).isEmpty())throw invalid("请提供有效的发货单版本");
             var reserved=routing.claimCancellation(id,input.version(),operator);
             if(!reserved.claim().claimed())return reserved.claim().order();
+            if(reserved.operation().yimi()!=null) {
+                var params=java.util.Map.<String,Object>of("wayBillNo",reserved.claim().order().trackingNo());
+                return store.finishCancellation(id,yimi.cancelOrder(params,reserved.operation().yimi()),operator);
+            }
             var account=reserved.operation().config();
             var params=orderParams(store.cancellationSnapshot(id),reserved.claim().order().orderNo(),account);
             params.put("action",10);params.put("ewbNo","");
@@ -86,6 +100,13 @@ public class AneOrderService {
         params.put("action", 10);
         params.put("ewbNo", ""); // The modification/cancellation contract explicitly specifies an empty ewbNo.
         return store.finishCancellation(id, client.cancelOrder(params), operator);
+    }
+
+    public YimiTraceResult trace(long id) {
+        if(routing==null)return new YimiTraceResult("not_supported","该物流暂未接入轨迹查询",java.util.List.of());
+        var context=routing.traceContext(id);
+        if(context==null)return new YimiTraceResult("not_supported","暂无可查询的壹米运单",java.util.List.of());
+        return yimi.queryTrace(context.waybillNo(),context.account());
     }
 
     private LinkedHashMap<String, Object> orderParams(ShipmentContent c, String orderNo) {

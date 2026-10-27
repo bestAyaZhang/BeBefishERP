@@ -21,7 +21,7 @@
 
 ## Shared Contracts
 
-- Root creates `shipping.domain.YimiOrderOptions(Integer visitDelivery,Integer deliveryFlag,String floorNo)` and appends optional `@Valid YimiOrderOptions yimi` to AneOrderDraft with the original ten-argument constructor delegating null. Normalization retains options.
+- Root creates `shipping.domain.YimiOrderOptions(Integer visitDelivery,Integer deliveryFlag,String floorNo)` and appends optional `@Valid YimiOrderOptions yimi` to AneOrderDraft with the original nine-argument constructor delegating null. Normalization retains options.
 - Backend account task appends `String appSecret,YimiAccount yimi` to AccountInput with old constructor. `YimiAccount(String sellerId,String subscriptionId)` is nested in LogisticsDtos. AccountView appends `boolean appSecretConfigured,YimiAccount yimi` with old constructor. All secret projections omit appSecret.
 - QuoteInput appends optional YimiOrderOptions yimi with old constructor; canonical all-empty options normalize null, nonempty options participate in the condition key. Frontend mirrors optional yimi.
 - Client task owns `shipping.logistics.yimi.YimiProperties(boolean testEnvironment,URI gatewayUrl,String appKey,String appSecret,String sellerId,String subscriptionId)` with redacted toString, pinned static URLs/validator and ready(). Catalog consumes its public URL validation.
