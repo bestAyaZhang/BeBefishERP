@@ -72,6 +72,18 @@ beforeEach(() => {
 afterEach(() => { clearCurrentUser(); clearMessages(); vi.useRealTimers(); });
 
 describe('editing a saved shipment with its real quote panel', () => {
+  it('invalidates a historical Yimi quote when explicit pickup options change and retains the chosen carrier intention',async()=>{
+    const saved=record();saved.content.orderDraft.yimi={visitDelivery:0,deliveryFlag:null,floorNo:''};
+    service.get.mockResolvedValue(saved);
+    freight.getFreightSelection.mockResolvedValue({...historical,provider:'YIMI',productCode:'1',productName:'港到门'});
+    freight.getQuotes.mockResolvedValue({...batch(),quotes:[{...current,provider:'YIMI',productCode:'1',productName:'港到门'}]});
+    const wrapper=await render();await settleQuote();
+    expect(freight.getQuotes).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="yimi-visit-delivery"]').setValue('1');await settleQuote();
+    expect(freight.getQuotes).toHaveBeenCalledWith(expect.objectContaining({yimi:{visitDelivery:1,deliveryFlag:null,floorNo:''}}));
+    await wrapper.get('[data-testid="shipment-save-only"]').trigger('click');await flushPromises();
+    expect(service.update).toHaveBeenCalledWith(18,expect.objectContaining({logisticsChoice:{quoteId:current.quoteId,preferredCompanyId:7,clear:false}}),'unfinished',3);
+  });
   it('keeps an expired saved quote and amount when only remark changes without automatically requesting quotes', async () => {
     const wrapper = await render(); await settleQuote();
     expect.soft(freight.getQuotes).not.toHaveBeenCalled();

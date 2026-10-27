@@ -9,6 +9,14 @@ function ok(data: unknown) {
 }
 
 describe('shipping HTTP contract', () => {
+  it('reads logistics trace through the dedicated GET route',async()=>{
+    const trace={status:'empty',message:'无轨迹信息',events:[]};
+    const fetcher=vi.fn().mockResolvedValue(ok(trace));vi.stubGlobal('fetch',fetcher);
+    await expect(httpShippingService.getLogisticsTrace(8)).resolves.toEqual(trace);
+    expect(fetcher.mock.calls[0][0]).toBe('/api/shipments/8/logistics-trace');
+    expect(fetcher.mock.calls[0][1].method??'GET').toBe('GET');
+    expect(fetcher.mock.calls[0][1].body).toBeUndefined();
+  });
   it('keeps the chosen quote ID outside form and sends no quote price as an authorization', async () => {
     const fetcher = vi.fn().mockResolvedValue(ok({})); vi.stubGlobal('fetch', fetcher);
     const fields = { ...emptyShipmentForm(), logisticsChoice: { quoteId: 'chosen-quote', preferredCompanyId: 7, clear: false } };

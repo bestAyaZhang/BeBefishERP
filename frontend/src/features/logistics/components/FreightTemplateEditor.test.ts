@@ -4,6 +4,15 @@ import FreightTemplateEditor from './FreightTemplateEditor.vue';
 import { newTemplate } from '../templateRules';
 const provinces=[{code:'330000',name:'浙江省',group:'华东'},{code:'320000',name:'江苏省',group:'华东'}];
 describe('contract rate editor',()=>{
+  it('offers only Yimi service products and submits their matching names',async()=>{
+    const wrapper=mount(FreightTemplateEditor,{props:{template:null,provinces:[],provider:'YIMI',busy:false,error:''}});
+    const product=wrapper.get('[data-testid="yimi-template-product"]');
+    expect(product.findAll('option').map(o=>o.text())).toEqual(['请选择运输产品','港到门','港到港']);
+    await wrapper.get('[name="template-name"]').setValue('壹米合同');
+    await product.setValue('2');await wrapper.get('form').trigger('submit');
+    expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({productCode:'2',productName:'港到港'});
+    wrapper.unmount();
+  });
   it('starts with blank contract fees and switches piece/volume/default settings',async()=>{
     const wrapper=mount(FreightTemplateEditor,{props:{template:null,provinces:[],busy:false,error:''}});
     expect(wrapper.get('[data-testid="default-firstFee-0"]').element).toHaveProperty('value','');

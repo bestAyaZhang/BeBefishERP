@@ -1,8 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import { createMockLogisticsService } from './mockLogisticsService';
 import type { CompanyInput } from './types';
+import { newTemplate } from './templateRules';
 const company:CompanyInput={code:'TEST',name:'本地测试物流',provider:'MANUAL',status:'enabled',contactName:'',contactPhone:'',sortOrder:0,remark:'',version:0};
 describe('controlled local logistics data',()=>{
+  it('validates Yimi service products during both template creation and updates',async()=>{
+    const service=createMockLogisticsService(),saved=await service.createCompany({...company,provider:'YIMI'});
+    const template={...newTemplate(),name:'壹米合同',productCode:'1',productName:'港到门'};
+    await expect(service.createTemplate(saved.id,{...template,productCode:'524'})).rejects.toThrow('港到门');
+    const created=await service.createTemplate(saved.id,template);
+    await expect(service.updateTemplate(created.id,{...created,productCode:'524'})).rejects.toThrow('港到门');
+  });
+  it('retains only Yimi configuration flags and creates a new account when seller or app identity changes',async()=>{
+    const service=createMockLogisticsService(),saved=await service.createCompany({...company,provider:'YIMI'});
+    const input={version:0,code:'',customerCode:'',dictId:'',orderUrl:'',appKey:'test-app-key',appSecret:'test-app-secret',yimi:{sellerId:'seller',subscriptionId:'subscription'},sender:{name:'',phone:'',province:'',city:'',county:'',address:''}};
+    const initial=await service.saveAccount(saved.id,input);
+    expect(initial.appSecretConfigured).toBe(true);expect(initial.yimi).toEqual(input.yimi);
+    expect(JSON.stringify(await service.listAccounts(saved.id))).not.toContain('test-app');
+    const preserved=await service.saveAccount(saved.id,{...input,version:initial.version,appKey:'',appSecret:''});
+    expect(preserved.id).toBe(initial.id);expect(preserved.appSecretConfigured).toBe(true);
+    const changed=await service.saveAccount(saved.id,{...input,version:preserved.version,appKey:'',appSecret:'',yimi:{...input.yimi,sellerId:'other'}});
+    expect(changed.id).not.toBe(initial.id);expect(changed.appSecretConfigured).toBe(false);expect(changed.appKeyConfigured).toBe(false);
+    const newApp=await service.saveAccount(saved.id,{...input,version:changed.version,appKey:'new-app-key',appSecret:'',yimi:changed.yimi});
+    expect(newApp.id).not.toBe(changed.id);expect(newApp.appSecretConfigured).toBe(false);
+    expect(newApp.ready).toBe(false);
+  });
   it('starts without invented rates and rejects stale company updates',async()=>{
     const service=createMockLogisticsService();
     expect((await service.listCompanies()).total).toBe(0);

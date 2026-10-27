@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { newTemplate, validateTemplate, moveProvinces } from './templateRules';
 describe('freight template editing rules',()=>{
+  it('rejects unsupported Yimi service codes without restricting ANE or manual products',()=>{
+    const input={...newTemplate(),name:'草稿合同',productCode:'524',productName:'小件'};
+    expect(validateTemplate(input,'YIMI')).toContain('港到门');
+    expect(validateTemplate(input,'ANE')).toBe('');
+    expect(validateTemplate({...input,productCode:'1',productName:'港到门'},'YIMI')).toBe('');
+    expect(validateTemplate({...input,productCode:'2',productName:'港到港'},'YIMI')).toBe('');
+  });
   it('keeps empty fees as draft and requires complete numeric bands for enable',()=>{
     const input=newTemplate();input.name='合同';input.productCode='P';input.productName='普运';input.originProvince='浙江省';input.originCity='金华市';input.originCounty='义乌市';
     expect(input.rules.defaultBands[0].firstFee).toBeNull();

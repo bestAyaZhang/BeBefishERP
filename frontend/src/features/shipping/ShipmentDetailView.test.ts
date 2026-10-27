@@ -5,7 +5,7 @@ import ShipmentDetailView from './ShipmentDetailView.vue';
 import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
 import { clearMessages, messages } from '../../components/feedback/message';
 
-const service = vi.hoisted(() => ({ get: vi.fn(), getLogisticsOrder: vi.fn(), getLogisticsAccountBinding:vi.fn(), cancelLogisticsOrder: vi.fn(), updatePreparation: vi.fn(), formOptions: vi.fn(), confirmCreator: vi.fn() }));
+const service = vi.hoisted(() => ({ get: vi.fn(), getLogisticsOrder: vi.fn(), getLogisticsTrace:vi.fn(), getLogisticsAccountBinding:vi.fn(), cancelLogisticsOrder: vi.fn(), updatePreparation: vi.fn(), formOptions: vi.fn(), confirmCreator: vi.fn() }));
 const freight = vi.hoisted(()=>({getFreightSelection:vi.fn()}));
 enableAutoUnmount(afterEach);
 afterEach(clearMessages);
@@ -45,12 +45,48 @@ beforeEach(() => {
   saveCurrentUser({ accessToken: 'test', mobile: null, displayName: '测试用户', roles: [],
     permissions: ['shipping:view', 'shipping:cancel'], loginMethod: 'feishu' });
   service.cancelLogisticsOrder.mockReset();
+  service.getLogisticsTrace.mockReset();
+  service.updatePreparation.mockReset();
   service.get.mockReset().mockResolvedValue(shipment);
   service.getLogisticsOrder.mockReset().mockResolvedValue({ shipmentId: 8, orderNo: 'BF008', state: 'succeeded',
     trackingNo: 'ANE001', childTrackingNos: '', message: '下单成功', updatedAt: '2026-09-24T10:00:00', testEnvironment: false });
 });
 
 describe('ShipmentDetailView', () => {
+  it('loads Yimi trace on demand with pending, empty, error and retry states without mutating shipment or order',async()=>{
+    service.getLogisticsOrder.mockResolvedValue({shipmentId:8,provider:'YIMI',orderNo:'BF008',state:'succeeded',trackingNo:'123456789012',testEnvironment:true});
+    let resolve!:(result:unknown)=>void;
+    service.getLogisticsTrace.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}))
+      .mockRejectedValueOnce(new Error('轨迹网络异常'))
+      .mockResolvedValueOnce({status:'available',message:'查询成功',events:[{time:'2026-10-27 11:00',status:'运输中',location:'杭州网点',description:'已发往下一站'}]});
+    const {wrapper}=await render();
+    expect(service.getLogisticsTrace).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('壹米滴答测试订单');
+    await wrapper.get('[data-testid="shipment-trace-query"]').trigger('click');
+    expect(wrapper.get('[data-testid="shipment-trace-query"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="shipment-trace"]').text()).toContain('正在查询');
+    resolve({status:'empty',message:'无轨迹信息',events:[]});await flushPromises();
+    expect(wrapper.get('[data-testid="shipment-trace"]').text()).toContain('无轨迹信息');
+    await wrapper.get('[data-testid="shipment-trace-query"]').trigger('click');await flushPromises();
+    expect(wrapper.get('[data-testid="shipment-trace"]').text()).toContain('轨迹网络异常');
+    await wrapper.get('[data-testid="shipment-trace-query"]').trigger('click');await flushPromises();
+    expect(wrapper.get('[data-testid="shipment-trace"]').text()).toContain('2026-10-27 11:00');
+    expect(wrapper.get('[data-testid="shipment-trace"]').text()).toContain('运输中');
+    expect(wrapper.get('[data-testid="shipment-trace"]').text()).toContain('杭州网点');
+    expect(wrapper.get('[data-testid="shipment-trace"]').text()).toContain('已发往下一站');
+    expect(wrapper.get('[data-testid="shipment-detail-logistics-status"]').text()).toContain('下单成功');
+    expect(wrapper.get('[data-testid="shipment-detail-preparation-status"]').text()).toContain('部分发货');
+    expect(service.get).toHaveBeenCalledTimes(1);
+    expect(service.cancelLogisticsOrder).not.toHaveBeenCalled();
+    expect(service.updatePreparation).not.toHaveBeenCalled();
+  });
+  it.each(['unavailable','not_supported'])('shows %s trace feedback without invented events',async status=>{
+    service.getLogisticsOrder.mockResolvedValue({shipmentId:8,provider:'YIMI',orderNo:'BF008',state:'succeeded',trackingNo:'123456789012'});
+    service.getLogisticsTrace.mockResolvedValue({status,message:'当前无法查询，请稍后重试',events:[]});
+    const {wrapper}=await render();await wrapper.get('[data-testid="shipment-trace-query"]').trigger('click');await flushPromises();
+    expect(wrapper.get('[data-testid="shipment-trace"]').text()).toContain('当前无法查询');
+    expect(wrapper.get('[data-testid="shipment-trace-query"]').attributes('disabled')).toBeUndefined();
+  });
   it('does not allow a historical cancellation before its original account is verified', async () => {
     service.getLogisticsAccountBinding.mockResolvedValue({companyId:null,accountId:null,accountVersionId:null,linked:false,requiresConfirmation:true});
     const {wrapper}=await render();

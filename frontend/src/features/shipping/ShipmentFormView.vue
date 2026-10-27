@@ -7,12 +7,13 @@ import { message } from '../../components/feedback/message';
 import PreparerMultiSelect from './PreparerMultiSelect.vue';
 import RecipientRecognitionCard from './RecipientRecognitionCard.vue';
 import ShipmentSuccessDialog from './ShipmentSuccessDialog.vue';
+import YimiOrderFields from './YimiOrderFields.vue';
 import { shippingService } from './shippingService';
 import { canEditPreparationContent } from './preparationAccess';
 import ShipmentQuotePanel from '../logistics/components/ShipmentQuotePanel.vue';
 import { logisticsService } from '../logistics/logisticsService';
 import type { Quote, QuoteBatch, QuoteInput } from '../logistics/types';
-import { emptyShipmentForm, SHIPMENT_STATUSES, type LogisticsAvailability, type LogisticsOrder,
+import { emptyShipmentForm, validateYimiOrder, SHIPMENT_STATUSES, type LogisticsAvailability, type LogisticsOrder,
   type RecipientFields, type Shipment, type ShipmentFormInput, type ShipmentStatus, type ShippingFormOptions } from './types';
 
 const route = useRoute();
@@ -57,11 +58,13 @@ function senderSnapshot() {
   return JSON.stringify([form.value.senderName, form.value.senderPhone, form.value.senderProvince,
     form.value.senderCity, form.value.senderCounty, form.value.senderDetailAddress]);
 }
+const isYimi=computed(()=>(selectedQuote.value ?? quoteIntent.value)?.provider==='YIMI');
 const quoteInput = computed<QuoteInput>(() => ({
   senderProvince: form.value.senderProvince, senderCity: form.value.senderCity, senderCounty: form.value.senderCounty,
   recipientProvince: form.value.recipientProvince, recipientCity: form.value.recipientCity, recipientCounty: form.value.recipientCounty,
   weight: numberOrNull(form.value.orderDraft.weight), volume: numberOrNull(form.value.orderDraft.volume),
-  pieceAmount: numberOrNull(form.value.orderDraft.pieceAmount), goodsType: form.value.orderDraft.goodsType, payType: form.value.orderDraft.payType
+  pieceAmount: numberOrNull(form.value.orderDraft.pieceAmount), goodsType: form.value.orderDraft.goodsType, payType: form.value.orderDraft.payType,
+  ...(form.value.orderDraft.yimi?{yimi:{...form.value.orderDraft.yimi}}:{})
 }));
 watch(() => JSON.stringify(quoteInput.value), () => {
   if (loading.value || !hasHistoricalQuote.value || repriceRequested.value) return;
@@ -103,6 +106,11 @@ async function loadCarrierSender(companyId: number) {
     }
   } catch { /* Quote readiness remains server-authoritative; keep the operator's sender details. */ }
   finally { if (request === senderGeneration) senderPending.value = false; }
+}
+function deliveryChanged(){
+  if(isYimi.value && form.value.orderDraft.yimi){
+    form.value.orderDraft.yimi={...form.value.orderDraft.yimi,deliveryFlag:null,floorNo:''};
+  }
 }
 function quotesLoaded(batch: QuoteBatch) { legacyQuoteMode.value = batch.legacyOrderingAllowed; }
 let generation = 0;
@@ -232,9 +240,10 @@ function validateOrder(value: ShipmentFormInput) {
   const draft = value.orderDraft;
   if (!draft.cargoName.trim() || !draft.packType.trim() || draft.weight == null || draft.weight < 1
     || draft.volume == null || draft.volume < 0.01 || draft.pieceAmount == null || draft.pieceAmount < 1
-    || draft.productTypeId == null || draft.goodsType == null || draft.payType == null) {
+    || (!isYimi.value && draft.productTypeId == null) || draft.goodsType == null || draft.payType == null) {
     return '一键下单前请填写货物名称、包装、重量、体积、件数和物流选项';
   }
+  if (isYimi.value) { const invalid=validateYimiOrder(value,selectedQuote.value?.productCode??''); if(invalid)return invalid; }
   if (!selectedQuote.value && !availability.value?.available) return availability.value?.message || '安能物流下单服务暂不可用';
   return '';
 }
@@ -273,7 +282,7 @@ async function persist(andOrder: boolean) {
         await router.push({ name: 'shipping-detail', params: { id: String(saved.id) } });
       }
     } catch (cause) {
-      message.warning(`发货单已保存，安能下单请求异常：${cause instanceof Error ? cause.message : '请稍后重试'}。请核实下单状态，勿重复下单。`, 6000);
+      message.warning(`发货单已保存，物流下单请求异常：${cause instanceof Error ? cause.message : '请稍后重试'}。请核实下单状态，勿重复下单。`, 6000);
       try {
         const [latest, latestOrder] = await Promise.all([
           shippingService.get(saved.id),
@@ -320,11 +329,11 @@ onBeforeUnmount(() => { generation++; senderGeneration++; });
 <template>
   <section data-testid="shipment-form-page" class="mx-auto w-full max-w-[1500px] space-y-5 pb-8">
     <p v-if="sourceUnavailable" role="status" class="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">暂无可用店铺，请联系运营管理员在平台管理中创建或启用平台和店铺。</p>
-    <header class="flex flex-wrap items-center justify-between gap-4"><div class="flex items-center gap-3"><button type="button" class="rounded-lg border border-slate-200 bg-white p-2 text-slate-500" @click="cancel"><ArrowLeft :size="18" /></button><div><h1 class="text-2xl font-bold text-[#25314d]">{{ isEdit ? '编辑发货单' : '新建发货单' }}</h1><p class="mt-1 text-sm text-slate-500">{{ isEdit ? shipment?.shipmentNo : '填写发货资料，可保存后直接向安能下单。' }}</p></div></div></header>
+    <header class="flex flex-wrap items-center justify-between gap-4"><div class="flex items-center gap-3"><button type="button" class="rounded-lg border border-slate-200 bg-white p-2 text-slate-500" @click="cancel"><ArrowLeft :size="18" /></button><div><h1 class="text-2xl font-bold text-[#25314d]">{{ isEdit ? '编辑发货单' : '新建发货单' }}</h1><p class="mt-1 text-sm text-slate-500">{{ isEdit ? shipment?.shipmentNo : '填写发货资料，可保存后向所选物流下单。' }}</p></div></div></header>
     <p v-if="error" role="alert" class="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">{{ error }}<button data-testid="shipment-form-retry" type="button" :disabled="busy || loading" class="ml-3 font-semibold underline" @click="initialize">重新加载</button></p>
     <p v-if="contentOnly && shipment && !loading" class="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">{{ preparationLocked ? '备货已完成，备货内容和备注已锁定。' : canEditContent ? '可修改本单的备货清单和备注，其他发货资料仅供查看。' : '只有本单下单人可以在备货完成前修改清单和备注。' }}</p>
     <p v-if="requiresReload && !error" role="alert" class="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">发货单状态已变化，当前填写内容已保留，请重新加载后核对。<button data-testid="shipment-edit-reload" type="button" :disabled="busy || loading" class="ml-3 font-semibold underline" @click="initialize">重新加载最新信息</button></p>
-    <p v-if="locked && !contentOnly" class="flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700"><Info class="mt-0.5 shrink-0" :size="16" />该发货单已经提交物流，平台、店铺、备货人、发货人、收件资料、运费预测与安能下单资料已锁定；{{ preparationLocked ? '备货清单和备注也已锁定。' : '仍可维护备货清单、备注和状态。' }}</p>
+    <p v-if="locked && !contentOnly" class="flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700"><Info class="mt-0.5 shrink-0" :size="16" />该发货单已经提交物流，平台、店铺、备货人、发货人、收件资料、运费预测与物流下单资料已锁定；{{ preparationLocked ? '备货清单和备注也已锁定。' : '仍可维护备货清单、备注和状态。' }}</p>
     <div v-if="loading" role="status" class="rounded-xl border border-slate-200 bg-white py-24 text-center text-sm text-slate-500">正在准备发货表单…</div>
     <form v-else class="space-y-5" @submit.prevent>
       <section class="form-card"><div class="section-heading"><span>01</span><div><h2>发货单信息</h2><p>选择来源平台、店铺和本次参与备货的人员，并核对发货人资料。</p></div></div><div class="mt-5 grid gap-4 lg:grid-cols-3">
@@ -363,25 +372,26 @@ onBeforeUnmount(() => { generation++; senderGeneration++; });
         <div class="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <label class="field-label lg:col-span-2">货物名称 <span class="text-rose-500">*</span><input v-model="form.orderDraft.cargoName" data-testid="ane-cargo-name" :disabled="busy || detailsLocked" maxlength="32" placeholder="如水族用品" class="field-input" /></label>
           <label class="field-label">包装方式 <span class="text-rose-500">*</span><input v-model="form.orderDraft.packType" data-testid="ane-pack-type" :disabled="busy || detailsLocked" maxlength="50" class="field-input" /></label>
-          <label class="field-label">件数 <span class="text-rose-500">*</span><input v-model="form.orderDraft.pieceAmount" data-testid="ane-piece-amount" :disabled="busy || detailsLocked" type="number" min="1" max="9999" step="1" class="field-input" /></label>
-          <label class="field-label">重量（kg） <span class="text-rose-500">*</span><input v-model="form.orderDraft.weight" data-testid="ane-weight" :disabled="busy || detailsLocked" type="number" min="1" step="0.001" class="field-input" /></label>
+          <label class="field-label">件数 <span class="text-rose-500">*</span><input v-model="form.orderDraft.pieceAmount" data-testid="ane-piece-amount" :disabled="busy || detailsLocked" type="number" min="1" :max="isYimi?1000:9999" step="1" class="field-input" /></label>
+          <label class="field-label">重量（kg） <span class="text-rose-500">*</span><input v-model="form.orderDraft.weight" data-testid="ane-weight" :disabled="busy || detailsLocked" type="number" min="1" :step="isYimi?0.01:0.001" class="field-input" /></label>
           <label class="field-label">体积（m³） <span class="text-rose-500">*</span><input v-model="form.orderDraft.volume" data-testid="ane-volume" :disabled="busy || detailsLocked" type="number" min="0.01" step="0.01" class="field-input" /></label>
-          <label class="field-label">物流产品 <span class="text-rose-500">*</span><select v-model="form.orderDraft.productTypeId" data-testid="shipment-logistics-product" :disabled="busy || detailsLocked || !!selectedQuote" class="field-input"><option :value="524">MiNi 电商小件</option><option :value="95">Mini 电商大件</option><option :value="24">精准零担</option><option :value="23">定时达</option><option :value="270">普惠达</option><option :value="546">安心达</option></select></label>
-          <label class="field-label">送货方式 <span class="text-rose-500">*</span><select v-model="form.orderDraft.goodsType" :disabled="busy || detailsLocked" class="field-input"><option :value="180">送货（不含上楼）</option><option :value="179">送货上楼</option><option :value="285">自提</option></select></label>
-          <label class="field-label">付款方式 <span class="text-rose-500">*</span><select v-model="form.orderDraft.payType" :disabled="busy || detailsLocked" class="field-input"><option :value="102">现金</option><option :value="104">月结</option><option :value="103">到付</option></select></label>
+          <label v-if="!isYimi" class="field-label">物流产品 <span class="text-rose-500">*</span><select v-model="form.orderDraft.productTypeId" data-testid="shipment-logistics-product" :disabled="busy || detailsLocked || !!selectedQuote" class="field-input"><option :value="524">MiNi 电商小件</option><option :value="95">Mini 电商大件</option><option :value="24">精准零担</option><option :value="23">定时达</option><option :value="270">普惠达</option><option :value="546">安心达</option></select></label>
+          <label class="field-label">送货方式 <span class="text-rose-500">*</span><select v-model="form.orderDraft.goodsType" data-testid="shipment-goods-type" @change="deliveryChanged" :disabled="busy || detailsLocked" class="field-input"><option :value="180">送货（不含上楼）</option><option :value="179">送货上楼</option><option :value="285">自提</option></select></label>
+          <label class="field-label">付款方式 <span class="text-rose-500">*</span><select v-model="form.orderDraft.payType" :disabled="busy || detailsLocked" class="field-input"><option :value="102">现付（现金）</option><option :value="104">月结</option><option :value="103">到付</option></select></label>
           <label class="field-label">运费预测（元，可选）<input v-model="form.estimatedFreight" :disabled="busy || detailsLocked || !!selectedQuote || !legacyOrderingAllowed" type="number" min="0" step="0.01" class="field-input" /></label>
           <label class="field-label md:col-span-2">物流备注<textarea v-model="form.orderDraft.logisticsRemark" :disabled="busy || detailsLocked" maxlength="200" rows="2" class="field-input resize-y" /></label>
         </div>
+        <YimiOrderFields v-if="isYimi" v-model="form.orderDraft.yimi" :goods-type="form.orderDraft.goodsType" :product-code="(selectedQuote ?? quoteIntent)?.productCode" :disabled="busy || detailsLocked" />
         <div v-if="!contentOnly && !locked && (!hasHistoricalQuote || repriceRequested)" class="mt-5"><ShipmentQuotePanel :input="quoteInput" :model-value="selectedQuote" :preferred-selection="quoteIntent" :disabled="busy" @update:model-value="chooseQuote" @loaded="quotesLoaded" @pending="quotePending = $event" /></div>
         <div v-else-if="selectedQuote" class="mt-5 rounded-lg bg-slate-50 p-4 text-sm text-slate-600"><p>已选物流：{{ selectedQuote.companyName }} / {{ selectedQuote.productName }} · 预计 ¥{{ selectedQuote.amount?.toFixed(2) }}</p><p class="mt-1 text-xs">{{ selectedQuote.matchedRegion }} · {{ selectedQuote.billedQuantity }} {{ selectedQuote.chargeMode === 'piece' ? '件' : 'kg' }}，历史报价按保存时模板保留。仅修改备货内容和备注不重新计价。</p><button v-if="!contentOnly && !locked" data-testid="shipment-requote" type="button" :disabled="busy" class="mt-3 font-semibold text-indigo-600" @click="repriceRequested = true">重新测算并选择物流</button></div>
-        <p v-if="selectedQuote && !selectedQuote.apiReady" class="mt-3 text-xs text-amber-700">{{ selectedQuote.apiMessage || '该物流暂未接入接口，可保存发货单后线下下单。' }}</p>
+        <p v-if="selectedQuote && !selectedQuote.apiReady" class="mt-3 text-xs text-amber-700">{{ selectedQuote.apiMessage || (selectedQuote.provider==='MANUAL'?'该物流暂未接入接口，可保存发货单后线下下单。':'接口配置未完整，可先保存发货单并核对账号配置。') }}</p>
       </section>
 
-      <section v-if="isEdit && canEditGeneral" class="form-card"><div class="section-heading"><span>05</span><div><h2>备货状态</h2><p>安能下单成功不会改变备货状态，请按实际备货进度维护。</p></div></div><label class="field-label mt-5 block max-w-sm">当前备货状态<select v-model="status" data-testid="shipment-status" :disabled="busy" class="field-input"><option v-for="item in SHIPMENT_STATUSES" :key="item.value" :value="item.value">{{ item.label }}</option></select></label></section>
+      <section v-if="isEdit && canEditGeneral" class="form-card"><div class="section-heading"><span>05</span><div><h2>备货状态</h2><p>物流下单成功不会改变备货状态，请按实际备货进度维护。</p></div></div><label class="field-label mt-5 block max-w-sm">当前备货状态<select v-model="status" data-testid="shipment-status" :disabled="busy" class="field-input"><option v-for="item in SHIPMENT_STATUSES" :key="item.value" :value="item.value">{{ item.label }}</option></select></label></section>
 
       <div class="flex flex-wrap justify-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><button type="button" :disabled="busy" class="rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 disabled:opacity-40" @click="cancel">取消</button><button data-testid="shipment-save-only" type="button" :disabled="busy || senderPending || sourceUnavailable || !canSave || requiresReload" class="inline-flex items-center gap-2 rounded-lg border border-indigo-200 px-5 py-2.5 text-sm font-semibold text-[#536dff] disabled:opacity-40" @click="persist(false)"><Save :size="16" />{{ busy ? '处理中…' : isEdit ? '仅保存修改' : '仅保存发货单' }}</button><button v-if="canOrder && !locked && !contentOnly" data-testid="shipment-save-and-order" type="button" :disabled="busy || sourceUnavailable || !canSave || requiresReload || !quoteAllowsOrder" class="inline-flex items-center gap-2 rounded-lg bg-[#536dff] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40" @click="persist(true)"><Send :size="16" />{{ busy ? '处理中…' : '保存并一键下单' }}</button></div>
     </form>
-    <ShipmentSuccessDialog :open="!!result" :tracking-no="result?.trackingNo || ''" :order-no="result?.orderNo || ''" :test-environment="result?.testEnvironment || false" @back-list="backToList" @continue="continueOrder" />
+    <ShipmentSuccessDialog :open="!!result" :tracking-no="result?.trackingNo || ''" :order-no="result?.orderNo || ''" :provider="result?.provider" :test-environment="result?.testEnvironment || false" @back-list="backToList" @continue="continueOrder" />
   </section>
 </template>
 

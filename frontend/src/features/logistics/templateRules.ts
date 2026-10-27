@@ -2,8 +2,9 @@ import type { Band, RegionGroup, TemplateInput } from './types';
 export function newBand():Band { return {lowerExclusive:0,upperInclusive:null,firstQuantity:null,firstFee:null,additionalQuantity:null,additionalFee:null}; }
 export function newTemplate():TemplateInput {return {name:'',productCode:'',productName:'',originProvince:'',originCity:'',originCounty:'',rules:{mode:'weight',volumetric:false,volumeDivisor:6000,defaultBands:[newBand()],regionGroups:[]},status:'disabled',remark:'',version:0};}
 export function moveProvinces(groups:RegionGroup[],index:number,codes:string[]):RegionGroup[]{return groups.map((group,i)=>({...group,provinces:i===index?[...codes]:group.provinces.filter(code=>!codes.includes(code))}));}
-export function validateTemplate(input:TemplateInput):string{
+export function validateTemplate(input:TemplateInput,provider='ANE'):string{
   if(!input.name.trim())return '请填写模板名称';
+  if(provider==='YIMI' && input.productCode && !['1','2'].includes(input.productCode))return '壹米运输产品仅支持港到门（1）或港到港（2）';
   const enabled=input.status==='enabled', seen=new Set<string>();
   for(const group of input.rules.regionGroups){
     if(!group.name.trim() || !group.provinces.length)return '请填写地区组名称并选择省份';

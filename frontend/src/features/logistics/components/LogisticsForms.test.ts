@@ -6,6 +6,14 @@ import ProvinceGroupDialog from './ProvinceGroupDialog.vue';
 import type { AccountView } from '../types';
 const account:AccountView={id:1,companyId:1,environment:'test',version:3,accountVersionId:4,code:'a',customerCode:'c',dictId:'d',orderUrl:'https://example.test',sender:{name:'寄件人',phone:'13800000000',province:'浙江省',city:'金华市',county:'义乌市',address:'某路'},appKeyConfigured:true,customerPassConfigured:true,ready:false,message:'缺少配置'};
 describe('logistics configuration forms',()=>{
+  it('allows selecting the Yimi adapter for a new company',async()=>{
+    const wrapper=mount(CompanyForm,{props:{company:null,busy:false,error:''}});
+    const provider=wrapper.findAll('select')[0];
+    expect(provider.find('option[value="YIMI"]').text()).toContain('壹米滴答');
+    await provider.setValue('YIMI');await wrapper.get('form').trigger('submit');
+    expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({provider:'YIMI'});
+    wrapper.unmount();
+  });
   it('creates a company and preserves edited values when server rejects save',async()=>{
     const wrapper=mount(CompanyForm,{props:{company:null,busy:false,error:''}});
     await wrapper.get('[name="company-name"]').setValue('合作物流');await wrapper.get('[name="company-code"]').setValue('PARTNER');

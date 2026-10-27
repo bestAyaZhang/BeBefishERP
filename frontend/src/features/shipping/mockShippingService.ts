@@ -13,6 +13,7 @@ export function createMockShippingService(): ShippingService {
   return {
     async logisticsAvailability() { return { available: false, testEnvironment: true,
       message: '演示数据不提交真实物流订单', sender: null }; },
+    async getLogisticsTrace() { return {status:'not_supported',message:'演示数据不查询真实物流轨迹',events:[]}; },
     async getLogisticsOrder() { return null; },
     async getLogisticsAccountBinding() { return { companyId:null,accountId:null,accountVersionId:null,linked:false,requiresConfirmation:false }; },
     async placeLogisticsOrder() { throw new Error('演示数据不能提交真实物流订单'); },

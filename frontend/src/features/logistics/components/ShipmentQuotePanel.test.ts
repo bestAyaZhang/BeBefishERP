@@ -10,6 +10,16 @@ const batch = (...quotes:Quote[]):QuoteBatch => ({quotes,legacyOrderingAllowed:f
 describe('shipment quote selection', () => {
   beforeEach(() => {vi.useFakeTimers(); vi.mocked(logisticsService.getQuotes).mockReset();});
   afterEach(() => vi.useRealTimers());
+  it('describes an incomplete Yimi account as an API configuration issue while keeping its offline quote selectable',async()=>{
+    const selected={...quote('yimi'),provider:'YIMI',apiMessage:'',companyName:'壹米滴答',productName:'港到门'};
+    vi.mocked(logisticsService.getQuotes).mockResolvedValue(batch(selected));
+    const wrapper=mount(ShipmentQuotePanel,{props:{input,modelValue:selected}});
+    await vi.runAllTimersAsync();await flushPromises();
+    expect(wrapper.text()).toContain('接口配置');
+    expect(wrapper.text()).not.toContain('需线下下单');
+    expect(wrapper.get('[data-testid="quote-select-yimi"]').attributes('disabled')).toBeUndefined();
+    wrapper.unmount();
+  });
   it('ignores an obsolete response and disables old rows immediately while recalculating', async () => {
     let resolveOld!:(value:QuoteBatch)=>void;
     vi.mocked(logisticsService.getQuotes).mockResolvedValueOnce(batch(quote('initial',true)))

@@ -97,6 +97,41 @@ beforeEach(() => {
 afterEach(() => { clearCurrentUser(); clearMessages(); });
 
 describe('ShipmentFormView', () => {
+  it('requires explicit Yimi pickup and elevator choices only before ordering, keeping payment meaning and ANE product intact', async () => {
+    const yimi={...quote(),provider:'YIMI',companyName:'壹米滴答',productCode:'1',productName:'港到门'};
+    const {wrapper}=await render('/shipping/18/edit');
+    const panel=wrapper.findComponent({name:'ShipmentQuotePanelStub'});
+    panel.vm.$emit('update:modelValue',yimi);await flushPromises();
+    expect(wrapper.find('[data-testid="shipment-logistics-product"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="yimi-service-product"]').text()).toContain('港到门');
+    expect(wrapper.get('[data-testid="yimi-visit-delivery"]').element).toHaveProperty('value','');
+    await wrapper.get('[data-testid="shipment-save-and-order"]').trigger('click');await flushPromises();
+    expect(service.update).not.toHaveBeenCalled();
+    expect(messages.value.at(-1)?.text).toContain('揽货');
+    await wrapper.get('[data-testid="yimi-visit-delivery"]').setValue('0');
+    await wrapper.get('[data-testid="shipment-goods-type"]').setValue('179');
+    await wrapper.get('[data-testid="shipment-save-and-order"]').trigger('click');await flushPromises();
+    expect(service.update).not.toHaveBeenCalled();
+    expect(messages.value.at(-1)?.text).toContain('电梯');
+    await wrapper.get('[data-testid="yimi-delivery-flag"]').setValue('3');
+    await wrapper.get('[data-testid="yimi-floor-no"]').setValue('7');
+    await wrapper.get('[data-testid="shipment-save-and-order"]').trigger('click');await flushPromises();
+    expect(service.update).toHaveBeenCalledWith(18,expect.objectContaining({orderDraft:expect.objectContaining({
+      productTypeId:524,payType:104,yimi:{visitDelivery:0,deliveryFlag:3,floorNo:'7'}
+    })}),'unfinished',0);
+    expect(service.placeLogisticsOrder).toHaveBeenCalledTimes(1);
+  });
+  it('allows saving a Yimi draft when account readiness or pickup selection is incomplete', async () => {
+    const {wrapper}=await render('/shipping/18/edit');
+    wrapper.findComponent({name:'ShipmentQuotePanelStub'}).vm.$emit('update:modelValue',{
+      ...quote(),provider:'YIMI',productCode:'1',productName:'港到门',apiReady:false,apiMessage:'缺少订购ID'
+    });await flushPromises();
+    expect(wrapper.get('[data-testid="shipment-save-and-order"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.text()).not.toContain('线下下单');
+    await wrapper.get('[data-testid="shipment-save-only"]').trigger('click');await flushPromises();
+    expect(service.update).toHaveBeenCalledTimes(1);
+    expect(service.placeLogisticsOrder).not.toHaveBeenCalled();
+  });
   it('uses the selected carrier sender defaults while retaining an explicitly edited sender', async () => {
     const { wrapper } = await render();
     service.logisticsAvailability.mockResolvedValue({ available: true, testEnvironment: true, managedTemplatesEnabled: true,

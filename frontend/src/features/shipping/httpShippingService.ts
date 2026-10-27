@@ -25,6 +25,7 @@ export const httpShippingService: ShippingService = {
   confirmCreator: (id, payload) => request<Shipment>(`/api/shipments/${id}/creator`, { method: 'PATCH', body: JSON.stringify(payload) }),
   logisticsAvailability: companyId => request<LogisticsAvailability>(`/api/shipments/logistics/availability${companyId==null?'':`?companyId=${companyId}`}`),
   getLogisticsAccountBinding: id => request(`/api/shipments/${id}/logistics-account`),
+  getLogisticsTrace: id => request(`/api/shipments/${id}/logistics-trace`),
   getLogisticsOrder: id => request<LogisticsOrder | null>(`/api/shipments/${id}/logistics-order`),
   placeLogisticsOrder: (id, payload) => request<LogisticsOrder>(`/api/shipments/${id}/logistics-order`, { method: 'POST', body: JSON.stringify(payload) }),
   cancelLogisticsOrder: (id, payload) => request<LogisticsOrder>(`/api/shipments/${id}/logistics-order/cancel`, { method: 'POST', body: JSON.stringify(payload) })

@@ -11,6 +11,23 @@ const savedAccount=(environment:string):AccountView=>({
 });
 
 describe('account environment label',()=>{
+  it('shows Yimi-only credentials blank and preserves missing IDs when saving a draft account',async()=>{
+    const account={...savedAccount('test'),appKeyConfigured:true,appSecretConfigured:true,yimi:{sellerId:'seller',subscriptionId:''}};
+    const wrapper=mount(AccountForm,{props:{account,provider:'YIMI',busy:false,error:''}});
+    expect(wrapper.find('[name="customerPass"]').exists()).toBe(false);
+    expect(wrapper.get('[name="appSecret"]').element).toHaveProperty('value','');
+    expect(wrapper.get('[name="appSecret"]').attributes('type')).toBe('password');
+    expect(wrapper.text()).toContain('已配置，留空保留');
+    await wrapper.get('form').trigger('submit');
+    expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({yimi:{sellerId:'seller',subscriptionId:''}});
+    expect(wrapper.emitted('save')?.[0]?.[0]).not.toHaveProperty('appSecret');
+    await wrapper.get('[name="sellerId"]').setValue('new-seller');
+    expect(wrapper.text()).toContain('账号身份已变更');
+    await wrapper.get('[name="appKey"]').setValue('replacement');
+    await wrapper.get('[name="appSecret"]').setValue('new-secret');
+    await wrapper.get('form').trigger('submit');
+    expect(wrapper.emitted('save')?.at(-1)?.[0]).toMatchObject({appKey:'replacement',appSecret:'new-secret',yimi:{sellerId:'new-seller'}});
+  });
   it('defaults a new account to production when a production build omits VITE_RUNTIME_ENV',()=>{
     vi.stubEnv('PROD',true);vi.stubEnv('VITE_RUNTIME_ENV',undefined);
     const wrapper=mount(AccountForm,{props:{account:null,busy:false,error:''}});
