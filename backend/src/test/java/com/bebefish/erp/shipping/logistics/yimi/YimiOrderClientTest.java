@@ -108,6 +108,28 @@ class YimiOrderClientTest {
         assertThat(result.order().childTrackingNos()).isEqualTo("1234567890121000");
     }
 
+    @Test void nonTextualChildWaybillsNeverConfirmOrderSuccess() throws Exception {
+        for (String children : new String[]{"[\"999999999999001\"]", "{\"waybillNo\":\"999999999999001\"}", "[]", "{}", "123456789012001", "false"}) {
+            reply("{\"success\":true,\"data\":{\"status\":0,\"outSideNo\":\"BF1\",\"wayBillNo\":\"123456789012\",\"subOrders\":" + children + "}}");
+            var result = client.createOrder(Map.of("outSideNo","BF1"),account,"BF1");
+            assertThat(result.order().state()).as("subOrders=%s",children).isEqualTo("unknown");
+            assertThat(result.order().trackingNo()).isEmpty();
+            assertThat(result.order().childTrackingNos()).isEmpty();
+            assertThat(result.metadata()).isEmpty();
+        }
+    }
+
+    @Test void missingNullAndCommaSeparatedTextChildWaybillsRemainSupported() throws Exception {
+        for (String[] fixture : new String[][]{{"",""}, {",\"subOrders\":null",""}, {",\"subOrders\":\"\"",""},
+                {",\"subOrders\":\"123456789012001,123456789012002\"","123456789012001,123456789012002"}}) {
+            reply("{\"success\":true,\"data\":{\"status\":0,\"outSideNo\":\"BF1\",\"wayBillNo\":\"123456789012\"" + fixture[0] + "}}");
+            var result = client.createOrder(Map.of("outSideNo","BF1"),account,"BF1");
+            assertThat(result.order().state()).isEqualTo("succeeded");
+            assertThat(result.order().trackingNo()).isEqualTo("123456789012");
+            assertThat(result.order().childTrackingNos()).isEqualTo(fixture[1]);
+        }
+    }
+
     @Test void explicitRejectionIsSafeButDuplicateOrMalformedResponsesRemainUnknown() throws Exception {
         reply("{\"success\":false,\"errorMsg\":\"test-secret test-key\"}");
         var rejected = client.createOrder(Map.of("outSideNo", "BF1"), account, "BF1");

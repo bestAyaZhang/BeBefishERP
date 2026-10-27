@@ -62,7 +62,9 @@ public class YimiOrderClient {
             String tracking = data.path("wayBillNo").asText("");
             if (!expectedOutsideNo.equals(data.path("outSideNo").asText()) || !waybill(tracking)
                     || body.containsKey("wayBillNo") && !tracking.equals(String.valueOf(body.get("wayBillNo")))) return unknown();
-            String children = data.path("subOrders").asText("");
+            JsonNode childOrders = data.path("subOrders");
+            if (!childOrders.isMissingNode() && !childOrders.isNull() && !childOrders.isTextual()) return unknown();
+            String children = childOrders.asText("");
             // Never expose a foreign child's tracking number returned alongside this order.
             if (!children.isEmpty() && !children.matches(tracking + "[0-9]{1,4}(," + tracking + "[0-9]{1,4})*")) return unknown();
             Map<String,Object> metadata = new LinkedHashMap<>();
