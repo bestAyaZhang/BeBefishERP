@@ -11,8 +11,11 @@ import static org.assertj.core.api.Assertions.*;
 class YimiPayloadsTest {
     YimiProperties account = new YimiProperties(true, null, "key", "secret", "seller", "subscription");
     ShipmentContent content(int goods, int pay, String weight, int pieces, YimiOrderOptions options, String address, String phone, String remark) {
+        return content(goods,pay,weight,"0.10",pieces,options,address,phone,remark);
+    }
+    ShipmentContent content(int goods, int pay, String weight, String volume, int pieces, YimiOrderOptions options, String address, String phone, String remark) {
         return new ShipmentContent(LocalDate.of(2026,10,27), "1688", "shop", List.of(), "收件人", phone, "上海市", "上海市", "嘉定区", address,
-                "备货说明", "内部备注", null, new AneOrderDraft("玻璃杯", "纸箱", new BigDecimal(weight), new BigDecimal("0.10"), pieces, 524, goods, pay, remark, options),
+                "备货说明", "内部备注", null, new AneOrderDraft("玻璃杯", "纸箱", weight == null ? null : new BigDecimal(weight), volume == null ? null : new BigDecimal(volume), pieces, 524, goods, pay, remark, options),
                 "prepared", "orderer", "", "", "寄件人", "13800000000", "浙江省", "金华市", "义乌市", "仓库1号");
     }
     ShipmentContent valid(int goods, int pay, YimiOrderOptions options) { return content(goods,pay,"10.12",2,options,"工业路1号","13900000000","轻放"); }
@@ -52,5 +55,31 @@ class YimiPayloadsTest {
     @Test void databaseTrailingZerosDoNotTurnExactTwoDecimalWeightIntoOverprecision() {
         var body = YimiPayloads.orderParams(content(180,102,"10.120",1000,new YimiOrderOptions(0,null,null),"address","phone",""),"BF1",account,"1");
         assertThat((Map<String,Object>)body.get("goodsRequest")).containsEntry("goodsWeight",new BigDecimal("10.12"));
+    }
+    @Test void countBasedOrderOmitsBothOptionalMeasuresAndSerializesWithoutNulls() throws Exception {
+        var body = YimiPayloads.orderParams(content(180,102,null,null,6,new YimiOrderOptions(0,null,null),"address","phone",""),"BF1",account,"1");
+        assertThat((Map<String,Object>)body.get("goodsRequest")).containsEntry("goodsQuqntity",6).doesNotContainKeys("goodsWeight","goodsVolume");
+        var json = new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(body).path("goodsRequest");
+        assertThat(json.has("goodsWeight")).isFalse();
+        assertThat(json.has("goodsVolume")).isFalse();
+        assertThat(json.path("goodsQuqntity").asInt()).isEqualTo(6);
+    }
+    @Test void independentlyOmitsOnlyTheMissingMeasure() {
+        var missingWeight = YimiPayloads.orderParams(content(180,102,null,"0.500",2,new YimiOrderOptions(0,null,null),"address","phone",""),"BF1",account,"1");
+        assertThat((Map<String,Object>)missingWeight.get("goodsRequest")).containsEntry("goodsVolume",new BigDecimal("0.50")).doesNotContainKey("goodsWeight");
+        var missingVolume = YimiPayloads.orderParams(content(180,102,"0.5",null,2,new YimiOrderOptions(0,null,null),"address","phone",""),"BF1",account,"1");
+        assertThat((Map<String,Object>)missingVolume.get("goodsRequest")).containsEntry("goodsWeight",new BigDecimal("0.50")).doesNotContainKey("goodsVolume");
+    }
+    @Test void suppliedZeroAndSubKilogramWeightRemainExactWithoutAneMinimum() {
+        for (String weight : new String[]{"0","0.5"}) {
+            var body = YimiPayloads.orderParams(content(180,102,weight,"0",2,new YimiOrderOptions(0,null,null),"address","phone",""),"BF1",account,"1");
+            assertThat((Map<String,Object>)body.get("goodsRequest")).containsEntry("goodsWeight",new BigDecimal(weight).setScale(2)).containsEntry("goodsVolume",new BigDecimal("0.00"));
+        }
+    }
+    @Test void suppliedInvalidVolumeStillFailsEvenWhenWeightIsOmitted() {
+        for (String volume : new String[]{"-0.01","0.001"}) {
+            assertThatThrownBy(() -> YimiPayloads.orderParams(content(180,102,null,volume,2,new YimiOrderOptions(0,null,null),"address","phone",""),"BF1",account,"1"))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("体积");
+        }
     }
 }

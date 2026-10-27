@@ -33,8 +33,10 @@ public final class YimiPayloads {
         receiver.put("receiverCity", clean(content.recipientCity())); receiver.put("receiverCounty", clean(content.recipientCounty()));
         receiver.put("receiverAddress", clean(content.recipientDetailAddress()));
         var goods = new TreeMap<String,Object>();
-        goods.put("goodsName", clean(draft.cargoName())); goods.put("goodsWeight", draft.weight().setScale(2,RoundingMode.UNNECESSARY));
-        goods.put("goodsVolume", draft.volume().setScale(2,RoundingMode.UNNECESSARY)); goods.put("goodsQuqntity", draft.pieceAmount());
+        goods.put("goodsName", clean(draft.cargoName()));
+        if (draft.weight() != null) goods.put("goodsWeight", draft.weight().setScale(2,RoundingMode.UNNECESSARY));
+        if (draft.volume() != null) goods.put("goodsVolume", draft.volume().setScale(2,RoundingMode.UNNECESSARY));
+        goods.put("goodsQuqntity", draft.pieceAmount());
         goods.put("isCollectGoodsFee", 1); goods.put("remark", clean(draft.logisticsRemark()));
         body.put("electSenderRequest", sender); body.put("electReceiverRequest", receiver); body.put("goodsRequest", goods);
         return body;
@@ -69,7 +71,7 @@ public final class YimiPayloads {
         return explicit;
     }
     private static void decimal(BigDecimal value,String label) {
-        require(value != null && value.signum() >= 0 && value.stripTrailingZeros().scale() <= 2, "壹米" + label + "必须非负且最多两位小数");
+        require(value == null || value.signum() >= 0 && value.stripTrailingZeros().scale() <= 2, "壹米" + label + "必须非负且最多两位小数");
     }
     private static void text(String value,int max,boolean mandatory,String label) {
         String text = clean(value);
