@@ -41,39 +41,48 @@
 
 **Owner:** client worker. New package shipping/logistics/yimi and tests there only. **Consumes:** root YimiOrderOptions/AneOrderDraft methods and existing content/result records. **Produces:** exact client/properties/results/payload contracts above.
 
-- [ ] Write failing signature test against an independent known digest; controlled HTTP mock verifies exact sorted envelope, timestamp, body spelling, explicit options, no ANE signing reuse.
-- [ ] Write failing result tests for success/status0/outsideNo/tracking match, explicit rejection, malformed/foreign/timeout/duplicate ambiguity, strict single-order cancellation counts, trace empty/foreign filtering.
-- [ ] Write payload precision/limit/payment mapping and serviceType/delivery contradiction tests; missing seller/subscription or explicit pickup cannot order.
-- [ ] Implement minimal isolated client without production URL bypasses; use injected HttpClient with mocks so no real endpoints are called.
-- [ ] Run targeted tests under Maven lock, self-review, commit owned files. Fresh scoped review.
+- [x] Write failing signature test against an independent known digest; controlled HTTP mock verifies exact sorted envelope, timestamp, body spelling, explicit options, no ANE signing reuse.
+- [x] Write failing result tests for success/status0/outsideNo/tracking match, explicit rejection, malformed/foreign/timeout/duplicate ambiguity, strict single-order cancellation counts, trace empty/foreign filtering.
+- [x] Write payload precision/limit/payment mapping and serviceType/delivery contradiction tests; missing seller/subscription or explicit pickup cannot order.
+- [x] Implement minimal isolated client without production URL bypasses; use injected HttpClient with mocks so no real endpoints are called.
+- [x] Run targeted tests under Maven lock, self-review, commit owned files. Fresh scoped review.
 
 ## Task 2 Provider accounts quotes and migration
 
 **Owner:** backend account worker. LogisticsDtos/CatalogService/FreightQuoteService, new V30, logistics tests only. **Consumes:** Task1 YimiProperties pinned URLs and root domain options. **Produces:** encrypted YIMI accounts, ready quotes, DTO changes above.
 
-- [ ] RED tests provider migration/admission, credential masking/encryption, missing config, same identity blanks, changed app/seller/subscription new identity with no secret carryover, environment pins and old ANE regression.
-- [ ] RED tests Yimi API readiness, service product1/2 matches goodsType180/179 vs285, yimi canonical condition invalidation, offline quotes remain independent of API config.
-- [ ] Implement V30 provider check expansion and app_secret_configured column; preserve applied migrations. Add compatible record constructors and safe audit metadata.
-- [ ] Run scoped tests with no schema clean except root-coordinated dedicated reset for new migration, self-review, commit owned files. Fresh scoped review.
+- [x] RED tests provider migration/admission, credential masking/encryption, missing config, same identity blanks, changed app/seller/subscription new identity with no secret carryover, environment pins and old ANE regression.
+- [x] RED tests Yimi API readiness, service product1/2 matches goodsType180/179 vs285, yimi canonical condition invalidation, offline quotes remain independent of API config.
+- [x] Implement V30 provider check expansion and app_secret_configured column; preserve applied migrations. Add compatible record constructors and safe audit metadata.
+- [x] Run scoped tests with no schema clean except root-coordinated dedicated reset for new migration, self-review, commit owned files. Fresh scoped review.
 
 ## Task 3 Management shipping UI
 
 **Owner:** frontend worker. All frontend/src/features/logistics and shipping only; no backend/root files. **Consumes:** HTTP/shared contracts. **Produces:** account fields, explicit Yimi order options, trace UI and generic provider labels.
 
-- [ ] RED tests company provider selection, Yimi-only credentials and blank preservation, environment label, missing IDs disables API but not quote/draft saving.
-- [ ] RED tests Yimi product1/2 template choices, explicit pickup, elevator/floor for upstairs, payment meaning, constraints and quote input yimi invalidation. Preserve real QuotePanel historical/hand-selection tests.
-- [ ] Add shipping service trace endpoint and safe mock; YIMI detail trace loading/empty/error retry displays time/status/location/description and never alters prep/order state.
-- [ ] Implement corresponding provider-aware fields/labels without redesigning existing workflow; keep current create-only and notes-only permissions.
-- [ ] Run scoped Vitest and vue-tsc, self-review, commit owned paths. Fresh scoped review.
+- [x] RED tests company provider selection, Yimi-only credentials and blank preservation, environment label, missing IDs disables API but not quote/draft saving.
+- [x] RED tests Yimi product1/2 template choices, explicit pickup, elevator/floor for upstairs, payment meaning, constraints and quote input yimi invalidation. Preserve real QuotePanel historical/hand-selection tests.
+- [x] Add shipping service trace endpoint and safe mock; YIMI detail trace loading/empty/error retry displays time/status/location/description and never alters prep/order state.
+- [x] Implement corresponding provider-aware fields/labels without redesigning existing workflow; keep current create-only and notes-only permissions.
+- [x] Run scoped Vitest and vue-tsc, self-review, commit owned paths. Fresh scoped review.
 
 ## Task 4 Root integration and verification
 
 **Owner:** root. Shipping backend/domain/controllers/services/store/ManagedRouting, V31, integration tests, migration expectations, docs.
 
-- [ ] TDD root YimiOrderOptions and compatible draft constructor/normalization, retaining options in all copy helpers.
-- [ ] Extend store with explicit testEnvironment overloads rather than fake ANE config for Yimi; new V31 carrier_provider/business_snapshot/response_metadata. Return compatible provider in LogisticsOrder.
-- [ ] Dispatch managed placement by provider, validate before claim, persist business-only exact frozen Yimi payload before outbound HTTP, freeze account/version/company. Use Task1 result and store generic success/company override.
-- [ ] Cancel with original frozen waybill/account and latest same-identity credentials, no alternate protocol fallback. Expose read-only trace from original account, return not_supported for ANE.
-- [ ] Add real MySQL controlled-client integration tests for Yimi order+unknown/repeat, changed options, secret rotation/current-account replacement, original account cancel/trace, MANUAL never network, ANE regression.
-- [ ] All affected tests, frontend full/build, full backend verify and migration tests. Stop isolated QA backend before destructive migration tests. Local UI with dummy or missing credentials only, no live order until real required IDs arrive.
-- [ ] Fresh whole-change review and fix loops; update ledger; local commits only. Report missing live parameters separately from completed local implementation.
+- [x] TDD root YimiOrderOptions and compatible draft constructor/normalization, retaining options in all copy helpers.
+- [x] Extend store with explicit testEnvironment overloads rather than fake ANE config for Yimi; new V31 carrier_provider/business_snapshot/response_metadata. Return compatible provider in LogisticsOrder.
+- [x] Dispatch managed placement by provider, validate before claim, persist business-only exact frozen Yimi payload before outbound HTTP, freeze account/version/company. Use Task1 result and store generic success/company override.
+- [x] Cancel with original frozen waybill/account and latest same-identity credentials, no alternate protocol fallback. Expose read-only trace from original account, return not_supported for ANE.
+- [x] Add real MySQL controlled-client integration tests for Yimi order+unknown/repeat, changed options, secret rotation/current-account replacement, original account cancel/trace, MANUAL never network, ANE regression.
+- [x] All affected tests, frontend full/build, full backend verify and migration tests. Stop isolated QA backend before destructive migration tests. Local UI with dummy or missing credentials only, no live order until real required IDs arrive.
+- [x] Fresh whole-change review and fix loops; update ledger; local commits only. Report missing live parameters separately from completed local implementation.
+
+## Verification record
+
+- 2026-10-27: full frontend 90 files / 1009 tests passed; type check and production build passed.
+- Full backend `verify`: 571 tests, zero failures/errors/skips; empty-database and legacy upgrade migrations through V31 and boot jar passed against the dedicated test database.
+- Additional durable reservation and identity/environment guard coverage: Yimi integration 9/9 passed, including independent-connection visibility before the carrier callback.
+- Final detail-label polish: 28 frontend tests and 16 backend freight integration tests passed; type check and final frontend build passed. Browser verified saved Yimi quote and pickup round trip, disabled API order with incomplete configuration, and correct Yimi draft labels. No real carrier create/cancel request was sent.
+- Independent scoped and whole-change reviews found no remaining P1/P2 issue. Review evidence is retained in the local SDD workspace.
+- Local branch only. Real electronic-waybill acceptance remains pending the actual test `sellerId` and `subscriptionId`; credentials are excluded from Git. No remote push, main merge or deployment performed.
