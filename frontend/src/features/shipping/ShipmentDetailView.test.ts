@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ShipmentDetailView from './ShipmentDetailView.vue';
 import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
 import { clearMessages, messages } from '../../components/feedback/message';
+import type { Quote } from '../logistics/types';
 
 const service = vi.hoisted(() => ({ get: vi.fn(), getLogisticsOrder: vi.fn(), getLogisticsTrace:vi.fn(), getLogisticsAccountBinding:vi.fn(), cancelLogisticsOrder: vi.fn(), updatePreparation: vi.fn(), formOptions: vi.fn(), confirmCreator: vi.fn() }));
 const freight = vi.hoisted(()=>({getFreightSelection:vi.fn()}));
@@ -23,6 +24,15 @@ const shipment = {
     remark: '外箱加固', estimatedFreight: 58, orderDraft: { cargoName: '水族用品', packType: '纸箱', weight: 18.5,
       volume: 0.12, pieceAmount: 2, productTypeId: 524, goodsType: 180, payType: 104, logisticsRemark: '轻放' },
     status: 'partially_shipped', orderer: '李主管', logisticsCompany: '安能物流', trackingNo: 'ANE001' }
+};
+
+const selectedQuote: Quote = {
+  quoteId: 'saved-quote', companyId: 2, companyName: '壹米滴答合作网点', provider: 'YIMI',
+  accountId: 2, accountVersionId: 3, templateId: 4, templateVersion: 1,
+  productCode: '1', productName: '港到门', amount: 26, billedQuantity: 18.5, chargeMode: 'weight',
+  matchedRegion: '浙江省', lowerExclusive: 0, upperInclusive: null, firstQuantity: 1, firstFee: 10,
+  additionalQuantity: 1, additionalFee: 2, renewalCount: 8, available: true, reason: '',
+  apiReady: true, apiMessage: '', recommended: true, expiresAt: null
 };
 
 async function render() {
@@ -53,8 +63,37 @@ beforeEach(() => {
 });
 
 describe('ShipmentDetailView', () => {
+  it.each([['YIMI', '壹米滴答'], ['ANE', '安能']])('uses the selected %s carrier for draft labels without enabling trace', async (provider, name) => {
+    service.getLogisticsOrder.mockResolvedValue(null);
+    freight.getFreightSelection.mockResolvedValue({ ...selectedQuote, provider });
+    const { wrapper } = await render();
+    expect(wrapper.text()).toContain(`${name}下单状态`);
+    expect(wrapper.text()).toContain(`${name}下单重量`);
+    expect(wrapper.get('[data-testid="shipment-detail-logistics-status"]').text()).toBe('尚未下单');
+    expect(wrapper.find('[data-testid="shipment-trace-query"]').exists()).toBe(false);
+    expect(service.getLogisticsTrace).not.toHaveBeenCalled();
+  });
+  it('keeps historical orders without a provider labelled as ANE despite a Yimi selection', async () => {
+    freight.getFreightSelection.mockResolvedValue(selectedQuote);
+    const { wrapper } = await render();
+    expect(wrapper.text()).toContain('安能下单状态');
+    expect(wrapper.text()).toContain('安能下单重量');
+    expect(wrapper.text()).toContain('安能订单号');
+    expect(wrapper.find('[data-testid="shipment-trace-query"]').exists()).toBe(false);
+  });
+  it.each([null, 'MANUAL', 'UNKNOWN'])('uses generic logistics labels when a draft has no known carrier: %s', async provider => {
+    service.getLogisticsOrder.mockResolvedValue(null);
+    freight.getFreightSelection.mockResolvedValue(provider ? { ...selectedQuote, provider } : null);
+    const { wrapper } = await render();
+    expect(wrapper.text()).toContain('物流下单状态');
+    expect(wrapper.text()).toContain('物流下单重量');
+    expect(wrapper.text()).not.toContain('安能下单');
+    expect(wrapper.text()).not.toContain('壹米滴答下单');
+    expect(wrapper.find('[data-testid="shipment-trace-query"]').exists()).toBe(false);
+  });
   it('loads Yimi trace on demand with pending, empty, error and retry states without mutating shipment or order',async()=>{
     service.getLogisticsOrder.mockResolvedValue({shipmentId:8,provider:'YIMI',orderNo:'BF008',state:'succeeded',trackingNo:'123456789012',testEnvironment:true});
+    freight.getFreightSelection.mockResolvedValue({ ...selectedQuote, provider: 'ANE' });
     let resolve!:(result:unknown)=>void;
     service.getLogisticsTrace.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}))
       .mockRejectedValueOnce(new Error('轨迹网络异常'))

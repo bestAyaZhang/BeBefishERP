@@ -28,7 +28,10 @@ const accountBinding=ref<LogisticsAccountBinding|null>(null);
 const freightSelection=ref<Quote|null>(null);
 const cancelOpen = ref(false);
 const cancelling = ref(false);
-const carrierName=computed(()=>order.value?.provider==='YIMI'?'壹米滴答':'安能');
+const carrierName=computed(()=>{
+  const provider=order.value?(order.value.provider??'ANE'):freightSelection.value?.provider;
+  return provider==='YIMI'?'壹米滴答':provider==='ANE'?'安能':'物流';
+});
 const trace=ref<LogisticsTrace|null>(null),traceBusy=ref(false),traceError=ref('');
 let traceGeneration=0;
 const canTrace=computed(()=>orderVerified.value && order.value?.provider==='YIMI' && !!order.value.trackingNo);

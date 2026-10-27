@@ -10,6 +10,7 @@ import com.bebefish.erp.platform.application.PlatformCatalogService;
 import com.bebefish.erp.shipping.application.ShipmentService;
 import com.bebefish.erp.shipping.domain.*;
 import com.bebefish.erp.shipping.logistics.*;
+import com.bebefish.erp.shipping.logistics.yimi.YimiOrderClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.math.BigDecimal;
@@ -39,18 +40,21 @@ class ShipmentFreightIntegrationTest {
     @Autowired AneOrderService ane;
     @Autowired ManagedLogisticsRouting routing;
     @MockBean AneOrderClient client;
+    @MockBean YimiOrderClient yimi;
 
-    @Test void offlineSelectionNeverCallsAne() {
+    @Test void offlineSelectionNeverCallsAnyCarrier() {
         var f=fixture();var quote=quote(f);var saved=create(f,new ShipmentFreightChoice(quote.quoteId(),f.company.id(),false),f.actor);
         assertThatThrownBy(()->ane.place(saved.id(),new PlaceAneOrderRequest(saved.version()),"test"))
             .isInstanceOfSatisfying(BusinessException.class,e->assertThat(e.code()).isEqualTo("LOGISTICS_PROVIDER_NOT_SUPPORTED"));
-        verifyNoInteractions(client);
+        verifyNoInteractions(client,yimi);
     }
     @Test void managedNewFormDefaultsToConfiguredDatabaseSenderBeforeChoosingAQuote() {
-        fixture("ANE");
+        var f=fixture("ANE");
+        // The test transaction rolls this back; existing QA accounts must not decide the default sender.
+        jdbc.update("update logistics_company set status='disabled' where id<>? and status='enabled'",f.company.id());
         assertThat(ane.availability().sender().name()).isEqualTo("验收寄件人");
         assertThat(ane.availability().sender().province()).isEqualTo("浙江省");
-        verifyNoInteractions(client);
+        verifyNoInteractions(client,yimi);
     }
     @Test void newAneSelectionMustMatchTheShipmentProductAtSave() throws Exception {
         var f=fixture("ANE");var quote=quote(f);
@@ -59,7 +63,7 @@ class ShipmentFreightIntegrationTest {
         var mismatched=new Fixture(f.company,mapper.treeToValue(changed,ShipmentFormInput.class),f.preparerId,f.actor);
         assertThatThrownBy(()->create(mismatched,new ShipmentFreightChoice(quote.quoteId(),f.company.id(),false),f.actor))
             .isInstanceOfSatisfying(BusinessException.class,e->assertThat(e.code()).isEqualTo("LOGISTICS_PRODUCT_CHANGED"));
-        verifyNoInteractions(client);
+        verifyNoInteractions(client,yimi);
     }
     @Test void productChangeClearsSavedAneQuoteWithoutAReplacement() throws Exception {
         var f=fixture("ANE");var quote=quote(f);var saved=create(f,new ShipmentFreightChoice(quote.quoteId(),f.company.id(),false),f.actor);
@@ -93,7 +97,7 @@ class ShipmentFreightIntegrationTest {
         var template=catalog.templates(f.company.id()).getFirst();
         catalog.templateStatus(template.id(),new StatusInput("disabled",template.version()));
         assertThatThrownBy(()->ane.place(saved.id(),new PlaceAneOrderRequest(saved.version()),"test")).isInstanceOf(BusinessException.class);
-        verifyNoInteractions(client);
+        verifyNoInteractions(client,yimi);
         assertThat(jdbc.queryForObject("select count(*) from shipment_logistics_order where shipment_id=?",Long.class,saved.id())).isZero();
     }
     @Test void disablingTheLastPublishedTemplateCannotReopenLegacyOrdering() {
@@ -103,7 +107,7 @@ class ShipmentFreightIntegrationTest {
         assertThat(quotes.managedTemplatesEnabled()).isTrue();
         assertThatThrownBy(()->ane.place(saved.id(),new PlaceAneOrderRequest(saved.version()),"test"))
             .isInstanceOfSatisfying(BusinessException.class,e->assertThat(e.code()).isEqualTo("LOGISTICS_QUOTE_REQUIRED"));
-        verifyNoInteractions(client);
+        verifyNoInteractions(client,yimi);
     }
     @Test void frozenLegacyIdentityCannotBeConfirmedAsADifferentAccount() throws Exception {
         var f=fixture("ANE");var saved=shipments.create(f.form,List.of(f.preparerId),"test","原录入员");
@@ -115,14 +119,14 @@ class ShipmentFreightIntegrationTest {
         assertThatThrownBy(()->routing.confirmAccount(saved.id(),catalog.account(f.company.id()).id(),saved.version(),true,f.actor))
             .isInstanceOfSatisfying(BusinessException.class,e->assertThat(e.code()).isEqualTo("LOGISTICS_ACCOUNT_IDENTITY_MISMATCH"));
         assertThat(routing.binding(saved.id()).accountId()).isNull();
-        verifyNoInteractions(client);
+        verifyNoInteractions(client,yimi);
     }
     @Test void unknownHistoricalAccountRequiresAdministratorConfirmationBeforeCancellation() throws Exception {
         var f=fixture("ANE");var saved=shipments.create(f.form,List.of(f.preparerId),"test","原录入员");
         jdbc.update("insert into shipment_logistics_order(shipment_id,order_no,state,test_environment,tracking_no,child_tracking_nos,message,request_snapshot,operator_id,created_at,updated_at) values(?,?,'succeeded',true,'620000000001','','test',?,'test',now(3),now(3))",saved.id(),"LEGACY-"+saved.id(),mapper.writeValueAsString(saved.content()));
         assertThatThrownBy(()->ane.cancel(saved.id(),new CancelAneOrderRequest(saved.version()),"test"))
             .isInstanceOfSatisfying(BusinessException.class,e->assertThat(e.code()).isEqualTo("LOGISTICS_ACCOUNT_CONFIRMATION_REQUIRED"));
-        verifyNoInteractions(client);
+        verifyNoInteractions(client,yimi);
         assertThatThrownBy(()->routing.confirmAccount(saved.id(),catalog.account(f.company.id()).id(),saved.version(),false,f.actor)).isInstanceOf(BusinessException.class);
         routing.confirmAccount(saved.id(),catalog.account(f.company.id()).id(),saved.version(),true,f.actor);
         when(client.cancelOrder(anyMap(),any(AneProperties.class))).thenReturn(new AneCancellationResult("cancelled","取消成功"));
