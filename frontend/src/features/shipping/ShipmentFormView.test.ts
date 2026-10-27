@@ -97,6 +97,31 @@ beforeEach(() => {
 afterEach(() => { clearCurrentUser(); clearMessages(); });
 
 describe('ShipmentFormView', () => {
+  it.each([null,0,0.5])('orders Yimi with optional or nonnegative weight/volume %s while retaining ANE product fields',async value=>{
+    const {wrapper}=await render('/shipping/18/edit');
+    wrapper.findComponent({name:'ShipmentQuotePanelStub'}).vm.$emit('update:modelValue',{
+      ...quote(),provider:'YIMI',productCode:'1',productName:'港到门'
+    });await flushPromises();
+    await wrapper.get('[data-testid="yimi-visit-delivery"]').setValue('0');
+    await wrapper.get('[data-testid="ane-weight"]').setValue(value??'');
+    await wrapper.get('[data-testid="ane-volume"]').setValue(value??'');
+    expect(wrapper.get('[data-testid="ane-weight"]').attributes('min')).toBe('0');
+    expect(wrapper.get('[data-testid="ane-volume"]').attributes('min')).toBe('0');
+    await wrapper.get('[data-testid="shipment-save-and-order"]').trigger('click');await flushPromises();
+    expect(service.update).toHaveBeenCalledWith(18,expect.objectContaining({orderDraft:expect.objectContaining({weight:value,volume:value,productTypeId:524})}),'unfinished',0);
+    expect(service.placeLogisticsOrder).toHaveBeenCalledTimes(1);
+  });
+  it('rejects nonzero third-decimal Yimi weight before saving and ordering',async()=>{
+    const {wrapper}=await render('/shipping/18/edit');
+    wrapper.findComponent({name:'ShipmentQuotePanelStub'}).vm.$emit('update:modelValue',{
+      ...quote(),provider:'YIMI',productCode:'1',productName:'港到门'
+    });await flushPromises();
+    await wrapper.get('[data-testid="yimi-visit-delivery"]').setValue('0');
+    await wrapper.get('[data-testid="ane-weight"]').setValue('0.501');
+    await wrapper.get('[data-testid="shipment-save-and-order"]').trigger('click');await flushPromises();
+    expect(service.update).not.toHaveBeenCalled();expect(service.placeLogisticsOrder).not.toHaveBeenCalled();
+    expect(messages.value.at(-1)?.text).toContain('两位小数');
+  });
   it('requires explicit Yimi pickup and elevator choices only before ordering, keeping payment meaning and ANE product intact', async () => {
     const yimi={...quote(),provider:'YIMI',companyName:'壹米滴答',productCode:'1',productName:'港到门'};
     const {wrapper}=await render('/shipping/18/edit');

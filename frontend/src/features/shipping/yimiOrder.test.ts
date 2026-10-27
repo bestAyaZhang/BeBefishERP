@@ -7,6 +7,10 @@ function validate(form:shipping.ShipmentFormInput,product='1'){
   return shipping.validateYimiOrder(form,product);
 }
 describe('Yimi order-only constraints',()=>{
+  it.each([null,0,0.5])('accepts optional or nonnegative weight and volume %s',value=>{
+    const form=valid();form.orderDraft.weight=value;form.orderDraft.volume=value;
+    expect(validate(form)).toBe('');
+  });
   it('accepts explicit pickup zero and one with normal door delivery and keeps old payment values',()=>{
     for(const visitDelivery of [0,1])for(const payType of [102,104,103]){
       const form=valid();form.orderDraft.yimi!.visitDelivery=visitDelivery;form.orderDraft.payType=payType;

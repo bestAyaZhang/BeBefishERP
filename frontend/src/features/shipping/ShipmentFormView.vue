@@ -238,9 +238,9 @@ function validateOrder(value: ShipmentFormInput) {
     return '一键下单前请填写完整的发货人、电话和地址信息';
   }
   const draft = value.orderDraft;
-  if (!draft.cargoName.trim() || !draft.packType.trim() || draft.weight == null || draft.weight < 1
-    || draft.volume == null || draft.volume < 0.01 || draft.pieceAmount == null || draft.pieceAmount < 1
-    || (!isYimi.value && draft.productTypeId == null) || draft.goodsType == null || draft.payType == null) {
+  if (!draft.cargoName.trim() || !draft.packType.trim() || draft.pieceAmount == null || draft.pieceAmount < 1
+    || (!isYimi.value && (draft.weight == null || draft.weight < 1 || draft.volume == null || draft.volume < 0.01 || draft.productTypeId == null))
+    || draft.goodsType == null || draft.payType == null) {
     return '一键下单前请填写货物名称、包装、重量、体积、件数和物流选项';
   }
   if (isYimi.value) { const invalid=validateYimiOrder(value,selectedQuote.value?.productCode??''); if(invalid)return invalid; }
@@ -373,8 +373,8 @@ onBeforeUnmount(() => { generation++; senderGeneration++; });
           <label class="field-label lg:col-span-2">货物名称 <span class="text-rose-500">*</span><input v-model="form.orderDraft.cargoName" data-testid="ane-cargo-name" :disabled="busy || detailsLocked" maxlength="32" placeholder="如水族用品" class="field-input" /></label>
           <label class="field-label">包装方式 <span class="text-rose-500">*</span><input v-model="form.orderDraft.packType" data-testid="ane-pack-type" :disabled="busy || detailsLocked" maxlength="50" class="field-input" /></label>
           <label class="field-label">件数 <span class="text-rose-500">*</span><input v-model="form.orderDraft.pieceAmount" data-testid="ane-piece-amount" :disabled="busy || detailsLocked" type="number" min="1" :max="isYimi?1000:9999" step="1" class="field-input" /></label>
-          <label class="field-label">重量（kg） <span class="text-rose-500">*</span><input v-model="form.orderDraft.weight" data-testid="ane-weight" :disabled="busy || detailsLocked" type="number" min="1" :step="isYimi?0.01:0.001" class="field-input" /></label>
-          <label class="field-label">体积（m³） <span class="text-rose-500">*</span><input v-model="form.orderDraft.volume" data-testid="ane-volume" :disabled="busy || detailsLocked" type="number" min="0.01" step="0.01" class="field-input" /></label>
+          <label class="field-label">重量（kg） <span v-if="!isYimi" class="text-rose-500">*</span><span v-else class="text-xs text-slate-400">可选</span><input v-model="form.orderDraft.weight" data-testid="ane-weight" :disabled="busy || detailsLocked" type="number" :min="isYimi?0:1" :step="isYimi?0.01:0.001" class="field-input" /></label>
+          <label class="field-label">体积（m³） <span v-if="!isYimi" class="text-rose-500">*</span><span v-else class="text-xs text-slate-400">可选</span><input v-model="form.orderDraft.volume" data-testid="ane-volume" :disabled="busy || detailsLocked" type="number" :min="isYimi?0:0.01" step="0.01" class="field-input" /></label>
           <label v-if="!isYimi" class="field-label">物流产品 <span class="text-rose-500">*</span><select v-model="form.orderDraft.productTypeId" data-testid="shipment-logistics-product" :disabled="busy || detailsLocked || !!selectedQuote" class="field-input"><option :value="524">MiNi 电商小件</option><option :value="95">Mini 电商大件</option><option :value="24">精准零担</option><option :value="23">定时达</option><option :value="270">普惠达</option><option :value="546">安心达</option></select></label>
           <label class="field-label">送货方式 <span class="text-rose-500">*</span><select v-model="form.orderDraft.goodsType" data-testid="shipment-goods-type" @change="deliveryChanged" :disabled="busy || detailsLocked" class="field-input"><option :value="180">送货（不含上楼）</option><option :value="179">送货上楼</option><option :value="285">自提</option></select></label>
           <label class="field-label">付款方式 <span class="text-rose-500">*</span><select v-model="form.orderDraft.payType" :disabled="busy || detailsLocked" class="field-input"><option :value="102">现付（现金）</option><option :value="104">月结</option><option :value="103">到付</option></select></label>

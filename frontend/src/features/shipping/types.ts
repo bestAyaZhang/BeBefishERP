@@ -220,7 +220,8 @@ export function validateYimiOrder(form: ShipmentFormInput, productCode: string):
   if(options?.visitDelivery!==0 && options?.visitDelivery!==1)return '壹米下单前请明确选择上门揽货或自送';
   if(!Number.isInteger(draft.pieceAmount) || draft.pieceAmount==null || draft.pieceAmount<1 || draft.pieceAmount>1000)return '壹米件数须为1至1000的整数';
   for(const value of [draft.weight,draft.volume]){
-    if(value==null || !Number.isFinite(value) || value<=0)return '壹米重量和体积必须大于零';
+    if(value==null)continue;
+    if(!Number.isFinite(value) || value<0)return '壹米重量和体积不能小于零';
     if(Number(value.toFixed(2))!==value)return '壹米重量和体积最多两位小数';
   }
   if(form.senderDetailAddress.length>100)return '壹米寄件地址最多100字';
