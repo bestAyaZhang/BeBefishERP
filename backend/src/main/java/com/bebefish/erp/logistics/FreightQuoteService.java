@@ -7,6 +7,7 @@ import com.bebefish.erp.logistics.pricing.FreightCalculator;
 import com.bebefish.erp.logistics.pricing.FreightRules;
 import com.bebefish.erp.logistics.pricing.ProvinceCatalog;
 import com.bebefish.erp.shipping.domain.ShipmentFormInput;
+import com.bebefish.erp.shipping.domain.YimiOrderOptions;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -35,13 +36,18 @@ public class FreightQuoteService {
     public static QuoteInput input(ShipmentFormInput form) {
         if(form==null) throw invalid("缺少发货资料"); var d=form.orderDraft();
         return canonical(new QuoteInput(form.senderProvince(),form.senderCity(),form.senderCounty(),form.recipientProvince(),form.recipientCity(),form.recipientCounty(),
-            d==null?null:d.weight(),d==null?null:d.volume(),d==null||d.pieceAmount()==null?null:BigDecimal.valueOf(d.pieceAmount()),d==null?null:d.goodsType(),d==null?null:d.payType()));
+            d==null?null:d.weight(),d==null?null:d.volume(),d==null||d.pieceAmount()==null?null:BigDecimal.valueOf(d.pieceAmount()),d==null?null:d.goodsType(),d==null?null:d.payType(),d==null?null:d.yimi()));
     }
     /** Used for persisted conditions as well as validation; decimal scale is never a price condition. */
     public static QuoteInput canonical(QuoteInput in) {
         if(in==null) throw invalid("缺少报价条件");
         return new QuoteInput(province(in.senderProvince()),clean(in.senderCity()),clean(in.senderCounty()),province(in.recipientProvince()),clean(in.recipientCity()),clean(in.recipientCounty()),
-            decimal(in.weight()),decimal(in.volume()),decimal(in.pieceAmount()),in.goodsType(),in.payType());
+            decimal(in.weight()),decimal(in.volume()),decimal(in.pieceAmount()),in.goodsType(),in.payType(),options(in.yimi()));
+    }
+    private static YimiOrderOptions options(YimiOrderOptions in) {
+        if(in==null) return null;
+        YimiOrderOptions normalized=in.normalized();
+        return normalized.visitDelivery()==null && normalized.deliveryFlag()==null && normalized.floorNo().isEmpty()?null:normalized;
     }
     private static String province(String in) { String normalized=ProvinceCatalog.normalize(in); return normalized==null?clean(in):normalized; }
     private static BigDecimal decimal(BigDecimal in) { return in==null?null:in.stripTrailingZeros(); }
@@ -82,16 +88,25 @@ public class FreightQuoteService {
         if(!Objects.equals(t.accountId(),account==null?null:account.id())) return unavailable(company,account,t,"模板绑定账号已变更，请重新发布模板");
         if(!Objects.equals(t.originProvince(),in.senderProvince())||!Objects.equals(t.originCity(),in.senderCity())||!Objects.equals(t.originCounty(),in.senderCounty()))
             return unavailable(company,account,t,"始发省市区与模板不匹配");
+        if(company.provider().equals("YIMI") && !yimiProductMatches(t.productCode(),in.goodsType()))
+            return unavailable(company,account,t,"壹米运输产品与送货方式不匹配");
         calculator.validateRules(t.rules(),true);
         var result=calculator.quote(t.rules(),new FreightRules.Input(in.recipientProvince(),in.weight(),in.volume(),in.pieceAmount()));
         if(!result.available()) return unavailable(company,account,t,result.reason());
-        var b=result.band(); boolean ready=account!=null&&account.ready()&&company.provider().equals("ANE");
+        var b=result.band(); boolean ready=apiReady(company,account);
         return new Quote(UUID.randomUUID().toString(),company.id(),company.name(),company.provider(),account==null?null:account.id(),account==null?null:account.accountVersionId(),
             t.id(),t.version(),t.productCode(),t.productName(),result.amount(),result.billedQuantity(),t.rules().mode(),result.matchedRegion(),b.lowerExclusive(),b.upperInclusive(),b.firstQuantity(),b.firstFee(),b.additionalQuantity(),b.additionalFee(),result.renewalCount(),true,"",ready,apiMessage(company,account),false,expires);
     }
     private Quote unavailable(Company c,AccountView account,Template t,String reason) {
         return new Quote(null,c.id(),c.name(),c.provider(),account==null?null:account.id(),account==null?null:account.accountVersionId(),t==null?null:t.id(),t==null?null:t.version(),t==null?"":t.productCode(),t==null?"":t.productName(),
-            null,null,t==null||t.rules()==null?"":t.rules().mode(),"",null,null,null,null,null,null,null,false,reason,account!=null&&account.ready()&&c.provider().equals("ANE"),apiMessage(c,account),false,null);
+            null,null,t==null||t.rules()==null?"":t.rules().mode(),"",null,null,null,null,null,null,null,false,reason,apiReady(c,account),apiMessage(c,account),false,null);
+    }
+    private static boolean apiReady(Company company,AccountView account) {
+        return account!=null&&account.ready()&&Set.of("ANE","YIMI").contains(company.provider());
+    }
+    private static boolean yimiProductMatches(String product,Integer goodsType) {
+        return "1".equals(product)&&(Objects.equals(goodsType,180)||Objects.equals(goodsType,179))
+            || "2".equals(product)&&Objects.equals(goodsType,285);
     }
     private String apiMessage(Company c,AccountView account) { return c.provider().equals("MANUAL")?"该公司仅支持线下发货":account==null?"未配置接口账号":account.message(); }
     @Transactional public Quote getValid(String quoteId,long employeeId,QuoteInput input) { return validate(quoteId,employeeId,input); }

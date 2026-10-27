@@ -7,6 +7,7 @@ import com.bebefish.erp.common.security.ErpPrincipal;
 import com.bebefish.erp.logistics.CarrierAccountResolver.ResolvedAccount;
 import com.bebefish.erp.logistics.pricing.FreightCalculator;
 import com.bebefish.erp.logistics.pricing.ProvinceCatalog;
+import com.bebefish.erp.shipping.logistics.yimi.YimiProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -87,7 +88,7 @@ public class LogisticsCatalogService {
         if(!code.matches("[A-Z0-9][A-Z0-9_-]{0,49}")) throw invalid("物流编码只能使用字母、数字、下划线或短横线，最多50位");
         String name=text(in.name(),100,"物流公司名称",true);
         String provider=clean(in.provider()).isEmpty()?(old==null?"MANUAL":old.provider()):clean(in.provider());
-        if(!Set.of("ANE","MANUAL").contains(provider)) throw invalid("物流服务商类型无效");
+        if(!Set.of("ANE","MANUAL","YIMI").contains(provider)) throw invalid("物流服务商类型无效");
         String status=clean(in.status()).isEmpty()?(old==null?"enabled":old.status()):clean(in.status()); status(status);
         int sort=in.sortOrder()==null?0:in.sortOrder(); if(sort<0||sort>9999) throw invalid("排序值必须为0至9999");
         return new CompanyInput(code,name,provider,status,text(in.contactName(),100,"联系人",false),text(in.contactPhone(),50,"联系电话",false),sort,text(in.remark(),1000,"备注",false),in.version());
@@ -105,49 +106,69 @@ public class LogisticsCatalogService {
     }
     private AccountView accountView(ResultSet r) throws SQLException {
         AccountInput c=read(r.getString("config_json"),AccountInput.class);
-        boolean app=r.getBoolean("app_key_configured"),pass=r.getBoolean("customer_pass_configured");
-        boolean ready=ready(r.getString("provider"),c,app,pass) && cipher.available();
-        String message=ready?"接口资料已就绪":r.getString("provider").equals("MANUAL")?"该公司仅支持线下发货":!cipher.available()?"未配置物流加密主密钥":"接口资料尚未填写完整";
+        String provider=r.getString("provider");
+        boolean app=r.getBoolean("app_key_configured"),pass=r.getBoolean("customer_pass_configured"),secret=r.getBoolean("app_secret_configured");
+        boolean ready=ready(provider,c,app,pass,secret) && cipher.available();
+        String message=ready?"接口资料已就绪":provider.equals("MANUAL")?"该公司仅支持线下发货":!cipher.available()?"未配置物流加密主密钥":"接口资料尚未填写完整";
         if(ready) {
             try {
                 String encrypted=r.getString("secret_cipher");
                 if(encrypted==null) throw new IllegalStateException();
                 AccountInput authenticated=read(cipher.decrypt(encrypted,context(r.getLong("account_id"),r.getString("environment"),r.getLong("version_no"))),AccountInput.class);
                 if(!publicConfig(authenticated).equals(c)) throw new IllegalStateException();
-                validateOrderUrl(authenticated.orderUrl());
-            } catch(BusinessException|IllegalStateException e) {
+                validateOrderUrl(provider,authenticated.orderUrl());
+                if(provider.equals("YIMI") && !yimiProperties(authenticated).ready()) throw new IllegalStateException();
+            } catch(BusinessException|IllegalArgumentException|IllegalStateException e) {
                 ready=false; message="接口密钥无法验证，请检查主密钥与账号配置";
             }
         }
         return new AccountView(r.getLong("account_id"),r.getLong("company_id"),r.getString("environment"),r.getLong("version_no"),r.getLong("id"),
-                c.code(),c.customerCode(),c.dictId(),c.orderUrl(),c.sender(),app,pass,ready,message);
+                c.code(),c.customerCode(),c.dictId(),c.orderUrl(),c.sender(),app,pass,ready,message,secret,c.yimi());
     }
     @Transactional public AccountView saveAccount(long companyId,AccountInput in) {
         Company company=lockCompany(companyId); if(in==null) throw invalid("请填写账号资料");
         long revision=jdbc.queryForObject("select "+revisionColumn()+" from logistics_company where id=? for update",Long.class,companyId);
         expected(in.version(),revision);
         AccountInput normalized=normalizeAccount(in,company.provider());
-        String hash=hash(normalized.code()+"\u0000"+normalized.customerCode()+"\u0000"+normalized.dictId());
         Long oldId=lockedCurrentAccountId(companyId); Long oldVersion=null; String oldHash=null;
         if(oldId!=null) {
             oldVersion=jdbc.queryForObject("select current_version_id from logistics_account where id=? for update",Long.class,oldId);
             oldHash=jdbc.queryForObject("select identity_hash from logistics_account where id=? for update",String.class,oldId);
         }
-        String app=clean(normalized.appKey()),pass=clean(normalized.customerPass());
-        if(oldId!=null && hash.equals(oldHash) && (app.isEmpty()||pass.isEmpty())) {
-            AccountInput previous=resolveVersion(oldVersion).config();
-            if(app.isEmpty()) app=clean(previous.appKey()); if(pass.isEmpty()) pass=clean(previous.customerPass());
+        String app=clean(normalized.appKey()),pass=clean(normalized.customerPass()),appSecret=clean(normalized.appSecret());
+        AccountInput previous=null;
+        // A blank secret app key can refer only to the currently selected seller/subscription identity.
+        // Changing either public identifier must never discover or inherit another account's secrets.
+        if(company.provider().equals("YIMI") && oldId!=null && app.isEmpty()) {
+            AccountInput currentPublic=read(jdbc.queryForObject("select config_json from logistics_account_version where id=?",String.class,oldVersion),AccountInput.class);
+            if(Objects.equals(normalized.yimi(),currentPublic.yimi())) {
+                previous=resolveVersion(oldVersion).config();
+                if(!Objects.equals(normalized.yimi(),previous.yimi())) throw conflict("LOGISTICS_SECRET_UNAVAILABLE","物流密钥无法验证，请检查账号配置");
+                app=clean(previous.appKey());
+            }
         }
-        if(company.provider().equals("MANUAL") && (!app.isEmpty()||!pass.isEmpty())) throw invalid("线下物流公司不能配置接口密钥");
-        if((!app.isEmpty()||!pass.isEmpty()) && !cipher.available()) throw conflict("LOGISTICS_MASTER_KEY_MISSING","未配置物流加密主密钥，无法保存接口密钥");
+        String hash=identityHash(company.provider(),normalized,app);
+        if(oldId!=null && hash.equals(oldHash)) {
+            if(company.provider().equals("YIMI")) {
+                if(appSecret.isEmpty()) {
+                    if(previous==null) previous=resolveVersion(oldVersion).config();
+                    appSecret=clean(previous.appSecret());
+                }
+            } else if(app.isEmpty()||pass.isEmpty()) {
+                previous=resolveVersion(oldVersion).config();
+                if(app.isEmpty()) app=clean(previous.appKey()); if(pass.isEmpty()) pass=clean(previous.customerPass());
+            }
+        }
+        if(company.provider().equals("MANUAL") && (!app.isEmpty()||!pass.isEmpty()||!appSecret.isEmpty())) throw invalid("线下物流公司不能配置接口密钥");
+        if((!app.isEmpty()||!pass.isEmpty()||!appSecret.isEmpty()) && !cipher.available()) throw conflict("LOGISTICS_MASTER_KEY_MISSING","未配置物流加密主密钥，无法保存接口密钥");
         long next=revision+1; Instant now=clock.instant();
         List<Long> identities=jdbc.query("select id from logistics_account where company_id=? and environment=? and identity_hash=? for update",(r,n)->r.getLong(1),companyId,environment,hash);
         long accountId=identities.isEmpty()?insert("insert into logistics_account(company_id,environment,identity_hash,created_at) values(?,?,?,?)",companyId,environment,hash,ts(now)):identities.getFirst();
-        AccountInput complete=new AccountInput(next,normalized.code(),normalized.customerCode(),normalized.dictId(),app,pass,normalized.orderUrl(),normalized.sender());
+        AccountInput complete=new AccountInput(next,normalized.code(),normalized.customerCode(),normalized.dictId(),app,pass,normalized.orderUrl(),normalized.sender(),appSecret,normalized.yimi());
         AccountInput publicConfig=publicConfig(complete);
-        String secret=app.isEmpty()&&pass.isEmpty()?null:cipher.encrypt(json(complete),context(accountId,environment,next));
-        long versionId=insert("insert into logistics_account_version(account_id,version_no,config_json,secret_cipher,app_key_configured,customer_pass_configured,created_at) values(?,?,?,?,?,?,?)",
-            accountId,next,json(publicConfig),secret,!app.isEmpty(),!pass.isEmpty(),ts(now));
+        String secret=app.isEmpty()&&pass.isEmpty()&&appSecret.isEmpty()?null:cipher.encrypt(json(complete),context(accountId,environment,next));
+        long versionId=insert("insert into logistics_account_version(account_id,version_no,config_json,secret_cipher,app_key_configured,customer_pass_configured,app_secret_configured,created_at) values(?,?,?,?,?,?,?,?)",
+            accountId,next,json(publicConfig),secret,!app.isEmpty(),!pass.isEmpty(),!appSecret.isEmpty(),ts(now));
         jdbc.update("update logistics_account set current_version_id=? where id=?",versionId,accountId);
         jdbc.update("update logistics_company set "+accountColumn()+"=?,"+revisionColumn()+"=?,version_no=version_no+1,updated_at=? where id=?",accountId,next,ts(now),companyId);
         return viewCurrent(accountId);
@@ -163,7 +184,7 @@ public class LogisticsCatalogService {
             long accountId=r.getLong("account_id"),revision=r.getLong("version_no");
             String encrypted=r.getString("secret_cipher");
             AccountInput config=read(encrypted==null?r.getString("config_json"):cipher.decrypt(encrypted,context(accountId,env,revision)),AccountInput.class);
-            if("ANE".equals(r.getString("provider"))) validateOrderUrl(config.orderUrl());
+            validateOrderUrl(r.getString("provider"),config.orderUrl());
             return new ResolvedAccount(r.getLong("company_id"),accountId,versionId,r.getString("provider"),env,config);
         },versionId).stream().findFirst().orElseThrow(()->missing("物流账号版本不存在"));
     }
@@ -175,8 +196,12 @@ public class LogisticsCatalogService {
             text(s.city(),30,"发件城市",false),text(s.county(),30,"发件区县",false),text(s.address(),100,"发件地址",false));
         String url=provider.equals("MANUAL")?"":clean(in.orderUrl());
         if(provider.equals("ANE")) { if(url.isEmpty()) url=expectedOrderUrl(); validateOrderUrl(url); }
+        if(provider.equals("YIMI")) { if(url.isEmpty()) url=YimiProperties.expectedUrl(!environment.equals("production")).toString(); validateOrderUrl(provider,url); }
+        YimiAccount yimi=provider.equals("YIMI")?new YimiAccount(text(in.yimi()==null?null:in.yimi().sellerId(),100,"商家ID",false),
+            text(in.yimi()==null?null:in.yimi().subscriptionId(),100,"订购ID",false)):null;
         return new AccountInput(in.version(),text(in.code(),100,"接入编码",false),text(in.customerCode(),30,"客户编码",false),text(in.dictId(),30,"网点编码",false),
-            text(in.appKey(),500,"应用密钥",false),text(in.customerPass(),30,"客户密钥",false),url,s);
+            text(in.appKey(),500,"应用密钥",false),text(in.customerPass(),30,"客户密钥",false),url,s,
+            text(in.appSecret(),500,"应用密钥",false),yimi);
     }
     public String expectedOrderUrl() { return "https://"+(environment.equals("production")?"opc.ane56.com":"opc.test.ane56.com")+"/aneop/opwb/lb/new"; }
     public void validateOrderUrl(String value) {
@@ -187,14 +212,32 @@ public class LogisticsCatalogService {
                     ||u.getPort()!=-1||u.getUserInfo()!=null||u.getRawQuery()!=null||u.getRawFragment()!=null) throw new IllegalArgumentException();
         } catch(Exception e) { throw invalid("安能接口地址必须使用当前环境的固定HTTPS地址"); }
     }
-    private boolean ready(String provider,AccountInput c,boolean app,boolean pass) {
-        if(!"ANE".equals(provider)||!app||!pass) return false;
+    private void validateOrderUrl(String provider,String value) {
+        if(provider.equals("ANE")) validateOrderUrl(value);
+        if(provider.equals("YIMI")) {
+            try { YimiProperties.validateGateway(URI.create(value),!environment.equals("production")); }
+            catch(IllegalArgumentException e) { throw invalid("壹米接口地址必须使用当前环境的固定HTTPS地址"); }
+        }
+    }
+    private YimiProperties yimiProperties(AccountInput c) {
+        YimiAccount yimi=c.yimi();
+        return new YimiProperties(!environment.equals("production"),URI.create(c.orderUrl()),c.appKey(),c.appSecret(),
+            yimi==null?"":yimi.sellerId(),yimi==null?"":yimi.subscriptionId());
+    }
+    private String identityHash(String provider,AccountInput c,String appKey) {
+        if(!provider.equals("YIMI")) return hash(c.code()+"\u0000"+c.customerCode()+"\u0000"+c.dictId());
+        // Length-independent tuple encoding avoids delimiter ambiguity in opaque carrier identifiers.
+        return hash(json(List.of(provider,environment,appKey,c.yimi().sellerId(),c.yimi().subscriptionId())));
+    }
+    private boolean ready(String provider,AccountInput c,boolean app,boolean pass,boolean appSecret) {
+        boolean configured=provider.equals("ANE")?app&&pass&&!clean(c.code()).isEmpty()&&!clean(c.customerCode()).isEmpty()&&!clean(c.dictId()).isEmpty()
+            :provider.equals("YIMI")&&app&&appSecret&&c.yimi()!=null&&!clean(c.yimi().sellerId()).isEmpty()&&!clean(c.yimi().subscriptionId()).isEmpty();
+        if(!configured) return false;
         Sender s=c.sender();
-        return s!=null && !clean(c.code()).isEmpty()&&!clean(c.customerCode()).isEmpty()&&!clean(c.dictId()).isEmpty()
-                &&!clean(s.name()).isEmpty()&&!clean(s.phone()).isEmpty()&&ProvinceCatalog.normalize(s.province())!=null
+        return s!=null && !clean(s.name()).isEmpty()&&!clean(s.phone()).isEmpty()&&ProvinceCatalog.normalize(s.province())!=null
                 &&!clean(s.city()).isEmpty()&&!clean(s.county()).isEmpty()&&!clean(s.address()).isEmpty();
     }
-    private AccountInput publicConfig(AccountInput c) { return new AccountInput(c.version(),c.code(),c.customerCode(),c.dictId(),null,null,c.orderUrl(),c.sender()); }
+    private AccountInput publicConfig(AccountInput c) { return new AccountInput(c.version(),c.code(),c.customerCode(),c.dictId(),null,null,c.orderUrl(),c.sender(),null,c.yimi()); }
     public List<Template> templates(long companyId) {
         company(companyId);
         return jdbc.query("select * from logistics_template where company_id=? and environment=? order by id",this::templateRow,companyId,environment);
