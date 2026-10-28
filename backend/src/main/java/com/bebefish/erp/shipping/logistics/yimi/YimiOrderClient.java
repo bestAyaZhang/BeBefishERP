@@ -43,7 +43,7 @@ public class YimiOrderClient {
     }
 
     public YimiOrderResult createOrder(Map<String,Object> body,YimiProperties account,String expectedOutsideNo) {
-        if (account == null || !account.ready() || body == null || expectedOutsideNo == null || expectedOutsideNo.isBlank()
+        if (account == null || !account.orderReady() || body == null || expectedOutsideNo == null || expectedOutsideNo.isBlank()
                 || !expectedOutsideNo.equals(body.get("outSideNo")))
             return rejected("壹米下单资料或接口配置不完整");
         try {
@@ -85,11 +85,11 @@ public class YimiOrderClient {
             return new AneCancellationResult("cancel_rejected","壹米取消资料不完整，必须使用原运单号");
         try {
             JsonNode root = post("cancelOrder", body, account);
-            if (!validRoot(root)) return cancelUnknown();
+            if (!validRoot(root)) return cancelUnknown(root,account);
             JsonNode data = root.path("data");
-            if (!data.isObject() || !data.path("success").isBoolean()) return cancelUnknown();
+            if (!data.isObject() || !data.path("success").isBoolean()) return cancelUnknown(root,account);
             String tracking = String.valueOf(body.get("wayBillNo"));
-            if (data.hasNonNull("wayBillNo") && !tracking.equals(data.path("wayBillNo").asText())) return cancelUnknown();
+            if (data.hasNonNull("wayBillNo") && !tracking.equals(data.path("wayBillNo").asText())) return cancelUnknown(root,account);
             String summary = data.path("data").isTextual() ? data.path("data").asText().strip() : "";
             JsonNode errors = data.path("errorMessages");
             boolean noErrors = errors.isMissingNode() || errors.isNull() || errors.isTextual() && errors.asText().isBlank();
@@ -98,8 +98,42 @@ public class YimiOrderClient {
                 return new AneCancellationResult("cancelled","壹米订单已取消，原运单不可用于走货；如需重新下单，请新建发货单");
             if (root.path("success").booleanValue() && !data.path("success").booleanValue()
                     && summary.matches("0条处理成功[,，]1(?:条)?处理失败[。.]?"))
-                return new AneCancellationResult("cancel_rejected","壹米拒绝取消，请联系网点核实原订单");
-            return cancelUnknown();
+                return cancelRejected(root,account);
+            return cancelUnknown(root,account);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt(); return cancelUnknown();
+        } catch (Exception failure) { return cancelUnknown(); }
+    }
+
+    public AneCancellationResult cancelElectronicOrder(Map<String,Object> body,YimiProperties account,
+            String expectedOutsideNo,String expectedWaybillNo) {
+        if (account == null || !account.ready() || body == null || expectedOutsideNo == null || expectedOutsideNo.isBlank()
+                || !waybill(expectedWaybillNo) || !"cancel".equals(body.get("operatorType"))
+                || !expectedOutsideNo.equals(body.get("outSideNo")) || !(body.get("wayBillNo") instanceof Long tracking)
+                || !expectedWaybillNo.equals(String.valueOf(tracking))
+                || !account.sellerId().equals(body.get("sellerId")) || !account.subscriptionId().equals(body.get("subscriptionId")))
+            return new AneCancellationResult("cancel_rejected","壹米电子面单取消资料不完整或与原订单不一致");
+        try {
+            JsonNode root = post("electTabelSaveOrder",body,account);
+            if (!validRoot(root)) return cancelUnknown(root,account);
+            JsonNode data = root.path("data");
+            if (foreignIdentifier(data,"outSideNo",expectedOutsideNo) || foreignIdentifier(data,"wayBillNo",expectedWaybillNo))
+                return cancelUnknown(root,account);
+            JsonNode status = data.path("status");
+            if (root.path("success").booleanValue() && data.isObject() && status.isIntegralNumber()) {
+                if (status.bigIntegerValue().signum() == 0) {
+                    if (!expectedOutsideNo.equals(data.path("outSideNo").textValue())
+                            || !expectedWaybillNo.equals(data.path("wayBillNo").textValue())) return cancelUnknown(root,account);
+                    return new AneCancellationResult("cancelled","壹米订单已取消，原运单不可用于走货；如需重新下单，请新建发货单");
+                }
+                if (status.bigIntegerValue().equals(java.math.BigInteger.ONE)) return cancelRejected(root,account);
+            }
+            if (!root.path("success").booleanValue()
+                    && (data.isMissingNode() || data.isNull() || data.isObject() && (status.isMissingNode() || status.isNull()
+                        || status.isIntegralNumber() && status.bigIntegerValue().equals(java.math.BigInteger.ONE)))
+                    && (explicitError(root) || explicitError(data) || status.isIntegralNumber() && status.bigIntegerValue().equals(java.math.BigInteger.ONE)))
+                return cancelRejected(root,account);
+            return cancelUnknown(root,account);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt(); return cancelUnknown();
         } catch (Exception failure) { return cancelUnknown(); }
@@ -166,6 +200,50 @@ public class YimiOrderClient {
         String text = value.replaceAll("[\\p{Cntrl}]"," ");
         for (String secret : List.of(account.appKey(),account.appSecret())) if (!secret.isEmpty()) text = text.replace(secret,"[REDACTED]");
         return text.length() <= 2000 ? text : text.substring(0,2000);
+    }
+    private static boolean foreignIdentifier(JsonNode data,String field,String expected) {
+        return data.has(field) && (!data.path(field).isTextual() || !expected.equals(data.path(field).textValue()));
+    }
+    private static boolean explicitError(JsonNode node) {
+        for (String field : List.of("errorCode","errorMsg","errorMessages"))
+            if (node.path(field).isTextual() && !node.path(field).asText().isBlank()) return true;
+        return false;
+    }
+    private static String cancellationDiagnostic(JsonNode root,YimiProperties account) {
+        if (root == null) return "";
+        var parts = new ArrayList<String>();
+        JsonNode data = root.path("data");
+        parts.add("data=" + nodeShape(data));
+        if (data.isObject()) parts.add("status=" + nodeShape(data.path("status")) + ":" + diagnosticValue(data.path("status")));
+        for (String field : List.of("errorCode","errorMsg","errorMessages")) {
+            if (root.hasNonNull(field)) parts.add(field + "=" + diagnosticValue(root.path(field)));
+            if (data.isObject() && data.hasNonNull(field)) parts.add("data." + field + "=" + diagnosticValue(data.path(field)));
+        }
+        if (data.isTextual()) parts.add("data.text=" + data.textValue());
+        if (data.isObject() && data.path("data").isTextual()) parts.add("data.text=" + data.path("data").textValue());
+        String text = String.join("; ",parts);
+        for (String secret : List.of(account.appKey(),account.appSecret()))
+            if (!secret.isEmpty()) text = text.replace(secret,"[REDACTED]");
+        text = text.replaceAll("[\\p{Cntrl}]"," ");
+        return text.length() <= 160 ? text : text.substring(0,160);
+    }
+    private static String diagnosticValue(JsonNode value) {
+        return value.isValueNode() && !value.isNull() ? value.asText() : nodeShape(value);
+    }
+    private static String nodeShape(JsonNode value) {
+        if (value.isMissingNode()) return "missing";
+        return value.getNodeType().name().toLowerCase(Locale.ROOT);
+    }
+    private static AneCancellationResult cancelUnknown(JsonNode root,YimiProperties account) {
+        return new AneCancellationResult("cancel_unknown","壹米取消结果待核实" + cancellationDetail(root,account)
+                + "，请联系网点核对原订单和运单，勿重复取消或重新下单");
+    }
+    private static AneCancellationResult cancelRejected(JsonNode root,YimiProperties account) {
+        return new AneCancellationResult("cancel_rejected","壹米拒绝取消" + cancellationDetail(root,account) + "，请联系网点核实原订单");
+    }
+    private static String cancellationDetail(JsonNode root,YimiProperties account) {
+        String diagnostic = cancellationDiagnostic(root,account);
+        return diagnostic.isBlank() ? "" : "（" + diagnostic + "）";
     }
     private static YimiOrderResult rejected(String message) { return new YimiOrderResult(new AneOrderResult("rejected","","",message),Map.of()); }
     private static YimiOrderResult unknown() { return new YimiOrderResult(AneOrderResult.unknown("壹米下单结果待核实，请联系网点核对，勿重复下单"),Map.of()); }

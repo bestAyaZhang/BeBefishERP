@@ -1,5 +1,6 @@
 package com.bebefish.erp.shipping.logistics.yimi;
 
+import com.bebefish.erp.shipping.logistics.AneCancellationResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -11,6 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Flow;
 import java.util.concurrent.CompletableFuture;
@@ -174,6 +177,145 @@ class YimiOrderClientTest {
             reply("{\"success\":true,\"data\":{\"success\":true,\"data\":\"1条处理成功,0处理失败。\"," + extra + "}}");
             assertThat(client.cancelOrder(Map.of("wayBillNo","123456789012"),account).state()).isEqualTo("cancel_unknown");
         }
+    }
+
+    @Test void electronicCancellationSendsFrozenBodyOnceUsingHistoricalCredentialsDespiteIncompleteCurrentPickup() throws Exception {
+        var laterAccount = new YimiProperties(true, null, "test-key", "test-secret", "seller", "subscription", true, "", "");
+        assertThat(laterAccount.ready()).isTrue();
+        assertThat(laterAccount.orderReady()).isFalse();
+        var body = electronicCancellationBody();
+        var result = cancelElectronic(body, laterAccount, "BF1", "123456789012");
+        assertThat(result.state()).isEqualTo("cancelled");
+        var envelope = mapper.readTree(sent);
+        assertThat(envelope.path("method").asText()).isEqualTo("electTabelSaveOrder");
+        assertThat(mapper.readTree(envelope.path("messageBody").asText())).isEqualTo(mapper.readTree("""
+                {"operatorType":"cancel","outSideNo":"BF1","wayBillNo":123456789012,
+                 "sellerId":"seller","subscriptionId":"subscription","salesmanCode":"00123","salesmanName":"原揽收人",
+                 "electSenderRequest":{"senderName":"原寄件人"},"electReceiverRequest":{"receiverName":"原收件人"},
+                 "goodsRequest":{"goodsName":"原货物","goodsQuqntity":1},"settlementType":"1","serviceType":1}
+                """));
+        assertThat(body).containsEntry("operatorType", "cancel").containsEntry("wayBillNo", 123456789012L);
+        verify(transport, times(1)).send(any(), any(HttpResponse.BodyHandler.class));
+    }
+
+    @Test void electronicCancellationRejectsMissingOrMismatchedFrozenIdentityBeforeTransport() throws Exception {
+        for (String field : List.of("operatorType", "outSideNo", "wayBillNo", "sellerId", "subscriptionId")) {
+            var body = electronicCancellationBody();
+            body.remove(field);
+            assertThat(cancelElectronic(body, account, "BF1", "123456789012").state()).as("missing %s", field).isEqualTo("cancel_rejected");
+            body.put(field, "foreign");
+            assertThat(cancelElectronic(body, account, "BF1", "123456789012").state()).as("wrong %s", field).isEqualTo("cancel_rejected");
+        }
+        for (Object tracking : List.of("123456789012", 123456789012.0, 123L, 999999999999L)) {
+            var body = electronicCancellationBody(); body.put("wayBillNo", tracking);
+            assertThat(cancelElectronic(body, account, "BF1", "123456789012").state()).isEqualTo("cancel_rejected");
+        }
+        assertThat(cancelElectronic(null, account, "BF1", "123456789012").state()).isEqualTo("cancel_rejected");
+        assertThat(cancelElectronic(electronicCancellationBody(), null, "BF1", "123456789012").state()).isEqualTo("cancel_rejected");
+        assertThat(cancelElectronic(electronicCancellationBody(), new YimiProperties(true,null,"test-key","test-secret","","subscription"), "BF1", "123456789012").state()).isEqualTo("cancel_rejected");
+        for (String outside : new String[]{null, "", "OTHER"})
+            assertThat(cancelElectronic(electronicCancellationBody(), account, outside, "123456789012").state()).isEqualTo("cancel_rejected");
+        for (String tracking : new String[]{null, "", "123", "999999999999"})
+            assertThat(cancelElectronic(electronicCancellationBody(), account, "BF1", tracking).state()).isEqualTo("cancel_rejected");
+        verify(transport, never()).send(any(), any(HttpResponse.BodyHandler.class));
+    }
+
+    @Test void electronicCancellationRequiresBooleanEnvelopeIntegralZeroAndBothMatchingTextIdentifiers() throws Exception {
+        for (String response : new String[]{"bad", "null", "[]", "{}", "{\"success\":\"true\"}",
+                "{\"success\":true}", "{\"success\":true,\"data\":[]}",
+                "{\"success\":true,\"data\":{\"outSideNo\":\"BF1\",\"wayBillNo\":\"123456789012\"}}",
+                "{\"success\":false,\"data\":{\"status\":0,\"outSideNo\":\"BF1\",\"wayBillNo\":\"123456789012\"}}"}) {
+            reply(response);
+            clearInvocations(transport);
+            assertThat(cancelElectronic(electronicCancellationBody(), account, "BF1", "123456789012").state()).as(response).isEqualTo("cancel_unknown");
+            verify(transport, times(1)).send(any(), any(HttpResponse.BodyHandler.class));
+        }
+        for (String status : new String[]{"\"0\"", "0.0", "null", "false", "[]", "{}", "2", "4294967296"}) {
+            reply("{\"success\":true,\"data\":{\"status\":" + status + ",\"outSideNo\":\"BF1\",\"wayBillNo\":\"123456789012\"}}");
+            assertThat(cancelElectronic(electronicCancellationBody(), account, "BF1", "123456789012").state()).as("status=%s", status).isEqualTo("cancel_unknown");
+        }
+        for (String identifiers : new String[]{"", "\"outSideNo\":\"BF1\",", "\"wayBillNo\":\"123456789012\",",
+                "\"outSideNo\":\"OTHER\",\"wayBillNo\":\"123456789012\",",
+                "\"outSideNo\":\"BF1\",\"wayBillNo\":\"999999999999\",",
+                "\"outSideNo\":\"BF1\",\"wayBillNo\":123456789012,",
+                "\"outSideNo\":{},\"wayBillNo\":\"123456789012\","}) {
+            reply("{\"success\":true,\"data\":{" + identifiers + "\"status\":0}}");
+            assertThat(cancelElectronic(electronicCancellationBody(), account, "BF1", "123456789012").state()).as(identifiers).isEqualTo("cancel_unknown");
+        }
+    }
+
+    @Test void electronicCancellationDistinguishesExplicitRejectionFromForeignOrContradictoryRejection() throws Exception {
+        for (String response : new String[]{"{\"success\":false,\"errorCode\":\"AUTH\",\"errorMsg\":\"无权限\"}",
+                "{\"success\":true,\"data\":{\"status\":1,\"errorMsg\":\"已开单不可取消\"}}"}) {
+            reply(response);
+            clearInvocations(transport);
+            assertThat(cancelElectronic(electronicCancellationBody(), account, "BF1", "123456789012").state()).isEqualTo("cancel_rejected");
+            verify(transport, times(1)).send(any(), any(HttpResponse.BodyHandler.class));
+        }
+        for (String response : new String[]{"{\"success\":true,\"data\":{\"status\":1,\"outSideNo\":\"OTHER\",\"errorMsg\":\"拒绝\"}}",
+                "{\"success\":false,\"errorMsg\":\"拒绝\",\"data\":{\"status\":0}}",
+                "{\"success\":false,\"errorMsg\":\"拒绝\",\"data\":{\"wayBillNo\":\"999999999999\"}}",
+                "{\"success\":false,\"errorMsg\":\"拒绝\",\"data\":[]}",
+                "{\"success\":false,\"errorMsg\":\"拒绝\",\"data\":\"not an object\"}"}) {
+            reply(response);
+            clearInvocations(transport);
+            assertThat(cancelElectronic(electronicCancellationBody(), account, "BF1", "123456789012").state()).isEqualTo("cancel_unknown");
+            verify(transport, times(1)).send(any(), any(HttpResponse.BodyHandler.class));
+        }
+    }
+
+    @Test void cancellationDiagnosticsAreWhitelistedRedactedAndBoundedForFutureUnknownsAndRejections() throws Exception {
+        reply("{\"success\":true,\"errorCode\":\"ROOT\",\"appSecret\":\"raw-envelope\",\"data\":{\"status\":\"0\",\"errorCode\":\"BUSINESS\",\"errorMsg\":\"test-secret test-key\\n原因\",\"errorMessages\":\"" + "长".repeat(300) + "\",\"messageBody\":\"private-address\"}}");
+        var unknown = cancelElectronic(electronicCancellationBody(), account, "BF1", "123456789012");
+        assertThat(unknown.state()).isEqualTo("cancel_unknown");
+        assertThat(unknown.message()).contains("ROOT", "BUSINESS", "原因", "[REDACTED]", "status");
+        assertThat(unknown.message()).doesNotContain("test-secret", "test-key", "raw-envelope", "private-address", "\n", "\r");
+        assertThat(unknown.message().length()).isLessThan(250);
+        reply("{\"success\":false,\"errorCode\":\"AUTH\",\"errorMsg\":\"test-secret test-key\\t不可取消\"}");
+        var rejected = cancelElectronic(electronicCancellationBody(), account, "BF1", "123456789012");
+        assertThat(rejected.state()).isEqualTo("cancel_rejected");
+        assertThat(rejected.message()).contains("AUTH", "不可取消").doesNotContain("test-secret", "test-key", "\t");
+        reply("{\"success\":true,\"data\":\"test-secret test-key 未知结构\"}");
+        var legacy = client.cancelOrder(Map.of("wayBillNo", "123456789012"), account);
+        assertThat(legacy.state()).isEqualTo("cancel_unknown");
+        assertThat(legacy.message()).contains("未知结构").doesNotContain("test-secret", "test-key");
+    }
+
+    @Test void electronicCancellationTimeoutHttpFailureAndInterruptionNeverRetryOrFallback() throws Exception {
+        when(transport.send(any(), any(HttpResponse.BodyHandler.class))).thenThrow(new HttpTimeoutException("test-secret test-key"));
+        var timeout = cancelElectronic(electronicCancellationBody(), account, "BF1", "123456789012");
+        assertThat(timeout.state()).isEqualTo("cancel_unknown");
+        assertThat(timeout.message()).doesNotContain("test-secret", "test-key");
+        verify(transport, times(1)).send(any(), any(HttpResponse.BodyHandler.class));
+        clearInvocations(transport);
+        var response = (HttpResponse<String>) mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(503);
+        when(transport.send(any(), any(HttpResponse.BodyHandler.class))).thenReturn(response);
+        assertThat(cancelElectronic(electronicCancellationBody(), account, "BF1", "123456789012").state()).isEqualTo("cancel_unknown");
+        verify(transport, times(1)).send(any(), any(HttpResponse.BodyHandler.class));
+        clearInvocations(transport);
+        when(transport.send(any(), any(HttpResponse.BodyHandler.class))).thenThrow(new InterruptedException("test-secret"));
+        try {
+            assertThat(cancelElectronic(electronicCancellationBody(), account, "BF1", "123456789012").state()).isEqualTo("cancel_unknown");
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            verify(transport, times(1)).send(any(), any(HttpResponse.BodyHandler.class));
+        } finally { Thread.interrupted(); }
+    }
+
+    private Map<String,Object> electronicCancellationBody() {
+        var body = new LinkedHashMap<String,Object>();
+        body.put("operatorType", "cancel"); body.put("outSideNo", "BF1"); body.put("wayBillNo", 123456789012L);
+        body.put("sellerId", "seller"); body.put("subscriptionId", "subscription");
+        body.put("salesmanCode", "00123"); body.put("salesmanName", "原揽收人");
+        body.put("electSenderRequest", Map.of("senderName", "原寄件人"));
+        body.put("electReceiverRequest", Map.of("receiverName", "原收件人"));
+        body.put("goodsRequest", Map.of("goodsName", "原货物", "goodsQuqntity", 1));
+        body.put("settlementType", "1"); body.put("serviceType", 1);
+        return body;
+    }
+
+    private AneCancellationResult cancelElectronic(Map<String,Object> body,YimiProperties configured,String outside,String tracking) throws Exception {
+        return client.cancelElectronicOrder(body,configured,outside,tracking);
     }
 
     @Test void nonSuccessHttpAndInterruptsRemainUncertain() throws Exception {
