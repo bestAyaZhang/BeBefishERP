@@ -77,6 +77,27 @@ describe('logistics management',()=>{
     expect(saveAccount).toHaveBeenCalledTimes(1);expect(getCompany).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
+  it('saves and reloads HuiSen pickup settings on the existing Yimi account',async()=>{
+    permissions(['logistics:view','logistics:configure']);const service=createMockLogisticsService();
+    const company=await service.createCompany({code:'PICKUP',name:'汇森合作物流',provider:'YIMI',status:'disabled',contactName:'',contactPhone:'',sortOrder:0,remark:'',version:0});
+    const account=await service.saveAccount(company.id,{version:0,code:'',customerCode:'',dictId:'',orderUrl:'',appKey:'private-key',appSecret:'private-secret',yimi:{sellerId:'seller',subscriptionId:'subscription'},sender:{name:'',phone:'',province:'',city:'',county:'',address:''}});
+    const wrapper=mount(LogisticsManagementView,{props:{service}});await flushPromises();
+    await wrapper.get(`[data-testid="company-configure-${company.id}"]`).trigger('click');
+    await wrapper.get('[data-testid="account-tab"]').trigger('click');await flushPromises();
+    await wrapper.get('[name="designatedPickup"]').setValue(true);
+    await wrapper.get('[name="salesmanCode"]').setValue('00123');
+    await wrapper.get('[name="salesmanName"]').setValue('揽收员甲');
+    await wrapper.get('[data-testid="account-form"]').trigger('submit');await flushPromises();
+    const saved=await service.getAccount(company.id);
+    expect(saved).toMatchObject({id:account.id,appKeyConfigured:true,appSecretConfigured:true,ready:false,yimi:{designatedPickup:true,salesmanCode:'00123',salesmanName:'揽收员甲'}});
+    expect(wrapper.get('[name="designatedPickup"]').element).toHaveProperty('checked',true);
+    expect(wrapper.get('[name="salesmanCode"]').element).toHaveProperty('value','00123');
+    expect(wrapper.get('[name="appKey"]').element).toHaveProperty('value','');
+    expect(wrapper.get('[name="appSecret"]').element).toHaveProperty('value','');
+    expect(messages.value.some(m=>m.text==='接口及寄件资料已保存')).toBe(true);
+    expect(wrapper.text()).toContain('本地测试数据，不支持真实接口下单');
+    wrapper.unmount();
+  });
   it('displays catalog province names for saved template codes while preserving unknown origin values',async()=>{
     permissions(['logistics:view']);const service=createMockLogisticsService();
     const company=await service.createCompany({code:'A',name:'合作甲',provider:'MANUAL',status:'disabled',contactName:'',contactPhone:'',sortOrder:0,remark:'',version:0});

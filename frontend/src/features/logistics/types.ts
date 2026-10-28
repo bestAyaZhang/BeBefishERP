@@ -2,7 +2,7 @@ export type CarrierProvider = 'ANE'|'MANUAL'|'YIMI';
 export interface Company { id:number; code:string; name:string; provider:CarrierProvider; status:string; contactName:string; contactPhone:string; sortOrder:number; remark:string; version:number; createdAt:string; updatedAt:string }
 export type CompanyInput = Omit<Company, 'id'|'createdAt'|'updatedAt'>;
 export interface Sender { name:string; phone:string; province:string; city:string; county:string; address:string }
-export interface YimiAccount { sellerId:string; subscriptionId:string }
+export interface YimiAccount { sellerId:string; subscriptionId:string; designatedPickup?:boolean; salesmanCode?:string; salesmanName?:string }
 export interface AccountInput { version:number; code:string; customerCode:string; dictId:string; appKey?:string; customerPass?:string; appSecret?:string; yimi?:YimiAccount; orderUrl:string; sender:Sender }
 export interface AccountView { id:number; companyId:number; environment:string; version:number; accountVersionId:number; code:string; customerCode:string; dictId:string; orderUrl:string; sender:Sender; appKeyConfigured:boolean; customerPassConfigured:boolean; appSecretConfigured?:boolean; yimi?:YimiAccount; ready:boolean; message:string }
 export interface Band { lowerExclusive:number; upperInclusive:number|null; firstQuantity:number|null; firstFee:number|null; additionalQuantity:number|null; additionalFee:number|null }
