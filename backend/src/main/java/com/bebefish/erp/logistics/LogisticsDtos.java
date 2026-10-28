@@ -15,7 +15,14 @@ public final class LogisticsDtos {
             String contactPhone,Integer sortOrder,String remark,Long version) {}
     public record StatusInput(String status,Long version) {}
     public record Sender(String name,String phone,String province,String city,String county,String address) {}
-    public record YimiAccount(String sellerId,String subscriptionId) {}
+    public record YimiAccount(String sellerId,String subscriptionId,boolean designatedPickup,String salesmanCode,String salesmanName) {
+        public YimiAccount(String sellerId,String subscriptionId){this(sellerId,subscriptionId,false,"","");}
+        public YimiAccount {
+            salesmanCode=salesmanCode==null?"":salesmanCode.strip();
+            salesmanName=salesmanName==null?"":salesmanName.strip();
+            designatedPickup=designatedPickup||!salesmanCode.isEmpty()||!salesmanName.isEmpty();
+        }
+    }
     public record AccountInput(long version,String code,String customerCode,String dictId,String appKey,
             String customerPass,String orderUrl,Sender sender,String appSecret,YimiAccount yimi) {
         public AccountInput(long version,String code,String customerCode,String dictId,String appKey,

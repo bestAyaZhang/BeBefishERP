@@ -47,6 +47,46 @@ class YimiShipmentIntegrationTest {
     @MockBean YimiOrderClient yimi;
     @MockBean AneOrderClient ane;
 
+    @Test void freezesDesignatedPickupAndHistoricalOperationsDoNotRequireLaterIncompletePickupProfile() throws Exception {
+        var f=fixture();var current=catalog.account(f.company.id());
+        var initial=mapper.valueToTree(account(current.version(),"","","seller-old","sub-old"));
+        ((com.fasterxml.jackson.databind.node.ObjectNode)initial.path("yimi")).put("designatedPickup",true).put("salesmanCode","00012345").put("salesmanName","原揽收员");
+        catalog.saveAccount(f.company.id(),mapper.treeToValue(initial,AccountInput.class));
+        var saved=create(f);stubSuccess();orders.place(saved.id(),new PlaceAneOrderRequest(saved.version()),"test");
+        verify(yimi).createOrder(argThat(body->"00012345".equals(body.get("salesmanCode"))&&"原揽收员".equals(body.get("salesmanName"))&&!body.containsKey("designatedPickup")),any(),anyString());
+        var originalSnapshot=jdbc.queryForObject("select carrier_business_snapshot from shipment_logistics_order where shipment_id=?",String.class,saved.id());
+        assertThat(mapper.readTree(originalSnapshot).path("salesmanCode").asText()).isEqualTo("00012345");
+        current=catalog.account(f.company.id());
+        var incomplete=mapper.valueToTree(account(current.version(),"","","seller-old","sub-old"));
+        ((com.fasterxml.jackson.databind.node.ObjectNode)incomplete.path("yimi")).put("designatedPickup",true).put("salesmanCode","00012346").put("salesmanName","");
+        assertThat(catalog.saveAccount(f.company.id(),mapper.treeToValue(incomplete,AccountInput.class)).ready()).isFalse();
+        when(yimi.queryTrace(anyString(),any())).thenReturn(new YimiTraceResult("empty","暂无轨迹",List.of()));
+        assertThat(orders.trace(saved.id()).status()).isEqualTo("empty");
+        when(yimi.cancelOrder(anyMap(),any())).thenReturn(new AneCancellationResult("cancelled","已取消"));
+        when(yimi.cancelElectronicOrder(anyMap(),any(),anyString(),anyString())).thenReturn(new AneCancellationResult("cancelled","已取消"));
+        assertThat(orders.cancel(saved.id(),new CancelAneOrderRequest(shipments.get(saved.id()).version()),"test").state()).isEqualTo("cancelled");
+        verify(yimi).cancelElectronicOrder(argThat(body->"cancel".equals(body.get("operatorType"))&&Long.valueOf(778899444496L).equals(body.get("wayBillNo"))&&"00012345".equals(body.get("salesmanCode"))),any(),anyString(),eq("778899444496"));
+        verify(yimi,never()).cancelOrder(anyMap(),any());
+        assertThat(jdbc.queryForObject("select carrier_business_snapshot from shipment_logistics_order where shipment_id=?",String.class,saved.id())).isEqualTo(originalSnapshot);
+        verifyNoInteractions(ane);
+    }
+
+    @Test void uncertainElectronicCancellationNeverRetriesOrSwitchesToGenericCancellation() throws Exception {
+        var f=fixture();var current=catalog.account(f.company.id());
+        var initial=mapper.valueToTree(account(current.version(),"","","seller-old","sub-old"));
+        ((com.fasterxml.jackson.databind.node.ObjectNode)initial.path("yimi")).put("designatedPickup",true).put("salesmanCode","00012345").put("salesmanName","原揽收员");
+        catalog.saveAccount(f.company.id(),mapper.treeToValue(initial,AccountInput.class));
+        var saved=create(f);stubSuccess();orders.place(saved.id(),new PlaceAneOrderRequest(saved.version()),"test");
+        when(yimi.cancelOrder(anyMap(),any())).thenReturn(new AneCancellationResult("cancel_unknown","待核实"));
+        when(yimi.cancelElectronicOrder(anyMap(),any(),anyString(),anyString())).thenReturn(new AneCancellationResult("cancel_unknown","待核实"));
+        assertThat(orders.cancel(saved.id(),new CancelAneOrderRequest(shipments.get(saved.id()).version()),"test").state()).isEqualTo("cancel_unknown");
+        current=catalog.account(f.company.id());catalog.saveAccount(f.company.id(),account(current.version(),"","","seller-old","sub-old"));
+        assertThat(orders.cancel(saved.id(),new CancelAneOrderRequest(shipments.get(saved.id()).version()),"test").state()).isEqualTo("cancel_unknown");
+        assertThat(shipments.get(saved.id()).content().trackingNo()).isEqualTo("778899444496");
+        verify(yimi,times(1)).cancelElectronicOrder(anyMap(),any(),anyString(),anyString());verify(yimi,never()).cancelOrder(anyMap(),any());
+        verifyNoInteractions(ane);
+    }
+
     @Test
     @Transactional(propagation=Propagation.NOT_SUPPORTED)
     void commitsCompleteReservationBeforeCallingYimiOutsideAnyTransaction() {

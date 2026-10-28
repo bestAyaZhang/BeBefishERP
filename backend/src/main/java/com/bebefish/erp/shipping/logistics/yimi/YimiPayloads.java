@@ -10,14 +10,18 @@ public final class YimiPayloads {
     private YimiPayloads() { }
     public static Map<String,Object> orderParams(ShipmentContent content,String outsideNo,YimiProperties account,String productCode) {
         validateOrderContent(content, productCode);
-        require(account != null && account.ready(), "壹米接口配置不完整，请补充商家及订购信息");
+        require(account != null && account.orderReady(), "壹米接口配置不完整，请补充商家、订购及指定揽收业务员信息");
         text(outsideNo, 50, true, "客户订单号");
         var draft = content.orderDraft();
         var options = draft.yimi();
         var body = new TreeMap<String,Object>();
         body.put("sellerId", account.sellerId()); body.put("subscriptionId", account.subscriptionId());
+        if(account.designatedPickup()) {
+            body.put("salesmanCode",account.salesmanCode());body.put("salesmanName",account.salesmanName());
+        }
         body.put("outSideNo", outsideNo); body.put("operatorType", "add"); body.put("serviceType", Integer.valueOf(productCode));
-        body.put("settlementType", switch (draft.payType()) { case 102 -> 1; case 104 -> 2; case 103 -> 3; default -> throw new IllegalArgumentException("付款方式不受支持"); });
+        int settlement=switch (draft.payType()) { case 102 -> 1; case 104 -> 2; case 103 -> 3; default -> throw new IllegalArgumentException("付款方式不受支持"); };
+        body.put("settlementType",account.designatedPickup()?String.valueOf(settlement):settlement);
         body.put("visitDelivery", options.visitDelivery());
         int delivery = deliveryFlag(draft);
         body.put("deliveryFlag", delivery);

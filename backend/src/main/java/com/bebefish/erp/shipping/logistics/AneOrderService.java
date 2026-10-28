@@ -81,6 +81,11 @@ public class AneOrderService {
             var reserved=routing.claimCancellation(id,input.version(),operator);
             if(!reserved.claim().claimed())return reserved.claim().order();
             if(reserved.operation().yimi()!=null) {
+                if(reserved.operation().business()!=null) {
+                    var frozen=new java.util.TreeMap<String,Object>(reserved.operation().business());
+                    frozen.put("operatorType","cancel");frozen.put("wayBillNo",Long.valueOf(reserved.claim().order().trackingNo()));
+                    return store.finishCancellation(id,yimi.cancelElectronicOrder(frozen,reserved.operation().yimi(),reserved.claim().order().orderNo(),reserved.claim().order().trackingNo()),operator);
+                }
                 var params=java.util.Map.<String,Object>of("wayBillNo",reserved.claim().order().trackingNo());
                 return store.finishCancellation(id,yimi.cancelOrder(params,reserved.operation().yimi()),operator);
             }

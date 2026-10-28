@@ -117,7 +117,7 @@ public class LogisticsCatalogService {
                 AccountInput authenticated=read(cipher.decrypt(encrypted,context(r.getLong("account_id"),r.getString("environment"),r.getLong("version_no"))),AccountInput.class);
                 if(!publicConfig(authenticated).equals(c)) throw new IllegalStateException();
                 validateOrderUrl(provider,authenticated.orderUrl());
-                if(provider.equals("YIMI") && !yimiProperties(authenticated).ready()) throw new IllegalStateException();
+                if(provider.equals("YIMI") && !yimiProperties(authenticated).orderReady()) throw new IllegalStateException();
             } catch(BusinessException|IllegalArgumentException|IllegalStateException e) {
                 ready=false; message="接口密钥无法验证，请检查主密钥与账号配置";
             }
@@ -141,9 +141,9 @@ public class LogisticsCatalogService {
         // Changing either public identifier must never discover or inherit another account's secrets.
         if(company.provider().equals("YIMI") && oldId!=null && app.isEmpty()) {
             AccountInput currentPublic=read(jdbc.queryForObject("select config_json from logistics_account_version where id=?",String.class,oldVersion),AccountInput.class);
-            if(Objects.equals(normalized.yimi(),currentPublic.yimi())) {
+            if(sameYimiIdentity(normalized.yimi(),currentPublic.yimi())) {
                 previous=resolveVersion(oldVersion).config();
-                if(!Objects.equals(normalized.yimi(),previous.yimi())) throw conflict("LOGISTICS_SECRET_UNAVAILABLE","物流密钥无法验证，请检查账号配置");
+                if(!sameYimiIdentity(normalized.yimi(),previous.yimi())) throw conflict("LOGISTICS_SECRET_UNAVAILABLE","物流密钥无法验证，请检查账号配置");
                 app=clean(previous.appKey());
             }
         }
@@ -198,7 +198,8 @@ public class LogisticsCatalogService {
         if(provider.equals("ANE")) { if(url.isEmpty()) url=expectedOrderUrl(); validateOrderUrl(url); }
         if(provider.equals("YIMI")) { if(url.isEmpty()) url=YimiProperties.expectedUrl(!environment.equals("production")).toString(); validateOrderUrl(provider,url); }
         YimiAccount yimi=provider.equals("YIMI")?new YimiAccount(text(in.yimi()==null?null:in.yimi().sellerId(),100,"商家ID",false),
-            text(in.yimi()==null?null:in.yimi().subscriptionId(),100,"订购ID",false)):null;
+            text(in.yimi()==null?null:in.yimi().subscriptionId(),100,"订购ID",false),in.yimi()!=null&&in.yimi().designatedPickup(),
+            text(in.yimi()==null?null:in.yimi().salesmanCode(),50,"揽收业务员工号",false),text(in.yimi()==null?null:in.yimi().salesmanName(),50,"揽收业务员姓名",false)):null;
         return new AccountInput(in.version(),text(in.code(),100,"接入编码",false),text(in.customerCode(),30,"客户编码",false),text(in.dictId(),30,"网点编码",false),
             text(in.appKey(),500,"应用密钥",false),text(in.customerPass(),30,"客户密钥",false),url,s,
             text(in.appSecret(),500,"应用密钥",false),yimi);
@@ -222,7 +223,8 @@ public class LogisticsCatalogService {
     private YimiProperties yimiProperties(AccountInput c) {
         YimiAccount yimi=c.yimi();
         return new YimiProperties(!environment.equals("production"),URI.create(c.orderUrl()),c.appKey(),c.appSecret(),
-            yimi==null?"":yimi.sellerId(),yimi==null?"":yimi.subscriptionId());
+            yimi==null?"":yimi.sellerId(),yimi==null?"":yimi.subscriptionId(),yimi!=null&&yimi.designatedPickup(),
+            yimi==null?"":yimi.salesmanCode(),yimi==null?"":yimi.salesmanName());
     }
     private String identityHash(String provider,AccountInput c,String appKey) {
         if(!provider.equals("YIMI")) return hash(c.code()+"\u0000"+c.customerCode()+"\u0000"+c.dictId());
@@ -231,13 +233,17 @@ public class LogisticsCatalogService {
     }
     private boolean ready(String provider,AccountInput c,boolean app,boolean pass,boolean appSecret) {
         boolean configured=provider.equals("ANE")?app&&pass&&!clean(c.code()).isEmpty()&&!clean(c.customerCode()).isEmpty()&&!clean(c.dictId()).isEmpty()
-            :provider.equals("YIMI")&&app&&appSecret&&c.yimi()!=null&&!clean(c.yimi().sellerId()).isEmpty()&&!clean(c.yimi().subscriptionId()).isEmpty();
+            :provider.equals("YIMI")&&app&&appSecret&&c.yimi()!=null&&!clean(c.yimi().sellerId()).isEmpty()&&!clean(c.yimi().subscriptionId()).isEmpty()
+                &&(!c.yimi().designatedPickup()||!clean(c.yimi().salesmanCode()).isEmpty()&&!clean(c.yimi().salesmanName()).isEmpty());
         if(!configured) return false;
         Sender s=c.sender();
         return s!=null && !clean(s.name()).isEmpty()&&!clean(s.phone()).isEmpty()&&ProvinceCatalog.normalize(s.province())!=null
                 &&!clean(s.city()).isEmpty()&&!clean(s.county()).isEmpty()&&!clean(s.address()).isEmpty();
     }
     private AccountInput publicConfig(AccountInput c) { return new AccountInput(c.version(),c.code(),c.customerCode(),c.dictId(),null,null,c.orderUrl(),c.sender(),null,c.yimi()); }
+    private static boolean sameYimiIdentity(YimiAccount left,YimiAccount right) {
+        return left!=null&&right!=null&&Objects.equals(left.sellerId(),right.sellerId())&&Objects.equals(left.subscriptionId(),right.subscriptionId());
+    }
     public List<Template> templates(long companyId) {
         company(companyId);
         return jdbc.query("select * from logistics_template where company_id=? and environment=? order by id",this::templateRow,companyId,environment);

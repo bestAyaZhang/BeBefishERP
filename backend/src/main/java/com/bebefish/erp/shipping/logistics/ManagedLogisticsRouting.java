@@ -9,6 +9,7 @@ import com.bebefish.erp.shipping.application.ShipmentFreightCoordinator;
 import com.bebefish.erp.shipping.domain.ShipmentRepository;
 import com.bebefish.erp.shipping.logistics.yimi.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -105,6 +106,7 @@ public class ManagedLogisticsRouting {
         }
         if(!operation.ready())throw business("LOGISTICS_NOT_CONFIGURED","物流接口账号或寄件资料未配置完整");
         if(operation.yimi()!=null) {
+            if(!operation.yimi().orderReady())throw business("LOGISTICS_NOT_CONFIGURED","请补全指定揽收业务员工号和姓名");
             try{YimiPayloads.validateOrderContent(shipment.content(),operation.productCode());}
             catch(IllegalArgumentException error){throw new BusinessException("VALIDATION_FAILED",HttpStatus.BAD_REQUEST,error.getMessage());}
         } else AneOrderService.validateOrderContent(shipment.content());
@@ -130,10 +132,28 @@ public class ManagedLogisticsRouting {
         if(!operation.ready()) throw business("LOGISTICS_NOT_CONFIGURED","原物流账号凭据不可用，请由管理员核实并更新同一账号凭据");
         if(operation.yimi()==null)AneOrderService.validateOrderContent(store.cancellationSnapshot(id));
         else if(!order.trackingNo().matches("[0-9]{12}"))throw business("LOGISTICS_SNAPSHOT_INVALID","原壹米运单号不完整，请联系网点核实");
+        if(operation.yimi()!=null) {
+            var frozen=frozenBusiness(id);
+            if(frozen!=null&&(frozen.containsKey("salesmanCode")||frozen.containsKey("salesmanName"))) {
+                if(!(frozen.get("salesmanCode") instanceof String code)||code.isBlank()
+                        ||!(frozen.get("salesmanName") instanceof String name)||name.isBlank()
+                        ||!"add".equals(frozen.get("operatorType"))||!order.orderNo().equals(frozen.get("outSideNo"))
+                        ||!operation.yimi().sellerId().equals(frozen.get("sellerId"))||!operation.yimi().subscriptionId().equals(frozen.get("subscriptionId")))
+                    throw business("LOGISTICS_SNAPSHOT_INVALID","原电子面单业务资料不完整或账号不一致，请核实后处理");
+                operation=new Operation(operation.companyId(),operation.accountId(),operation.accountVersionId(),operation.companyName(),null,operation.yimi(),null,frozen);
+            }
+        }
         var claim=store.claimCancellation(id,version,operator,operation.testEnvironment());
         if(claim.claimed())jdbc.update("update shipment_logistics_order set cancellation_account_version_id=:version where shipment_id=:id",
                 new MapSqlParameterSource("id",id).addValue("version",operation.accountVersionId()));
         return new Cancellation(claim,operation);
+    }
+
+    private Map<String,Object> frozenBusiness(long id) {
+        String value=jdbc.queryForObject("select carrier_business_snapshot from shipment_logistics_order where shipment_id=:id",new MapSqlParameterSource("id",id),String.class);
+        if(value==null)return null;
+        try{return mapper.readValue(value,new TypeReference<Map<String,Object>>(){});}
+        catch(JsonProcessingException error){throw business("LOGISTICS_SNAPSHOT_INVALID","原电子面单业务资料无法读取，请联系网点核实");}
     }
 
     public Binding binding(long id) {
@@ -195,7 +215,8 @@ public class ManagedLogisticsRouting {
         if(account.provider().equals("YIMI")) {
             var in=account.config();var ids=in.yimi();
             var config=new YimiProperties(account.environment().equals("test"),in.orderUrl()==null||in.orderUrl().isBlank()?null:URI.create(in.orderUrl()),
-                in.appKey(),in.appSecret(),ids==null?null:ids.sellerId(),ids==null?null:ids.subscriptionId());
+                in.appKey(),in.appSecret(),ids==null?null:ids.sellerId(),ids==null?null:ids.subscriptionId(),ids!=null&&ids.designatedPickup(),
+                ids==null?null:ids.salesmanCode(),ids==null?null:ids.salesmanName());
             return new Operation(account.companyId(),account.accountId(),account.accountVersionId(),companyName,null,config,productCode,null);
         }
         if(!account.provider().equals("ANE"))throw business("LOGISTICS_PROVIDER_NOT_SUPPORTED","该物流公司需线下下单");
