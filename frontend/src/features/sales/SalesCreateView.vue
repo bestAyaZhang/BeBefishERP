@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { Check, ChevronDown, FileText, Plus, Printer, Save, Trash2 } from 'lucide-vue-next';
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { RouterLink, useRouter } from 'vue-router';
+import { Check, ChevronDown, FileText, Plus, Printer, Save, Trash2, X } from 'lucide-vue-next';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { message } from '../../components/feedback/message';
 import { currentUser } from '../../services/authSession';
+import type { Customer } from '../masterdata/types';
+import { customerAccountService, type CustomerAccountService, type CustomerPrice } from '../masterdata/customerAccountService';
 import { salesCatalogService } from './salesCatalogService';
 import { printSalesDocument } from './salesPrint';
 import { salesOrderService } from './salesOrderService';
@@ -25,13 +27,23 @@ interface SalesDraft {
   remark: string;
 }
 
-const props = defineProps<{ service?: SalesCatalogService; orderService?: SalesOrderService }>();
+const props = defineProps<{ service?: SalesCatalogService; orderService?: SalesOrderService; accountService?: CustomerAccountService }>();
 const service = props.service ?? salesCatalogService;
 const orderService = props.orderService ?? salesOrderService;
 const router = useRouter();
-const today = new Date().toISOString().slice(0, 10);
+const route = useRoute();
+const accountService = props.accountService ?? customerAccountService;
+const customerPrices = ref<CustomerPrice[]>([]);
+const pricesPending = ref(false);
+const priceError = ref('');
+let priceRequest = 0;
+const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date());
 const catalog = ref<SalesCatalog>({ customers: [], warehouses: [], products: [] });
 const lines = ref<SalesLine[]>([]);
+const customerInput = ref<HTMLInputElement | null>(null);
+const customerQuery = ref('');
+const customerDropdownOpen = ref(false);
+const activeCustomerIndex = ref(-1);
 const selectedProductId = ref<number | null>(null);
 const productQuery = ref('');
 const productDropdownOpen = ref(false);
@@ -54,6 +66,12 @@ const selectedProduct = computed(() => catalog.value.products.find((product) => 
 const selectedCustomer = computed(() => catalog.value.customers.find((customer) => customer.id === draft.customerId));
 const selectedWarehouse = computed(() => catalog.value.warehouses.find((warehouse) => warehouse.id === draft.warehouseId));
 const selectedCustomerAddress = computed(() => [selectedCustomer.value?.province, selectedCustomer.value?.city, selectedCustomer.value?.district, selectedCustomer.value?.detailAddress].filter(Boolean).join('') || '—');
+const filteredCustomers = computed(() => {
+  const query = customerQuery.value.trim().toLowerCase();
+  if (!query || (selectedCustomer.value && customerQuery.value === customerLabel(selectedCustomer.value))) return catalog.value.customers;
+  return catalog.value.customers.filter(customer => [customer.customerNo, customer.customerName, customer.contactPerson, customer.mobile, customer.telephone]
+    .some(value => value?.toLowerCase().includes(query)));
+});
 const filteredProducts = computed(() => {
   const query = productQuery.value.trim().toLowerCase();
   if (!query) return catalog.value.products;
@@ -72,6 +90,7 @@ const transportOptions = [
   { value: 'express', label: '快递' }
 ];
 const settlementOptions = [
+  { value: 'cash', label: '现结' },
   { value: 'monthly', label: '月结' },
   { value: 'daily', label: '日结' },
   { value: 'quarterly', label: '季度' },
@@ -159,6 +178,51 @@ function productLabel(product: SaleProductOption) {
   return `${product.itemNo} · ${product.skuCode} · ${product.productName} · ${product.skuName}`;
 }
 
+function customerLabel(customer: Customer) {
+  return `${customer.customerNo} · ${customer.customerName}`;
+}
+
+function selectCustomer(customer: Customer) {
+  draft.customerId = customer.id ?? null;
+  customerQuery.value = customerLabel(customer);
+  customerDropdownOpen.value = false;
+  activeCustomerIndex.value = -1;
+}
+
+function handleCustomerInput() {
+  draft.customerId = null;
+  customerDropdownOpen.value = true;
+  activeCustomerIndex.value = -1;
+}
+
+function clearCustomer() {
+  customerQuery.value = '';
+  handleCustomerInput();
+  customerInput.value?.focus();
+}
+
+function handleCustomerKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    customerDropdownOpen.value = false;
+    activeCustomerIndex.value = -1;
+  } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    customerDropdownOpen.value = true;
+    const count = filteredCustomers.value.length;
+    if (!count) return;
+    activeCustomerIndex.value = event.key === 'ArrowDown'
+      ? (activeCustomerIndex.value + 1) % count
+      : (activeCustomerIndex.value < 0 ? count - 1 : (activeCustomerIndex.value - 1 + count) % count);
+    void nextTick(() => document.getElementById(`sales-customer-option-${filteredCustomers.value[activeCustomerIndex.value]?.id}`)?.scrollIntoView?.({ block: 'nearest' }));
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    if (!customerDropdownOpen.value) return;
+    const customer = filteredCustomers.value[Math.max(0, activeCustomerIndex.value)];
+    if (customer) selectCustomer(customer);
+  }
+}
+
 function selectProduct(product: SaleProductOption) {
   selectedProductId.value = product.skuId;
   productQuery.value = productLabel(product);
@@ -174,12 +238,14 @@ function toggleProductDropdown() {
   if (!loading.value) productDropdownOpen.value = !productDropdownOpen.value;
 }
 
-function handleOutsideProductClick(event: MouseEvent) {
+function handleOutsidePickerClick(event: MouseEvent) {
   const target = event.target as HTMLElement | null;
   if (!target?.closest('[data-testid="sales-product-picker"]')) productDropdownOpen.value = false;
+  if (!target?.closest('[data-testid="sales-customer-picker"]')) customerDropdownOpen.value = false;
 }
 
 function addProduct() {
+  if (pricesPending.value || priceError.value) { message.error(priceError.value || '客户价格加载中，请稍候'); return; }
   const product = selectedProduct.value;
   if (!product) {
     message.error('请选择商品');
@@ -189,17 +255,47 @@ function addProduct() {
     message.error('该 SKU 已添加');
     return;
   }
-  lines.value.push({ ...product, quantity: 1, unitPrice: product.defaultSalePrice });
+  lines.value.push({ ...product, quantity: 1, unitPrice: customerPrice(product) });
   selectedProductId.value = null;
   productQuery.value = '';
   productDropdownOpen.value = false;
 }
+
+function customerPrice(product: SaleProductOption) {
+  return Number(customerPrices.value.find(price => price.skuId === product.skuId)?.unitPrice ?? product.defaultSalePrice);
+}
+
+async function loadCustomerPrices() {
+  const requestId = ++priceRequest;
+  const id = draft.customerId;
+  customerPrices.value = []; priceError.value = '';
+  if (!id) { pricesPending.value = false; return; }
+  const customer = selectedCustomer.value;
+  if (customer) {
+    draft.transportMethod = customer.transportMethod === 'freight' ? 'consignment' : customer.transportMethod;
+    draft.settlementCycle = customer.settlementCycle === 'yearly' ? 'annual' : customer.settlementCycle;
+  }
+  pricesPending.value = true;
+  try {
+    const prices = await accountService.listPrices(id);
+    if (requestId !== priceRequest) return;
+    customerPrices.value = prices;
+    if (lines.value.length) {
+      lines.value = lines.value.map(line => ({ ...line, unitPrice: customerPrice(line) }));
+      message.success('已按所选客户重新带入货品价格，请核对');
+    }
+  } catch (e) {
+    if (requestId === priceRequest) priceError.value = e instanceof Error ? e.message : '客户专属价格加载失败';
+  } finally { if (requestId === priceRequest) pricesPending.value = false; }
+}
+watch(() => draft.customerId, () => void loadCustomerPrices());
 
 function removeLine(skuId: number) {
   lines.value = lines.value.filter((line) => line.skuId !== skuId);
 }
 
 function validateOrder() {
+  if (pricesPending.value || priceError.value) return priceError.value || '客户价格加载中，请稍候';
   if (!draft.customerId) return '请选择客户';
   if (!draft.warehouseId) return '请选择仓库';
   if (!lines.value.length) return '请至少添加一条商品明细';
@@ -307,6 +403,12 @@ async function loadCatalog() {
     catalog.value = await service.loadCatalog();
     const defaultWarehouse = catalog.value.warehouses.find((warehouse) => warehouse.defaultWarehouse) ?? catalog.value.warehouses[0];
     draft.warehouseId = defaultWarehouse?.id ?? null;
+    const requestedCustomer = Number(route.query.customerId);
+    if (requestedCustomer) {
+      const customer = catalog.value.customers.find(customer => customer.id === requestedCustomer);
+      if (!customer) message.error('该客户不存在或已停用');
+      else selectCustomer(customer);
+    }
   } catch (error) {
     const failureMessage = error instanceof Error ? error.message : '销售开单基础数据加载失败';
     message.error(failureMessage);
@@ -317,11 +419,12 @@ async function loadCatalog() {
 
 onMounted(() => {
   void loadCatalog();
-  document.addEventListener('click', handleOutsideProductClick);
+  document.addEventListener('click', handleOutsidePickerClick);
 });
 
 onBeforeUnmount(() => {
-  document.removeEventListener('click', handleOutsideProductClick);
+  document.removeEventListener('click', handleOutsidePickerClick);
+  priceRequest++;
   document.body.classList.remove('sales-order-printing');
 });
 </script>
@@ -342,16 +445,33 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <p v-if="pricesPending" role="status" class="rounded-xl bg-blue-50 p-3 text-sm text-blue-700">正在加载客户专属价格…</p>
+    <p v-if="priceError" role="alert" class="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{{ priceError }} <button type="button" class="underline" @click="loadCustomerPrices">重新加载客户价格</button></p>
+    <p v-if="draft.customerId" class="text-sm text-slate-500">货品优先使用客户专属价，未设置则使用默认价。切换客户会重新带入单价。</p>
     <form data-testid="sales-order-form" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]" @submit.prevent="saveDraft">
       <div class="min-w-0 space-y-5">
         <section data-testid="sales-order-basic" class="rounded-[22px] border border-slate-200 bg-white p-6 shadow-[0_14px_40px_rgba(31,45,74,0.04)]">
           <div class="mb-5 flex items-center gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-[#536dff]"><FileText class="h-5 w-5" aria-hidden="true" /></span><div><h2 class="text-lg font-black">单据信息</h2><p class="mt-1 text-sm font-medium text-slate-400">客户、仓库和结算方式会写入销售单据。</p></div></div>
           <div class="grid gap-4 md:grid-cols-2">
-            <label class="space-y-2"><span class="text-xs font-black text-slate-500">客户 <b class="text-rose-500">*</b></span><select data-testid="sales-customer" v-model.number="draft.customerId" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#25314d] outline-none focus:border-[#536dff]"><option :value="null">请选择客户</option><option v-for="customer in catalog.customers" :key="customer.id" :value="customer.id">{{ customer.customerNo }} · {{ customer.customerName }}</option></select></label>
+            <div data-testid="sales-customer-picker" class="relative space-y-2">
+              <label for="sales-customer-input" class="text-xs font-black text-slate-500">客户 <b class="text-rose-500">*</b></label>
+              <div class="relative">
+                <input id="sales-customer-input" ref="customerInput" data-testid="sales-customer" v-model="customerQuery" type="text" role="combobox" aria-autocomplete="list" aria-controls="sales-customer-options" :aria-expanded="customerDropdownOpen" :aria-activedescendant="customerDropdownOpen && activeCustomerIndex >= 0 ? `sales-customer-option-${filteredCustomers[activeCustomerIndex]?.id}` : undefined" autocomplete="off" :disabled="loading" :placeholder="loading ? '客户加载中...' : '输入客户姓名、编号或电话搜索'" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 pr-10 text-sm font-bold text-[#25314d] outline-none focus:border-[#536dff]" @focus="customerDropdownOpen = true" @blur="customerDropdownOpen = false" @input="handleCustomerInput" @keydown="handleCustomerKeydown" />
+                <button v-if="customerQuery" data-testid="sales-customer-clear" type="button" aria-label="清空客户选择" class="absolute right-1 top-1 inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-[#536dff]" @mousedown.prevent @click="clearCustomer"><X class="h-4 w-4" aria-hidden="true" /></button>
+                <ChevronDown v-else class="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-slate-400" aria-hidden="true" />
+              </div>
+              <div v-if="customerDropdownOpen && !loading" id="sales-customer-options" data-testid="sales-customer-options" role="listbox" aria-label="匹配的客户" class="absolute left-0 top-full z-30 max-h-72 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
+                <button v-for="(customer, index) in filteredCustomers" :id="`sales-customer-option-${customer.id}`" :key="customer.id" :data-testid="`sales-customer-option-${customer.id}`" type="button" role="option" :aria-selected="draft.customerId === customer.id" tabindex="-1" class="block w-full rounded-lg px-3 py-2 text-left transition hover:bg-blue-50" :class="{ 'bg-blue-50': index === activeCustomerIndex }" @mousedown.prevent @click="selectCustomer(customer)">
+                  <p class="text-sm font-black text-[#25314d]">{{ customer.customerName }}</p>
+                  <p class="mt-1 text-xs font-bold text-slate-400">{{ customer.customerNo }} · {{ customer.contactPerson || '未填联系人' }} · {{ customer.mobile || customer.telephone || '未填电话' }}</p>
+                </button>
+                <p v-if="!filteredCustomers.length" data-testid="sales-customer-no-results" role="status" class="px-3 py-4 text-center text-sm font-bold text-slate-400">未找到匹配客户，请更换姓名或电话搜索</p>
+              </div>
+            </div>
             <label class="space-y-2"><span class="text-xs font-black text-slate-500">仓库 <b class="text-rose-500">*</b></span><select data-testid="sales-warehouse" v-model.number="draft.warehouseId" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#25314d] outline-none focus:border-[#536dff]"><option :value="null">请选择仓库</option><option v-for="warehouse in catalog.warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.warehouseName }}{{ warehouse.defaultWarehouse ? ' · 默认仓' : '' }}</option></select></label>
             <label class="space-y-2"><span class="text-xs font-black text-slate-500">开单日期</span><input data-testid="sales-order-date" v-model="draft.orderDate" type="date" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#25314d] outline-none focus:border-[#536dff]" /></label>
             <label class="space-y-2"><span class="text-xs font-black text-slate-500">运输方式</span><select data-testid="sales-transport" v-model="draft.transportMethod" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#25314d] outline-none focus:border-[#536dff]"><option value="pickup">自提</option><option value="delivery">送货上门</option><option value="consignment">托运</option><option value="express">快递</option></select></label>
-            <label class="space-y-2"><span class="text-xs font-black text-slate-500">结算方式</span><select data-testid="sales-settlement" v-model="draft.settlementCycle" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#25314d] outline-none focus:border-[#536dff]"><option value="monthly">月结</option><option value="daily">日结</option><option value="quarterly">季度</option><option value="annual">年结</option></select></label>
+            <label class="space-y-2"><span class="text-xs font-black text-slate-500">结算方式</span><select data-testid="sales-settlement" v-model="draft.settlementCycle" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#25314d] outline-none focus:border-[#536dff]"><option value="cash">现结</option><option value="monthly">月结</option><option value="daily">日结</option><option value="quarterly">季度</option><option value="annual">年结</option></select></label>
           </div>
         </section>
 
@@ -367,7 +487,7 @@ onBeforeUnmount(() => {
         <section class="rounded-[22px] border border-slate-200 bg-white p-6 shadow-[0_14px_40px_rgba(31,45,74,0.04)]"><label class="block space-y-2"><span class="text-xs font-black text-slate-500">备注</span><textarea data-testid="sales-remark" v-model="draft.remark" rows="3" class="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm font-medium outline-none focus:border-[#536dff]" placeholder="填写客户要求、发货说明等"></textarea></label></section>
       </div>
 
-      <aside data-testid="sales-summary" class="h-fit rounded-[22px] border border-slate-200 bg-white p-6 shadow-[0_14px_40px_rgba(31,45,74,0.04)] xl:sticky xl:top-6"><div class="flex items-center justify-between"><h2 class="text-lg font-black">结算汇总</h2><span class="text-xs font-bold text-slate-400">{{ lines.length }} 项商品</span></div><dl class="mt-6 space-y-4 text-sm"><div class="flex items-center justify-between"><dt class="font-bold text-slate-400">商品金额</dt><dd data-testid="sales-subtotal" class="font-black text-[#25314d]">{{ formatMoney(subtotal) }}</dd></div><div class="flex items-center justify-between gap-3"><dt class="font-bold text-slate-400">运费</dt><dd><input data-testid="sales-freight" v-model.number="draft.freight" min="0" step="0.01" type="number" class="h-9 w-28 rounded-lg border border-slate-200 px-2 text-right text-sm font-bold outline-none focus:border-[#536dff]" /></dd></div><div class="flex items-center justify-between border-t border-slate-100 pt-4"><dt class="font-black text-[#25314d]">合计金额</dt><dd data-testid="sales-total" class="text-xl font-black text-[#25314d]">{{ formatMoney(total) }}</dd></div><div class="flex items-center justify-between gap-3"><dt class="font-bold text-slate-400">已收款</dt><dd><input data-testid="sales-received" v-model.number="draft.receivedAmount" min="0" step="0.01" type="number" class="h-9 w-28 rounded-lg border border-slate-200 px-2 text-right text-sm font-bold outline-none focus:border-[#536dff]" /></dd></div><div class="flex items-center justify-between"><dt class="font-bold text-slate-400">欠款应收</dt><dd data-testid="sales-receivable" class="font-black text-rose-500">{{ formatMoney(receivable) }}</dd></div></dl><div class="mt-6 grid gap-3"><button data-testid="sales-confirm" type="button" :disabled="submitting" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#536dff] text-sm font-black text-white shadow-lg shadow-blue-200 transition hover:bg-[#465eea] disabled:cursor-wait disabled:opacity-60" @click="confirmOrder"><Check class="h-4 w-4" aria-hidden="true" />{{ submitting ? '提交中...' : '确认销售单' }}</button><button data-testid="sales-save-draft" type="submit" :disabled="submitting" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><Save class="h-4 w-4" aria-hidden="true" />{{ submitting ? '保存中...' : '保存草稿' }}</button></div></aside>
+      <aside data-testid="sales-summary" class="h-fit rounded-[22px] border border-slate-200 bg-white p-6 shadow-[0_14px_40px_rgba(31,45,74,0.04)] xl:sticky xl:top-6"><div class="flex items-center justify-between"><h2 class="text-lg font-black">结算汇总</h2><span class="text-xs font-bold text-slate-400">{{ lines.length }} 项商品</span></div><dl class="mt-6 space-y-4 text-sm"><div class="flex items-center justify-between"><dt class="font-bold text-slate-400">商品金额</dt><dd data-testid="sales-subtotal" class="font-black text-[#25314d]">{{ formatMoney(subtotal) }}</dd></div><div class="flex items-center justify-between gap-3"><dt class="font-bold text-slate-400">运费</dt><dd><input data-testid="sales-freight" v-model.number="draft.freight" min="0" step="0.01" type="number" class="h-9 w-28 rounded-lg border border-slate-200 px-2 text-right text-sm font-bold outline-none focus:border-[#536dff]" /></dd></div><div class="flex items-center justify-between border-t border-slate-100 pt-4"><dt class="font-black text-[#25314d]">合计金额</dt><dd data-testid="sales-total" class="text-xl font-black text-[#25314d]">{{ formatMoney(total) }}</dd></div><div class="flex items-center justify-between gap-3"><dt class="font-bold text-slate-400">已收款</dt><dd><input data-testid="sales-received" v-model.number="draft.receivedAmount" min="0" step="0.01" type="number" class="h-9 w-28 rounded-lg border border-slate-200 px-2 text-right text-sm font-bold outline-none focus:border-[#536dff]" /></dd></div><div class="flex items-center justify-between"><dt class="font-bold text-slate-400">欠款应收</dt><dd data-testid="sales-receivable" class="font-black text-rose-500">{{ formatMoney(receivable) }}</dd></div></dl><div class="mt-6 grid gap-3"><button data-testid="sales-confirm" type="button" :disabled="submitting" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#536dff] text-sm font-black text-white shadow-lg shadow-blue-200 transition hover:bg-[#465eea] disabled:cursor-wait disabled:opacity-60" @click="confirmOrder"><Check class="h-4 w-4" aria-hidden="true" />{{ submitting ? '提交中...' : '确认下单并扣库存' }}</button><button data-testid="sales-save-draft" type="submit" :disabled="submitting" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><Save class="h-4 w-4" aria-hidden="true" />{{ submitting ? '保存中...' : '保存草稿' }}</button></div></aside>
     </form>
     </div>
 

@@ -1,5 +1,7 @@
 # Logistics Management Implementation Plan
 
+> 2026-10-29 主分支集成说明：本计划实施时的物流 V28、V29 已重编号为 V30、V31，保留主分支已发布的客户与成本迁移。下文保留实施时编号；发布顺序以 `docs/logistics-management-operations.md` 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 管理合作物流、环境隔离的加密账号及运费模板，在发货单按相同条件比价、推荐、选择并使用对应账号下单。

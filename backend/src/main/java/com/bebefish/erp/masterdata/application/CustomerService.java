@@ -15,8 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CustomerService {
-    private static final Set<String> TRANSPORT_METHODS = Set.of("pickup", "delivery", "freight", "express");
-    private static final Set<String> SETTLEMENT_CYCLES = Set.of("daily", "monthly", "quarterly", "yearly");
+    private static final Set<String> TRANSPORT_METHODS = Set.of("pickup", "delivery", "consignment", "freight", "express");
+    private static final Set<String> SETTLEMENT_CYCLES = Set.of("cash", "daily", "monthly", "quarterly", "yearly", "annual");
     private static final Set<String> STATUSES = Set.of("enabled", "disabled");
 
     private final CustomerRepository repository;
@@ -36,10 +36,11 @@ public class CustomerService {
         var district = required(value.district(), "区/县不能为空");
         var detailAddress = required(value.detailAddress(), "详细地址不能为空");
         ensureUnique(number, null);
+        validatePlatform(value.platformId(), null);
         return repository.save(new Customer(
                 null, number, value.name(), contactPerson, mobile, value.telephone(),
                 province, city, district, detailAddress,
-                value.transportMethod(), value.settlementCycle(), false, "enabled", value.remark()
+                value.transportMethod(), value.settlementCycle(), false, "enabled", value.remark(), value.platformId()
         ));
     }
 
@@ -49,10 +50,11 @@ public class CustomerService {
         var value = normalize(command);
         var number = value.number() == null ? existing.number() : value.number();
         ensureUnique(number, id);
+        validatePlatform(value.platformId(), existing.platformId());
         return repository.save(new Customer(
                 id, number, value.name(), value.contactPerson(), value.mobile(), value.telephone(),
                 value.province(), value.city(), value.district(), value.detailAddress(),
-                value.transportMethod(), value.settlementCycle(), existing.system(), existing.status(), value.remark()
+                value.transportMethod(), value.settlementCycle(), existing.system(), existing.status(), value.remark(), value.platformId()
         ));
     }
 
@@ -67,7 +69,7 @@ public class CustomerService {
                 existing.id(), existing.number(), existing.name(), existing.contactPerson(), existing.mobile(),
                 existing.telephone(), existing.province(), existing.city(), existing.district(),
                 existing.detailAddress(), existing.transportMethod(), existing.settlementCycle(),
-                existing.system(), normalized, existing.remark()
+                existing.system(), normalized, existing.remark(), existing.platformId()
         ));
     }
 
@@ -93,8 +95,15 @@ public class CustomerService {
                 optional(command.number()), required(command.name(), "客户名称不能为空"),
                 optional(command.contactPerson()), optional(command.mobile()), optional(command.telephone()),
                 optional(command.province()), optional(command.city()), optional(command.district()),
-                optional(command.detailAddress()), transport, settlement, optional(command.remark())
+                optional(command.detailAddress()), transport, settlement, optional(command.remark()), command.platformId()
         );
+    }
+
+    private void validatePlatform(Long id, Long existingId) {
+        if (id == null || id.equals(existingId)) return;
+        if (id <= 0 || !repository.findPlatformStatus(id).filter("enabled"::equals).isPresent()) {
+            throw validation("请选择存在且启用的平台");
+        }
     }
 
     private String generateCustomerNumber() {

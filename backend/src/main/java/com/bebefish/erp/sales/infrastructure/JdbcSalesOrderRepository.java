@@ -69,8 +69,17 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
 
     @Override
     public Optional<SalesOrder> findById(long id) {
+        return findOrder(id, false);
+    }
+
+    @Override
+    public Optional<SalesOrder> findByIdForUpdate(long id) {
+        return findOrder(id, true);
+    }
+
+    private Optional<SalesOrder> findOrder(long id, boolean lock) {
         var orders = jdbc.query(
-                "select " + ORDER_COLUMNS + " from sales_order where id = ?",
+                "select " + ORDER_COLUMNS + " from sales_order where id = ?" + (lock ? " for update" : ""),
                 (resultSet, rowNumber) -> mapOrder(resultSet), id
         );
         if (orders.isEmpty()) {

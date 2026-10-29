@@ -31,6 +31,16 @@ describe('ERP router', () => {
     expect(resolved.meta).not.toHaveProperty('ownsPrototypeHeader');
   });
 
+  it('moves the calculator into software tools and keeps the old URL working', () => {
+    expect(router.resolve({ name: 'product-pdd-cost' }).path).toBe('/tools/pdd-cost');
+    for (const path of ['/tools/pdd-cost', '/products/pdd-cost']) {
+      const route = router.resolve(path);
+      expect(route.name).toBe('product-pdd-cost');
+      expect(route.meta.requiredPermission).toBe('product:view');
+      expect(route.meta.requiresAuth).toBe(true);
+    }
+  });
+
   it('registers organization management routes under the authenticated ERP layout', () => {
     expect(router.resolve({ name: 'organization-employees' }).path).toBe('/organization/employees');
     expect(router.resolve({ name: 'organization-departments' }).path).toBe('/organization/departments');

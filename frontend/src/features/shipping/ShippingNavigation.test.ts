@@ -5,10 +5,11 @@ import SidebarNav from '../../components/navigation/SidebarNav.vue';
 import ErpLayout from '../../layouts/ErpLayout.vue';
 import { getCurrentUser } from '../../services/auth';
 import { saveCurrentUser, clearCurrentUser } from '../../services/authSession';
+import { expandedSidebarGroup } from '../../services/sidebarExpansion';
 import { ACCESS_TOKEN_STORAGE_KEY } from '../../types/auth';
 import type { LoginResult } from '../../types/auth';
 vi.mock('../../services/auth', () => ({ getCurrentUser: vi.fn() }));
-beforeEach(() => { localStorage.clear(); clearCurrentUser(); vi.mocked(getCurrentUser).mockReset(); });
+beforeEach(() => { localStorage.clear(); clearCurrentUser(); expandedSidebarGroup.value = null; vi.mocked(getCurrentUser).mockReset(); });
 afterEach(clearCurrentUser);
 it('protects the shipping route and exposes its menu only with view permission', async () => {
   localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY,'test');
@@ -23,6 +24,7 @@ it('protects the shipping route and exposes its menu only with view permission',
   expect(router.currentRoute.value.name).toBe('shipping-list');
   const visible = mount(SidebarNav,{global:{plugins:[router]}});
   expect(visible.text()).toContain('发货管理');
+  await visible.findAll('button').find(button => button.text() === '发货管理')!.trigger('click');
   expect(visible.find('a[href="/shipping/list"]').exists()).toBe(true);
   visible.unmount();
   const layout = mount(ErpLayout,{global:{plugins:[router],stubs:{RouterView:true}}});
@@ -41,6 +43,7 @@ it('refreshes cached permissions so a newly granted shipping menu appears withou
   const layout = mount(ErpLayout, { global: { plugins: [router], stubs: { RouterView: true } } });
   await flushPromises();
   expect(getCurrentUser).toHaveBeenCalledWith('test');
+  await layout.findAll('button').find(button => button.text() === '发货管理')!.trigger('click');
   expect(layout.get('a[href="/shipping/list"]').text()).toBe('发货列表');
   layout.unmount();
 });

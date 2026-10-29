@@ -39,6 +39,7 @@ class SalesDraftServiceTest {
     private SalesOrderRepository orderRepository;
     private InventoryService inventoryService;
     private SalesDraftService service;
+    private com.bebefish.erp.masterdata.domain.CustomerPriceRepository customerPrices;
 
     @BeforeEach
     void setUp() {
@@ -47,10 +48,11 @@ class SalesDraftServiceTest {
         productRepository = mock(ProductRepository.class);
         orderRepository = mock(SalesOrderRepository.class);
         inventoryService = mock(InventoryService.class);
+        customerPrices = mock(com.bebefish.erp.masterdata.domain.CustomerPriceRepository.class);
         var numberGenerator = new SalesOrderNumberGenerator(new InMemorySequenceRepository());
         service = new SalesDraftService(
                 customerService, warehouseService, productRepository, orderRepository,
-                numberGenerator, new com.bebefish.erp.sales.domain.SalesAmountCalculator(), inventoryService
+                numberGenerator, new com.bebefish.erp.sales.domain.SalesAmountCalculator(), inventoryService, customerPrices
         );
         when(customerService.get(1L)).thenReturn(new Customer(
                 1L, "CUS-001", "杭州酒店用品店", "张三", "13800138000", null,
@@ -65,6 +67,44 @@ class SalesDraftServiceTest {
             var order = invocation.getArgument(0, SalesOrder.class);
             return order.withIdentity(99L, order.createdAt(), order.updatedAt());
         });
+    }
+
+    @Test
+    void defaultsToCustomerPriceAndKeepsItWhenConfirmingAfterPriceChanges() {
+        when(customerPrices.findPrice(1L, 20L)).thenReturn(Optional.of(new BigDecimal("8.25")));
+        var draft = createWithPrice(null);
+        assertThat(draft.items().getFirst().defaultUnitPrice()).isEqualByComparingTo("8.25");
+        assertThat(draft.totalAmount()).isEqualByComparingTo("16.50");
+        when(orderRepository.findByIdForUpdate(draft.id())).thenReturn(Optional.of(draft));
+        when(customerPrices.findPrice(1L, 20L)).thenReturn(Optional.of(new BigDecimal("99.00")));
+        assertThat(service.confirm(draft.id(), "13800138000").totalAmount()).isEqualByComparingTo("16.50");
+    }
+
+    @Test
+    void acceptsZeroCustomerPrice() {
+        when(customerPrices.findPrice(1L, 20L)).thenReturn(Optional.of(BigDecimal.ZERO));
+        assertThat(createWithPrice(null).totalAmount()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void explicitOrderPriceOverridesCustomerPrice() {
+        when(customerPrices.findPrice(1L, 20L)).thenReturn(Optional.of(new BigDecimal("8.25")));
+        var draft = createWithPrice(new BigDecimal("9.50"));
+        assertThat(draft.items().getFirst().defaultUnitPrice()).isEqualByComparingTo("8.25");
+        assertThat(draft.totalAmount()).isEqualByComparingTo("19.00");
+    }
+
+    @Test
+    void usesSkuPriceWhenCustomerHasNoSpecialPrice() {
+        assertThat(createWithPrice(null).totalAmount()).isEqualByComparingTo("24.00");
+    }
+
+    private SalesOrder createWithPrice(BigDecimal price) {
+        return service.create(new SaveSalesOrderCommand(
+                1L, 10L, LocalDate.of(2026, 7, 10), null, null, null,
+                null, null, null, null, null, false, null, BigDecimal.ZERO,
+                BigDecimal.ZERO, List.of(new SaveSalesOrderLineCommand(20L, new BigDecimal("2"), price, BigDecimal.ZERO))
+        ), "13800138000");
     }
 
     @Test
@@ -113,7 +153,7 @@ class SalesDraftServiceTest {
                 false, "not_required", BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, null, null, null, List.of()
         );
-        when(orderRepository.findById(77L)).thenReturn(Optional.of(confirmed));
+        when(orderRepository.findByIdForUpdate(77L)).thenReturn(Optional.of(confirmed));
 
         assertThatThrownBy(() -> service.update(77L, new SaveSalesOrderCommand(
                 1L, 10L, LocalDate.now(), "delivery", "monthly", null, null, null, null, null,
@@ -127,7 +167,7 @@ class SalesDraftServiceTest {
     @Test
     void confirmsDraftByDecreasingInventoryAndChangingStatus() {
         var draft = draft(88L, "SO202607100088");
-        when(orderRepository.findById(88L)).thenReturn(Optional.of(draft));
+        when(orderRepository.findByIdForUpdate(88L)).thenReturn(Optional.of(draft));
         when(orderRepository.save(any(SalesOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var confirmed = service.confirm(88L, "13800138000");
@@ -140,12 +180,17 @@ class SalesDraftServiceTest {
                 "13800138000"
         );
         verify(orderRepository).save(any(SalesOrder.class));
+        verify(orderRepository).findByIdForUpdate(88L);
+        when(orderRepository.findByIdForUpdate(88L)).thenReturn(Optional.of(confirmed));
+        assertThatThrownBy(() -> service.confirm(88L, "13800138000"))
+                .isInstanceOf(BusinessException.class).hasMessage("销售单已确认，请勿重复操作");
+        org.mockito.Mockito.verifyNoMoreInteractions(inventoryService);
     }
 
     @Test
     void doesNotConfirmWhenInventoryIsInsufficient() {
         var draft = draft(89L, "SO202607100089");
-        when(orderRepository.findById(89L)).thenReturn(Optional.of(draft));
+        when(orderRepository.findByIdForUpdate(89L)).thenReturn(Optional.of(draft));
         when(inventoryService.decrease(any(Long.class), any(), any(), any()))
                 .thenThrow(new BusinessException(
                         "INVENTORY_NOT_ENOUGH", org.springframework.http.HttpStatus.BAD_REQUEST, "库存不足"
@@ -170,7 +215,7 @@ class SalesDraftServiceTest {
                         "PRD-000001-001", "透明款", "透明", "彩盒", 48, "BAR-001", "只"
                 ))
         );
-        when(orderRepository.findById(90L)).thenReturn(Optional.of(confirmed));
+        when(orderRepository.findByIdForUpdate(90L)).thenReturn(Optional.of(confirmed));
         when(orderRepository.save(any(SalesOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var voided = service.voidOrder(90L, "客户取消", "13800138000");

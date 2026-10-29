@@ -32,6 +32,7 @@ const pageHeaders: Record<string, PageHeader> = {
   workbench: { group: 'Dashboards', groupRoute: 'workbench', title: 'Analytics', titleRoute: 'workbench' },
   categories: { group: 'Master Data', groupRoute: 'categories', title: 'Categories', titleRoute: 'categories' },
   products: { group: '主数据', groupRoute: 'products', title: '商品资料', titleRoute: 'products' },
+  'product-pdd-cost': { group: '软件工具', groupRoute: 'product-pdd-cost', title: '拼多多成本计算', titleRoute: 'product-pdd-cost' },
   'product-detail': { group: '主数据', groupRoute: 'products', title: '商品资料', titleRoute: 'products' },
   'product-new': { group: '主数据', groupRoute: 'products', title: '商品资料', titleRoute: 'product-new' },
   'product-edit': { group: '主数据', groupRoute: 'products', title: '商品资料', titleRoute: 'products' },

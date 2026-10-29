@@ -46,6 +46,12 @@ describe('http sales order service', () => {
     }));
   });
 
+  it('confirms a saved draft without creating another order', async () => {
+    await httpSalesOrderService.confirmSavedOrder?.(99);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith('/api/sales-orders/99/confirm', expect.objectContaining({ method: 'POST' }));
+  });
+
   it('creates a draft before confirming it through the confirmation endpoint', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(new Response(

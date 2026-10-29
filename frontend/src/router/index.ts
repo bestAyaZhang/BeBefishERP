@@ -19,6 +19,7 @@ const placeholderPages: RouteRecordRaw[] = [
     name: 'products',
     component: () => import('../features/product/views/ProductListView.vue')
   },
+  { path: 'tools/pdd-cost', alias: '/products/pdd-cost', name: 'product-pdd-cost', component: () => import('../features/product/cost/PddCostView.vue'), meta: { requiredPermission: 'product:view' } },
   {
     path: 'products/new',
     name: 'product-new',
@@ -37,6 +38,7 @@ const placeholderPages: RouteRecordRaw[] = [
   { path: 'categories', name: 'categories', component: () => import('../features/masterdata/views/CategoryView.vue') },
   { path: 'customers/new', name: 'customer-new', component: CustomerFormView },
   { path: 'customers/:id/edit', name: 'customer-edit', component: CustomerFormView },
+  { path: 'customers/:id', name: 'customer-detail', component: () => import('../features/masterdata/views/CustomerDetailView.vue'), meta: { requiredPermission: 'customer:view' } },
   { path: 'customers', name: 'customers', component: () => import('../features/masterdata/views/CustomerView.vue') },
   { path: 'suppliers', name: 'suppliers', component: () => import('../features/masterdata/views/SupplierView.vue') },
   { path: 'platforms', name: 'platforms', component: () => import('../features/platform/PlatformManagementView.vue'),

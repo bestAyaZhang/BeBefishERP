@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 public interface CustomerRepository {
+    default Optional<String> findPlatformStatus(long id) { return Optional.empty(); }
     boolean existsByNumber(String number, Long excludedId);
     Customer save(Customer customer);
     Optional<Customer> findById(long id);

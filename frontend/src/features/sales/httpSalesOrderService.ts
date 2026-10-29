@@ -34,6 +34,7 @@ export const httpSalesOrderService: SalesOrderService = {
   },
   listOrders: (query) => request<import('../masterdata/types').PageResult<SalesOrderListItem>>(`/api/sales-orders?${queryString(query)}`),
   getOrder: (id) => request<SalesOrderDetail>(`/api/sales-orders/${id}`),
+  confirmSavedOrder: id => request<SalesOrderDetail>(`/api/sales-orders/${id}/confirm`, { method: 'POST' }),
   deleteOrder: (id) => request<void>(`/api/sales-orders/${id}`, { method: 'DELETE' }),
   voidOrder: (id, reason) => request<SalesOrderDetail>(`/api/sales-orders/${id}/void`, {
     method: 'POST',

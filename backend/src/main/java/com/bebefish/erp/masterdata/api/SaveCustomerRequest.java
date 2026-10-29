@@ -16,10 +16,11 @@ public record SaveCustomerRequest(
         @Size(max = 500) String detailAddress,
         @NotBlank String transportMethod,
         @NotBlank String settlementCycle,
-        @Size(max = 500) String remark
+        @Size(max = 500) String remark,
+        @jakarta.validation.constraints.Positive Long platformId
 ) {
     SaveCustomerCommand toCommand() {
         return new SaveCustomerCommand(customerNo, customerName, contactPerson, mobile, telephone,
-                province, city, district, detailAddress, transportMethod, settlementCycle, remark);
+                province, city, district, detailAddress, transportMethod, settlementCycle, remark, platformId);
     }
 }

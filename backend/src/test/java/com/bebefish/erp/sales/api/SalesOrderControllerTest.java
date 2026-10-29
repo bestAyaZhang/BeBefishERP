@@ -9,6 +9,8 @@ import static org.hamcrest.Matchers.startsWith;
 
 import com.bebefish.erp.auth.domain.TokenIssuer;
 import com.bebefish.erp.auth.domain.AuthenticatedUser;
+import com.bebefish.erp.common.api.BusinessException;
+import com.bebefish.erp.sales.application.SalesDraftService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.List;
@@ -22,6 +24,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -38,6 +48,12 @@ class SalesOrderControllerTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private SalesDraftService salesService;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private long customerId;
     private long warehouseId;
@@ -189,6 +205,89 @@ class SalesOrderControllerTest {
                 .andExpect(jsonPath("$.data.status").value("void"))
                 .andExpect(jsonPath("$.data.remark").value("客户取消"));
         assertThatInventoryQuantityIs("2");
+    }
+
+    @Test
+    void concurrentConfirmationAndVoidChangeInventoryOnlyOnce() throws Exception {
+        long draftId = createDraft(List.of(Map.of("skuId", skuId, "quantity", 2, "unitPrice", 12)));
+        jdbc.update("insert into inventory_balance (warehouse_id, sku_id, quantity, version_no, created_at, updated_at) "
+                + "values (?, ?, 10, 0, now(3), now(3))", warehouseId, skuId);
+        assertThatInventoryQuantityIs("10");
+
+        runConcurrentTransition(() -> salesService.confirm(draftId, "test"), "销售单已确认，请勿重复操作");
+        assertThatInventoryQuantityIs("8");
+        assertThat(jdbc.queryForObject("select count(*) from inventory_ledger where source_type='sales' and source_id=?",
+                Long.class, draftId)).isEqualTo(1L);
+
+        runConcurrentTransition(() -> salesService.voidOrder(draftId, "并发回归测试", "test"), "只有已确认销售单才能作废");
+        assertThatInventoryQuantityIs("10");
+        assertThat(jdbc.queryForObject("select count(*) from inventory_ledger where source_type='sales_void' and source_id=?",
+                Long.class, draftId)).isEqualTo(1L);
+    }
+
+    @Test
+    void insufficientStockOnOneLineLeavesAllStockAndTheOrderUnchanged() throws Exception {
+        var secondSkuCode = "SECOND-SKU-" + System.nanoTime();
+        jdbc.update("insert into product_sku (product_id, sku_code, sku_name, spec_text, sales_unit, default_sale_price, "
+                + "standard_cost, is_default, status, created_at, updated_at) "
+                + "select product_id, ?, '第二规格', '第二规格', sales_unit, default_sale_price, standard_cost, false, "
+                + "status, now(3), now(3) from product_sku where id=?", secondSkuCode, skuId);
+        long secondSkuId = jdbc.queryForObject("select id from product_sku where sku_code=?", Long.class, secondSkuCode);
+        long draftId = createDraft(List.of(Map.of("skuId", skuId, "quantity", 2, "unitPrice", 12),
+                Map.of("skuId", secondSkuId, "quantity", 1, "unitPrice", 12)));
+        jdbc.update("insert into inventory_balance (warehouse_id, sku_id, quantity, version_no, created_at, updated_at) "
+                + "values (?, ?, 10, 0, now(3), now(3))", warehouseId, skuId);
+
+        mvc.perform(post("/api/sales-orders/{id}/confirm", draftId).header("Authorization", bearerToken()))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("库存不足"));
+        assertThatInventoryQuantityIs("10");
+        assertThat(jdbc.queryForObject("select status from sales_order where id=?", String.class, draftId)).isEqualTo("draft");
+        assertThat(jdbc.queryForObject("select count(*) from inventory_ledger where source_type='sales' and source_id=?",
+                Long.class, draftId)).isZero();
+    }
+
+    private long createDraft(List<Map<String, Object>> lines) throws Exception {
+        var result = mvc.perform(post("/api/sales-orders").header("Authorization", bearerToken())
+                        .contentType(APPLICATION_JSON).content(objectMapper.writeValueAsString(Map.of(
+                                "customerId", customerId, "warehouseId", warehouseId,
+                                "orderDate", java.time.LocalDate.now().toString(), "lines", lines))))
+                .andExpect(status().isOk()).andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).path("data").path("id").asLong();
+    }
+
+    private void runConcurrentTransition(Runnable transition, String expectedRejection) throws Exception {
+        var locked = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var started = new CountDownLatch(2);
+        try (var executor = Executors.newFixedThreadPool(3)) {
+            var holder = executor.submit(() -> new TransactionTemplate(transactionManager).execute(status -> {
+                jdbc.queryForObject("select id from warehouse where id=? for update", Long.class, warehouseId);
+                locked.countDown();
+                try {
+                    if (!release.await(10, TimeUnit.SECONDS)) throw new AssertionError("仓库锁等待超时");
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(error);
+                }
+                return null;
+            }));
+            assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+            java.util.concurrent.Callable<String> attempt = () -> {
+                started.countDown();
+                try { transition.run(); return "success"; }
+                catch (BusinessException error) { return error.getMessage(); }
+            };
+            var first = executor.submit(attempt);
+            var second = executor.submit(attempt);
+            try {
+                assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(() -> first.get(300, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+                assertThatThrownBy(() -> second.get(300, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            } finally { release.countDown(); }
+            holder.get(5, TimeUnit.SECONDS);
+            assertThat(List.of(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder("success", expectedRejection);
+        } finally { release.countDown(); }
     }
 
     private void assertThatInventoryQuantityIs(String expected) {

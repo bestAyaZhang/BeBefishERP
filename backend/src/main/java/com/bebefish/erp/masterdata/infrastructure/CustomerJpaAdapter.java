@@ -15,7 +15,13 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class CustomerJpaAdapter implements CustomerRepository {
     private final SpringDataCustomerRepository repository;
-    public CustomerJpaAdapter(SpringDataCustomerRepository repository) { this.repository = repository; }
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    public CustomerJpaAdapter(SpringDataCustomerRepository repository, org.springframework.jdbc.core.JdbcTemplate jdbc) {
+        this.repository = repository; this.jdbc = jdbc;
+    }
+    public Optional<String> findPlatformStatus(long id) {
+        return jdbc.query("select status from sales_platform where id = ?", (rs, n) -> rs.getString(1), id).stream().findFirst();
+    }
     public boolean existsByNumber(String number, Long excludedId) {
         return excludedId == null ? repository.existsByCustomerNo(number) : repository.existsByCustomerNoAndIdNot(number, excludedId);
     }
@@ -29,7 +35,7 @@ public class CustomerJpaAdapter implements CustomerRepository {
     public Page<Customer> findAll(String keyword, String status, Pageable pageable) {
         Specification<CustomerJpaEntity> spec = (root, query, cb) -> {
             var predicates = new ArrayList<Predicate>();
-            if (keyword != null) { var p = "%" + keyword + "%"; predicates.add(cb.or(cb.like(root.get("customerNo"), p), cb.like(root.get("customerName"), p))); }
+            if (keyword != null) { var p = "%" + keyword + "%"; predicates.add(cb.or(cb.like(root.get("customerNo"), p), cb.like(root.get("customerName"), p), cb.like(root.get("mobile"), p), cb.like(root.get("telephone"), p), cb.like(root.get("contactPerson"), p))); }
             if (status != null) predicates.add(cb.equal(root.get("status"), status));
             return cb.and(predicates.toArray(Predicate[]::new));
         };

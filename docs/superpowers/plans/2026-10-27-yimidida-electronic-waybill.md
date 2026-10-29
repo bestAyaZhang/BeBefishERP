@@ -1,5 +1,7 @@
 # 壹米滴答电子面单实施计划
 
+> 2026-10-29 主分支集成说明：本计划实施时的壹米 V30、V31 已重编号为 V32、V33，物流基础 V28、V29 对应 V30、V31。下文保留实施时编号；发布顺序以 `docs/logistics-management-operations.md` 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Track steps with checkboxes.
 
 **Goal:** 在现有物流管理中安全配置、选择壹米电子面单，支持取号、取消和只读轨迹。

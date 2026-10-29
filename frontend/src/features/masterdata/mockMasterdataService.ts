@@ -67,7 +67,8 @@ export const mockMasterdataService: MasterdataService = {
     return Promise.resolve(record);
   },
   changeCategoryStatus: (id, status) => Promise.resolve(updateStatus(categories, id, status)),
-  listCustomers: (query) => Promise.resolve(page(customers, query, ['customerNo', 'customerName'])),
+  getCustomer: async id => { const customer = customers.find(c => c.id === id); if (!customer) throw new Error('客户不存在'); return customer; },
+  listCustomers: (query) => Promise.resolve(page(customers, query, ['customerNo', 'customerName', 'contactPerson', 'mobile', 'telephone'])),
   createCustomer: (payload: SaveCustomerPayload) => {
     const value: Customer = { id: nextId++, customerNo: generateCustomerNumber(), ...payload, system: false, status: 'enabled' };
     customers = [...customers, value];

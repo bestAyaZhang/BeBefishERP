@@ -9,6 +9,8 @@ public interface SalesOrderRepository {
 
     Optional<SalesOrder> findById(long id);
 
+    Optional<SalesOrder> findByIdForUpdate(long id);
+
     Page<SalesOrder> findAll(SalesOrderSearchCriteria criteria, Pageable pageable);
 
     void deleteById(long id);

@@ -25,6 +25,10 @@ import org.springframework.test.context.ActiveProfiles;
 })
 @ActiveProfiles("test")
 class FlywayMigrationTest {
+    // Migration tests deliberately bootstrap before tables exist; background recovery must not query them.
+    @org.springframework.boot.test.mock.mockito.MockBean
+    com.bebefish.erp.organization.application.FeishuDirectorySyncTaskService directorySyncTasks;
+
     @Autowired
     JdbcTemplate jdbc;
 
@@ -87,7 +91,7 @@ class FlywayMigrationTest {
         );
 
         assertThat(tables).containsExactlyInAnyOrder(
-                "product_category", "customer", "supplier", "warehouse",
+                "product_category", "customer", "customer_sku_price", "supplier", "warehouse", "pdd_sku_cost_plan",
                 "product_spu", "product_sku", "product_spec", "product_spec_value",
                 "product_sku_spec_value", "sku_supplier_quote", "supplier_quote_allowed_state",
                 "file_asset", "business_code_sequence",
@@ -319,6 +323,73 @@ class FlywayMigrationTest {
     }
 
     @Test
+    void upgradesV27ThroughPublishedMainMigrationsPreservingPricesAndLegacyOrders() {
+        flyway().clean();
+        Flyway.configure().dataSource(dataSource).target("27").load().migrate();
+        var productId = insertProduct("P-V27-UPGRADE", "ITEM-V27-UPGRADE");
+        var skuId = insertSku(productId, "SKU-V27-UPGRADE");
+        jdbc.update("""
+                insert into shipment
+                    (shipment_no, shipment_date, recipient_name, recipient_phone, recipient_address,
+                     preparation_content, remark, preparers_json, creator_employee_id,
+                     created_by, updated_by, created_at, updated_at)
+                values ('SHIP-V27-UPGRADE', current_date(), '历史收件人', '13800000000', '历史地址',
+                        '历史货物', '保留备注', json_array(), 42, 'employee:42', 'test', now(3), now(3))
+                """);
+        var shipmentId = jdbc.queryForObject(
+                "select id from shipment where shipment_no = 'SHIP-V27-UPGRADE'", Long.class
+        );
+        jdbc.update("""
+                insert into shipment_logistics_order
+                    (shipment_id, order_no, state, test_environment, tracking_no, child_tracking_nos,
+                     message, request_snapshot, operator_id, created_at, updated_at)
+                values (?, 'ORDER-V27-UPGRADE', 'succeeded', true, 'ANE-V27-UPGRADE', '[]',
+                        '历史下单成功', '{"legacy":true}', 'employee:42', now(3), now(3))
+                """, shipmentId);
+
+        Flyway.configure().dataSource(dataSource).target("29").load().migrate();
+        jdbc.update("""
+                insert into customer_sku_price (customer_id, sku_id, unit_price, updated_by, updated_at)
+                select id, ?, 12.34, 'test', now(3) from customer where customer_no = 'WALK_IN'
+                """, skuId);
+        jdbc.update("""
+                insert into pdd_sku_cost_plan
+                    (plan_name, lines_json, created_by, updated_by, created_at, updated_at)
+                values ('PLAN-V29-UPGRADE', '[{"skuCode":"SKU-V27-UPGRADE"}]',
+                        'test', 'test', now(3), now(3))
+                """);
+
+        flyway().migrate();
+
+        assertThat(jdbc.queryForList(
+                "select version from flyway_schema_history where success = true "
+                        + "and cast(version as unsigned) > 27 order by installed_rank", String.class
+        )).containsExactly("28", "29", "30", "31", "32", "33");
+        assertThat(jdbc.queryForMap(
+                "select remark, creator_employee_id, yimi_options from shipment where id = ?", shipmentId
+        )).containsEntry("remark", "保留备注")
+                .containsEntry("creator_employee_id", 42L)
+                .containsEntry("yimi_options", null);
+        assertThat(jdbc.queryForMap("""
+                select state, tracking_no, request_snapshot, carrier_provider, carrier_account_id,
+                       carrier_business_snapshot, carrier_response_metadata
+                from shipment_logistics_order where shipment_id = ?
+                """, shipmentId)).containsEntry("state", "succeeded")
+                .containsEntry("tracking_no", "ANE-V27-UPGRADE")
+                .containsEntry("request_snapshot", "{\"legacy\":true}")
+                .containsEntry("carrier_provider", "ANE")
+                .containsEntry("carrier_account_id", null)
+                .containsEntry("carrier_business_snapshot", null)
+                .containsEntry("carrier_response_metadata", null);
+        assertThat(jdbc.queryForObject(
+                "select unit_price from customer_sku_price where sku_id = ?", BigDecimal.class, skuId
+        )).isEqualByComparingTo("12.34");
+        assertThat(jdbc.queryForObject(
+                "select lines_json from pdd_sku_cost_plan where plan_name = 'PLAN-V29-UPGRADE'", String.class
+        )).isEqualTo("[{\"skuCode\":\"SKU-V27-UPGRADE\"}]");
+    }
+
+    @Test
     void upgradesRepresentativeLegacyRowsFromV7ToLatestWithoutDataLoss() {
         var v7 = Flyway.configure()
                 .dataSource(dataSource)
@@ -355,7 +426,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("31");
+        )).isEqualTo("33");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId

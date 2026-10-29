@@ -4,11 +4,15 @@ import { computed, inject, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { parseCustomerText } from '../addressParser';
 import { masterdataService } from '../masterdataService';
+import { customerAccountService, type CustomerAccountService, type CustomerPlatform } from '../customerAccountService';
 import { regionService } from '../regionService';
 import type { RegionOption, RegionService } from '../regionService';
 import type { Customer, MasterdataService, SaveCustomerPayload } from '../types';
 
 const service = inject<MasterdataService>('masterdataService', masterdataService);
+const accountService = inject<CustomerAccountService>('customerAccountService', customerAccountService);
+const platforms = ref<CustomerPlatform[]>([]);
+const platformError = ref('');
 const regions = inject<RegionService>('regionService', regionService);
 const route = useRoute();
 const router = useRouter();
@@ -23,6 +27,7 @@ const cities = ref<RegionOption[]>([]);
 const districts = ref<RegionOption[]>([]);
 
 const blankForm = (): SaveCustomerPayload => ({
+  platformId: null,
   customerName: '',
   contactPerson: '',
   mobile: '',
@@ -44,6 +49,7 @@ const selectedCity = computed(() => cities.value.find((city) => city.name === fo
 
 function fillForm(customer: Customer) {
   form.value = {
+    platformId: customer.platformId ?? null,
     customerName: customer.customerName,
     contactPerson: customer.contactPerson,
     mobile: customer.mobile,
@@ -65,8 +71,8 @@ async function loadCustomer() {
   loading.value = true;
   errorMessage.value = '';
   try {
-    const result = await service.listCustomers({ page: 1, size: 100 });
-    const customer = result.records.find((record) => record.id === id);
+    const customer = service.getCustomer ? await service.getCustomer(id)
+      : (await service.listCustomers({ page: 1, size: 100 })).records.find(record => record.id === id);
     if (!customer) throw new Error('客户不存在');
     fillForm(customer);
     addressText.value = [customer.province, customer.city, customer.district, customer.detailAddress].filter(Boolean).join('');
@@ -153,6 +159,8 @@ async function save() {
 }
 
 onMounted(async () => {
+  try { platforms.value = await accountService.listPlatforms(); }
+  catch (e) { platformError.value = e instanceof Error ? e.message : '平台选项加载失败'; }
   await loadRegions();
   await loadCustomer();
 });
@@ -187,6 +195,7 @@ onMounted(async () => {
             <label class="space-y-2 text-sm font-bold text-slate-500"><span>客户名称<span v-if="!isEdit" class="ml-1 text-rose-500">*</span></span><input data-testid="customer-name" v-model="form.customerName" :required="!isEdit" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-4 focus:ring-blue-50" /></label>
             <label class="space-y-2 text-sm font-bold text-slate-500"><span>联系人<span v-if="!isEdit" class="ml-1 text-rose-500">*</span></span><input data-testid="customer-contact" v-model="form.contactPerson" :required="!isEdit" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-4 focus:ring-blue-50" /></label>
             <label class="space-y-2 text-sm font-bold text-slate-500"><span>手机号<span v-if="!isEdit" class="ml-1 text-rose-500">*</span></span><input data-testid="customer-mobile" v-model="form.mobile" :required="!isEdit" inputmode="tel" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-4 focus:ring-blue-50" /></label>
+            <label class="space-y-2 text-sm font-bold text-slate-500 sm:col-span-2"><span>所属平台</span><select data-testid="customer-platform" v-model.number="form.platformId" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option :value="null">未分配平台</option><option v-for="platform in platforms" :key="platform.id" :value="platform.id" :disabled="platform.status !== 'enabled'">{{ platform.name }}{{ platform.status !== 'enabled' ? '（已停用）' : '' }}</option></select><p v-if="platformError" class="text-xs text-rose-600">{{ platformError }}</p></label>
             <label class="space-y-2 text-sm font-bold text-slate-500 sm:col-span-2"><span>联系电话</span><input v-model="form.telephone" class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#25314d] outline-none transition focus:border-[#536dff] focus:ring-4 focus:ring-blue-50" /></label>
           </div>
         </section>

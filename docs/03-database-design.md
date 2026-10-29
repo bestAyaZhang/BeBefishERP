@@ -520,6 +520,8 @@
 
 ## 14. 库存与财务一致性规则
 
+客户平台与专属价格的 V28 增补：`customer.platform_id` 可空，关联 `sales_platform.id`；`customer_sku_price` 保存 `customer_id`、`sku_id`、`unit_price decimal(18,2)`、`updated_by`、`updated_at`，客户与 SKU 组合唯一，单价非负。客户账单从已确认 `sales_order` 查询，按客户 ID 及日期汇总，不复制历史销售快照。详细规则见 [客户管理](./customer-management.md)。
+
 - `inventory_balance.quantity` 不允许小于 0，除非管理员开启临时负库存配置；第一版默认不允许负库存。
 - 每次库存余额变化必须同时写入 `inventory_ledger`。
 - 单据确认和库存流水写入必须在同一个事务内完成。

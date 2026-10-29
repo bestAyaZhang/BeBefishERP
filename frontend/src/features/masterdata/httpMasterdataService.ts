@@ -38,6 +38,7 @@ export const httpMasterdataService: MasterdataService = {
   createCategory: (payload: SaveCategoryPayload) => save<Category>('/api/categories', payload),
   updateCategory: (id, payload) => save<Category>(`/api/categories/${id}`, payload, 'PUT'),
   changeCategoryStatus: (id, status) => changeStatus<Category>(`/api/categories/${id}/status`, status),
+  getCustomer: id => request<Customer>(`/api/customers/${id}`),
   listCustomers: (query) => list<Customer>('/api/customers', query),
   createCustomer: (payload: SaveCustomerPayload) => save<Customer>('/api/customers', payload),
   updateCustomer: (id, payload) => save<Customer>(`/api/customers/${id}`, payload, 'PUT'),
@@ -52,7 +53,12 @@ export const httpMasterdataService: MasterdataService = {
   changeWarehouseStatus: (id, status) => changeStatus<Warehouse>(`/api/warehouses/${id}/status`, status),
   setDefaultWarehouse: (id) => save<Warehouse>(`/api/warehouses/${id}/default`, {}),
   async listActiveCustomers() {
-    return (await list<Customer>('/api/customers', { page: 1, size: 100, status: 'enabled' })).records;
+    const records: Customer[] = [];
+    for (let page = 1; ; page++) {
+      const result = await list<Customer>('/api/customers', { page, size: 100, status: 'enabled' });
+      records.push(...result.records);
+      if (records.length >= result.total || !result.records.length) return records;
+    }
   },
   async listActiveWarehouses() {
     return (await list<Warehouse>('/api/warehouses', { page: 1, size: 100, status: 'enabled' })).records;

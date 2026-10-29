@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clearMessages, messages } from '../../components/feedback/message';
+import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
 import router from '../../router';
 import SalesOrderDetailView from './SalesOrderDetailView.vue';
 import type { SalesOrderDetail, SalesOrderService } from './types';
@@ -54,10 +55,11 @@ const detail: SalesOrderDetail = {
   }]
 };
 
-function createService(order: SalesOrderDetail = detail): SalesOrderService & { getOrder: NonNullable<SalesOrderService['getOrder']>; deleteOrder: NonNullable<SalesOrderService['deleteOrder']>; voidOrder: NonNullable<SalesOrderService['voidOrder']> } {
+function createService(order: SalesOrderDetail = detail): SalesOrderService & { getOrder: NonNullable<SalesOrderService['getOrder']>; deleteOrder: NonNullable<SalesOrderService['deleteOrder']>; voidOrder: NonNullable<SalesOrderService['voidOrder']>; confirmSavedOrder: NonNullable<SalesOrderService['confirmSavedOrder']> } {
   return {
     saveDraft: vi.fn(),
     confirmOrder: vi.fn(),
+    confirmSavedOrder: vi.fn().mockResolvedValue({ ...order, status: 'confirmed' }),
     getOrder: vi.fn().mockResolvedValue(order),
     deleteOrder: vi.fn().mockResolvedValue(undefined),
     voidOrder: vi.fn().mockResolvedValue({ ...order, status: 'void' })
@@ -67,7 +69,54 @@ function createService(order: SalesOrderDetail = detail): SalesOrderService & { 
 describe('SalesOrderDetailView', () => {
   afterEach(() => {
     clearMessages();
+    clearCurrentUser();
     vi.restoreAllMocks();
+  });
+
+  function allowConfirmation() {
+    saveCurrentUser({ accessToken: 'test', mobile: '13800138000', roles: [], permissions: ['sales:create'], loginMethod: 'password' });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  }
+
+  it('confirms a saved draft and updates the stock status without permitting repeated clicks', async () => {
+    allowConfirmation();
+    const service = createService();
+    let finishConfirmation!: (order: SalesOrderDetail) => void;
+    vi.mocked(service.confirmSavedOrder).mockImplementation(() => new Promise(resolve => { finishConfirmation = resolve; }));
+    const wrapper = mount(SalesOrderDetailView, { props: { service, orderId: 99 }, global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="sales-order-stock-status"]').text()).toContain('草稿暂未扣库存');
+    await wrapper.get('[data-testid="sales-order-detail-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="sales-order-detail-confirm"]').trigger('click');
+    finishConfirmation({ ...detail, status: 'confirmed' });
+    await flushPromises();
+    expect(service.confirmSavedOrder).toHaveBeenCalledTimes(1);
+    expect(service.confirmSavedOrder).toHaveBeenCalledWith(99);
+    expect(wrapper.find('[data-testid="sales-order-detail-confirm"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="sales-order-stock-status"]').text()).toContain('库存已从所选仓库扣减');
+    expect(wrapper.find('[data-testid="sales-order-detail-print"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('keeps an insufficient-stock order as a draft and shows the reason', async () => {
+    allowConfirmation();
+    const service = createService();
+    vi.mocked(service.confirmSavedOrder).mockRejectedValue(new Error('库存不足'));
+    const wrapper = mount(SalesOrderDetailView, { props: { service, orderId: 99 }, global: { plugins: [router] } });
+    await flushPromises();
+    await wrapper.get('[data-testid="sales-order-detail-confirm"]').trigger('click');
+    await flushPromises();
+    expect(messages.value.at(-1)?.text).toBe('库存不足');
+    expect(wrapper.get('[data-testid="sales-order-stock-status"]').text()).toContain('草稿暂未扣库存');
+    expect(wrapper.get('[data-testid="sales-order-detail-confirm"]').attributes('disabled')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('does not show confirmation without sales creation permission', async () => {
+    const wrapper = mount(SalesOrderDetailView, { props: { service: createService(), orderId: 99 }, global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="sales-order-detail-confirm"]').exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it('loads and renders a sales order detail as a standalone page', async () => {

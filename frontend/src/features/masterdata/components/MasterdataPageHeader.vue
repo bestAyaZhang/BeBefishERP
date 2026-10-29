@@ -6,6 +6,7 @@ defineProps<{
   description: string;
   buttonLabel: string;
   buttonTestId: string;
+  hideCreate?: boolean;
 }>();
 
 defineEmits<{ create: [] }>();
@@ -19,6 +20,7 @@ defineEmits<{ create: [] }>();
       <p class="mt-2 max-w-2xl text-sm font-medium text-slate-400">{{ description }}</p>
     </div>
     <button
+      v-if="!hideCreate"
       :data-testid="buttonTestId"
       type="button"
       class="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#536dff] px-4 text-sm font-black text-white shadow-lg shadow-blue-100 transition hover:bg-[#435be3]"

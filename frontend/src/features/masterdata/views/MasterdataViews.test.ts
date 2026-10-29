@@ -73,16 +73,20 @@ describe('masterdata views', () => {
     expect(fakeService.listCategories).toHaveBeenCalledTimes(2);
   });
 
-  it('saves the customer transport method and settlement cycle', async () => {
+  it('saves the customer platform, transport method and settlement cycle', async () => {
     const fakeService = createFakeService();
     vi.mocked(fakeService.createCustomer).mockResolvedValue({} as never);
     await router.push('/customers/new');
     await router.isReady();
-    const wrapper = mount(CustomerFormView, { global: { plugins: [router], provide: { masterdataService: fakeService, regionService: mockRegionService } } });
+    const wrapper = mount(CustomerFormView, { global: { plugins: [router], provide: {
+      masterdataService: fakeService, regionService: mockRegionService,
+      customerAccountService: { listPlatforms: async () => [{ id: 7, name: '1688', status: 'enabled' }] }
+    } } });
     await flushPromises();
 
     expect(wrapper.find('[data-testid="customer-no"]').exists()).toBe(false);
     await wrapper.get('[data-testid="customer-name"]').setValue('杭州酒店');
+    await wrapper.get('[data-testid="customer-platform"]').setValue('7');
     await wrapper.get('[data-testid="customer-contact"]').setValue('张经理');
     await wrapper.get('[data-testid="customer-mobile"]').setValue('13800138000');
     await wrapper.get('[data-testid="customer-province"]').setValue('浙江省');
@@ -96,7 +100,7 @@ describe('masterdata views', () => {
 
     const payload = vi.mocked(fakeService.createCustomer).mock.calls[0][0];
     expect(payload).not.toHaveProperty('customerNo');
-    expect(payload).toEqual(expect.objectContaining({ customerName: '杭州酒店', province: '浙江省', city: '杭州市', district: '余杭区', transportMethod: 'delivery', settlementCycle: 'monthly' }));
+    expect(payload).toEqual(expect.objectContaining({ platformId: 7, customerName: '杭州酒店', province: '浙江省', city: '杭州市', district: '余杭区', transportMethod: 'delivery', settlementCycle: 'monthly' }));
   });
 
   it('parses a pasted address and validates required customer fields before saving', async () => {

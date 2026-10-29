@@ -1,5 +1,16 @@
 import type { ConfirmSalesOrderPayload, SalesOrderListQuery, SalesOrderService } from './types';
-import { addMockSalesOrder, deleteMockSalesOrder, getMockSalesOrder, listMockSalesOrders, voidMockSalesOrder } from './mockSalesOrderStore';
+import { addMockSalesOrder, confirmMockSalesOrder, deleteMockSalesOrder, getMockSalesOrder, listMockSalesOrders, voidMockSalesOrder } from './mockSalesOrderStore';
+import { mockMasterdataService } from '../masterdata/mockMasterdataService';
+import { mockProductService } from '../product/mockProductService';
+import { toProductOptions } from './salesCatalogService';
+
+async function mockCatalog() {
+  const [customers, warehouses, products] = await Promise.all([
+    mockMasterdataService.listActiveCustomers(), mockMasterdataService.listActiveWarehouses(),
+    mockProductService.listProducts({ page: 1, size: 100, status: 'enabled' })
+  ]);
+  return { customers, warehouses, products: toProductOptions(products.records) };
+}
 
 let sequence = 3;
 
@@ -16,13 +27,13 @@ export const mockSalesOrderService: SalesOrderService = {
   async saveDraft(payload: ConfirmSalesOrderPayload) {
     const currentSequence = sequence++;
     const orderNo = `SO-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${String(currentSequence).padStart(3, '0')}`;
-    addMockSalesOrder(currentSequence, orderNo, payload, 'draft');
+    addMockSalesOrder(currentSequence, orderNo, payload, 'draft', await mockCatalog());
     return { orderNo, status: 'draft' };
   },
   async confirmOrder(payload: ConfirmSalesOrderPayload) {
     const currentSequence = sequence++;
     const orderNo = `SO-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${String(currentSequence).padStart(3, '0')}`;
-    addMockSalesOrder(currentSequence, orderNo, payload);
+    addMockSalesOrder(currentSequence, orderNo, payload, 'confirmed', await mockCatalog());
     return { orderNo, status: 'confirmed' };
   },
   async getOrder(id) {
@@ -30,6 +41,7 @@ export const mockSalesOrderService: SalesOrderService = {
     if (!order) throw new Error('销售单不存在');
     return order;
   },
+  async confirmSavedOrder(id) { return confirmMockSalesOrder(id); },
   async deleteOrder(id) {
     const order = getMockSalesOrder(id);
     if (!order) throw new Error('销售单不存在');
