@@ -401,6 +401,22 @@ class ShipmentControllerTest {
     }
 
     @Test
+    void traceRequiresViewPermissionAndAnExistingShipmentWithoutMutatingIt() throws Exception {
+        var logistics=context.getBean(AneOrderService.class);
+        when(repository.findById(17)).thenReturn(java.util.Optional.of(contentRecord("employee:42","unfinished")));
+        when(logistics.trace(17)).thenReturn(new com.bebefish.erp.shipping.logistics.yimi.YimiTraceResult("empty","暂无轨迹",List.of()));
+        login("下单人","shipping:order");
+        mvc.perform(get("/api/shipments/17/logistics-trace")).andExpect(status().isForbidden());
+        verify(logistics,never()).trace(anyLong());
+        login("查看人","shipping:view");
+        mvc.perform(get("/api/shipments/17/logistics-trace")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("empty")).andExpect(jsonPath("$.data.events").isEmpty());
+        mvc.perform(get("/api/shipments/999/logistics-trace")).andExpect(status().isNotFound());
+        verify(logistics,never()).trace(999);
+        verify(repository,never()).update(any(),anyLong());
+    }
+
+    @Test
     void cancellationRequiresSeparatePermissionAndValidatedVersion() throws Exception {
         String path = "/api/shipments/17/logistics-order/cancel";
         for (String[] permissions : new String[][] { {"shipping:view", "shipping:order"}, {"shipping:cancel"} }) {

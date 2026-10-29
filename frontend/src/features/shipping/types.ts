@@ -29,6 +29,8 @@ export interface SenderFields {
   senderDetailAddress: string;
 }
 
+export interface YimiOrderOptions { visitDelivery:number|null; deliveryFlag:number|null; floorNo:string }
+
 export interface AneOrderDraft {
   cargoName: string;
   packType: string;
@@ -39,9 +41,11 @@ export interface AneOrderDraft {
   goodsType: number | null;
   payType: number | null;
   logisticsRemark: string;
+  yimi?: YimiOrderOptions | null;
 }
 
 export interface ShipmentFormInput extends RecipientFields, SenderFields {
+  logisticsChoice?: import('../logistics/types').LogisticsChoice;
   platformId?: number | null;
   shopId?: number | null;
   platform: string;
@@ -118,12 +122,14 @@ export interface SenderInfo {
   address: string;
 }
 export interface LogisticsAvailability {
+  managedTemplatesEnabled?: boolean;
   available: boolean;
   testEnvironment: boolean;
   message: string;
   sender: SenderInfo | null;
 }
 export interface LogisticsOrder {
+  provider?: 'ANE' | 'YIMI';
   shipmentId: number;
   orderNo: string;
   state: LogisticsOrderState;
@@ -134,6 +140,8 @@ export interface LogisticsOrder {
   testEnvironment: boolean;
 }
 export interface PlaceLogisticsOrder { version: number }
+export interface LogisticsAccountBinding { companyId:number|null; accountId:number|null; accountVersionId:number|null; linked:boolean; requiresConfirmation:boolean }
+export interface LogisticsTrace { status:'available'|'empty'|'unavailable'|'not_supported'; message:string; events:{time:string;status:string;location:string;description:string}[] }
 
 export interface ShippingService {
   list(query: ShipmentQuery): Promise<PageResult<Shipment>>;
@@ -146,8 +154,10 @@ export interface ShippingService {
   updatePreparation(id: number, request: { status: ShipmentStatus; actualWeight: number | null; version: number }): Promise<Shipment>;
   updatePreparationContent(id: number, request: { preparationContent: string; remark: string; version: number }): Promise<Shipment>;
   confirmCreator(id: number, request: { employeeId: number; version: number }): Promise<Shipment>;
-  logisticsAvailability(): Promise<LogisticsAvailability>;
+  logisticsAvailability(companyId?:number): Promise<LogisticsAvailability>;
+  getLogisticsAccountBinding(id:number):Promise<LogisticsAccountBinding>;
   getLogisticsOrder(id: number): Promise<LogisticsOrder | null>;
+  getLogisticsTrace(id: number): Promise<LogisticsTrace>;
   placeLogisticsOrder(id: number, request: PlaceLogisticsOrder): Promise<LogisticsOrder>;
   cancelLogisticsOrder(id: number, request: { version: number }): Promise<LogisticsOrder>;
 }
@@ -203,3 +213,28 @@ export function logisticsOrderStatus(value?: LogisticsOrderState | null) {
 }
 
 export function freightText(value: number | null) { return value == null ? '未填写' : `¥${value.toFixed(2)}`; }
+
+// Called only for API ordering: incomplete logistics details may still be saved as drafts.
+export function validateYimiOrder(form: ShipmentFormInput, productCode: string): string {
+  const draft=form.orderDraft, options=draft.yimi;
+  if(options?.visitDelivery!==0 && options?.visitDelivery!==1)return '壹米下单前请明确选择上门揽货或自送';
+  if(!Number.isInteger(draft.pieceAmount) || draft.pieceAmount==null || draft.pieceAmount<1 || draft.pieceAmount>1000)return '壹米件数须为1至1000的整数';
+  for(const value of [draft.weight,draft.volume]){
+    if(value==null)continue;
+    if(!Number.isFinite(value) || value<0)return '壹米重量和体积不能小于零';
+    if(Number(value.toFixed(2))!==value)return '壹米重量和体积最多两位小数';
+  }
+  if(form.senderDetailAddress.length>100)return '壹米寄件地址最多100字';
+  if(form.recipientDetailAddress.length>50)return '壹米收件地址最多50字';
+  if(form.senderPhone.length>20 || form.recipientPhone.length>20)return '壹米联系电话最多20字';
+  if(draft.logisticsRemark.length>100)return '壹米物流备注最多100字';
+  if(![102,104,103].includes(draft.payType??0))return '请选择现付、月结或到付';
+  if(![180,179,285].includes(draft.goodsType??0))return '请选择送货方式';
+  const expectedProduct=draft.goodsType===285?'2':'1';
+  if(productCode!==expectedProduct)return `壹米${draft.goodsType===285?'自提须选择港到港':'送货须选择港到门'}模板`;
+  if(draft.goodsType===179){
+    if(options.deliveryFlag!==2 && options.deliveryFlag!==3)return '壹米送货上楼须明确选择有电梯或无电梯';
+  }else if(options.deliveryFlag!=null && options.deliveryFlag!==(draft.goodsType===285?1:4))return '壹米送货方式与服务选项矛盾，请重新选择';
+  if(options.floorNo && (options.deliveryFlag!==3 || !['-2','-1','2','3','4','5','6','7'].includes(options.floorNo)))return '无电梯楼层仅支持-2、-1、2至7层';
+  return '';
+}

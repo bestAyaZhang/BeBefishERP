@@ -17,7 +17,8 @@ const mockNavigationCatalog: NavigationCatalog = {
       id: 'shipping',
       label: '发货管理',
       icon: 'shipping',
-      children: [{ label: '发货列表', routeName: 'shipping-list', permission: 'shipping:view' }]
+      children: [{ label: '发货列表', routeName: 'shipping-list', permission: 'shipping:view' },
+        { label: '物流管理', routeName: 'logistics-management', permission: 'logistics:view' }]
     },
     {
       id: 'inventory',

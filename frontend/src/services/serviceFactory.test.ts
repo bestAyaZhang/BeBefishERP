@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createService, selectService } from './serviceFactory';
 
 describe('service factory', () => {
+  beforeEach(() => vi.stubEnv('VITE_RUNTIME_ENV', 'local'));
   afterEach(() => vi.unstubAllEnvs());
   it('uses mock service only when VITE_DATA_SOURCE is mock', () => {
     const mockService = { source: 'mock' };

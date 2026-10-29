@@ -48,7 +48,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                     tracking_no, platform, shop_name, platform_id, shop_id, estimated_freight, cargo_name, pack_type, logistics_remark,
                     preparation_content, remark, status, preparer, preparers_json, preparer_employee_ids_json,
                     actual_weight, preparation_updated_by, preparation_employee_id, preparation_updated_at, orderer, version_no,
-                    created_by, updated_by, created_at, updated_at, creator_employee_id)
+                    created_by, updated_by, created_at, updated_at, creator_employee_id, yimi_options)
                 values (:shipmentNo, :shipmentDate, :senderName, :senderPhone, :senderProvince,
                     :senderCity, :senderCounty, :senderDetailAddress, :recipientName, :recipientPhone,
                     :recipientProvince, :recipientCity, :recipientCounty, :recipientDetailAddress, :recipientAddress,
@@ -56,7 +56,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                     :trackingNo, :platform, :shopName, :platformId, :shopId, :estimatedFreight, :cargoName, :packType, :logisticsRemark,
                     :preparationContent, :remark, :status, :preparer, cast(:preparersJson as json), cast(:preparerEmployeeIdsJson as json),
                     :actualWeight, :preparationUpdatedBy, :preparationEmployeeId, :preparationUpdatedAt, :orderer, :version,
-                    :createdBy, :updatedBy, :createdAt, :updatedAt, :creatorEmployeeId)
+                    :createdBy, :updatedBy, :createdAt, :updatedAt, :creatorEmployeeId, cast(:yimiOptions as json))
                 """, parameters(shipment), keys, new String[]{"id"});
         if (keys.getKey() == null) throw new IllegalStateException("发货单保存后未返回编号");
         return new Shipment(keys.getKey().longValue(), shipment.shipmentNo(), shipment.content(), shipment.version(),
@@ -80,7 +80,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                     estimated_freight=:estimatedFreight,
                     cargo_name=:cargoName, pack_type=:packType, weight=:weight, volume=:volume,
                     piece_amount=:pieceAmount, product_type_id=:productTypeId, goods_type=:goodsType,
-                    pay_type=:payType, logistics_remark=:logisticsRemark,
+                    pay_type=:payType, logistics_remark=:logisticsRemark, yimi_options=cast(:yimiOptions as json),
                     preparation_content=:preparationContent, remark=:remark, status=:status,
                     orderer=:orderer, version_no=:version, updated_by=:updatedBy, updated_at=:updatedAt, creator_employee_id=:creatorEmployeeId
                 where id=:id and version_no=:expectedVersion
@@ -98,7 +98,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                             and pack_type=:packType and (weight <=> :weight) and (volume <=> :volume)
                             and (piece_amount <=> :pieceAmount) and (product_type_id <=> :productTypeId)
                             and (goods_type <=> :goodsType) and (pay_type <=> :payType)
-                            and logistics_remark=:logisticsRemark))
+                            and logistics_remark=:logisticsRemark and (yimi_options <=> cast(:yimiOptions as json))))
                 """, parameters(shipment).addValue("expectedVersion", expectedVersion)) == 1;
     }
 
@@ -185,6 +185,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
                 .addValue("platformId", c.platformId()).addValue("shopId", c.shopId())
                 .addValue("estimatedFreight", c.estimatedFreight()).addValue("cargoName", draft.cargoName())
                 .addValue("packType", draft.packType()).addValue("logisticsRemark", draft.logisticsRemark())
+                .addValue("yimiOptions", writeYimiOptions(draft.yimi()))
                 .addValue("preparationContent", c.preparationContent()).addValue("remark", c.remark())
                 .addValue("status", c.status()).addValue("preparer", String.join("、", c.preparers()))
                 .addValue("preparersJson", writeJson(c.preparers())).addValue("orderer", c.orderer())
@@ -201,7 +202,7 @@ public class JdbcShipmentRepository implements ShipmentRepository {
     private Shipment map(ResultSet rs, int row) throws SQLException {
         var draft = new AneOrderDraft(rs.getString("cargo_name"), rs.getString("pack_type"), rs.getBigDecimal("weight"),
                 rs.getBigDecimal("volume"), getInteger(rs, "piece_amount"), getInteger(rs, "product_type_id"),
-                getInteger(rs, "goods_type"), getInteger(rs, "pay_type"), rs.getString("logistics_remark"));
+                getInteger(rs, "goods_type"), getInteger(rs, "pay_type"), rs.getString("logistics_remark"),readYimiOptions(rs.getString("yimi_options")));
         var content = new ShipmentContent(rs.getDate("shipment_date").toLocalDate(), rs.getString("platform"),
                 rs.getString("shop_name"), readPreparers(rs.getString("preparers_json")), rs.getString("recipient_name"),
                 rs.getString("recipient_phone"), rs.getString("recipient_province"), rs.getString("recipient_city"),
@@ -228,6 +229,15 @@ public class JdbcShipmentRepository implements ShipmentRepository {
     private String writeJson(List<?> values) {
         try { return mapper.writeValueAsString(values); }
         catch (JsonProcessingException failure) { throw new IllegalStateException("无法保存备货人", failure); }
+    }
+
+    private String writeYimiOptions(YimiOrderOptions options) {
+        if(options==null)return null;
+        try{return mapper.writeValueAsString(options);}catch(JsonProcessingException failure){throw new IllegalStateException("无法保存壹米物流选项",failure);}
+    }
+    private YimiOrderOptions readYimiOptions(String value) throws SQLException {
+        if(value==null||value.isBlank())return null;
+        try{return mapper.readValue(value,YimiOrderOptions.class);}catch(JsonProcessingException failure){throw new SQLException("无法读取壹米物流选项",failure);}
     }
 
     private List<String> readPreparers(String json) throws SQLException {

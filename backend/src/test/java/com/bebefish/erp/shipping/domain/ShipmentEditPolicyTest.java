@@ -14,6 +14,25 @@ class ShipmentEditPolicyTest {
     private final ShipmentEditPolicy policy = new ShipmentEditPolicy();
 
     @Test
+    void orderedShipmentFreezesYimiPickupAndDeliveryOptions() {
+        var original=withYimi(form("示例路1号", "原备货", "原备注"),new YimiOrderOptions(0,3,"2"));
+        var saved=content(original);
+        for(var options:List.of(new YimiOrderOptions(1,3,"2"),new YimiOrderOptions(0,2,""),new YimiOrderOptions(0,3,"3"))) {
+            assertThatThrownBy(()->policy.assertAllowed(saved,withYimi(original,options),true))
+                .isInstanceOfSatisfying(BusinessException.class,error->assertThat(error.code()).isEqualTo("SHIPMENT_ALREADY_ORDERED"));
+        }
+        assertThatCode(()->policy.assertAllowed(saved,original.withPreparationContent("更新备货","更新备注"),true)).doesNotThrowAnyException();
+    }
+
+    private ShipmentFormInput withYimi(ShipmentFormInput source,YimiOrderOptions options) {
+        var d=source.orderDraft();
+        return new ShipmentFormInput(source.platform(),source.shopName(),source.preparers(),source.recipientName(),source.recipientPhone(),
+            source.recipientProvince(),source.recipientCity(),source.recipientCounty(),source.recipientDetailAddress(),source.preparationContent(),
+            source.remark(),source.estimatedFreight(),new AneOrderDraft(d.cargoName(),d.packType(),d.weight(),d.volume(),d.pieceAmount(),d.productTypeId(),d.goodsType(),d.payType(),d.logisticsRemark(),options),
+            source.platformId(),source.shopId(),source.senderName(),source.senderPhone(),source.senderProvince(),source.senderCity(),source.senderCounty(),source.senderDetailAddress());
+    }
+
+    @Test
     void orderedShipmentRejectsRecipientOrOrderFieldChanges() {
         var saved = content(form("示例路1号", "原备货", "原备注"));
         var changedRecipient = form("示例路2号", "原备货", "原备注");

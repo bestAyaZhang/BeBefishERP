@@ -4,12 +4,14 @@ import com.bebefish.erp.common.api.BusinessException;
 import com.bebefish.erp.shipping.domain.AneOrderDraft;
 import com.bebefish.erp.shipping.domain.ShipmentContent;
 import com.bebefish.erp.shipping.domain.ShipmentRepository;
+import com.bebefish.erp.shipping.logistics.yimi.*;
 import jakarta.validation.Validator;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class AneOrderService {
@@ -18,22 +20,49 @@ public class AneOrderService {
     private final AneOrderClient client;
     private final ShipmentRepository shipments;
     private final Validator validator;
+    private final ManagedLogisticsRouting routing;
+    private final YimiOrderClient yimi;
     public AneOrderService(AneProperties config, AneOrderStore store, AneOrderClient client,
                            ShipmentRepository shipments, Validator validator) {
+        this(config,store,client,shipments,validator,null);
+    }
+    public AneOrderService(AneProperties config,AneOrderStore store,AneOrderClient client,ShipmentRepository shipments,Validator validator,ManagedLogisticsRouting routing) {
+        this(config,store,client,shipments,validator,routing,null);
+    }
+    @Autowired
+    public AneOrderService(AneProperties config,AneOrderStore store,AneOrderClient client,ShipmentRepository shipments,Validator validator,ManagedLogisticsRouting routing,YimiOrderClient yimi) {
         this.config = config; this.store = store; this.client = client; this.shipments = shipments; this.validator = validator;
+        this.routing=routing;
+        this.yimi=yimi;
     }
     public record SenderInfo(String name, String phone, String province, String city, String county, String address) {}
-    public record Availability(boolean available, boolean testEnvironment, String message, SenderInfo sender) {}
+    public record Availability(boolean available, boolean testEnvironment, String message, SenderInfo sender,boolean managedTemplatesEnabled) {
+        public Availability(boolean available,boolean testEnvironment,String message,SenderInfo sender){this(available,testEnvironment,message,sender,false);}
+    }
     public Availability availability() {
+        if(routing!=null)return routing.availability(null);
         return new Availability(config.ready(), config.testEnvironment(), config.ready()
                 ? (config.testEnvironment() ? "安能测试环境：只用于接口联调，不安排实际走货" : "安能物流下单服务已配置")
                 : "物流下单服务尚未接入：请配置安能账号、密钥和寄件人资料",
                 new SenderInfo(config.getSenderName(), config.getSenderPhone(), config.getSenderProvince(),
                         config.getSenderCity(), config.getSenderCounty(), config.getSenderAddress()));
     }
+    public Availability availability(Long companyId){return routing==null?availability():routing.availability(companyId);}
     public LogisticsOrder get(long id) { return store.find(id).orElse(null); }
 
     public LogisticsOrder place(long id, PlaceAneOrderRequest input, String operator) {
+        if(routing!=null) {
+            if(input==null||!validator.validate(input).isEmpty())throw invalid("请提供有效的发货单版本");
+            var reserved=routing.claimPlacement(id,input.version(),operator);
+            if(reserved.claim().existing()!=null)return reserved.claim().existing();
+            if(reserved.operation().yimi()!=null) {
+                var result=yimi.createOrder(reserved.operation().business(),reserved.operation().yimi(),reserved.claim().orderNo());
+                return store.finish(id,result.order(),operator,reserved.operation().companyName(),result.metadata());
+            }
+            var account=reserved.operation().config();
+            var params=orderParams(reserved.claim().shipment().content(),reserved.claim().orderNo(),account);
+            return store.finish(id,client.createOrder(params,account),operator,reserved.operation().companyName());
+        }
         if (!config.ready()) throw new BusinessException("LOGISTICS_NOT_CONFIGURED", HttpStatus.SERVICE_UNAVAILABLE, availability().message());
         if (input == null || !validator.validate(input).isEmpty()) throw invalid("请按要求填写完整的安能下单资料");
         var preview = shipments.findById(id).orElseThrow(() ->
@@ -47,6 +76,24 @@ public class AneOrderService {
     }
 
     public LogisticsOrder cancel(long id, CancelAneOrderRequest input, String operator) {
+        if(routing!=null) {
+            if(input==null||!validator.validate(input).isEmpty())throw invalid("请提供有效的发货单版本");
+            var reserved=routing.claimCancellation(id,input.version(),operator);
+            if(!reserved.claim().claimed())return reserved.claim().order();
+            if(reserved.operation().yimi()!=null) {
+                if(reserved.operation().business()!=null) {
+                    var frozen=new java.util.TreeMap<String,Object>(reserved.operation().business());
+                    frozen.put("operatorType","cancel");frozen.put("wayBillNo",Long.valueOf(reserved.claim().order().trackingNo()));
+                    return store.finishCancellation(id,yimi.cancelElectronicOrder(frozen,reserved.operation().yimi(),reserved.claim().order().orderNo(),reserved.claim().order().trackingNo()),operator);
+                }
+                var params=java.util.Map.<String,Object>of("wayBillNo",reserved.claim().order().trackingNo());
+                return store.finishCancellation(id,yimi.cancelOrder(params,reserved.operation().yimi()),operator);
+            }
+            var account=reserved.operation().config();
+            var params=orderParams(store.cancellationSnapshot(id),reserved.claim().order().orderNo(),account);
+            params.put("action",10);params.put("ewbNo","");
+            return store.finishCancellation(id,client.cancelOrder(params,account),operator);
+        }
         if (!config.ready()) throw new BusinessException("LOGISTICS_NOT_CONFIGURED", HttpStatus.SERVICE_UNAVAILABLE, availability().message());
         if (input == null || !validator.validate(input).isEmpty()) throw invalid("请提供当前发货单版本");
         var snapshot = store.cancellationSnapshot(id);
@@ -60,7 +107,17 @@ public class AneOrderService {
         return store.finishCancellation(id, client.cancelOrder(params), operator);
     }
 
+    public YimiTraceResult trace(long id) {
+        if(routing==null)return new YimiTraceResult("not_supported","该物流暂未接入轨迹查询",java.util.List.of());
+        var context=routing.traceContext(id);
+        if(context==null)return new YimiTraceResult("not_supported","暂无可查询的壹米运单",java.util.List.of());
+        return yimi.queryTrace(context.waybillNo(),context.account());
+    }
+
     private LinkedHashMap<String, Object> orderParams(ShipmentContent c, String orderNo) {
+        return orderParams(c,orderNo,config);
+    }
+    private LinkedHashMap<String,Object> orderParams(ShipmentContent c,String orderNo,AneProperties account) {
         var draft = c.orderDraft();
         var params = new LinkedHashMap<String, Object>();
         params.put("orderNo", orderNo); params.put("productTypeId", draft.productTypeId());
@@ -69,18 +126,18 @@ public class AneOrderService {
         params.put("cargoName", draft.cargoName()); params.put("packType", draft.packType());
         params.put("payType", draft.payType()); params.put("remark", draft.logisticsRemark());
         params.put("sendMan", c.senderName()); params.put("sendPhone", c.senderPhone());
-        params.put("customerCode", config.getCustomerCode()); params.put("customerPass", config.getCustomerPass());
+        params.put("customerCode", account.getCustomerCode()); params.put("customerPass", account.getCustomerPass());
         params.put("sendProvinceName", c.senderProvince()); params.put("sendCityName", c.senderCity());
         params.put("sendCountyName", c.senderCounty()); params.put("detailAddress", c.senderDetailAddress());
         params.put("receiveMan", c.recipientName()); params.put("receivePhone", c.recipientPhone());
         params.put("toProvinceName", c.recipientProvince()); params.put("toCityName", c.recipientCity());
         params.put("toCountyName", c.recipientCounty()); params.put("toAddress", c.recipientDetailAddress());
-        params.put("dictId", config.getDictId()); params.put("receiptType", 0);
+        params.put("dictId", account.getDictId()); params.put("receiptType", 0);
         params.put("signSms", 0); params.put("receiveSendSms", 0); params.put("receiveReachSms", 0);
         return params;
     }
 
-    private void validateOrderContent(ShipmentContent content) {
+    static void validateOrderContent(ShipmentContent content) {
         if (content == null) throw invalid("原下单资料不完整，请联系安能网点处理取消");
         var draft = content.orderDraft();
         if (blank(content.senderName()) || content.senderName().length() > 30
@@ -114,5 +171,5 @@ public class AneOrderService {
     }
 
     private static boolean blank(String value) { return value == null || value.isBlank(); }
-    private BusinessException invalid(String message) { return new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, message); }
+    private static BusinessException invalid(String message) { return new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, message); }
 }

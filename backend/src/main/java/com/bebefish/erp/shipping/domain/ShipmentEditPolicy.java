@@ -50,6 +50,6 @@ public class ShipmentEditPolicy {
         return new AneOrderDraft(draft.cargoName(), draft.packType(),
                 draft.weight() == null ? null : draft.weight().stripTrailingZeros(),
                 draft.volume() == null ? null : draft.volume().stripTrailingZeros(),
-                draft.pieceAmount(), draft.productTypeId(), draft.goodsType(), draft.payType(), draft.logisticsRemark());
+                draft.pieceAmount(), draft.productTypeId(), draft.goodsType(), draft.payType(), draft.logisticsRemark(),draft.yimi());
     }
 }

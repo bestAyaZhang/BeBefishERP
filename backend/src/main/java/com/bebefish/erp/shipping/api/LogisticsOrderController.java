@@ -17,10 +17,15 @@ public class LogisticsOrderController {
     public LogisticsOrderController(AneOrderService service, ShipmentService shipments) { this.service = service; this.shipments = shipments; }
     @GetMapping("/logistics/availability")
     @PreAuthorize("hasAuthority('shipping:view')")
-    public ApiResponse<AneOrderService.Availability> availability() { return ApiResponse.success(service.availability()); }
+    public ApiResponse<AneOrderService.Availability> availability(@RequestParam(required=false) Long companyId) { return ApiResponse.success(companyId==null?service.availability():service.availability(companyId)); }
     @GetMapping("/{id}/logistics-order")
     @PreAuthorize("hasAuthority('shipping:view')")
     public ApiResponse<LogisticsOrder> get(@PathVariable long id) { shipments.get(id); return ApiResponse.success(service.get(id)); }
+    @GetMapping("/{id}/logistics-trace")
+    @PreAuthorize("hasAuthority('shipping:view')")
+    public ApiResponse<com.bebefish.erp.shipping.logistics.yimi.YimiTraceResult> trace(@PathVariable long id) {
+        shipments.get(id);return ApiResponse.success(service.trace(id));
+    }
     @PostMapping("/{id}/logistics-order")
     @PreAuthorize("hasAuthority('shipping:order') and hasAuthority('shipping:view')")
     public ApiResponse<LogisticsOrder> place(@PathVariable long id, @Valid @RequestBody PlaceAneOrderRequest request,

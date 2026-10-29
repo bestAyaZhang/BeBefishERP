@@ -50,28 +50,40 @@ public class JdbcRoleRepository implements RoleRepository {
     }
 
     private List<Role> loadRoles(String sql, Object argument, String memberKey) {
-        return jdbc.query(sql, (rs, rowNum) -> {
-            long id = rs.getLong("id");
+        var rows = jdbc.query(sql, (rs, rowNum) -> new RoleRow(
+                rs.getLong("id"),
+                rs.getString("code"),
+                rs.getString("name"),
+                rs.getString("kind"),
+                rs.getBoolean("is_sensitive"),
+                rs.getString("status"),
+                rs.getString("data_scope")
+        ), argument);
+        // Release the role query's connection before loading each role's permissions.
+        return rows.stream().map(row -> {
             Set<String> permissions = new LinkedHashSet<>(jdbc.queryForList("""
                     select p.code
                     from sys_permission p
                     join sys_role_permission rp on rp.permission_id = p.id
                     where rp.role_id = ?
                     order by p.code
-                    """, String.class, id));
-            String code = rs.getString("code");
+                    """, String.class, row.id()));
             return new Role(
-                    id,
-                    code,
-                    rs.getString("name"),
-                    "system".equals(rs.getString("kind")),
-                    "SUPER_ADMIN".equals(code),
-                    rs.getBoolean("is_sensitive"),
-                    "enabled".equals(rs.getString("status")),
-                    DataScope.valueOf(rs.getString("data_scope")),
+                    row.id(),
+                    row.code(),
+                    row.name(),
+                    "system".equals(row.kind()),
+                    "SUPER_ADMIN".equals(row.code()),
+                    row.sensitive(),
+                    "enabled".equals(row.status()),
+                    DataScope.valueOf(row.dataScope()),
                     permissions,
                     memberKey == null ? Set.of() : Set.of(memberKey)
             );
-        }, argument);
+        }).toList();
+    }
+
+    private record RoleRow(long id, String code, String name, String kind,
+                           boolean sensitive, String status, String dataScope) {
     }
 }

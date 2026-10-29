@@ -18,11 +18,16 @@ public record AneOrderDraft(
         Integer productTypeId,
         Integer goodsType,
         Integer payType,
-        @Size(max = 200) String logisticsRemark
+        @Size(max = 200) String logisticsRemark,
+        @jakarta.validation.Valid YimiOrderOptions yimi
 ) {
+    public AneOrderDraft(String cargoName,String packType,BigDecimal weight,BigDecimal volume,Integer pieceAmount,
+            Integer productTypeId,Integer goodsType,Integer payType,String logisticsRemark) {
+        this(cargoName,packType,weight,volume,pieceAmount,productTypeId,goodsType,payType,logisticsRemark,null);
+    }
     public AneOrderDraft normalized() {
         return new AneOrderDraft(clean(cargoName), clean(packType), weight, volume, pieceAmount,
-                productTypeId, goodsType, payType, clean(logisticsRemark));
+                productTypeId, goodsType, payType, clean(logisticsRemark),yimi==null?null:yimi.normalized());
     }
 
     private static String clean(String value) { return value == null ? "" : value.strip(); }

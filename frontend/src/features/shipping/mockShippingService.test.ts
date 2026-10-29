@@ -10,6 +10,13 @@ function login(employeeId = 42) {
 beforeEach(() => { localStorage.clear(); login(); });
 afterEach(clearCurrentUser);
 describe('mock shipment preparation content', () => {
+  it('reports trace as unsupported without writing the shipment ledger',async()=>{
+    const service=createMockShippingService();const previous=await service.create({...emptyShipmentForm(),preparationContent:'原物品'});
+    const before=JSON.stringify(localStorage);
+    await expect(service.getLogisticsTrace(previous.id)).resolves.toMatchObject({status:'not_supported',events:[]});
+    expect(JSON.stringify(localStorage)).toBe(before);
+    expect(await service.get(previous.id)).toEqual(previous);
+  });
   it('records a stable creator and persists only the owned content and remark', async () => {
     const service = createMockShippingService();
     const previous = await service.create({ ...emptyShipmentForm(), preparationContent: '原物品', remark: '原备注' });
