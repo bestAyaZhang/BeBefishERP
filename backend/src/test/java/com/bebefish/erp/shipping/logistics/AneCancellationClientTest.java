@@ -61,6 +61,43 @@ class AneCancellationClientTest {
         }
     }
 
+    @Test void successfulCancellationAcceptsInformationalResultInfoText() throws Exception {
+        var client = new AneOrderClient(new AneProperties(), new ObjectMapper());
+        for (String info : new String[]{"响应的内容<resultInfo参数说明>", "取消成功"}) {
+            String response = new ObjectMapper().writeValueAsString(Map.of(
+                    "result", true, "resultCode", "1000", "resultInfo", info, "reason", "成功"));
+            assertThat(client.parseCancellation(response, "BF1").state()).as(info).isEqualTo("cancelled");
+        }
+    }
+
+    @Test void informationalResultInfoCannotOverrideContradictoryOrUnknownStatus() throws Exception {
+        var client = new AneOrderClient(new AneProperties(), new ObjectMapper());
+        for (String response : new String[]{
+                "{\"result\":false,\"resultCode\":\"1000\",\"resultInfo\":\"成功\"}",
+                "{\"result\":true,\"resultCode\":\"1001\",\"resultInfo\":\"成功\"}",
+                "{\"result\":false,\"resultCode\":\"9000\",\"resultInfo\":\"未知错误\"}",
+                "{\"result\":false,\"resultCode\":\"9999\",\"resultInfo\":\"系统异常\"}"}) {
+            assertThat(client.parseCancellation(response, "BF1").state()).as(response).isEqualTo("cancel_unknown");
+        }
+        for (String code : new String[]{"1001", "3001", "2001", "2002", "2003"}) {
+            assertThat(client.parseCancellation("{\"result\":false,\"resultCode\":\"" + code
+                    + "\",\"resultInfo\":\"拒绝取消\"}", "BF1").state()).as(code).isEqualTo("cancel_rejected");
+        }
+    }
+
+    @Test void structuredCancellationInfoStillRequiresTheOriginalOrder() throws Exception {
+        var mapper = new ObjectMapper();
+        var client = new AneOrderClient(new AneProperties(), mapper);
+        for (Object info : new Object[]{Map.of("orderNo", "BF1"), "{\"orderNo\":\"BF1\"}"}) {
+            assertThat(client.parseCancellation(mapper.writeValueAsString(Map.of(
+                    "result", true, "resultCode", "1000", "resultInfo", info)), "BF1").state()).isEqualTo("cancelled");
+        }
+        for (Object info : new Object[]{Map.of("orderNo", "OTHER"), "{\"orderNo\":\"OTHER\"}", java.util.List.of()}) {
+            assertThat(client.parseCancellation(mapper.writeValueAsString(Map.of(
+                    "result", true, "resultCode", "1000", "resultInfo", info)), "BF1").state()).isEqualTo("cancel_unknown");
+        }
+    }
+
     @Test void anHttpFailureStaysUncertainWithoutRetrying() throws Exception {
         var calls = new AtomicInteger();
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -115,7 +152,7 @@ class AneCancellationClientTest {
                 });
         assertThat(client.parseCancellation("{\"result\":true,\"resultCode\":\"1000\",\"resultInfo\":{\"orderNo\":\"private-other-order\"}}", "BF1").message())
                 .contains("订单号不匹配", "1000").doesNotContain("private-other-order");
-        assertThat(client.parseCancellation("{\"result\":true,\"resultCode\":\"1000\",\"resultInfo\":\"private-invalid-info\"}", "BF1"))
+        assertThat(client.parseCancellation("{\"result\":true,\"resultCode\":\"1000\",\"resultInfo\":\"{\\\"orderNo\\\":\\\"private-invalid-info\"}", "BF1"))
                 .satisfies(result -> {
                     assertThat(result.state()).isEqualTo("cancel_unknown");
                     assertThat(result.message()).contains("resultInfo", "JSON", "1000").doesNotContain("private-invalid-info");

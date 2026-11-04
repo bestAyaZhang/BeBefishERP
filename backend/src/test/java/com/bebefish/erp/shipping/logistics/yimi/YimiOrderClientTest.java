@@ -172,6 +172,46 @@ class YimiOrderClientTest {
         verify(transport, never()).send(any(), any(HttpResponse.BodyHandler.class));
     }
 
+    @Test void genericCancellationAcceptsConfirmedEmptyDataAcknowledgement() throws Exception {
+        reply("{\"success\":true,\"data\":{}}");
+        var result = client.cancelOrder(Map.of("wayBillNo", "123456789012"), account);
+        assertThat(result.state()).isEqualTo("cancelled");
+        assertThat(mapper.readTree(sent).path("method").asText()).isEqualTo("cancelOrder");
+        verify(transport, times(1)).send(any(), any(HttpResponse.BodyHandler.class));
+    }
+
+    @Test void electronicCancellationAcceptsConfirmedEmptyDataAcknowledgement() throws Exception {
+        reply("{\"success\":true,\"data\":{}}");
+        var result = cancelElectronic(electronicCancellationBody(), account, "BF1", "123456789012");
+        assertThat(result.state()).isEqualTo("cancelled");
+        assertThat(mapper.readTree(sent).path("method").asText()).isEqualTo("electTabelSaveOrder");
+        verify(transport, times(1)).send(any(), any(HttpResponse.BodyHandler.class));
+    }
+
+    @Test void emptyCancellationAcknowledgementDoesNotAcceptMissingMalformedOrContradictoryResponses() throws Exception {
+        for (String response : new String[]{"{\"success\":false,\"data\":{}}",
+                "{\"success\":\"true\",\"data\":{}}", "{\"success\":true}",
+                "{\"success\":true,\"data\":null}", "{\"success\":true,\"data\":[]}",
+                "{\"success\":true,\"data\":\"{}\"}",
+                "{\"success\":true,\"data\":{},\"errorCode\":\"FAILED\"}",
+                "{\"success\":true,\"data\":{},\"errorCode\":500}",
+                "{\"success\":true,\"data\":{},\"errorMsg\":\"取消失败\"}",
+                "{\"success\":true,\"data\":{},\"errorMessages\":[\"取消失败\"]}"}) {
+            reply(response);
+            assertThat(client.cancelOrder(Map.of("wayBillNo", "123456789012"), account).state())
+                    .as("generic: %s", response).isNotEqualTo("cancelled");
+            assertThat(cancelElectronic(electronicCancellationBody(), account, "BF1", "123456789012").state())
+                    .as("electronic: %s", response).isNotEqualTo("cancelled");
+        }
+    }
+
+    @Test void emptyCancellationAcknowledgementCannotConfirmOrderPlacement() throws Exception {
+        reply("{\"success\":true,\"data\":{}}");
+        var result = client.createOrder(Map.of("outSideNo", "BF1"), account, "BF1");
+        assertThat(result.order().state()).isEqualTo("unknown");
+        assertThat(result.order().trackingNo()).isEmpty();
+    }
+
     @Test void contradictoryCancellationErrorsOrForeignWaybillNeverConfirmCancellation() throws Exception {
         for (String extra : new String[]{"\"errorMessages\":[\"failed\"]", "\"errorMessages\":{\"failure\":true}", "\"wayBillNo\":\"999999999999\""}) {
             reply("{\"success\":true,\"data\":{\"success\":true,\"data\":\"1条处理成功,0处理失败。\"," + extra + "}}");

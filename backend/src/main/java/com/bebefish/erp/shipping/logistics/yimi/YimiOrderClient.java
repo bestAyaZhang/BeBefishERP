@@ -86,6 +86,8 @@ public class YimiOrderClient {
         try {
             JsonNode root = post("cancelOrder", body, account);
             if (!validRoot(root)) return cancelUnknown(root,account);
+            if (emptyCancellationAcknowledgement(root))
+                return new AneCancellationResult("cancelled","壹米订单已取消，原运单不可用于走货；如需重新下单，请新建发货单");
             JsonNode data = root.path("data");
             if (!data.isObject() || !data.path("success").isBoolean()) return cancelUnknown(root,account);
             String tracking = String.valueOf(body.get("wayBillNo"));
@@ -116,6 +118,8 @@ public class YimiOrderClient {
         try {
             JsonNode root = post("electTabelSaveOrder",body,account);
             if (!validRoot(root)) return cancelUnknown(root,account);
+            if (emptyCancellationAcknowledgement(root))
+                return new AneCancellationResult("cancelled","壹米订单已取消，原运单不可用于走货；如需重新下单，请新建发货单");
             JsonNode data = root.path("data");
             if (foreignIdentifier(data,"outSideNo",expectedOutsideNo) || foreignIdentifier(data,"wayBillNo",expectedWaybillNo))
                 return cancelUnknown(root,account);
@@ -203,6 +207,15 @@ public class YimiOrderClient {
     }
     private static boolean foreignIdentifier(JsonNode data,String field,String expected) {
         return data.has(field) && (!data.path(field).isTextual() || !expected.equals(data.path(field).textValue()));
+    }
+    private static boolean emptyCancellationAcknowledgement(JsonNode root) {
+        // The confirmed cancellation response omits status and echoed identifiers.
+        if (!root.path("success").booleanValue() || !root.path("data").isObject() || !root.path("data").isEmpty()) return false;
+        for (String field : List.of("errorCode","errorMsg","errorMessages")) {
+            JsonNode error = root.path(field);
+            if (!error.isMissingNode() && !error.isNull() && !(error.isTextual() && error.asText().isBlank())) return false;
+        }
+        return true;
     }
     private static boolean explicitError(JsonNode node) {
         for (String field : List.of("errorCode","errorMsg","errorMessages"))

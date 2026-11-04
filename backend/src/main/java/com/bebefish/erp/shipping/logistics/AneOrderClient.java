@@ -105,10 +105,15 @@ public class AneOrderClient {
         String diagnosticCode = "，返回码 " + code;
         JsonNode info = root.path("resultInfo");
         if (info.isTextual() && !info.asText().isBlank()) {
-            try { info = mapper.readTree(info.asText()); }
-            catch (JsonProcessingException invalidInfo) { return AneCancellationResult.unknown("resultInfo 不是有效 JSON" + diagnosticCode); }
+            String text = info.asText().strip();
+            try { info = mapper.readTree(text); }
+            catch (JsonProcessingException invalidInfo) {
+                // resultInfo may be explanatory text; malformed structured order data remains uncertain.
+                if (text.startsWith("{") || text.startsWith("["))
+                    return AneCancellationResult.unknown("resultInfo 不是有效 JSON" + diagnosticCode);
+            }
         }
-        if (!info.isMissingNode() && !info.isNull() && !(info.isTextual() && info.asText().isBlank())) {
+        if (!info.isMissingNode() && !info.isNull() && !info.isTextual()) {
             if (!info.isObject()) return AneCancellationResult.unknown("resultInfo 结构异常" + diagnosticCode);
             if (info.path("orderNo").asText().isBlank()) return AneCancellationResult.unknown("resultInfo 缺少订单号" + diagnosticCode);
             if (!orderNo.equals(info.path("orderNo").asText())) return AneCancellationResult.unknown("安能响应订单号不匹配" + diagnosticCode);
