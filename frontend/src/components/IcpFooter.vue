@@ -1,5 +1,5 @@
 <template>
-  <footer data-testid="icp-footer" class="flex h-7 shrink-0 items-center justify-center px-3 text-center text-xs leading-4 text-slate-500 print:hidden">
+  <footer data-testid="icp-footer" class="flex h-7 shrink-0 items-center justify-center px-3 text-center text-xs leading-4 text-slate-600 print:hidden">
     <a
       href="https://beian.miit.gov.cn/"
       target="_blank"

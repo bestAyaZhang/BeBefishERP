@@ -185,7 +185,7 @@ async function handleLogout() {
               <Menu class="h-5 w-5" aria-hidden="true" />
             </button>
             <nav data-testid="erp-breadcrumb" class="flex min-w-0 items-center gap-2 overflow-hidden text-sm" aria-label="Breadcrumb">
-              <RouterLink data-testid="breadcrumb-group" :to="{ name: pageHeader.groupRoute }" class="hidden font-medium text-slate-400 transition hover:text-[#536dff] sm:block">{{ pageHeader.group }}</RouterLink>
+              <RouterLink data-testid="breadcrumb-group" :to="{ name: pageHeader.groupRoute }" class="hidden font-medium text-slate-600 transition hover:text-[#536dff] sm:block">{{ pageHeader.group }}</RouterLink>
               <span data-testid="breadcrumb-separator" class="hidden text-slate-300 sm:inline">/</span>
               <RouterLink data-testid="breadcrumb-current" :to="{ name: pageHeader.titleRoute }" class="block min-w-0 truncate font-black text-[#0f172a]">{{ pageHeader.title }}</RouterLink>
             </nav>

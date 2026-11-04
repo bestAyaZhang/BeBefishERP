@@ -86,37 +86,37 @@ function reopenTool(routeName: string) {
   <nav data-testid="erp-sidebar" class="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white" aria-label="主导航">
     <div data-testid="erp-sidebar-brand" class="flex h-[88px] shrink-0 items-center gap-3 border-b border-slate-100 px-5">
       <img data-testid="erp-sidebar-logo" src="/brand/bebefish-mark.svg" alt="BeBefish 公司 Logo" width="40" height="40" class="h-10 w-10 shrink-0 rounded-lg object-contain" />
-      <div class="min-w-0"><p class="truncate text-sm font-bold">BeBefish ERP</p><p class="text-xs font-medium text-slate-400">主数据运营中心</p></div>
+      <div class="min-w-0"><p class="truncate text-sm font-bold">BeBefish ERP</p><p class="text-xs font-medium text-slate-600">主数据运营中心</p></div>
     </div>
     <div data-testid="erp-sidebar-menu" class="flex-1 overflow-y-auto px-4 py-6">
-      <p class="mb-4 px-2 text-xs font-semibold text-slate-400">Menu</p>
+      <p class="mb-4 px-2 text-xs font-semibold text-slate-600">Menu</p>
       <div class="space-y-1">
       <template v-for="item in visibleMenuItems" :key="item.label">
         <RouterLink
           v-if="item.routeName"
           :to="{ name: item.routeName }"
           class="group relative flex h-11 w-full items-center gap-3 rounded-lg px-3 text-sm font-semibold transition"
-          :class="isActive(item) ? 'bg-[#f4f6ff] text-[#25314d]' : 'text-slate-400 hover:bg-slate-50 hover:text-[#25314d]'"
+          :class="isActive(item) ? 'bg-[#f4f6ff] text-[#25314d]' : 'text-slate-600 hover:bg-slate-50 hover:text-[#25314d]'"
           @click="$emit('navigate')"
         >
           <span v-if="isActive(item)" class="absolute -left-4 h-7 w-1 rounded-r-full bg-[#536dff]"></span>
           <component :is="sidebarIcons[item.icon]" class="h-4 w-4 shrink-0" aria-hidden="true" />
           <span>{{ item.label }}</span>
-          <ChevronRight v-if="isActive(item)" class="ml-auto h-4 w-4 text-slate-400" aria-hidden="true" />
+          <ChevronRight v-if="isActive(item)" class="ml-auto h-4 w-4 text-slate-600" aria-hidden="true" />
         </RouterLink>
         <div v-else class="mb-1">
-          <button type="button" :aria-expanded="isExpanded(item)" class="group relative flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-slate-400 transition hover:bg-slate-50 hover:text-[#25314d]" :class="{ 'bg-[#f4f6ff] text-[#25314d]': isActive(item) }" @click="toggleGroup(item)">
+          <button type="button" :aria-expanded="isExpanded(item)" class="group relative flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-[#25314d]" :class="{ 'bg-[#f4f6ff] text-[#25314d]': isActive(item) }" @click="toggleGroup(item)">
             <span v-if="isActive(item)" class="absolute -left-4 h-7 w-1 rounded-r-full bg-[#536dff]"></span>
             <component :is="sidebarIcons[item.icon]" class="h-4 w-4 shrink-0" aria-hidden="true" />
             <span>{{ item.label }}</span>
-            <ChevronDown class="ml-auto h-4 w-4 text-slate-400 transition" :class="{ 'rotate-180': isExpanded(item) }" aria-hidden="true" />
+            <ChevronDown class="ml-auto h-4 w-4 text-slate-600 transition" :class="{ 'rotate-180': isExpanded(item) }" aria-hidden="true" />
           </button>
           <div v-if="isExpanded(item)" class="mt-1 space-y-1">
           <RouterLink
             v-for="child in item.children"
             :key="child.routeName"
             :to="{ name: child.routeName }"
-            class="ml-6 flex h-9 items-center rounded-lg px-3 text-sm font-semibold text-slate-400 transition hover:bg-slate-50 hover:text-[#25314d]"
+            class="ml-6 flex h-9 items-center rounded-lg px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-[#25314d]"
             :class="{ 'bg-blue-50 text-[#536dff]': child.routeName === activeRouteName }"
             @click="reopenTool(child.routeName); $emit('navigate')"
           >
@@ -127,6 +127,6 @@ function reopenTool(routeName: string) {
       </template>
       </div>
     </div>
-    <div data-testid="erp-sidebar-user" class="mx-5 mb-5 flex items-center gap-3 border-t border-slate-100 pt-5"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-600">{{ currentUserInitials }}</span><div class="min-w-0"><p class="truncate text-sm font-bold">当前登录用户</p><p class="truncate text-xs text-slate-400">{{ currentUserMobile }}</p></div><ChevronRight class="ml-auto h-4 w-4 text-slate-400" aria-hidden="true" /></div>
+    <div data-testid="erp-sidebar-user" class="mx-5 mb-5 flex items-center gap-3 border-t border-slate-100 pt-5"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-600">{{ currentUserInitials }}</span><div class="min-w-0"><p class="truncate text-sm font-bold">当前登录用户</p><p class="truncate text-xs text-slate-600">{{ currentUserMobile }}</p></div><ChevronRight class="ml-auto h-4 w-4 text-slate-600" aria-hidden="true" /></div>
   </nav>
 </template>

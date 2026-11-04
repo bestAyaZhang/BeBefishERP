@@ -206,6 +206,83 @@ describe('ShipmentListView', () => {
     wrapper.unmount();
   });
 
+  it('queries the selected preparation status from the first page', async () => {
+    service.list.mockResolvedValue({ records: [record()], page: 1, pageSize: 20, total: 45 });
+    const { wrapper } = await render();
+    await wrapper.get('[data-testid="shipment-next-page"]').trigger('click'); await flushPromises();
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }));
+
+    const statusButtons = wrapper.get('[role="group"][aria-label="按备货状态筛选"]').findAll('button');
+    const completed = statusButtons.find(button => button.text() === '已完成')!;
+    await completed.trigger('click'); await flushPromises();
+
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, status: 'completed', incompleteOnly: false }));
+    expect(completed.attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('.list-caption').text()).toContain('不限日期 · 已完成');
+    wrapper.unmount();
+  });
+
+  it('keeps advanced filter values when collapsed and includes them in the next query', async () => {
+    const { wrapper } = await render();
+    const toggle = wrapper.get('[data-testid="shipment-advanced-toggle"]');
+    await toggle.trigger('click');
+    expect(toggle.attributes('aria-expanded')).toBe('true');
+    await wrapper.get('[data-testid="shipment-date-from"]').setValue('2026-09-01');
+    await wrapper.get('[data-testid="shipment-date-to"]').setValue('2026-09-30');
+    await wrapper.get('[data-testid="shipment-platform"]').setValue('淘宝');
+
+    await toggle.trigger('click');
+    expect(toggle.attributes('aria-expanded')).toBe('false');
+    expect(wrapper.get('#shipment-advanced-filters').isVisible()).toBe(false);
+    expect(wrapper.get('[data-testid="shipment-date-from"]').element).toHaveProperty('value', '2026-09-01');
+    expect(wrapper.get('[data-testid="shipment-platform"]').element).toHaveProperty('value', '淘宝');
+    expect(service.list).toHaveBeenCalledTimes(1);
+
+    await wrapper.get('[data-testid="shipment-filter-form"]').trigger('submit'); await flushPromises();
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({
+      dateFrom: '2026-09-01', dateTo: '2026-09-30', platform: '淘宝', status: 'unfinished'
+    }));
+    wrapper.unmount();
+  });
+
+  it('keeps the applied status and page range until the next page finishes loading', async () => {
+    service.list.mockResolvedValue({ records: [record()], page: 1, pageSize: 20, total: 45 });
+    const { wrapper } = await render();
+    const statusButtons = wrapper.get('[role="group"][aria-label="按备货状态筛选"]').findAll('button');
+    const unfinished = statusButtons.find(button => button.text() === '未完成')!;
+    const outOfStock = statusButtons.find(button => button.text() === '缺货')!;
+
+    await wrapper.get('[data-testid="shipment-advanced-toggle"]').trigger('click');
+    await wrapper.get('[data-testid="shipment-filter-status"]').setValue('out_of_stock');
+    expect(service.list).toHaveBeenCalledTimes(1);
+    expect(unfinished.attributes('aria-pressed')).toBe('true');
+    expect(outOfStock.attributes('aria-pressed')).toBe('false');
+    expect(wrapper.get('.list-caption').text()).toContain('不限日期 · 未完成');
+
+    let finishLoading!: (result: { records: Shipment[]; page: number; pageSize: number; total: number }) => void;
+    service.list.mockImplementationOnce(() => new Promise(resolve => { finishLoading = resolve; }));
+    await wrapper.get('[data-testid="shipment-next-page"]').trigger('click');
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, status: 'out_of_stock' }));
+    expect(wrapper.get('[aria-busy]').attributes('aria-busy')).toBe('true');
+    expect(wrapper.get('.record-range').text()).toContain('1–20 条');
+    expect(wrapper.get('.pagination').text()).toBe('1 / 3');
+    expect(wrapper.find('[data-testid="shipment-row-8"]').exists()).toBe(true);
+    expect(unfinished.attributes('aria-pressed')).toBe('true');
+    expect(outOfStock.attributes('aria-pressed')).toBe('false');
+
+    finishLoading({ records: [{ ...record(9), content: { ...record(9).content, status: 'out_of_stock' } }], page: 2, pageSize: 20, total: 45 });
+    await flushPromises();
+    expect(wrapper.get('[aria-busy]').attributes('aria-busy')).toBe('false');
+    expect(wrapper.get('.record-range').text()).toContain('21–40 条');
+    expect(wrapper.get('.pagination').text()).toBe('2 / 3');
+    expect(wrapper.find('[data-testid="shipment-row-8"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="shipment-row-9"]').exists()).toBe(true);
+    expect(unfinished.attributes('aria-pressed')).toBe('false');
+    expect(outOfStock.attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('.list-caption').text()).toContain('不限日期 · 缺货');
+    wrapper.unmount();
+  });
+
   it('shows independent list failures with retry and hides create without permission', async () => {
     service.list.mockRejectedValueOnce(new Error('接口服务暂不可用')).mockResolvedValueOnce({ records: [], page: 1, pageSize: 20, total: 0 });
     const { wrapper } = await render(['shipping:view']);
