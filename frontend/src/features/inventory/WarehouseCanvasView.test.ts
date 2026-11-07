@@ -441,12 +441,6 @@ describe('Warehouse canvas overview', () => {
     expect(wrapper.get('[data-testid="planner-zoom-reset"]').text()).toContain('63%')
     expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('translate3d(122px, 48px, 0) scale(0.63)')
   })
-  it('shows a neutral planning pasteboard outside the warehouse scene', async () => {
-    applyPageStyles()
-    const wrapper = await mountPage()
-    const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
-    expect(getComputedStyle(viewport.element).backgroundColor).toBe('rgb(248, 250, 252)')
-  })
   it('shows warehouse walls without an extra artboard frame or bounded inner grid', async () => {
     applyPageStyles()
     applyBlueprintStyles()
@@ -533,6 +527,39 @@ describe('Warehouse canvas overview', () => {
     await wrapper.get('[data-testid="planner-zoom-in"]').trigger('click')
     expect(ruler.find('[data-testid="planner-viewport-ruler-x-label-5"]').exists()).toBe(true)
     expect(ruler.get('[data-testid="planner-viewport-ruler-x-label-0"]').attributes('style')).toContain('left: 14.24px')
+  })
+  it('keeps a fitted scene inside a resized viewport and preserves manual zoom', async () => {
+    let notifyResize = () => {}
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: () => void) { notifyResize = callback }
+      observe() {}
+      disconnect() {}
+    })
+    try {
+      const wrapper = await mountPage()
+      const viewport = wrapper.get('[data-testid="planner-scene-viewport"]')
+      Object.defineProperties(viewport.element, {
+        clientWidth: { configurable: true, value: 1000 },
+        clientHeight: { configurable: true, value: 600 },
+      })
+      await wrapper.get('[data-testid="planner-zoom-fit"]').trigger('click')
+      Object.defineProperties(viewport.element, {
+        clientWidth: { configurable: true, value: 480 },
+        clientHeight: { configurable: true, value: 700 },
+      })
+      notifyResize()
+      await flushPromises()
+      expect(wrapper.get('[data-testid="planner-zoom-reset"]').text()).toBe('32%')
+      expect(wrapper.get('[data-testid="planner-scene-stage"]').attributes('style')).toContain('translate3d(48px, 222px, 0) scale(0.32)')
+
+      await wrapper.get('[data-testid="planner-zoom-in"]').trigger('click')
+      Object.defineProperty(viewport.element, 'clientWidth', { configurable: true, value: 640 })
+      notifyResize()
+      await flushPromises()
+      expect(wrapper.get('[data-testid="planner-zoom-reset"]').text()).toBe('57%')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
   it('zooms around the pointer with Ctrl plus wheel', async () => {
     const wrapper = await mountPage()

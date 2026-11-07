@@ -1,0 +1,52 @@
+/* Brand blue sampled from the original BeBefish mark; shared by every warehouse surface. */
+.warehouse-page {
+  --wh-ground: #f4f6fc;
+  --wh-surface: #ffffff;
+  --wh-raised: #f8faff;
+  --wh-active: #eaf0ff;
+  --wh-border: #e0e6f2;
+  --wh-control: #b7c5e0;
+  --wh-text: #1c2d50;
+  --wh-muted: #5d6c87;
+  --wh-accent: #002ff2;
+  --wh-accent-hover: #0026c9;
+  --wh-accent-soft: #edf2ff;
+  --wh-accent-preview: #002ff218;
+  --wh-zone-primary: #204fd0;
+  --wh-zone-soft: #6586ce;
+  --wh-zone-deep: #294a95;
+  --wh-zone-muted: #7c90b8;
+  --wh-wall: #8a9bbd;
+  --wh-wall-light: #b3c0db;
+  --wh-pile-bg: #e4ebfc;
+  --wh-pile-cell: #d5e0fa;
+  --wh-pile-border: #9fb5e3;
+  --wh-pile-rule: #b7c8ef;
+  --wh-pile-label: #eef3ff;
+  --wh-pile-ink: #25428c;
+  --wh-danger: #b43e4b;
+  --wh-font: 'Noto Sans SC Variable', 'Inter Variable', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.warehouse-page button,
+.warehouse-page input,
+.warehouse-page select { font-family: var(--wh-font); }
+
+.warehouse-page button { -webkit-tap-highlight-color: transparent; }
+.warehouse-page button:focus-visible,
+.warehouse-page a:focus-visible { outline: 2px solid var(--wh-accent); outline-offset: 3px; }
+
+/* A metre grid is functional drawing information, drawn as a flat SVG asset. */
+.warehouse-page .planner-scene-viewport.planner-camera-viewport {
+  background-color: var(--wh-ground);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M24 0H0V24' fill='none' stroke='%23e4e9f5' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 24px 24px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .warehouse-page *, .warehouse-page *::before, .warehouse-page *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}

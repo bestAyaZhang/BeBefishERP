@@ -58,3 +58,4 @@ worktrees/
 # Local tooling
 .tools/
 .superpowers/
+.taste-skill/

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Box, Layers3, MapPin, PackageOpen, X } from 'lucide-vue-next'
+import { PackageOpen, X } from 'lucide-vue-next'
 import type { PlannerPalletGroup, PlannerZone } from '../warehousePlannerScene'
 import type { WarehouseInventoryAllocation, WarehouseInventoryLayout, WarehouseSkuCandidate } from '../warehouseInventoryService'
 
@@ -141,9 +141,9 @@ function caseText(item: WarehouseInventoryAllocation) {
       </header>
 
       <section class="drawer-summary">
-        <div><Layers3 :size="17" /><span>SKU 种类</span><strong>{{ items.length }}</strong></div>
-        <div><Box :size="17" /><span>实际库存</span><strong>{{ number.format(totalUnits) }} 个</strong></div>
-        <div v-if="zone"><MapPin :size="17" /><span>货物堆</span><strong>{{ pileCount }} 个</strong></div>
+        <div><span>SKU 种类</span><strong>{{ items.length }}</strong></div>
+        <div><span>实际库存</span><strong>{{ number.format(totalUnits) }} 个</strong></div>
+        <div v-if="zone"><span>货物堆</span><strong>{{ pileCount }} 个</strong></div>
       </section>
 
       <section v-if="pallet && canEdit" class="allocation-panel">
@@ -194,7 +194,6 @@ function caseText(item: WarehouseInventoryAllocation) {
       <div class="sku-heading"><span>SKU 明细</span><small>库存单位：个</small></div>
       <div v-if="items.length" class="sku-list">
         <article v-for="item in items" :key="item.skuId" data-testid="inventory-detail-sku" class="sku-card">
-          <div class="sku-icon"><PackageOpen :size="19" /></div>
           <div class="sku-copy"><strong>{{ item.productName }}</strong><code>{{ item.skuCode }}</code><small v-if="item.skuName || item.specification">{{ [item.skuName, item.specification].filter(Boolean).join(' · ') }}</small></div>
           <div class="sku-quantity"><strong>{{ number.format(item.units) }} 个</strong><small v-if="caseText(item)">{{ caseText(item) }}</small></div>
         </article>
@@ -206,5 +205,50 @@ function caseText(item: WarehouseInventoryAllocation) {
 </template>
 
 <style scoped>
-.inventory-drawer{position:absolute;z-index:60;top:14px;right:14px;bottom:14px;width:360px;display:flex;flex-direction:column;border:1px solid #e2e7ef;border-radius:12px;background:#fff;color:#26354d;box-shadow:0 14px 40px #25314d24;overflow:hidden}.inventory-drawer>header{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 18px 15px;border-bottom:1px solid #edf0f5}.inventory-drawer>header span{color:#8592a5;font-size:10px;letter-spacing:.08em}.inventory-drawer h2{margin:4px 0 0;font-size:17px}.inventory-drawer>header button{display:grid;place-items:center;width:31px;height:31px;border:0;border-radius:7px;background:#f4f6fa;color:#66748a}.drawer-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:14px 16px}.drawer-summary div{display:grid;grid-template-columns:20px 1fr;align-items:center;padding:10px;border-radius:8px;background:#f7f9fc;color:#718097}.drawer-summary span{font-size:10px}.drawer-summary strong{grid-column:2;font-size:14px;color:#273750}.allocation-panel{margin:0 16px 12px;padding:11px;border:1px solid #e5ebf3;border-radius:9px;background:#fafcff}.allocation-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.allocation-heading>div{display:grid;gap:2px}.allocation-heading span{font-size:12px;font-weight:700}.allocation-heading small,.allocation-hint{color:#8b97a8;font-size:10px}.allocation-heading button,.allocation-form>button{border:0;border-radius:6px;background:#5e78b8;color:#fff;font-size:11px;font-weight:700;cursor:pointer}.allocation-heading button{padding:7px 9px}.allocation-hint{margin:8px 0 0}.allocation-form{display:grid;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid #e8edf4}.allocation-form label{display:grid;gap:4px;color:#718097;font-size:10px}.allocation-form select,.allocation-form input{width:100%;box-sizing:border-box;border:1px solid #dce3ed;border-radius:6px;background:#fff;padding:7px 8px;color:#31415a;font:11px Inter,sans-serif}.allocation-meta{display:flex;justify-content:space-between;gap:6px;color:#6d7b90;font-size:10px}.allocation-form>button{padding:8px}.allocation-heading button:disabled,.allocation-form :disabled{cursor:not-allowed;opacity:.52}.allocation-validation,.allocation-error{margin:0;font-size:10px}.allocation-validation{color:#bc6b2c}.allocation-error{color:#b44949}.sku-heading{display:flex;justify-content:space-between;padding:6px 18px 10px;color:#69778b;font-size:12px}.sku-heading small{color:#99a3b2}.sku-list{padding:0 12px 14px;overflow:auto}.sku-card{display:grid;grid-template-columns:36px 1fr auto;gap:10px;align-items:center;padding:12px 7px;border-top:1px solid #eef1f5}.sku-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:8px;background:#eef2fb;color:#5e78b8}.sku-copy{min-width:0}.sku-copy strong{display:block;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.sku-copy code{display:block;margin-top:4px;color:#6d7b90;font:10px/1.2 Inter,sans-serif}.sku-copy small{display:block;margin-top:4px;color:#9aa4b3;font-size:9px}.sku-quantity{text-align:right}.sku-quantity strong{display:block;font-size:12px}.sku-quantity small{display:block;margin-top:5px;color:#7f8b9e;font-size:10px}.drawer-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;color:#8a96a8}.drawer-empty strong{font-size:13px}.drawer-empty span{font-size:11px}.inventory-drawer>footer{margin-top:auto;padding:12px 18px;border-top:1px solid #eef1f5;color:#9ba5b4;font-size:10px}.drawer-enter-active,.drawer-leave-active{transition:transform .18s ease,opacity .18s ease}.drawer-enter-from,.drawer-leave-to{transform:translateX(20px);opacity:0}
+.inventory-drawer { position:absolute; z-index:60; top:12px; right:12px; bottom:12px; width:360px; display:flex; flex-direction:column; overflow-y:auto; border:1px solid var(--wh-border); border-radius:12px; background:var(--wh-surface); color:var(--wh-text); box-shadow:0 12px 32px #1c2d5012; }
+.inventory-drawer>header { display:flex; flex:none; align-items:flex-start; justify-content:space-between; gap:16px; padding:20px; border-bottom:1px solid var(--wh-border); }
+.inventory-drawer>header span { color:var(--wh-muted); font-size:12px; }
+.inventory-drawer h2 { margin:5px 0 0; font-size:18px; font-weight:600; }
+.inventory-drawer>header button { display:grid; flex:none; place-items:center; width:32px; height:32px; border:0; border-radius:6px; background:var(--wh-raised); color:var(--wh-muted); cursor:pointer; }
+.drawer-summary { display:flex; flex:none; gap:24px; padding:20px; }
+.drawer-summary div { display:grid; gap:6px; color:var(--wh-muted); }
+.drawer-summary svg { display:none; }
+.drawer-summary span { font-size:12px; }
+.drawer-summary strong { font-size:22px; line-height:30px; color:var(--wh-text); font-weight:500; font-variant-numeric:tabular-nums; }
+.allocation-panel { flex:none; margin:0 20px 16px; padding:16px; border-radius:6px; background:var(--wh-raised); }
+.allocation-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.allocation-heading>div { display:grid; gap:4px; }
+.allocation-heading span { font-size:13px; font-weight:600; }
+.allocation-heading small,.allocation-hint { color:var(--wh-muted); font-size:12px; line-height:19px; }
+.allocation-heading button,.allocation-form>button { flex:none; min-height:34px; border:0; border-radius:6px; background:var(--wh-accent); color:var(--wh-surface); font-size:12px; cursor:pointer; padding:6px 10px; }
+.allocation-hint { margin:8px 0 0; }
+.allocation-form { display:grid; gap:12px; margin-top:14px; padding-top:14px; border-top:1px solid var(--wh-border); }
+.allocation-form label { display:grid; gap:6px; color:var(--wh-muted); font-size:12px; }
+.allocation-form select,.allocation-form input { width:100%; min-height:38px; box-sizing:border-box; border:1px solid var(--wh-control); border-radius:6px; background:var(--wh-surface); padding:8px; color:var(--wh-text); font:inherit; font-size:13px; }
+.allocation-form select:focus-visible,.allocation-form input:focus-visible { outline:2px solid var(--wh-accent); outline-offset:2px; }
+.allocation-meta { display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px; color:var(--wh-muted); font-size:11px; }
+.allocation-heading button:disabled,.allocation-form :disabled { cursor:not-allowed; opacity:.55; }
+.allocation-validation,.allocation-error { margin:0; font-size:12px; line-height:19px; }
+.allocation-validation { color:#875a1f; }
+.allocation-error { color:var(--wh-danger); }
+.sku-heading { display:flex; flex:none; justify-content:space-between; padding:0 20px 8px; color:var(--wh-muted); font-size:12px; }
+.sku-heading small { font-size:12px; }
+.sku-list { flex:1 0 auto; padding:0 20px 16px; }
+.sku-card { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:start; padding:16px 0; border-top:1px solid var(--wh-border); }
+.sku-copy { min-width:0; }
+.sku-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:500; }
+.sku-copy code { display:block; margin-top:5px; color:var(--wh-muted); font:12px/1.5 var(--wh-font); }
+.sku-copy small { display:block; margin-top:4px; color:var(--wh-muted); font-size:12px; line-height:18px; }
+.sku-quantity { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.sku-quantity strong { display:block; font-size:14px; font-weight:600; }
+.sku-quantity small { display:block; margin-top:6px; color:var(--wh-muted); font-size:12px; }
+.drawer-empty { flex:1; min-height:160px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:20px; color:var(--wh-muted); }
+.drawer-empty strong { color:var(--wh-text); font-size:14px; font-weight:500; }
+.drawer-empty span { font-size:12px; }
+.inventory-drawer>footer { flex:none; margin-top:auto; padding:14px 20px; border-top:1px solid var(--wh-border); color:var(--wh-muted); font-size:11px; }
+.drawer-enter-active,.drawer-leave-active { transition:transform .18s ease-out,opacity .18s ease-out; }
+.drawer-enter-from,.drawer-leave-to { transform:translateX(16px); opacity:0; }
+@media (max-width:800px) { .inventory-drawer { inset:8px; width:auto; max-width:420px; margin-left:auto; } }
+@media (max-width:480px) { .inventory-drawer>header button,.allocation-heading button,.allocation-form>button { min-height:44px; } }
+@media (prefers-reduced-motion:reduce) { .drawer-enter-active,.drawer-leave-active { transition:none; } }
 </style>

@@ -24,6 +24,7 @@ import type { PlannerPalletGroup, PlannerRect } from '../warehouseCanvas/warehou
 import { cloneStructure, createWarehouseStructure, validatePlannerLayout } from '../warehouseCanvas/warehouseStructure'
 import type { WarehouseStructure, StructureIssue } from '../warehouseCanvas/warehouseStructure'
 import { currentUser } from '../../../services/authSession'
+import '../warehouseCanvas/warehouseCanvasTheme.css'
 
 const props = withDefaults(defineProps<{ demo?: boolean; mode?: 'planner' | 'inventory' }>(), {
   demo: false,
@@ -153,7 +154,7 @@ const plannerStatusHost = ref<HTMLElement | null>(null)
 const plannerZoom = ref(100)
 const plannerCamera = ref({ x: 0, y: 0 })
 const plannerViewportSize = ref({ width: 0, height: 0 })
-let plannerCameraHasBeenFitted = false
+let plannerAutoFit = true
 const plannerSpaceHeld = ref(false)
 function plannerKeyDown(event: KeyboardEvent) {
   if (plannerCompleted.value || event.code !== 'Space' || (event.target instanceof Element && event.target.closest('button, input, textarea, select, [role="button"], [contenteditable="true"]'))) return
@@ -191,13 +192,14 @@ function fitPlannerScene() {
     x: Math.round((surface.clientWidth - PLANNER_SCENE_WIDTH * fittedScale) / 2),
     y: Math.round((surface.clientHeight - PLANNER_SCENE_HEIGHT * fittedScale) / 2),
   }
-  plannerCameraHasBeenFitted = true
+  plannerAutoFit = true
   syncMinimapViewport()
 }
 function startPlannerPan(event: PointerEvent) {
   if (plannerCompleted.value || !(event.button === 1 || (event.button === 0 && plannerSpaceHeld.value))) return
   event.preventDefault()
   event.stopPropagation()
+  plannerAutoFit = false
   plannerPan = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, cameraX: plannerCamera.value.x, cameraY: plannerCamera.value.y }
   plannerSceneViewport.value?.setPointerCapture?.(event.pointerId)
 }
@@ -229,6 +231,7 @@ function syncMinimapViewport() {
   }
 }
 function changePlannerZoom(next: number, anchor?: { x: number; y: number }) {
+  plannerAutoFit = false
   const surface = plannerSceneViewport.value
   const oldScale = plannerScale.value
   const anchorX = anchor?.x ?? (surface?.clientWidth ?? 0) / 2
@@ -253,6 +256,7 @@ function zoomPlannerWheel(event: WheelEvent) {
 function panPlannerFromMinimap(position: { left: number; top: number }) {
   const surface = plannerSceneViewport.value
   if (!surface) return
+  plannerAutoFit = false
   plannerCamera.value = {
     x: surface.clientWidth / plannerScale.value >= PLANNER_SCENE_WIDTH ? Math.round((surface.clientWidth - PLANNER_SCENE_WIDTH * plannerScale.value) / 2) : -Math.round((PLANNER_BOARD_LEFT + position.left / 100 * PLANNER_BOARD_WIDTH) * plannerScale.value * 100) / 100,
     y: surface.clientHeight / plannerScale.value >= PLANNER_SCENE_HEIGHT ? Math.round((surface.clientHeight - PLANNER_SCENE_HEIGHT * plannerScale.value) / 2) : -Math.round((PLANNER_BOARD_TOP + position.top / 100 * PLANNER_BOARD_HEIGHT) * plannerScale.value * 100) / 100,
@@ -654,7 +658,7 @@ onMounted(async () => {
   syncMinimapViewport()
   if (typeof ResizeObserver !== 'undefined' && plannerSceneViewport.value) {
     plannerViewportObserver = new ResizeObserver(() => {
-      if (!plannerCompleted.value && !plannerCameraHasBeenFitted) fitPlannerScene()
+      if (!plannerCompleted.value && plannerAutoFit) fitPlannerScene()
       else syncMinimapViewport()
     })
     plannerViewportObserver.observe(plannerSceneViewport.value)
@@ -722,8 +726,26 @@ onBeforeUnmount(() => {
         @retry="loadActualInventory()"
       />
         <div class="planner-scene-host">
+        <div v-if="plannerCompleted && plannerStructure.outline.nodes.length" class="planner-map-caption">
+          <strong>仓库平面</strong>
+          <span>{{ plannerPalletGroups.length }} 个货堆 · {{ (plannerStructure.zones ?? []).filter(zone => !zone.kind).length }} 个库区</span>
+        </div>
+        <div v-if="!plannerCompleted && !plannerStructure.outline.nodes.length" class="planner-empty-guide">
+          <Warehouse :size="28" stroke-width="1.5" aria-hidden="true" />
+          <h2>从仓库轮廓开始</h2>
+          <p>选择“外围墙”，依次点击仓库转角；闭合后即可划分库区、摆放货堆。</p>
+        </div>
         <div v-if="!plannerCompleted" ref="plannerMinimapHost" class="planner-minimap-anchor" data-testid="planner-minimap-anchor" />
-        <div v-if="!plannerCompleted" ref="plannerStatusHost" class="planner-status-anchor" data-testid="planner-status-anchor" />
+        <div v-if="!plannerCompleted" class="planner-bottom-bar">
+          <span class="planner-navigation-hint">空格 + 拖动平移 · Ctrl + 滚轮缩放</span>
+          <div ref="plannerStatusHost" class="planner-status-anchor" data-testid="planner-status-anchor" />
+        </div>
+        <aside v-if="!inventoryMode && plannerStructureIssues.length && plannerStructure.outline.nodes.length && !plannerCompleted" class="planner-structure-issues" aria-label="规划问题">
+          <button class="structure-issues-toggle" data-testid="planner-structure-issues-toggle" :aria-expanded="plannerIssuesOpen" @click="plannerIssuesOpen = !plannerIssuesOpen"><TriangleAlert :size="16" />{{ plannerStructureIssues.length }} 个规划问题 · {{ plannerIssuesOpen ? '收起' : '查看' }}</button>
+          <div v-if="plannerIssuesOpen" class="structure-issue-items">
+            <div v-for="issue in plannerStructureIssues" :key="issue.id"><span>{{ issue.message }}</span><button @click="locatePlannerIssue(issue)">定位</button></div>
+          </div>
+        </aside>
         <section v-if="inventoryMode && planningRequired" data-testid="warehouse-inventory-unplanned" class="inventory-unplanned">
           <Warehouse :size="34" aria-hidden="true" />
           <h2>该仓库尚未规划</h2>
@@ -785,12 +807,6 @@ onBeforeUnmount(() => {
         />
         </div>
       </div>
-      <aside v-if="!inventoryMode && plannerStructureIssues.length && plannerStructure.outline.nodes.length && !plannerCompleted" class="planner-structure-issues" aria-label="规划问题">
-        <button class="structure-issues-toggle" data-testid="planner-structure-issues-toggle" :aria-expanded="plannerIssuesOpen" @click="plannerIssuesOpen = !plannerIssuesOpen"><TriangleAlert :size="16" />{{ plannerStructureIssues.length }} 个规划问题 · {{ plannerIssuesOpen ? '收起' : '查看' }}</button>
-        <div v-if="plannerIssuesOpen" class="structure-issue-items">
-          <div v-for="issue in plannerStructureIssues" :key="issue.id"><span>{{ issue.message }}</span><button @click="locatePlannerIssue(issue)">定位</button></div>
-        </div>
-      </aside>
     </section>
     <p v-if="notice" role="status" class="planner-toast">{{ notice }}</p>
     <AccessibleDialog :open="pendingPileDeletion !== null" :title="`删除货堆 ${pendingPileDeletion?.name ?? ''}？`" test-id="delete-pallet-dialog" body-test-id="delete-pallet-body" footer-test-id="delete-pallet-footer" close-test-id="delete-pallet-close" panel-class="warehouse-delete-dialog" @cancel="pendingPileDeletion = null">
@@ -900,50 +916,72 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.planner-structure-issues {position:absolute;z-index:36;top:116px;right:24px;max-width:320px;border:1px solid #fecdd3;border-radius:8px;background:#fff;box-shadow:0 4px 16px #25314d15;}
+.planner-structure-issues {position:absolute;z-index:36;top:40px;right:16px;max-width:min(320px,calc(100% - 32px));border:1px solid #fecdd3;border-radius:8px;background:var(--wh-surface);box-shadow:0 4px 16px #1c2d5012;}
 .structure-issues-toggle {display:flex;align-items:center;gap:7px;width:100%;padding:9px 12px;border:0;border-radius:8px;background:#fff1f2;color:#bc263c;font:inherit;font-size:12px;cursor:pointer;}
 .structure-issue-items {max-height:280px;overflow:auto;padding:4px 10px;}
 .structure-issue-items>div {display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #f1f5f9;font-size:12px;}
 .structure-issue-items>div>span {flex:1;}
-.structure-issue-items button {border:0;border-radius:4px;padding:5px 8px;background:#eef2ff;color:#4663ee;cursor:pointer;white-space:nowrap;font:inherit;}
-.warehouse-page { position:relative; height:100%; min-height:0; min-width:0; overflow:hidden; background:#F6F7FB; color:#25314D; padding:0; font-family:'Noto Sans SC Variable',Inter,sans-serif; font-size:12px; }
-.planner-prototype { position:relative; height:100%; min-height:0; overflow:hidden; background:#f9fbfd; }
-.planner-canvas-scroll { height:calc(100% - 56px); overflow:auto; }
-.planner-canvas-scroll.with-layout-controls {height:calc(100% - 100px);}
-.planner-canvas-scroll.with-context-toolbar {height:calc(100% - 100px);}
-.planner-canvas-scroll.with-layout-controls.with-context-toolbar {height:calc(100% - 144px);}
-.planner-context-bar {display:flex;align-items:center;min-height:44px;padding:4px 16px;border-bottom:1px solid #e2e8f0;background:#fff;}
-.planner-context-toolbar {display:flex;flex:1;align-items:center;min-width:0;overflow-x:auto;}
-.planner-pile-actions {display:flex;flex-shrink:0;align-items:center;padding-inline:10px;}
-.planner-pile-actions button {display:inline-flex;min-height:30px;align-items:center;gap:5px;border:1px solid #fecdd3;border-radius:6px;padding:4px 9px;background:#fff7f7;color:#b42338;font-size:12px;white-space:nowrap;cursor:pointer;}
-.planner-pile-actions button:hover:not(:disabled) {background:#ffe9eb;}
-.planner-pile-actions button:disabled {opacity:.45;cursor:not-allowed;}
-.planner-delete-error {min-width:0;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#b42338;font-size:11px;}
-.planner-delete-error button {min-height:28px;border:0;padding:0 4px;background:transparent;color:#4663ee;font-size:11px;cursor:pointer;}
-.planner-delete-body {max-width:480px;color:#536176;font-size:13px;line-height:1.6;}
-.planner-delete-body .planner-delete-permission {color:#b42338;}
-.planner-zoom-controls {display:flex;flex-shrink:0;align-items:center;gap:3px;margin-left:auto;border-left:1px solid #e2e8f0;padding-left:12px;}
-.planner-zoom-controls button {min-width:30px;min-height:30px;height:30px;border:0;padding:4px;background:transparent;color:#536176;font-size:12px;cursor:pointer;}
-.planner-zoom-controls button:hover:not(:disabled) {background:#eef2ff;color:#4663ee;}
-.planner-zoom-controls button:focus-visible {outline:2px solid #536dff;outline-offset:1px;}
-.planner-zoom-controls button:disabled {color:#cbd5e1;cursor:default;}
-.planner-zoom-controls [data-testid='planner-zoom-reset'] {min-width:48px;font-variant-numeric:tabular-nums;}
-.planner-canvas-scroll.detail-layout {display:flex;overflow:hidden;background:#f7f9fc;}
-.planner-scene-host {position:relative;flex:1;min-width:0;height:100%;overflow:hidden;}
-.planner-scene-viewport {width:100%;height:100%;overflow:auto;}
-.planner-scene-viewport.planner-camera-viewport {position:relative;overflow:hidden;background-color:#f8fafc;background-image:linear-gradient(#e8edf3 1px,transparent 1px),linear-gradient(90deg,#e8edf3 1px,transparent 1px);background-size:24px 24px;}
+.structure-issue-items button {border:0;border-radius:4px;padding:5px 8px;background:var(--wh-active);color:var(--wh-text);cursor:pointer;white-space:nowrap;font:inherit;}
+.warehouse-page { position:relative; height:100%; min-height:0; min-width:0; overflow:hidden; background:var(--wh-ground); color:var(--wh-text); padding:0; font-family:var(--wh-font); font-size:13px; }
+/* Height = header + persistence bar + context tools + remaining drawing surface. */
+.planner-prototype { position:relative; display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; background:var(--wh-ground); }
+.planner-canvas-scroll,.planner-canvas-scroll.with-layout-controls,.planner-canvas-scroll.with-context-toolbar,.planner-canvas-scroll.with-layout-controls.with-context-toolbar { flex:1; min-height:0; height:auto; margin:8px; overflow:auto; border:1px solid var(--wh-border); border-radius:12px; background:var(--wh-surface); }
+.planner-context-bar { display:flex; align-items:center; flex:none; min-height:48px; gap:12px; margin:0 8px; padding:6px 16px; border:1px solid var(--wh-border); border-radius:8px; background:var(--wh-surface); }
+.planner-context-toolbar { display:flex; flex:1; align-items:center; min-width:0; overflow-x:auto; scrollbar-width:thin; }
+.planner-pile-actions { display:flex; flex-shrink:0; align-items:center; }
+.planner-pile-actions button { display:inline-flex; min-height:32px; align-items:center; gap:5px; border:0; border-radius:6px; padding:4px 9px; background:#fff0f1; color:var(--wh-danger); font-size:12px; white-space:nowrap; cursor:pointer; }
+.planner-pile-actions button:hover:not(:disabled) { background:#fbe3e5; }
+.planner-pile-actions button:disabled { opacity:.55; cursor:not-allowed; }
+.planner-delete-error { min-width:0; max-width:300px; color:var(--wh-danger); font-size:12px; }
+.planner-delete-error button { min-height:28px; border:0; padding:0 4px; background:transparent; color:var(--wh-accent); font-size:12px; cursor:pointer; }
+.planner-delete-body { max-width:480px; color:var(--wh-muted); font-size:13px; line-height:1.6; }
+.planner-delete-body .planner-delete-permission { color:var(--wh-danger); }
+.planner-zoom-controls { display:flex; flex:none; align-items:center; gap:2px; margin-left:auto; padding-left:12px; border-left:1px solid var(--wh-border); }
+.planner-zoom-controls button { display:inline-flex; align-items:center; justify-content:center; min-width:32px; min-height:32px; height:32px; border:0; border-radius:5px; padding:4px 6px; background:transparent; color:var(--wh-muted); font-size:12px; cursor:pointer; white-space:nowrap; }
+.planner-zoom-controls button:hover:not(:disabled) { background:var(--wh-active); color:var(--wh-text); }
+.planner-zoom-controls button:focus-visible { outline:2px solid var(--wh-accent); outline-offset:1px; }
+.planner-zoom-controls button:disabled { color:var(--wh-muted); opacity:.55; cursor:default; }
+.planner-zoom-controls [data-testid='planner-zoom-reset'] { min-width:48px; font-variant-numeric:tabular-nums; }
+.planner-canvas-scroll.detail-layout { display:flex; gap:0; overflow:hidden; background:var(--wh-surface); }
+.planner-scene-host { position:relative; flex:1; min-width:0; min-height:0; height:100%; overflow:hidden; }
+.planner-scene-viewport { width:100%; height:100%; overflow:auto; }
+.planner-scene-viewport.planner-camera-viewport { position:relative; overflow:hidden; }
+.planner-map-caption { position:absolute; z-index:31; top:20px; left:24px; display:flex; align-items:baseline; gap:12px; pointer-events:none; }
+.planner-map-caption strong { color:var(--wh-text); font-size:14px; font-weight:600; }
+.planner-map-caption span { color:var(--wh-muted); font-size:12px; }
+.planner-empty-guide { position:absolute; z-index:32; left:50%; top:28%; width:min(360px,calc(100% - 64px)); transform:translateX(-50%); text-align:center; pointer-events:none; color:var(--wh-muted); }
+.planner-empty-guide svg { margin:0 auto 16px; }
+.planner-empty-guide h2 { display:block; margin:0; color:var(--wh-text); font-size:18px; font-weight:500; }
+.planner-empty-guide p { color:var(--wh-muted); font-size:13px; line-height:1.8; }
 .planner-camera-viewport.planner-pan-ready {cursor:grab;}
 .planner-camera-viewport.planner-pan-ready:active {cursor:grabbing;}
 .planner-scene-stage {position:relative;}
 .planner-scene-stage.scaled-stage {position:absolute;top:0;left:0;will-change:transform;box-shadow:none;}
 .planner-scaled-scene {transform-origin:top left;}
-.planner-minimap-anchor {position:absolute;z-index:35;right:16px;bottom:44px;width:150px;height:112px;pointer-events:none;}
-.planner-status-anchor {position:absolute;z-index:35;left:16px;bottom:16px;max-width:calc(100% - 200px);pointer-events:none;}
+.planner-minimap-anchor {position:absolute;z-index:35;right:16px;bottom:52px;width:144px;height:104px;pointer-events:none;}
+.planner-bottom-bar { position:absolute; z-index:35; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:space-between; min-height:34px; border-top:1px solid var(--wh-border); background:var(--wh-surface); }
+.planner-navigation-hint { padding-left:16px; color:var(--wh-muted); font-size:11px; white-space:nowrap; }
+.planner-status-anchor { min-width:0; pointer-events:none; }
+@media (max-width:800px) { .planner-navigation-hint { display:none; } .planner-status-anchor { width:100%; } }
 .inventory-unplanned {display:flex;height:100%;min-height:360px;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;color:#64748b;}
 .inventory-unplanned svg {margin-bottom:12px;color:#94a3b8;}
 .inventory-unplanned h2 {margin:0;color:#25314d;font-size:18px;font-weight:650;}
 .inventory-unplanned p {max-width:420px;margin:8px 0 18px;font-size:13px;}
-.inventory-unplanned a {display:inline-flex;min-height:36px;align-items:center;justify-content:center;border-radius:7px;padding:0 16px;background:#536dff;color:#fff;font-size:13px;font-weight:600;text-decoration:none;}
+.inventory-unplanned a {display:inline-flex;min-height:36px;align-items:center;justify-content:center;border-radius:7px;padding:0 16px;background:var(--wh-accent);color:#fff;font-size:13px;font-weight:600;text-decoration:none;}
+@media (max-width:800px) {
+  .planner-context-bar { flex-wrap:wrap; gap:4px; padding:6px 8px; }
+  .planner-context-toolbar { flex:1 1 100%; }
+  .planner-zoom-controls { margin-left:auto; border:0; padding:0; }
+  .planner-canvas-scroll.detail-layout { flex-direction:column; overflow-y:auto; }
+  .planner-canvas-scroll.detail-layout .planner-scene-host { flex:1 0 320px; height:auto; min-height:320px; }
+  .planner-map-caption { top:12px; left:16px; flex-wrap:wrap; gap:4px 12px; }
+  .planner-minimap-anchor { width:112px; height:80px; right:12px; bottom:46px; }
+}
+@media (max-width:480px) {
+  .planner-context-toolbar :deep(button) { min-height:44px; }
+  .planner-zoom-controls button { min-height:40px; }
+  .planner-canvas-scroll { margin:8px; }
+}
 .legacy-editor { display:none; }
 .warehouse-page > p[role="status"] { position:fixed; z-index:55; bottom:18px; left:50%; margin:0; padding:9px 14px; border:1px solid #d8e0e8; border-radius:8px; background:#fff; color:#354159; box-shadow:0 8px 24px #25314d20; transform:translateX(-50%); }
 .page-header,.summary,h1,h2 { display:flex; align-items:center; gap:12px; }
@@ -994,7 +1032,7 @@ button { display:inline-flex; align-items:center; justify-content:center; gap:6p
 .accent-blue { border-left:3px solid #536DFF; }.accent-pink { border-left:3px solid #EF476F; }.accent-green { border-left:3px solid #16A36A; }.accent-cyan { border-left:3px solid #06B6D4; }
 @media (min-width:1024px) and (max-width:1179px) { .workspace { min-width:996px; } }
 @media (max-width:1250px) { .toolbar { grid-template-columns:1fr 1fr; height:auto; } .tool-group { justify-content:start; padding:8px; } }
-@media (max-width:1023px) { .workspace { display:flex; flex-direction:column; } .panel { width:100%; height:auto; } .floor-panel { min-width:560px; } .warehouse-page { padding:12px; } .page-header { height:auto; } .toolbar { padding:16px 0; } }
+@media (max-width:1023px) { .workspace { display:flex; flex-direction:column; } .panel { width:100%; height:auto; } .floor-panel { min-width:560px; } .warehouse-page { padding:0; } .page-header { height:auto; } .toolbar { padding:16px 0; } }
 </style>
 
 <style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ArrowLeft, Save } from 'lucide-vue-next'
 import { routeLocationKey } from 'vue-router'
 import { masterdataService } from '../../../masterdata/masterdataService'
 import type { MasterdataService, Warehouse } from '../../../masterdata/types'
@@ -105,7 +106,7 @@ defineExpose({ saveDocument })
 </script>
 <template>
   <div class="layout-controls" :class="{ 'inventory-controls': inventoryViewing, 'embedded-controls': embedded }" data-testid="warehouse-layout-controls">
-    <a v-if="!inventoryViewing" href="/warehouses">返回仓库列表</a>
+    <a v-if="!inventoryViewing" href="/warehouses"><ArrowLeft :size="15" aria-hidden="true" />返回仓库列表</a>
     <FigmaSelect
       v-if="inventoryViewing || !route"
       class="layout-warehouse-select"
@@ -119,21 +120,28 @@ defineExpose({ saveDocument })
       :disabled="loading || saving || busy"
       @update:model-value="change"
     />
-    <span role="status">{{ loading ? '加载中…' : saving ? '保存中…' : !ready ? '尚未加载规划' : dirty ? '未保存' : revision ? '已保存' : '尚未创建规划' }}</span>
-    <button v-if="!viewing" :disabled="!ready || loading || saving || busy || !dirty" @click="saveDocument()">保存规划</button>
+    <span role="status" class="persistence-status" :data-dirty="dirty">{{ loading ? '加载中…' : saving ? '保存中…' : !ready ? '尚未加载规划' : dirty ? '未保存' : revision ? '已保存' : '尚未创建规划' }}</span>
+    <button v-if="!viewing" :disabled="!ready || loading || saving || busy || !dirty" @click="saveDocument()"><Save :size="14" aria-hidden="true" />保存规划</button>
     <span v-if="error" role="alert">{{error}}</span>
     <button v-if="error && !ready" :disabled="loading" @click="selected ? load(selected) : initialize()">重试加载</button>
   </div>
 </template>
 <style scoped>
-.layout-controls {display:flex;align-items:center;flex-wrap:wrap;gap:10px;min-height:44px;padding:6px 16px;border-bottom:1px solid #e2e8f0;background:#fff;color:#64748b;font-size:12px;}
-.inventory-controls {align-items:flex-start;min-height:74px;}
-.layout-warehouse-select {width:230px;height:62px;}
-.inventory-controls > [role=status] {margin-top:22px;}
-.embedded-controls {width:100%;min-width:0;min-height:40px;padding:0;border:0;background:transparent;flex-wrap:nowrap;}
-.embedded-controls .layout-warehouse-select {min-width:0;height:40px;flex:1 1 230px;}
-.embedded-controls > [role=status] {min-width:0;margin-top:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-button {padding:5px 10px;border:1px solid #dce3ef;border-radius:5px;background:#eef2ff;color:#536dff;}
-button:disabled {opacity:.45;cursor:not-allowed;}
-[role=alert] {color:#b42338;}
+.layout-controls { display:flex; align-items:center; flex-wrap:wrap; flex:none; gap:12px; min-height:48px; padding:6px 24px 10px; background:var(--wh-ground); color:var(--wh-muted); font-size:12px; }
+.layout-controls>a { display:inline-flex; align-items:center; gap:6px; margin-right:auto; color:var(--wh-muted); text-decoration:none; }
+.layout-controls>a:hover { color:var(--wh-text); }
+.persistence-status { display:inline-flex; align-items:center; gap:7px; }
+.persistence-status::before { width:5px; height:5px; flex:none; border-radius:50%; background:var(--wh-control); content:''; }
+.persistence-status[data-dirty="true"]::before { background:#976b27; }
+.inventory-controls { align-items:center; min-height:64px; }
+.layout-warehouse-select { width:230px; height:62px; }
+.embedded-controls { width:100%; min-width:0; min-height:40px; padding:0; background:transparent; flex-wrap:nowrap; }
+.embedded-controls .layout-warehouse-select { min-width:0; height:40px; flex:1 1 230px; }
+.embedded-controls>.persistence-status { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+button { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:32px; padding:5px 12px; border:1px solid var(--wh-control); border-radius:6px; background:var(--wh-surface); color:var(--wh-text); font:inherit; font-size:12px; cursor:pointer; }
+button:hover:not(:disabled) { background:var(--wh-active); }
+button:disabled { background:var(--wh-raised); border-color:var(--wh-border); color:var(--wh-muted); cursor:not-allowed; }
+[role=alert] { flex:1 1 100%; color:var(--wh-danger); line-height:20px; }
+@media (max-width:800px) { .layout-controls { padding:4px 16px 12px; } .embedded-controls { padding:0; } }
+@media (max-width:480px) { button,.layout-controls>a { min-height:44px; } .layout-controls { gap:10px; } .persistence-status { margin-left:auto; } }
 </style>

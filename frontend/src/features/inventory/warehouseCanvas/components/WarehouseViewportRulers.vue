@@ -58,18 +58,18 @@ const verticalTicks = computed(() => createTicks(
 </template>
 
 <style scoped>
-.viewport-rulers {position:absolute;inset:0;z-index:30;pointer-events:none;color:#526176;font:10px/1 Inter,sans-serif;}
+.viewport-rulers {position:absolute;inset:0;z-index:30;pointer-events:none;color:#526176;font:11px/1 var(--wh-font);}
 .viewport-ruler {position:absolute;background:rgba(255,255,255,.95);overflow:hidden;}
-.ruler-x {top:0;left:0;right:0;height:25px;border-bottom:1px solid #9ba8b8;}
-.ruler-y {top:0;bottom:0;left:0;width:28px;border-right:1px solid #9ba8b8;}
+.ruler-x {top:0;left:0;right:0;height:25px;border-bottom:1px solid var(--wh-wall-light);}
+.ruler-y {top:0;bottom:0;left:0;width:40px;border-right:1px solid var(--wh-wall-light);}
 .viewport-ruler-tick {position:absolute;display:block;background:#8d99a9;}
 .ruler-x .viewport-ruler-tick {bottom:0;width:1px;height:5px;}
 .ruler-x .viewport-ruler-tick.major {height:11px;background:#637187;}
 .ruler-y .viewport-ruler-tick {right:0;width:5px;height:1px;}
 .ruler-y .viewport-ruler-tick.major {width:11px;background:#637187;}
-.viewport-ruler-label {position:absolute;color:#34445d;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.viewport-ruler-label {position:absolute;color:var(--wh-muted);font-variant-numeric:tabular-nums;white-space:nowrap;}
 .ruler-x .viewport-ruler-label {top:3px;transform:translateX(-50%);}
-.ruler-y .viewport-ruler-label {right:12px;transform:translateY(-50%);}
+.ruler-y .viewport-ruler-label {right:10px;transform:translateY(-50%);}
 .ruler-unit {position:absolute;top:3px;right:6px;}
-.ruler-corner {position:absolute;top:0;left:0;width:28px;height:25px;border-right:1px solid #9ba8b8;border-bottom:1px solid #9ba8b8;background:#fff;}
+.ruler-corner {position:absolute;top:0;left:0;width:40px;height:25px;border-right:1px solid var(--wh-wall-light);border-bottom:1px solid var(--wh-wall-light);background:#fff;}
 </style>

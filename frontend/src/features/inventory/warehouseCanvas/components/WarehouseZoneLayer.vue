@@ -29,8 +29,8 @@ const zones = computed(() => current.value.zones ?? [])
 const selected = computed(() => zones.value.find(zone => zone.id === selectedId.value))
 const invalidIds = computed(() => new Set([...props.issues, ...validatePlannerLayout(current.value, props.pallets ?? [])].flatMap(issue => issue.objectIds)))
 const tones: { id: PlannerZone['tone']; label: string; color: string }[] = [
-  { id: 'blue', label: '蓝色', color: '#6489d7' }, { id: 'green', label: '绿色', color: '#5d9b87' },
-  { id: 'amber', label: '黄色', color: '#b49250' }, { id: 'purple', label: '紫色', color: '#9272b4' },
+  { id: 'blue', label: '品牌蓝', color: 'var(--wh-zone-primary)' }, { id: 'green', label: '浅海蓝', color: 'var(--wh-zone-soft)' },
+  { id: 'amber', label: '深海蓝', color: 'var(--wh-zone-deep)' }, { id: 'purple', label: '雾蓝', color: 'var(--wh-zone-muted)' },
 ]
 const handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const
 type Handle = typeof handles[number]
@@ -250,38 +250,38 @@ onBeforeUnmount(() => { cancel(); window.removeEventListener('keydown', keydown)
 .editing .zone-svg {pointer-events:auto;touch-action:none;}
 .viewing .zone-svg {pointer-events:auto;}
 .drawing .zone-svg {cursor:crosshair;}
-.operation-zone {color:#5079b8;pointer-events:none;}
-.operation-zone.tone-green {color:#448773;}.operation-zone.tone-amber {color:#a8863d;}.operation-zone.tone-purple {color:#8863aa;}
-.operation-zone.passage {color:#64748b;}.operation-zone.fire-passage {color:#bd5454;}
+.operation-zone {color:var(--wh-zone-primary);pointer-events:none;}
+.operation-zone.tone-green {color:var(--wh-zone-soft);}.operation-zone.tone-amber {color:var(--wh-zone-deep);}.operation-zone.tone-purple {color:var(--wh-zone-muted);}
+.operation-zone.passage {color:var(--wh-muted);}.operation-zone.fire-passage {color:#bd5454;}
 .zone-body {fill:currentColor;fill-opacity:.09;stroke:currentColor;stroke-opacity:.6;stroke-width:.65;stroke-dasharray:2 1.5;}
 .passage .zone-body {fill-opacity:.025;stroke-width:.3;stroke-opacity:.45;stroke-dasharray:4 3;}
 .fire-passage .zone-body {fill-opacity:0;stroke:#f08c80;stroke-width:.2;stroke-opacity:.65;stroke-dasharray:none;}
 .editing .operation-zone {pointer-events:all;cursor:grab;}
 .viewing .operation-zone:not(.passage) {pointer-events:all;cursor:pointer;}
 .dragging .operation-zone {cursor:grabbing;}
-.chosen .zone-body {stroke:#536dff;stroke-opacity:1;stroke-width:1.2;stroke-dasharray:none;fill-opacity:.13;}
+.chosen .zone-body {stroke:var(--wh-accent);stroke-opacity:1;stroke-width:1.2;stroke-dasharray:none;fill-opacity:.13;}
 .invalid .zone-body {fill:#dc3545;stroke:#dc3545;stroke-opacity:1;stroke-width:1.4;stroke-dasharray:3 2;}
-.zone-handle {fill:#fff;stroke:#536dff;stroke-width:.9;}
+.zone-handle {fill:#fff;stroke:var(--wh-accent);stroke-width:.9;}
 .zone-caption-box {pointer-events:none;overflow:hidden;}
 .zone-caption {height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;overflow:hidden;}
 .zone-caption strong {max-width:100%;font-size:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .zone-caption small {max-width:100%;font-size:5px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .zone-toolbar {position:absolute;z-index:24;top:10px;left:24px;display:flex;align-items:center;gap:4px;padding:5px;background:#ffffffed;border:1px solid #e1e7ef;border-radius:8px;box-shadow:0 3px 12px #25314d0d;pointer-events:auto;}
 .zone-toolbar.external-toolbar {position:static;border:0;box-shadow:none;padding:0;background:transparent;}
-.zone-toolbar button,.zone-properties button {display:flex;align-items:center;justify-content:center;gap:5px;border:0;background:transparent;color:#596779;min-height:30px;padding:5px 9px;border-radius:5px;font-size:12px;}
-.zone-toolbar button[aria-pressed=true] {color:#536dff;background:#edf1ff;}.zone-toolbar button:disabled {opacity:.45;cursor:default;}
+.zone-toolbar button,.zone-properties button {display:flex;align-items:center;justify-content:center;gap:5px;border:0;background:transparent;color:var(--wh-muted);min-height:30px;padding:5px 9px;border-radius:5px;font-size:12px;}
+.zone-toolbar button[aria-pressed=true] {color:var(--wh-accent);background:var(--wh-accent-soft);}.zone-toolbar button:disabled {opacity:.45;cursor:default;}
 .zone-toolbar button:hover:not(:disabled),.zone-properties button:hover {background:#f1f4fa;}
 .separator {height:20px;width:1px;background:#e1e7ef;margin:0 4px;}
 .zone-properties {position:absolute;z-index:24;top:60px;left:24px;width:300px;max-width:calc(100% - 48px);padding:14px;background:#fff;border:1px solid #e1e7ef;border-radius:10px;box-shadow:0 8px 24px #25314d1a;pointer-events:auto;color:#36465c;}
 .zone-properties header {display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:14px;}
 .zone-properties label {display:grid;gap:6px;font-size:12px;}.zone-properties input {width:100%;border:1px solid #d9e1ed;border-radius:5px;padding:8px;font-size:13px;}
-.zone-properties input:focus {outline:2px solid #dfe6ff;border-color:#536dff;}
-.zone-toolbar select,.zone-properties select {border:1px solid #d9e1ed;background:white;border-radius:5px;padding:6px;color:#596779;font-size:12px;}
+.zone-properties input:focus {outline:2px solid var(--wh-accent-soft);border-color:var(--wh-accent);}
+.zone-toolbar select,.zone-properties select {border:1px solid #d9e1ed;background:white;border-radius:5px;padding:6px;color:var(--wh-muted);font-size:12px;}
 .detail-field,.passage-field {margin-top:10px;}.passage-note {font-size:11px;line-height:1.6;color:#7b8797;margin:10px 0;}
 .zone-properties fieldset {display:flex;gap:4px;border:0;padding:0;margin:14px 0;}.zone-properties legend {font-size:12px;margin-bottom:8px;}
 .zone-properties fieldset button {padding:5px;flex:1;font-size:11px;}.zone-properties fieldset span {width:10px;height:10px;border-radius:50%;background:var(--swatch);}
-.zone-properties fieldset button[aria-pressed=true] {box-shadow:inset 0 0 0 1px #536dff;background:#f4f6ff;}
-.zone-properties footer {display:flex;justify-content:flex-end;gap:8px;}.zone-properties footer button {padding:6px 18px;}.zone-properties .primary {background:#536dff;color:white;}.zone-properties .primary:hover {background:#405bea;}
+.zone-properties fieldset button[aria-pressed=true] {box-shadow:inset 0 0 0 1px var(--wh-accent);background:var(--wh-accent-soft);}
+.zone-properties footer {display:flex;justify-content:flex-end;gap:8px;}.zone-properties footer button {padding:6px 18px;}.zone-properties .primary {background:var(--wh-accent);color:white;}.zone-properties .primary:hover {background:var(--wh-accent);}
 .form-error {font-size:12px;color:#c83248;margin:8px 0;}
-.zone-hint {position:absolute;z-index:24;bottom:10px;left:24px;max-width:calc(100% - 48px);padding:7px 10px;border:1px solid #e1e7ef;border-radius:6px;background:#fffffff0;color:#657388;font-size:12px;pointer-events:none;}
+.zone-hint {position:absolute;z-index:24;bottom:10px;left:24px;max-width:calc(100% - 48px);padding:7px 10px;border:1px solid #e1e7ef;border-radius:6px;background:#fffffff0;color:var(--wh-muted);font-size:12px;pointer-events:none;}
 </style>
