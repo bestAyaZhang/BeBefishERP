@@ -1,4 +1,5 @@
 import type { Product, ProductFormPayload } from './types';
+import { imagePackInput, mediaImageRef } from './productMedia';
 
 export function toProductFormPayload(product: Product): ProductFormPayload {
   return {
@@ -10,6 +11,8 @@ export function toProductFormPayload(product: Product): ProductFormPayload {
     status: product.status,
     mainImageFileId: product.mainImageFileId,
     remark: product.remark ?? '',
+    ...(product.imagePacks != null ? { imagePacks: product.imagePacks.map(imagePackInput) } : {}),
+    ...(product.materialImages != null ? { materialImages: product.materialImages.map(mediaImageRef) } : {}),
     specifications: product.specifications.map((specification) => ({
       name: specification.name,
       values: [...specification.values]
@@ -31,6 +34,7 @@ export function toProductFormPayload(product: Product): ProductFormPayload {
       innerPackageLengthCm: sku.innerPackageLengthCm,
       innerPackageWidthCm: sku.innerPackageWidthCm,
       innerPackageHeightCm: sku.innerPackageHeightCm,
+      productMouthDiameterCm: sku.productMouthDiameterCm ?? null,
       productLengthCm: sku.productLengthCm,
       productWidthCm: sku.productWidthCm,
       productHeightCm: sku.productHeightCm,
@@ -44,6 +48,7 @@ export function toProductFormPayload(product: Product): ProductFormPayload {
       skuImageFileId: sku.skuImageFileId,
       packageImageFileId: sku.packageImageFileId,
       cartonImageFileId: sku.cartonImageFileId,
+      productPhotoFileId: sku.productPhotoFileId ?? null,
       defaultSku: sku.defaultSku,
       status: sku.status,
       supplierQuotes: sku.supplierQuotes.map((quote) => ({

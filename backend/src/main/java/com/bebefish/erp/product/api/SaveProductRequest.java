@@ -5,8 +5,12 @@ import com.bebefish.erp.product.application.PackagingCommand;
 import com.bebefish.erp.product.application.ProductSupplierQuoteCommand;
 import com.bebefish.erp.product.application.SaveProductCommand;
 import com.bebefish.erp.product.application.SaveSkuCommand;
+import com.bebefish.erp.product.application.SaveSkuCommand.ProductPhotoChange;
+import com.bebefish.erp.product.domain.ProductImagePack;
 import com.bebefish.erp.product.domain.ProductType;
 import com.bebefish.erp.product.domain.Specification;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -30,15 +34,47 @@ public record SaveProductRequest(
         @Size(max = 20) String status,
         @Size(max = 500) String remark,
         List<@Valid SpecificationInput> specifications,
-        List<@Valid SkuInput> skus
+        List<@Valid SkuInput> skus,
+        List<@NotNull @Valid ImagePackInput> imagePacks,
+        List<@NotNull @Valid ImageInput> materialImages
 ) {
+    public SaveProductRequest(
+            String productCode, String itemNo, String productName, Long categoryId, String brand, String productType,
+            Long mainImageFileId, String status, String remark, List<SpecificationInput> specifications,
+            List<SkuInput> skus
+    ) {
+        this(productCode, itemNo, productName, categoryId, brand, productType, mainImageFileId, status, remark,
+                specifications, skus, null, null);
+    }
+
     SaveProductCommand toCommand() {
         return new SaveProductCommand(
                 productCode, itemNo, productName, categoryId, brand, parseType(productType), mainImageFileId,
                 status, remark,
                 specifications == null ? List.of() : specifications.stream().map(SpecificationInput::toDomain).toList(),
-                skus == null ? List.of() : skus.stream().map(SkuInput::toCommand).toList()
+                skus == null ? List.of() : skus.stream().map(SkuInput::toCommand).toList(),
+                imagePacks == null ? null : imagePacks.stream().map(ImagePackInput::toDomain).toList(),
+                materialImages == null ? null : materialImages.stream().map(ImageInput::fileId).toList()
         );
+    }
+
+    public record ImageInput(@NotNull @Positive Long fileId) {
+    }
+
+    public record ImagePackInput(
+            @NotBlank @Size(max = 100) String name,
+            List<@NotNull @Valid ImageInput> main,
+            List<@NotNull @Valid ImageInput> sku,
+            List<@NotNull @Valid ImageInput> detail,
+            @JsonProperty("long") List<@NotNull @Valid ImageInput> longImages
+    ) {
+        ProductImagePack toDomain() {
+            return new ProductImagePack(name.trim(), fileIds(main), fileIds(sku), fileIds(detail), fileIds(longImages));
+        }
+
+        private static List<Long> fileIds(List<ImageInput> images) {
+            return images == null ? List.of() : images.stream().map(ImageInput::fileId).toList();
+        }
     }
 
     private ProductType parseType(String value) {
@@ -126,8 +162,76 @@ public record SaveProductRequest(
             Long cartonImageFileId,
             Boolean defaultSku,
             @Size(max = 20) String status,
-            List<@NotNull @Valid SupplierQuoteInput> supplierQuotes
+            List<@NotNull @Valid SupplierQuoteInput> supplierQuotes,
+            @DecimalMin(value = "0", message = "产品口径不能小于 0")
+            @Digits(integer = 9, fraction = 3, message = "产品口径最多允许 9 位整数和 3 位小数")
+            BigDecimal productMouthDiameterCm,
+            JsonNode productPhotoFileId
     ) {
+        public SkuInput(
+                Long id,
+                String skuCode,
+                String barcode,
+                String skuName,
+                List<String> specificationValues,
+                String salesUnit,
+                BigDecimal defaultSalePrice,
+                BigDecimal standardCost,
+                BigDecimal safetyStockQuantity,
+                BigDecimal packageLengthCm,
+                BigDecimal packageWidthCm,
+                BigDecimal packageHeightCm,
+                BigDecimal packageVolumeCm3,
+                BigDecimal innerPackageLengthCm,
+                BigDecimal innerPackageWidthCm,
+                BigDecimal innerPackageHeightCm,
+                BigDecimal productLengthCm,
+                BigDecimal productWidthCm,
+                BigDecimal productHeightCm,
+                BigDecimal capacityMl,
+                BigDecimal netWeightKg,
+                BigDecimal grossWeightKg,
+                BigDecimal gramWeightG,
+                BigDecimal innerPackageWeightKg,
+                String packagingMethod,
+                Integer cartonQuantity,
+                Long skuImageFileId,
+                Long packageImageFileId,
+                Long cartonImageFileId,
+                Boolean defaultSku,
+                String status,
+                List<SupplierQuoteInput> supplierQuotes
+        ) {
+            this(
+                    id, skuCode, barcode, skuName, specificationValues,
+                    salesUnit, defaultSalePrice, standardCost, safetyStockQuantity, packageLengthCm,
+                    packageWidthCm, packageHeightCm, packageVolumeCm3, innerPackageLengthCm, innerPackageWidthCm,
+                    innerPackageHeightCm, productLengthCm, productWidthCm, productHeightCm, capacityMl,
+                    netWeightKg, grossWeightKg, gramWeightG, innerPackageWeightKg, packagingMethod,
+                    cartonQuantity, skuImageFileId, packageImageFileId, cartonImageFileId, defaultSku,
+                    status, supplierQuotes, null, null
+            );
+        }
+
+        public SkuInput(
+                Long id, String skuCode, String barcode, String skuName, List<String> specificationValues,
+                String salesUnit, BigDecimal defaultSalePrice, BigDecimal standardCost, BigDecimal safetyStockQuantity,
+                BigDecimal packageLengthCm, BigDecimal packageWidthCm, BigDecimal packageHeightCm,
+                BigDecimal packageVolumeCm3, BigDecimal innerPackageLengthCm, BigDecimal innerPackageWidthCm,
+                BigDecimal innerPackageHeightCm, BigDecimal productLengthCm, BigDecimal productWidthCm,
+                BigDecimal productHeightCm, BigDecimal capacityMl, BigDecimal netWeightKg, BigDecimal grossWeightKg,
+                BigDecimal gramWeightG, BigDecimal innerPackageWeightKg, String packagingMethod,
+                Integer cartonQuantity, Long skuImageFileId, Long packageImageFileId, Long cartonImageFileId,
+                Boolean defaultSku, String status, List<SupplierQuoteInput> supplierQuotes, BigDecimal productMouthDiameterCm
+        ) {
+            this(id, skuCode, barcode, skuName, specificationValues, salesUnit, defaultSalePrice, standardCost,
+                    safetyStockQuantity, packageLengthCm, packageWidthCm, packageHeightCm, packageVolumeCm3,
+                    innerPackageLengthCm, innerPackageWidthCm, innerPackageHeightCm, productLengthCm, productWidthCm,
+                    productHeightCm, capacityMl, netWeightKg, grossWeightKg, gramWeightG, innerPackageWeightKg,
+                    packagingMethod, cartonQuantity, skuImageFileId, packageImageFileId, cartonImageFileId,
+                    defaultSku, status, supplierQuotes, productMouthDiameterCm, null);
+        }
+
         SaveSkuCommand toCommand() {
             return new SaveSkuCommand(
                     id, skuCode, barcode, skuName,
@@ -139,15 +243,30 @@ public record SaveProductRequest(
                             productLengthCm, productWidthCm, productHeightCm, capacityMl,
                             netWeightKg, grossWeightKg, gramWeightG, innerPackageWeightKg,
                             packagingMethod, cartonQuantity,
-                            packageImageFileId, cartonImageFileId
+                            packageImageFileId, cartonImageFileId, productMouthDiameterCm
                     ),
                     skuImageFileId,
                     defaultSku,
                     status,
                     supplierQuotes == null
                             ? null
-                            : supplierQuotes.stream().map(SupplierQuoteInput::toCommand).toList()
+                            : supplierQuotes.stream().map(SupplierQuoteInput::toCommand).toList(),
+                    toProductPhotoChange()
             );
+        }
+
+        private ProductPhotoChange toProductPhotoChange() {
+            if (productPhotoFileId == null) {
+                return null;
+            }
+            if (productPhotoFileId.isNull()) {
+                return new ProductPhotoChange(null);
+            }
+            if (!productPhotoFileId.isIntegralNumber() || !productPhotoFileId.canConvertToLong()
+                    || productPhotoFileId.longValue() <= 0) {
+                throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "产品实拍图文件 ID 无效");
+            }
+            return new ProductPhotoChange(productPhotoFileId.longValue());
         }
     }
 

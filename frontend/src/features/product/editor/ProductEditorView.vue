@@ -11,6 +11,8 @@ import type { Product } from '../types';
 import {
   createEditorState,
   productEditorSteps,
+  setEditorImageFileId,
+  setEditorImagePreview,
   toProductPayload,
   validateStep,
   type ProductEditorState,
@@ -22,17 +24,18 @@ import ProductImagesStep from './steps/ProductImagesStep.vue';
 import ProductPackagingStep from './steps/ProductPackagingStep.vue';
 import ProductProcurementStep from './steps/ProductProcurementStep.vue';
 import ProductSkuStep from './steps/ProductSkuStep.vue';
+import ProductImageUpload from './ProductImageUpload.vue';
 
 const route = useRoute();
 const router = useRouter();
 
 const stepDefinitions: Array<{ id: ProductEditorStep; title: string; description: string }> = [
-  { id: 'basic', title: '基本资料', description: '填写商品级基础资料' },
-  { id: 'sku', title: 'SKU 信息', description: '添加商品 SKU 与规格组合' },
-  { id: 'procurement', title: '采购与渠道', description: '维护采购条件与供应商报价' },
-  { id: 'packaging', title: '包装与重量', description: '设置包装箱规与重量模式' },
-  { id: 'images', title: '图片资料', description: '上传商品与包装图片' },
-  { id: 'confirm', title: '确认提交', description: '检查资料后提交商品' }
+  { id: 'basic', title: '基本资料', description: '维护商品识别信息与销售状态。' },
+  { id: 'sku', title: 'SKU 信息', description: '为每个可销售规格维护独立资料。' },
+  { id: 'procurement', title: '采购与渠道', description: '维护采购条件与供应商报价。' },
+  { id: 'packaging', title: '包装与重量', description: '依次录入产品、外箱和内盒资料。' },
+  { id: 'images', title: '图片资料', description: '按资料包维护主图、SKU 图、详情图和详情长图。' },
+  { id: 'confirm', title: '确认提交', description: '核对资料完整度后提交商品。' }
 ];
 
 const state = ref<ProductEditorState>(createEditorState());
@@ -42,11 +45,16 @@ const categories = ref<Category[]>([]);
 const suppliers = ref<Supplier[]>([]);
 const loading = ref(false);
 const saving = ref(false);
-const imageUploading = ref(false);
+const mainUploading = ref(false);
+const stepUploading = ref(false);
+const imageUploading = computed(() => mainUploading.value || stepUploading.value);
 const loadError = ref('');
 const optionError = ref('');
 const createdProduct = ref<Product | null>(null);
 const isDraft = ref(false);
+const selectedPreviewSkuIndex = ref<number | null>(null);
+const stage = ref<HTMLFieldSetElement | null>(null);
+const stepHeading = ref<HTMLElement | null>(null);
 const initialSnapshot = ref(serializeState(state.value));
 let latestProductRequestId = 0;
 let latestOptionRequestId = 0;
@@ -70,7 +78,66 @@ const availableCategories = computed(() => categories.value.filter((category) =>
 const availableSuppliers = computed(() => suppliers.value.filter((supplier) => (
   supplier.status === 'enabled' || selectedSupplierIds.value.has(supplier.id)
 )));
+const validSupplierIds = computed(() => new Set(suppliers.value.map((supplier) => supplier.id)));
 const dirty = computed(() => serializeState(state.value) !== initialSnapshot.value);
+const defaultSkuIndex = computed(() => Math.max(0, state.value.skus.findIndex((sku) => sku.defaultSku)));
+const previewSkuIndex = computed({
+  get: () => selectedPreviewSkuIndex.value !== null && state.value.skus[selectedPreviewSkuIndex.value]
+    ? selectedPreviewSkuIndex.value
+    : defaultSkuIndex.value,
+  set: (index: number) => { selectedPreviewSkuIndex.value = index; }
+});
+const previewSku = computed(() => state.value.skus[previewSkuIndex.value]);
+const categoryName = computed(() => categories.value.find((category) => category.id === state.value.categoryId)?.categoryName ?? '');
+const checks = computed(() => {
+  const product = state.value;
+  const quotes = product.skus.flatMap((sku) => sku.supplierQuotes ?? []);
+  const quotedSupplierIds = new Set(quotes.map((quote) => quote.supplierId));
+  const supplierNames = availableSuppliers.value.filter((supplier) => quotedSupplierIds.has(supplier.id)).map((supplier) => supplier.supplierName);
+  const quoteDetail = quotes.length > 0 ? [...supplierNames, `${quotes.length} 条供应商报价`].join(' · ') : '暂无报价，可稍后补充';
+  const packs = product.imagePacks;
+  const packImageCount = packs.reduce((count, pack) => count + pack.main.length + pack.sku.length + pack.detail.length + pack.long.length, 0);
+  const materialCount = product.materialImages.length;
+  const missingPhotos = [
+    {
+      title: '产品实拍图',
+      missing: product.skus.some((sku) => !sku.productPhotoFileId && [
+        sku.productMouthDiameterCm, sku.productLengthCm, sku.productWidthCm, sku.productHeightCm,
+        sku.capacityMl, sku.gramWeightG
+      ].some((value) => value != null))
+    },
+    {
+      title: '外箱图片',
+      missing: product.skus.some((sku) => !sku.cartonImageFileId && [
+        sku.packageLengthCm, sku.packageWidthCm, sku.packageHeightCm, sku.cartonQuantity,
+        sku.packageVolumeCm3, sku.netWeightKg, sku.grossWeightKg
+      ].some((value) => value != null))
+    },
+    {
+      title: '内盒包装图',
+      missing: product.skus.some((sku) => !sku.packageImageFileId && ([
+        sku.innerPackageLengthCm, sku.innerPackageWidthCm, sku.innerPackageHeightCm, sku.innerPackageWeightKg
+      ].some((value) => value != null) || Boolean(sku.packagingMethod?.trim())))
+    }
+  ].filter((photo) => photo.missing).map((photo) => photo.title);
+  return [
+    { title: stepDefinitions[0].title, detail: categoryName.value || '商品名称、货号与分类', done: !Object.keys(stepErrors('basic')).length },
+    { title: stepDefinitions[1].title, detail: `${product.skus.length} 个 SKU`, done: !Object.keys(stepErrors('sku')).length },
+    { title: stepDefinitions[2].title, detail: quoteDetail, done: quotes.length > 0 && !Object.keys(stepErrors('procurement')).length },
+    {
+      title: stepDefinitions[3].title,
+      detail: missingPhotos.length ? `待补图 · ${missingPhotos.join('、')}` : product.packagingMode === 'unified' ? '全部 SKU 统一维护' : '按 SKU 单独维护',
+      done: product.skus.length > 0 && product.skus.every((sku) => sku.cartonQuantity !== null)
+        && missingPhotos.length === 0 && !Object.keys(stepErrors('packaging')).length
+    },
+    {
+      title: stepDefinitions[4].title,
+      detail: `${packs.length} 个资料包 · ${packImageCount + materialCount} 张图片`,
+      done: Boolean(product.mainImageFileId || packs.some((pack) => pack.main.length > 0))
+    }
+  ];
+});
+const completedCheckCount = computed(() => checks.value.filter((check) => check.done).length);
 
 function serializeState(value: ProductEditorState) {
   return JSON.stringify(toProductPayload(value));
@@ -125,7 +192,9 @@ function setInitialState(product?: Product) {
   isDraft.value = product?.status === 'draft';
   currentStepIndex.value = 0;
   validationErrors.value = {};
-  imageUploading.value = false;
+  mainUploading.value = false;
+  stepUploading.value = false;
+  selectedPreviewSkuIndex.value = null;
   initialSnapshot.value = serializeState(state.value);
 }
 
@@ -163,7 +232,7 @@ async function loadEditor() {
 
 function stepErrors(step: ProductEditorStep) {
   return validateStep(state.value, step, {
-    validSupplierIds: new Set(suppliers.value.map((supplier) => supplier.id))
+    validSupplierIds: validSupplierIds.value
   });
 }
 
@@ -178,8 +247,14 @@ async function focusFirstError(errors: Record<string, string>) {
         ? '[data-testid="product-category"]'
         : firstField === 'skus'
           ? '[data-testid="add-sku"]'
-          : 'input, select, button';
-  document.querySelector<HTMLElement>(selector)?.focus();
+          : '[aria-invalid="true"]';
+  const field = stage.value?.querySelector<HTMLElement>(selector);
+  (field ?? stepHeading.value)?.focus();
+}
+
+async function focusStepHeading() {
+  await nextTick();
+  stepHeading.value?.focus();
 }
 
 function firstInvalidStep(targetIndex = productEditorSteps.length - 1, allowDefaultSku = false) {
@@ -197,8 +272,8 @@ function firstInvalidStep(targetIndex = productEditorSteps.length - 1, allowDefa
 
 async function goToStep(index: number) {
   if (index < 0 || index >= stepDefinitions.length) return;
-  if (index !== currentStepIndex.value && blockActiveOperation()) return;
-  if (index > currentStepIndex.value) {
+  if (index === currentStepIndex.value || blockActiveOperation()) return;
+  if (!isEdit.value && index > currentStepIndex.value) {
     const invalid = firstInvalidStep(index - 1);
     if (invalid) {
       currentStepIndex.value = invalid.index;
@@ -209,6 +284,7 @@ async function goToStep(index: number) {
   }
   currentStepIndex.value = index;
   validationErrors.value = {};
+  await focusStepHeading();
 }
 
 async function nextStep() {
@@ -223,15 +299,11 @@ async function nextStep() {
 }
 
 function previousStep() {
-  if (currentStepIndex.value <= 0) return;
-  if (blockActiveOperation()) return;
-  currentStepIndex.value -= 1;
-  validationErrors.value = {};
+  void goToStep(currentStepIndex.value - 1);
 }
 
 async function submit(asDraft = false) {
   if (imageUploading.value) {
-    currentStepIndex.value = productEditorSteps.indexOf('images');
     message.error('图片正在上传，请等待上传完成后再保存');
     return;
   }
@@ -370,19 +442,19 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="min-w-0" data-testid="product-editor-view">
-    <div v-if="loading" data-testid="product-editor-loading" class="space-y-4 py-8">
-      <div class="h-16 animate-pulse rounded-lg bg-slate-100"></div>
-      <div class="h-80 animate-pulse rounded-lg bg-slate-100"></div>
+  <section class="product-editor" data-testid="product-editor-view">
+    <div v-if="loading" data-testid="product-editor-loading" class="product-editor-loading" aria-label="正在加载商品资料" aria-busy="true">
+      <div></div>
+      <div></div>
     </div>
 
-    <div v-else-if="loadError" data-testid="product-editor-error" class="py-16 text-center">
-      <AlertCircle class="mx-auto h-8 w-8 text-rose-500" aria-hidden="true" />
-      <h2 class="mt-4 text-lg font-black text-[#25314d]">商品编辑器无法加载</h2>
-      <p class="mt-2 text-sm font-medium text-slate-500">{{ loadError }}</p>
-      <div class="mt-5 flex justify-center gap-3">
-        <button data-testid="product-editor-back" type="button" class="h-10 rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-600 hover:bg-slate-50" @click="cancel">返回列表</button>
-        <button v-if="positiveInteger(route.params.id)" type="button" class="inline-flex h-10 items-center gap-2 rounded-lg bg-[#536dff] px-4 text-sm font-bold text-white" @click="loadEditor">
+    <div v-else-if="loadError" data-testid="product-editor-error" class="product-editor-load-error">
+      <AlertCircle class="mx-auto h-7 w-7 text-rose-600" aria-hidden="true" />
+      <h1>商品编辑器无法加载</h1>
+      <p>{{ loadError }}</p>
+      <div class="mt-5 flex flex-wrap justify-center gap-3">
+        <button data-testid="product-editor-back" type="button" class="product-editor-button" @click="cancel">返回列表</button>
+        <button v-if="positiveInteger(route.params.id)" type="button" class="product-editor-button is-primary" @click="loadEditor">
           <RotateCcw class="h-4 w-4" aria-hidden="true" />
           重试
         </button>
@@ -390,84 +462,172 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-else>
-      <section data-testid="product-editor-wizard" class="h-[904px] min-w-[1132px]">
-        <header data-testid="product-editor-header" class="flex h-16 items-center justify-between">
-          <div class="min-w-0">
-            <h1 class="text-page-title text-[#25314d]">{{ isDraft ? '编辑商品草稿' : isEdit ? '编辑商品' : '新增商品' }}</h1>
-            <p data-testid="product-editor-subtitle" class="mt-1 text-xs font-normal leading-5 text-[#8292ae]">第 {{ currentStepIndex + 1 }} 步，共 6 步 · {{ currentStep.description }}</p>
+      <section data-testid="product-editor-wizard" class="product-editor-wizard">
+        <header data-testid="product-editor-header" class="product-editor-header">
+          <div>
+            <div class="product-editor-title">
+              <h1>{{ isDraft ? '编辑商品草稿' : isEdit ? '编辑商品' : '新增商品' }}</h1>
+              <span v-if="isEdit && state.itemNo">{{ state.itemNo }}</span>
+            </div>
+            <p data-testid="product-editor-subtitle">
+              {{ isEdit ? '维护商品、SKU 与包装资料。' : '从基础资料开始，逐步建立商品档案。' }}
+              <span class="sr-only">第 {{ currentStepIndex + 1 }} 步，共 {{ stepDefinitions.length }} 步</span>
+            </p>
           </div>
-          <div class="inline-flex h-8 items-center gap-2 rounded-lg bg-[#f8fafc] px-3 text-xs font-medium text-[#64748b]">
-            <span class="h-2 w-2 rounded-full bg-[#32c5a4]"></span>
-            {{ saving ? '保存中...' : dirty || state.productId === null ? '资料待保存' : '资料已保存' }}
-          </div>
+          <p class="product-editor-save-state" :class="{ 'is-dirty': dirty }" role="status">
+            {{ saving ? '保存中…' : dirty ? '资料尚未保存' : state.productId === null ? '新商品 · 尚未创建' : '资料已保存' }}
+          </p>
         </header>
 
-        <div v-if="optionError" data-testid="product-editor-option-error" class="absolute left-1/2 top-20 z-30 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 shadow-lg">
+        <div v-if="optionError" data-testid="product-editor-option-error" class="product-editor-option-error" role="alert">
           <span>{{ optionError }}</span>
-          <button data-testid="retry-editor-options" type="button" class="inline-flex h-8 items-center gap-2 rounded-lg border border-amber-300 px-3 text-xs hover:bg-white" @click="loadOptions">
-            <RotateCcw class="h-3.5 w-3.5" aria-hidden="true" />
+          <button data-testid="retry-editor-options" type="button" class="product-editor-button" @click="loadOptions">
+            <RotateCcw class="h-4 w-4" aria-hidden="true" />
             重试选项
           </button>
         </div>
 
-        <nav data-testid="editor-step-nav" class="mt-4 h-[92px] overflow-hidden rounded-lg border border-[#dbe4f1] bg-white px-4 py-6" aria-label="商品编辑步骤">
-          <ol class="grid grid-cols-[repeat(6,164px)] gap-4">
-            <li v-for="(step, index) in stepDefinitions" :key="step.id" class="h-11">
-              <button :data-testid="`step-${step.id}`" type="button" class="flex h-11 w-full items-center gap-2.5 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-[#536dff]/30" :aria-current="index === currentStepIndex ? 'step' : undefined" @click="goToStep(index)">
-                <span class="grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-semibold" :class="index < currentStepIndex ? 'bg-[#e6f8f2] text-[#16a36a]' : index === currentStepIndex ? 'bg-[#536dff] text-white' : 'bg-[#f1f5f9] text-[#8292ae]'">
-                  <Check v-if="index < currentStepIndex" class="h-4 w-4" aria-hidden="true" />
-                  <span v-else>{{ index + 1 }}</span>
-                </span>
-                <span class="min-w-0">
-                  <strong class="block truncate text-sm font-medium leading-5" :class="index === currentStepIndex ? 'text-[#25314d]' : 'text-[#64748b]'">{{ step.title }}</strong>
-                  <small class="block text-xs font-normal leading-[18px]" :class="index < currentStepIndex ? 'text-[#16a36a]' : index === currentStepIndex ? 'text-[#536dff]' : 'text-[#94a3b8]'">{{ index < currentStepIndex ? '已完成' : index === currentStepIndex ? '进行中' : '待填写' }}</small>
-                </span>
+        <nav data-testid="editor-step-nav" class="product-editor-steps" aria-label="商品编辑步骤">
+          <ol>
+            <li v-for="(step, index) in stepDefinitions" :key="step.id">
+              <button
+                :data-testid="`step-${step.id}`"
+                type="button"
+                :aria-current="index === currentStepIndex ? 'step' : undefined"
+                :disabled="saving"
+                @click="goToStep(index)"
+              >
+                <span class="product-editor-step-number" aria-hidden="true">{{ index + 1 }}</span>
+                <span>{{ step.title }}</span>
               </button>
             </li>
           </ol>
         </nav>
 
-        <fieldset data-testid="product-editor-stage" :disabled="saving" :aria-label="currentStep.title" class="relative mt-4 h-[620px] min-w-0 overflow-hidden rounded-lg border border-[#dbe4f1] bg-white p-6">
-          <div class="flex h-[50px] items-center justify-between gap-4">
-            <div class="min-w-0">
-              <h2 data-testid="editor-step-title" class="text-[18px] font-semibold leading-[26px] text-[#25314d]">{{ currentStep.title }}</h2>
-              <p class="mt-1 text-xs font-normal leading-[18px] text-[#8292ae]">{{ currentStep.description }}</p>
+        <div class="product-editor-layout" :class="{ 'is-images-step': currentStep.id === 'images' }">
+          <fieldset :key="routeGeneration" ref="stage" data-testid="product-editor-stage" class="product-editor-stage" :disabled="saving" :aria-label="currentStep.title">
+            <div class="product-editor-stage-heading">
+              <div>
+                <h2 ref="stepHeading" data-testid="editor-step-title" tabindex="-1">{{ currentStep.title }}</h2>
+                <p>{{ currentStep.description }}</p>
+              </div>
+              <span v-if="currentStep.id === 'basic'" class="product-editor-required">* 为必填项</span>
             </div>
-            <span v-if="currentStep.id === 'basic'" class="inline-flex h-7 items-center rounded-lg bg-[#fff1f2] px-2.5 text-xs font-medium text-[#ef476f]">* 为必填项</span>
-          </div>
 
-          <div class="mt-4 h-[490px] overflow-y-auto overflow-x-hidden">
-            <ProductBasicStep v-if="currentStep.id === 'basic'" v-model="state" :draft="isDraft" :categories="availableCategories" :errors="validationErrors" :service="productService" @update:uploading="imageUploading = $event" />
-            <ProductSkuStep v-else-if="currentStep.id === 'sku'" v-model="state" :errors="validationErrors" :service="productService" @update:uploading="imageUploading = $event" />
-            <ProductProcurementStep v-else-if="currentStep.id === 'procurement'" v-model="state" :suppliers="availableSuppliers" :errors="validationErrors" />
-            <ProductPackagingStep v-else-if="currentStep.id === 'packaging'" v-model="state" :errors="validationErrors" :service="productService" @update:uploading="imageUploading = $event" />
-            <ProductImagesStep v-else-if="currentStep.id === 'images'" v-model="state" :service="productService" @update:uploading="imageUploading = $event" />
-            <ProductConfirmStep v-else :state="state" :categories="availableCategories" :suppliers="availableSuppliers" />
-          </div>
-        </fieldset>
+            <div class="product-editor-stage-body">
+              <ProductBasicStep v-if="currentStep.id === 'basic'" v-model="state" :draft="isDraft" :categories="availableCategories" :errors="validationErrors" @edit-skus="goToStep(1)" />
+              <ProductSkuStep v-else-if="currentStep.id === 'sku'" v-model="state" :errors="validationErrors" :service="productService" @update:uploading="stepUploading = $event" />
+              <ProductProcurementStep v-else-if="currentStep.id === 'procurement'" v-model="state" :suppliers="availableSuppliers" :errors="validationErrors" />
+              <ProductPackagingStep v-else-if="currentStep.id === 'packaging'" v-model="state" :errors="validationErrors" :service="productService" :disabled="saving" @update:uploading="stepUploading = $event" />
+              <ProductImagesStep
+                v-else-if="currentStep.id === 'images'"
+                v-model="state"
+                :service="productService"
+                :disabled="saving"
+                :canonical-main-uploading="mainUploading"
+                @update:uploading="stepUploading = $event"
+              />
+              <ProductConfirmStep
+                v-else
+                :state="state"
+                :category-name="categoryName"
+                :checks="checks"
+                :is-edit="isEdit"
+                :valid="firstInvalidStep() === null"
+                @edit-step="goToStep"
+              />
+            </div>
+          </fieldset>
 
-        <footer data-testid="product-editor-footer" class="mt-4 flex h-20 items-center justify-between rounded-lg border border-[#dbe4f1] bg-white px-4">
-          <div class="flex items-center gap-2.5">
-            <button data-testid="cancel-product" type="button" class="h-10 w-[88px] rounded-lg border border-[#dbe4f1] bg-white text-sm font-medium text-[#25314d] hover:border-[#b9c8df]" @click="cancel">取消</button>
-            <button data-testid="save-product-draft" type="button" :disabled="saving || imageUploading" class="inline-flex h-10 w-28 items-center justify-center gap-2 rounded-lg border border-[#dbe4f1] bg-white text-sm font-medium text-[#25314d] hover:border-[#b9c8df] disabled:cursor-not-allowed disabled:opacity-60" @click="saveDraft">
-              <LoaderCircle v-if="saving" class="h-4 w-4 animate-spin" aria-hidden="true" />
-              {{ saving ? '保存中...' : '保存草稿' }}
-            </button>
-            <p v-if="imageUploading" data-testid="image-upload-blocker" class="text-xs font-medium text-amber-700">图片正在上传，请等待完成后继续</p>
-          </div>
-          <div class="flex gap-2.5">
-            <button data-testid="previous-step" type="button" :disabled="currentStepIndex === 0" class="inline-flex h-10 w-[104px] items-center justify-center gap-2 rounded-lg border border-[#dbe4f1] bg-white text-sm font-medium text-[#25314d] disabled:border-transparent disabled:bg-[#f1f5f9] disabled:text-[#94a3b8]" @click="previousStep">
-            <ChevronLeft class="h-4 w-4" aria-hidden="true" />
-              上一步
-            </button>
-            <button v-if="currentStepIndex < stepDefinitions.length - 1" data-testid="next-step" type="button" :disabled="imageUploading && currentStep.id === 'images'" class="inline-flex h-10 w-28 items-center justify-center gap-2 rounded-lg bg-[#536dff] text-sm font-medium text-white hover:bg-[#465eea] disabled:cursor-not-allowed disabled:opacity-60" @click="nextStep">
-              下一步
-              <ChevronRight class="h-4 w-4" aria-hidden="true" />
-            </button>
-            <button v-else data-testid="submit-product" type="button" :disabled="saving || imageUploading" class="inline-flex h-10 w-28 items-center justify-center gap-2 rounded-lg bg-[#536dff] text-sm font-medium text-white hover:bg-[#465eea] disabled:cursor-not-allowed disabled:opacity-60" @click="submit()">
-              <LoaderCircle v-if="saving" class="h-4 w-4 animate-spin" aria-hidden="true" />
-              {{ saving ? '保存中...' : isDraft ? '提交商品' : isEdit ? '保存修改' : '创建商品' }}
-            </button>
+          <aside class="product-editor-rail" aria-label="商品资料预览">
+            <section class="product-editor-rail-panel product-editor-preview" data-testid="editor-product-preview">
+              <h3>商品预览 <small>主图</small></h3>
+              <fieldset class="product-editor-preview-upload" :disabled="saving" aria-label="商品主图">
+                <ProductImageUpload
+                  :key="routeGeneration"
+                  :file-id="state.mainImageFileId"
+                  :preview="state.imagePreviews.main"
+                  :service="productService"
+                  :disabled="saving"
+                  label="商品主图"
+                  test-id="product-main-image"
+                  variant="wizard-main"
+                  @update:file-id="setEditorImageFileId(state, 'main', null, $event)"
+                  @update:preview="setEditorImagePreview(state, 'main', null, $event)"
+                  @update:uploading="mainUploading = $event"
+                />
+              </fieldset>
+              <div class="product-editor-preview-meta">
+                <h4>{{ state.productName.trim() || '商品名称待填写' }}</h4>
+                <p>{{ state.itemNo.trim() || '货号待填写' }}</p>
+                <div class="product-editor-badges">
+                  <span class="product-editor-badge" :class="{ 'is-complete': state.status === 'enabled' && !isDraft }">
+                    {{ isDraft ? '草稿' : state.status === 'enabled' ? '启用' : '停用' }}
+                  </span>
+                  <span class="product-editor-badge">{{ state.productType === 'variant' ? '多规格' : '单规格' }}</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="product-editor-rail-panel" data-testid="editor-sku-preview">
+              <h3>{{ previewSku ? '当前 SKU' : 'SKU 概览' }} <small>{{ state.skus.length }} 个规格</small></h3>
+              <div class="product-editor-rail-body">
+                <label v-if="state.skus.length > 1" class="product-editor-sku-picker">
+                  <span class="sr-only">选择预览的 SKU</span>
+                  <select v-model="previewSkuIndex">
+                    <option v-for="(sku, index) in state.skus" :key="sku.id ?? index" :value="index">
+                      {{ sku.skuCode || sku.skuName || `SKU ${index + 1}` }}{{ sku.defaultSku ? '（默认）' : '' }}
+                    </option>
+                  </select>
+                </label>
+                <dl class="product-editor-sku-fields">
+                  <div><dt>SKU 货号</dt><dd>{{ previewSku?.skuCode || '—' }}</dd></div>
+                  <div><dt>规格</dt><dd>{{ previewSku?.specificationValues.join(' / ') || previewSku?.skuName || '—' }}</dd></div>
+                  <div><dt>容量</dt><dd>{{ previewSku?.capacityMl == null ? '—' : `${previewSku.capacityMl} ml` }}</dd></div>
+                  <div><dt>销售单位</dt><dd>{{ previewSku?.salesUnit || '—' }}</dd></div>
+                </dl>
+              </div>
+            </section>
+
+            <section class="product-editor-rail-panel" data-testid="editor-completeness">
+              <h3>资料检查 <small>{{ completedCheckCount }} / {{ checks.length }} 已填写</small></h3>
+              <div class="product-editor-rail-body">
+                <progress :value="completedCheckCount" :max="checks.length" aria-label="商品资料填写进度"></progress>
+                <ul class="product-editor-checks">
+                  <li v-for="(check, index) in checks" :key="check.title">
+                    <button type="button" :disabled="saving" @click="goToStep(index)">{{ check.title }}</button>
+                    <span :class="{ 'is-complete': check.done }">{{ check.done ? '已填写' : '待补充' }}</span>
+                  </li>
+                </ul>
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        <footer data-testid="product-editor-footer" class="product-editor-footer">
+          <p v-if="imageUploading" data-testid="image-upload-blocker" class="product-editor-upload-blocker" role="status">图片正在上传，请等待完成后继续</p>
+          <div class="product-editor-actions">
+            <div>
+              <button data-testid="cancel-product" type="button" class="product-editor-button" @click="cancel">取消</button>
+              <button data-testid="save-product-draft" type="button" :disabled="saving || imageUploading" class="product-editor-button" @click="saveDraft">
+                保存草稿
+              </button>
+            </div>
+            <div>
+              <span class="product-editor-step-count">{{ currentStepIndex + 1 }} / {{ stepDefinitions.length }}</span>
+              <button data-testid="previous-step" type="button" :disabled="currentStepIndex === 0 || saving" class="product-editor-button" @click="previousStep">
+                <ChevronLeft class="product-editor-step-arrow" aria-hidden="true" />
+                上一步
+              </button>
+              <button v-if="!isEdit && currentStepIndex < stepDefinitions.length - 1" data-testid="next-step" type="button" :disabled="saving || imageUploading" class="product-editor-button is-primary" @click="nextStep">
+                下一步
+                <ChevronRight class="product-editor-step-arrow" aria-hidden="true" />
+              </button>
+              <button v-else data-testid="submit-product" type="button" :disabled="saving || imageUploading" class="product-editor-button is-primary" @click="submit()">
+                <LoaderCircle v-if="saving" class="h-4 w-4 animate-spin" aria-hidden="true" />
+                {{ saving ? '保存中…' : isDraft ? '提交商品' : isEdit ? '保存修改' : '创建商品' }}
+              </button>
+            </div>
           </div>
         </footer>
       </section>
@@ -495,8 +655,8 @@ onBeforeUnmount(() => {
               <p class="mt-1 text-xs text-slate-500">{{ createdProduct.itemNo }} · {{ createdProduct.skus.length }} 个 SKU</p>
             </div>
           </div>
-          <div class="flex items-start gap-3 rounded-lg bg-[#f5f7ff] px-4 py-3 text-sm leading-6 text-slate-600">
-            <Boxes class="mt-0.5 h-4 w-4 shrink-0 text-[#536dff]" aria-hidden="true" />
+          <div class="flex items-start gap-3 rounded-lg bg-[#f6f9fc] px-4 py-3 text-sm leading-6 text-slate-600">
+            <Boxes class="mt-0.5 h-4 w-4 shrink-0 text-[#0968b6]" aria-hidden="true" />
             <p>库存作为独立业务数据维护。现在录入可自动带入本商品的全部 SKU，也可以稍后从库存调整中处理。</p>
           </div>
         </div>
@@ -512,7 +672,7 @@ onBeforeUnmount(() => {
           <button
             data-testid="product-create-success-opening-stock"
             type="button"
-            class="h-10 min-w-36 rounded-lg bg-[#536dff] px-5 text-sm font-medium text-white hover:bg-[#465eea]"
+            class="h-10 min-w-36 rounded-lg bg-[#0968b6] px-5 text-sm font-medium text-white hover:bg-[#075a9e]"
             @click="startOpeningStock"
           >
             录入期初库存
@@ -522,3 +682,5 @@ onBeforeUnmount(() => {
     </template>
   </section>
 </template>
+
+<style src="./productEditor.css"></style>

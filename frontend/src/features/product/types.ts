@@ -9,6 +9,21 @@ export interface ProductSpecification {
   values: string[];
 }
 
+export const PRODUCT_ALBUM_KINDS = ['main', 'sku', 'detail', 'long'] as const;
+export type ProductAlbumKind = typeof PRODUCT_ALBUM_KINDS[number];
+
+export interface ProductMediaImageRef {
+  fileId: number;
+}
+
+export interface ProductMediaImage extends ProductMediaImageRef {
+  url: string | null;
+  name: string | null;
+}
+
+export type ProductImagePackInput = { name: string } & Record<ProductAlbumKind, ProductMediaImageRef[]>;
+export type ProductImagePack = { name: string } & Record<ProductAlbumKind, ProductMediaImage[]>;
+
 export interface ProductSupplierQuoteInput {
   id?: number;
   supplierId: number;
@@ -39,6 +54,7 @@ export interface SkuForm {
   productLengthCm: number | null;
   productWidthCm: number | null;
   productHeightCm: number | null;
+  productMouthDiameterCm?: number | null;
   capacityMl: number | null;
   netWeightKg: number | null;
   grossWeightKg: number | null;
@@ -49,6 +65,7 @@ export interface SkuForm {
   skuImageFileId: number | null;
   packageImageFileId: number | null;
   cartonImageFileId: number | null;
+  productPhotoFileId?: number | null;
   supplierQuotes?: ProductSupplierQuoteInput[];
   defaultSku: boolean;
   status: RecordStatus;
@@ -65,6 +82,8 @@ export interface ProductFormPayload {
   remark: string;
   specifications: ProductSpecification[];
   skus: SkuForm[];
+  imagePacks?: ProductImagePackInput[] | null;
+  materialImages?: ProductMediaImageRef[] | null;
 }
 
 export interface ProductSupplierQuote {
@@ -104,6 +123,7 @@ export interface ProductSku {
   productLengthCm: number | null;
   productWidthCm: number | null;
   productHeightCm: number | null;
+  productMouthDiameterCm?: number | null;
   capacityMl: number | null;
   netWeightKg: number | null;
   grossWeightKg: number | null;
@@ -117,6 +137,8 @@ export interface ProductSku {
   packageImageUrl: string | null;
   cartonImageFileId: number | null;
   cartonImageUrl: string | null;
+  productPhotoFileId?: number | null;
+  productPhotoUrl?: string | null;
   supplierQuotes: ProductCatalogSupplierQuote[];
   defaultSku: boolean;
   status: RecordStatus;
@@ -146,6 +168,8 @@ export interface Product {
   remark: string | null;
   specifications: ProductSpecification[];
   skus: ProductSku[];
+  imagePacks?: ProductImagePack[] | null;
+  materialImages?: ProductMediaImage[] | null;
   createdAt: string;
   updatedAt: string;
 }

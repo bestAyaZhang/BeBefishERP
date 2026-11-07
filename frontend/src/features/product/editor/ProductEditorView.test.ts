@@ -365,9 +365,13 @@ describe('Task 10 product editor', () => {
     expect(wrapper.get('[data-testid="editor-step-nav"]').text()).toContain('确认提交');
 
     await fillBasic(wrapper);
+    await upload(wrapper, 'product-main-image', 'main.png');
     await next(wrapper);
     expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('SKU 信息');
     await addSku(wrapper, '白色款', '6970000000210');
+    await wrapper.get('[data-testid="edit-sku-0"]').trigger('click');
+    await upload(wrapper, 'sku-dialog-image', 'sku.png');
+    await wrapper.get('[data-testid="sku-dialog-save"]').trigger('click');
     await next(wrapper);
 
     expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('采购与渠道');
@@ -382,12 +386,10 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="unified-inner-package-length"]').setValue('36');
     await wrapper.get('[data-testid="unified-net-weight"]').setValue('3.0');
     await wrapper.get('[data-testid="unified-gross-weight"]').setValue('3.1');
-    await next(wrapper);
-
-    await upload(wrapper, 'product-main-image', 'main.png');
-    await upload(wrapper, 'sku-image-0', 'sku.png');
     await upload(wrapper, 'package-image-unified', 'package.png');
     await upload(wrapper, 'carton-image-unified', 'carton.png');
+    await next(wrapper);
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('图片资料');
     await next(wrapper);
 
     expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('确认提交');
@@ -439,18 +441,15 @@ describe('Task 10 product editor', () => {
     });
   });
 
-  it('renders the edit route with the six-step Figma desktop wizard layout', async () => {
+  it('shows six direct edit sections with a live preview and saves from the current section', async () => {
     vi.mocked(productService.getProduct).mockResolvedValue(completeProduct());
     const { wrapper } = await mountEditor('/products/42/edit');
 
     const wizard = wrapper.get('[data-testid="product-editor-wizard"]');
-    expect(wizard.classes()).toContain('h-[904px]');
-    expect(wizard.get('[data-testid="product-editor-header"]').classes()).toContain('h-16');
     expect(wizard.get('h1').text()).toBe('编辑商品');
     expect(wizard.get('[data-testid="product-editor-subtitle"]').text()).toContain('第 1 步，共 6 步');
 
     const stepper = wizard.get('[data-testid="editor-step-nav"]');
-    expect(stepper.classes()).toContain('h-[92px]');
     expect(stepper.findAll('button')).toHaveLength(6);
     expect(stepper.findAll('button').map((button) => button.text())).toEqual(expect.arrayContaining([
       expect.stringContaining('基本资料'),
@@ -462,14 +461,24 @@ describe('Task 10 product editor', () => {
     ]));
 
     const stage = wizard.get('[data-testid="product-editor-stage"]');
-    expect(stage.classes()).toContain('h-[620px]');
     expect(stage.get('[data-testid="editor-step-title"]').text()).toBe('基本资料');
 
     const footer = wizard.get('[data-testid="product-editor-footer"]');
-    expect(footer.classes()).toContain('h-20');
     expect(footer.get('[data-testid="cancel-product"]').text()).toBe('取消');
     expect(footer.get('[data-testid="save-product-draft"]').text()).toBe('保存草稿');
     expect(wrapper.get<HTMLInputElement>('[data-testid="product-name"]').element.value).toBe('玻璃按压瓶');
+
+    await wrapper.get('[data-testid="product-name"]').setValue('更新后的玻璃按压瓶');
+    expect(wizard.get('[data-testid="editor-product-preview"]').text()).toContain('更新后的玻璃按压瓶');
+    await stepper.get('[data-testid="step-packaging"]').trigger('click');
+    expect(stage.get('[data-testid="editor-step-title"]').text()).toBe('包装与重量');
+    expect(footer.get('[data-testid="submit-product"]').text()).toBe('保存修改');
+    await footer.get('[data-testid="submit-product"]').trigger('click');
+    await flushPromises();
+
+    expect(productService.updateProduct).toHaveBeenCalledWith(42, expect.objectContaining({
+      productName: '更新后的玻璃按压瓶'
+    }));
   });
 
   it('saves explicit product type and product status controls', async () => {
@@ -568,7 +577,7 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="product-name"]').setValue('更新后的玻璃按压瓶');
     await wrapper.get('[data-testid="product-status"]').setValue('disabled');
 
-    for (let index = 0; index < 5; index += 1) await next(wrapper);
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
     expect(wrapper.text()).toContain('历史供应商');
     expect(wrapper.get('[data-testid="product-main-image-preview"]').attributes('src')).toBe('/uploads/main.png');
     await wrapper.get('[data-testid="submit-product"]').trigger('click');
@@ -632,10 +641,11 @@ describe('Task 10 product editor', () => {
     const { wrapper } = await mountEditor('/products/42/edit');
 
     await wrapper.get('[data-testid="product-type"]').setValue('simple');
-    await next(wrapper);
+    await wrapper.get('[data-testid="step-sku"]').trigger('click');
     expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('SKU 信息');
 
     await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
     expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('SKU 信息');
     expect(wrapper.text()).toContain('请删除多余 SKU，并编辑保留的 SKU 清空 SKU 规格值；若仍有 SKU 规格定义，请返回基础信息删除。');
     expect(productService.createProduct).not.toHaveBeenCalled();
@@ -845,14 +855,22 @@ describe('Task 10 product editor', () => {
     await next(wrapper);
     await next(wrapper);
 
-    expect(wrapper.text()).toContain('产品尺寸与容量');
+    expect(wrapper.text()).toContain('产品尺寸');
+    const unifiedShape = wrapper.get('[aria-label="产品尺寸形式"]');
+    expect(wrapper.get('[data-testid="packaging-product-mouth"]').isVisible()).toBe(true);
+    expect(wrapper.get('[data-testid="packaging-product-length"]').isVisible()).toBe(false);
     expect(wrapper.get('[data-testid="packaging-product-length-unit"]').text()).toBe('cm');
+    expect(wrapper.get('[data-testid="packaging-product-mouth-unit"]').text()).toBe('cm');
     expect(wrapper.get('[data-testid="packaging-capacity-unit"]').text()).toBe('ml');
     expect(wrapper.findAll('[data-testid="packaging-product-dimension-separator"]')).toHaveLength(2);
-    for (const testId of ['packaging-product-length', 'packaging-product-width', 'packaging-product-height', 'packaging-capacity']) {
+    for (const testId of ['packaging-product-mouth', 'packaging-product-length', 'packaging-product-width', 'packaging-product-height', 'packaging-capacity']) {
       expect(wrapper.get(`[data-testid="${testId}"]`).attributes()).toMatchObject({ min: '0', max: '999999999.999', step: '0.001' });
     }
 
+    await wrapper.get('[data-testid="packaging-product-mouth"]').setValue('8.2');
+    await unifiedShape.findAll('button')[1].trigger('click');
+    expect(wrapper.get('[data-testid="packaging-product-mouth"]').isVisible()).toBe(false);
+    expect(wrapper.get('[data-testid="packaging-product-length"]').isVisible()).toBe(true);
     await wrapper.get('[data-testid="packaging-product-length"]').setValue('12.5');
     await wrapper.get('[data-testid="packaging-product-width"]').setValue('8.25');
     await wrapper.get('[data-testid="packaging-product-height"]').setValue('20');
@@ -860,6 +878,7 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
 
     await wrapper.get('[data-testid="edit-packaging-1"]').trigger('click');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-mouth"]').element.value).toBe('8.2');
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-length"]').element.value).toBe('12.5');
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-width"]').element.value).toBe('8.25');
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-height"]').element.value).toBe('20');
@@ -867,10 +886,11 @@ describe('Task 10 product editor', () => {
     expect(wrapper.get('[data-testid="packaging-dialog-product-length-unit"]').text()).toBe('cm');
     expect(wrapper.get('[data-testid="packaging-dialog-capacity-unit"]').text()).toBe('ml');
     expect(wrapper.findAll('[data-testid="packaging-dialog-product-dimension-separator"]')).toHaveLength(2);
-    for (const testId of ['packaging-dialog-product-length', 'packaging-dialog-product-width', 'packaging-dialog-product-height', 'packaging-dialog-capacity']) {
+    for (const testId of ['packaging-dialog-product-mouth', 'packaging-dialog-product-length', 'packaging-dialog-product-width', 'packaging-dialog-product-height', 'packaging-dialog-capacity']) {
       expect(wrapper.get(`[data-testid="${testId}"]`).attributes()).toMatchObject({ min: '0', max: '999999999.999', step: '0.001' });
     }
 
+    await wrapper.get('[data-testid="packaging-dialog-product-mouth"]').setValue('8.5');
     await wrapper.get('[data-testid="packaging-dialog-product-length"]').setValue('13.5');
     await wrapper.get('[data-testid="packaging-dialog-product-width"]').setValue('9.25');
     await wrapper.get('[data-testid="packaging-dialog-product-height"]').setValue('21');
@@ -878,6 +898,7 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="packaging-dialog-save"]').trigger('click');
 
     await wrapper.get('[data-testid="edit-packaging-0"]').trigger('click');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-mouth"]').element.value).toBe('8.2');
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-length"]').element.value).toBe('12.5');
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-width"]').element.value).toBe('8.25');
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-height"]').element.value).toBe('20');
@@ -885,10 +906,22 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="packaging-dialog-cancel"]').trigger('click');
 
     await wrapper.get('[data-testid="edit-packaging-1"]').trigger('click');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-mouth"]').element.value).toBe('8.5');
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-length"]').element.value).toBe('13.5');
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-width"]').element.value).toBe('9.25');
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-product-height"]').element.value).toBe('21');
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-capacity"]').element.value).toBe('500');
+    await wrapper.get('[data-testid="packaging-dialog-cancel"]').trigger('click');
+    await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
+    await flushPromises();
+
+    expect(productService.createProduct).toHaveBeenCalledWith(expect.objectContaining({
+      skus: [
+        expect.objectContaining({ productMouthDiameterCm: 8.2, productHeightCm: 20 }),
+        expect.objectContaining({ productMouthDiameterCm: 8.5, productHeightCm: 21 })
+      ]
+    }));
   });
 
   it('normalizes a cleared product physical input to null', async () => {
@@ -899,12 +932,14 @@ describe('Task 10 product editor', () => {
     await next(wrapper);
     await next(wrapper);
 
+    await wrapper.get('[data-testid="packaging-product-mouth"]').setValue('8.2');
     await wrapper.get('[data-testid="packaging-capacity"]').setValue('450');
     await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
     await wrapper.get('[data-testid="edit-packaging-0"]').trigger('click');
     expect(wrapper.get<HTMLInputElement>('[data-testid="packaging-dialog-capacity"]').element.value).toBe('450');
     await wrapper.get('[data-testid="packaging-dialog-cancel"]').trigger('click');
     await wrapper.get('[data-testid="packaging-mode-unified"]').trigger('click');
+    await wrapper.get('[data-testid="packaging-product-mouth"]').setValue('');
     await wrapper.get('[data-testid="packaging-capacity"]').setValue('');
 
     await wrapper.get('[data-testid="step-confirm"]').trigger('click');
@@ -912,7 +947,7 @@ describe('Task 10 product editor', () => {
     await flushPromises();
 
     expect(productService.createProduct).toHaveBeenCalledWith(expect.objectContaining({
-      skus: [expect.objectContaining({ capacityMl: null })]
+      skus: [expect.objectContaining({ productMouthDiameterCm: null, capacityMl: null })]
     }));
   });
 
@@ -923,12 +958,14 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
     await wrapper.get('[data-testid="edit-packaging-0"]').trigger('click');
 
+    await wrapper.get('[data-testid="packaging-dialog-product-mouth"]').setValue('-1');
     await wrapper.get('[data-testid="packaging-dialog-product-length"]').setValue('-1');
     await wrapper.get('[data-testid="packaging-dialog-product-width"]').setValue('-1');
     await wrapper.get('[data-testid="packaging-dialog-product-height"]').setValue('-1');
     await wrapper.get('[data-testid="packaging-dialog-capacity"]').setValue('-1');
     await wrapper.get('[data-testid="packaging-dialog-save"]').trigger('click');
 
+    expect(wrapper.get('[data-testid="packaging-dialog-product-mouth-error"]').text()).toContain('口径不能小于 0');
     expect(wrapper.get('[data-testid="packaging-dialog-product-length-error"]').text()).toContain('产品长不能小于 0');
     expect(wrapper.get('[data-testid="packaging-dialog-product-width-error"]').text()).toContain('产品宽不能小于 0');
     expect(wrapper.get('[data-testid="packaging-dialog-product-height-error"]').text()).toContain('产品高不能小于 0');
@@ -1102,7 +1139,6 @@ describe('Task 10 product editor', () => {
     await next(wrapper);
     await next(wrapper);
     await wrapper.get('[data-testid="unified-package-length"]').setValue('42');
-    await next(wrapper);
     await upload(wrapper, 'package-image-unified', 'package.png');
 
     await wrapper.get('[data-testid="step-sku"]').trigger('click');
@@ -1111,8 +1147,8 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="packaging-mode-per-sku"]').trigger('click');
     expect(wrapper.get('[data-testid="packaging-row-1"]').text()).toContain('42');
 
-    await wrapper.get('[data-testid="step-images"]').trigger('click');
-    expect(wrapper.get('[data-testid="package-image-1-preview"]').attributes('src')).toBe('/uploads/package.png');
+    await wrapper.get('[data-testid="edit-packaging-1"]').trigger('click');
+    expect(wrapper.get('[data-testid="packaging-dialog-package-image-preview"]').attributes('src')).toBe('/uploads/package.png');
   });
 
   it('keeps previews through upload errors, removes associations, and revokes blob urls', async () => {
@@ -1123,18 +1159,17 @@ describe('Task 10 product editor', () => {
     await fillBasic(wrapper);
     await next(wrapper);
     await addSku(wrapper, '透明款', 'A-1');
-    await next(wrapper);
-    await next(wrapper);
-    await next(wrapper);
 
     await upload(wrapper, 'product-main-image', 'main.png');
     expect(wrapper.get('[data-testid="product-main-image-preview"]').attributes('src')).toBe('/uploads/main.png');
     expect(wrapper.get('[data-testid="product-main-image-status"]').text()).toContain('上传成功');
-    await upload(wrapper, 'sku-image-0', 'sku-failed.png');
-    expect(wrapper.get('[data-testid="sku-image-0-status"]').text()).toContain('上传失败');
+    await wrapper.get('[data-testid="edit-sku-0"]').trigger('click');
+    await upload(wrapper, 'sku-dialog-image', 'sku-failed.png');
+    expect(wrapper.get('[data-testid="sku-dialog-image-status"]').text()).toContain('上传失败');
     expect(wrapper.text()).toContain('SKU 图片上传失败');
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:sku-failed.png');
 
+    await wrapper.get('[data-testid="sku-dialog-cancel"]').trigger('click');
     await wrapper.get('[data-testid="product-main-image-remove"]').trigger('click');
     expect(wrapper.find('[data-testid="product-main-image-preview"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="product-main-image-status"]').text()).toContain('未上传');
@@ -1202,6 +1237,31 @@ describe('Task 10 product editor', () => {
 
     pending.resolve({ id: 201, url: '/uploads/main.png', originalFileName: 'pending-main.png' });
     await flushPromises();
+  });
+
+  it('keeps the rail upload active when a simultaneous main album upload finishes first', async () => {
+    const railUpload = deferred<{ id: number; url: string; originalFileName: string }>();
+    const albumUpload = deferred<{ id: number; url: string; originalFileName: string }>();
+    vi.mocked(productService.uploadImage).mockReturnValueOnce(railUpload.promise).mockReturnValueOnce(albumUpload.promise);
+    const { wrapper } = await mountEditor();
+    await fillBasic(wrapper);
+    await next(wrapper);
+    await addSku(wrapper, '透明款', 'A-1');
+    await wrapper.get('[data-testid="step-images"]').trigger('click');
+
+    await upload(wrapper, 'product-main-image', 'rail.png');
+    await upload(wrapper, 'image-album-0-main-input', 'album.png');
+    albumUpload.resolve({ id: 202, url: '/uploads/album.png', originalFileName: 'album.png' });
+    await flushPromises();
+
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="next-step"]').element.disabled).toBe(true);
+    expect(wrapper.get('[data-testid="product-main-image-status"]').text()).toContain('上传中');
+
+    railUpload.resolve({ id: 201, url: '/uploads/rail.png', originalFileName: 'rail.png' });
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="product-main-image-preview"]').attributes('src')).toBe('/uploads/rail.png');
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="next-step"]').element.disabled).toBe(false);
   });
 
   it('blocks route and browser exits while saving, then permits its own successful detail navigation', async () => {
@@ -1557,6 +1617,8 @@ describe('Task 10 product editor', () => {
     await wrapper.get('[data-testid="previous-step"]').trigger('click');
     await wrapper.get('[data-testid="product-name"]').setValue('');
     await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('确认提交');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
     expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('基本资料');
     expect(wrapper.text()).toContain('请输入商品名称');
   });
@@ -1573,6 +1635,7 @@ describe('Task 10 product editor', () => {
     const { wrapper } = await mountEditor('/products/42/edit');
 
     await wrapper.get('[data-testid="step-confirm"]').trigger('click');
+    await wrapper.get('[data-testid="submit-product"]').trigger('click');
 
     expect(wrapper.get('[data-testid="editor-step-title"]').text()).toContain('SKU 信息');
     expect(wrapper.get('[data-testid="sku-row-0"]').text()).toContain('默认售价不能小于 0');

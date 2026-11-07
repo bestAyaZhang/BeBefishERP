@@ -96,9 +96,9 @@ public class ProductCompletenessCalculator {
         return !enabledSkus.isEmpty() && enabledSkus.stream().allMatch(sku -> {
             Packaging packaging = sku.packaging();
             return packaging != null
-                    && packaging.productLengthCm() != null
-                    && packaging.productWidthCm() != null
-                    && packaging.productHeightCm() != null;
+                    && packaging.productHeightCm() != null
+                    && (packaging.productMouthDiameterCm() != null
+                        || (packaging.productLengthCm() != null && packaging.productWidthCm() != null));
         });
     }
 

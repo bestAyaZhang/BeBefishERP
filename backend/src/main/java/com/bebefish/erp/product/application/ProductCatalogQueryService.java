@@ -4,6 +4,7 @@ import com.bebefish.erp.product.application.ProductCatalogMetrics.SkuCatalogMetr
 import com.bebefish.erp.product.application.ProductCatalogMetrics.CatalogSupplierQuote;
 import com.bebefish.erp.product.domain.Product;
 import com.bebefish.erp.product.domain.ProductRepository;
+import com.bebefish.erp.product.domain.ProductRepository.ImageFile;
 import com.bebefish.erp.product.domain.SupplierQuote;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
@@ -37,7 +38,8 @@ public class ProductCatalogQueryService {
             return Map.of();
         }
 
-        var catalogData = repository.loadCatalogData(productIds);
+        var imageFileIds = products.stream().flatMap(Product::imageFileIds).distinct().toList();
+        var catalogData = repository.loadCatalogData(productIds, imageFileIds);
         var metricsByProductId = new LinkedHashMap<Long, ProductCatalogMetrics>();
         for (var product : products) {
             if (product.id() == null) {
@@ -67,7 +69,6 @@ public class ProductCatalogQueryService {
                 totalSafetyStock = totalSafetyStock.add(orZero(sku.safetyStockQuantity()));
             }
 
-            var imageUrls = imageUrls(product, catalogData.imageUrlByFileId());
             metricsByProductId.put(product.id(), new ProductCatalogMetrics(
                     catalogData.categoryNameByProductId().get(product.id()),
                     totalStock,
@@ -76,7 +77,7 @@ public class ProductCatalogQueryService {
                     catalogData.defaultSupplierNameByProductId().get(product.id()),
                     completenessCalculator.calculate(product, quotesBySkuId),
                     skuMetrics,
-                    imageUrls
+                    imageFiles(product, catalogData.imageByFileId())
             ));
         }
         return Map.copyOf(metricsByProductId);
@@ -87,23 +88,15 @@ public class ProductCatalogQueryService {
         return repository.categoryCounts();
     }
 
-    private Map<Long, String> imageUrls(Product product, Map<Long, String> allImageUrls) {
-        var imageUrls = new LinkedHashMap<Long, String>();
-        addImageUrl(imageUrls, allImageUrls, product.mainImageFileId());
-        for (var sku : product.skus()) {
-            addImageUrl(imageUrls, allImageUrls, sku.skuImageFileId());
-            if (sku.packaging() != null) {
-                addImageUrl(imageUrls, allImageUrls, sku.packaging().packageImageFileId());
-                addImageUrl(imageUrls, allImageUrls, sku.packaging().cartonImageFileId());
+    private Map<Long, ImageFile> imageFiles(Product product, Map<Long, ImageFile> allImages) {
+        var images = new LinkedHashMap<Long, ImageFile>();
+        product.imageFileIds().forEach(fileId -> {
+            var image = allImages.get(fileId);
+            if (image != null) {
+                images.put(fileId, image);
             }
-        }
-        return imageUrls;
-    }
-
-    private void addImageUrl(Map<Long, String> imageUrls, Map<Long, String> allImageUrls, Long fileId) {
-        if (fileId != null && allImageUrls.containsKey(fileId)) {
-            imageUrls.put(fileId, allImageUrls.get(fileId));
-        }
+        });
+        return images;
     }
 
     private BigDecimal orZero(BigDecimal value) {

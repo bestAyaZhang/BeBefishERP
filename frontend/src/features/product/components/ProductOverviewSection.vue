@@ -1,90 +1,61 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import { formatMoney, formatText } from '../productDetailFormatting';
-import type { Product } from '../types';
+import { ImageOff } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
+import { formatMoney, formatProductType, formatText, formatWithUnit } from '../productDetailFormatting';
+import { formatProductNumber, getDefaultSupplierQuote } from '../productPresentation';
+import type { Product, ProductSku } from '../types';
 import ProductDetailImage from './ProductDetailImage.vue';
 
-const props = defineProps<{ product: Product }>();
-
-const category = computed(() => formatText(props.product.categoryName));
-const primarySku = computed(() => props.product.skus.find((sku) => sku.defaultSku) ?? props.product.skus[0] ?? null);
-const defaultQuote = computed(() => (
-  primarySku.value?.supplierQuotes.find((quote) => quote.defaultQuote)
-  ?? primarySku.value?.supplierQuotes[0]
-  ?? null
-));
-const specification = computed(() => {
-  if (primarySku.value?.specText) return primarySku.value.specText;
-  if (primarySku.value?.specificationValues.length) return primarySku.value.specificationValues.join(' / ');
-  return props.product.specifications.flatMap((item) => item.values).join(' / ');
-});
+const props = defineProps<{ product: Product; selectedSku: ProductSku | null }>();
+defineEmits<{ 'select-sku': [id: number] }>();
+const failedThumbnails = ref<Record<number, string | null>>({});
+const defaultQuote = computed(() => getDefaultSupplierQuote(props.selectedSku ?? undefined));
+const specification = computed(() => props.selectedSku?.specText || props.selectedSku?.specificationValues.join(' / '));
+const lowStock = computed(() => Number.isFinite(props.product.totalStock)
+  && Number.isFinite(props.product.totalSafetyStock)
+  && props.product.totalStock < props.product.totalSafetyStock);
 </script>
 
 <template>
-  <section data-testid="product-overview-section" class="min-h-[280px] w-full rounded-lg border border-[#e2e8f0] bg-white p-[23px] lg:h-[280px] lg:overflow-hidden">
-    <div class="grid gap-6 lg:grid-cols-[232px_minmax(0,1fr)]">
-      <figure class="h-[232px] min-w-0 self-start overflow-hidden">
+  <section id="product-overview" data-testid="product-overview-section" class="pd-overview pd-panel">
+    <div class="pd-gallery">
+      <div class="pd-gallery-heading"><h2>商品图片</h2><span>点击查看大图</span></div>
+      <div class="pd-hero-image">
         <ProductDetailImage
-          :src="product.mainImageUrl"
-          :alt="`${product.productName}商品主图`"
+          :src="selectedSku?.skuImageUrl || product.mainImageUrl"
+          :alt="`${product.productName}${selectedSku ? ` · ${selectedSku.skuName || selectedSku.skuCode}` : ''}商品主图`"
           test-id="product-overview-main-image"
           size="large"
         />
-        <figcaption class="mt-2 truncate text-xs font-normal leading-[18px] text-[#94a3b8]">商品主图 · {{ formatText(product.itemNo) }}</figcaption>
-      </figure>
+      </div>
+      <div v-if="product.skus.length" class="pd-thumbnails" aria-label="选择商品规格">
+        <button
+          v-for="sku in product.skus" :key="sku.id" type="button" class="pd-thumbnail"
+          :data-testid="`sku-thumbnail-${sku.id}`" :aria-pressed="selectedSku?.id === sku.id"
+          :aria-label="`选择 ${sku.skuName || sku.skuCode}`" :title="sku.specText || sku.skuName || sku.skuCode"
+          @click="$emit('select-sku', sku.id)"
+        >
+          <img v-if="sku.skuImageUrl && failedThumbnails[sku.id] !== sku.skuImageUrl" :src="sku.skuImageUrl" :alt="sku.skuName || sku.skuCode" @error="failedThumbnails[sku.id] = sku.skuImageUrl" />
+          <ImageOff v-else aria-hidden="true" />
+        </button>
+      </div>
+      <p v-else class="pd-gallery-empty">暂无 SKU 图片</p>
+    </div>
 
-      <div class="h-auto min-w-0 lg:h-[232px]">
-        <h2 class="text-[18px] font-medium leading-[26px] text-[#25314d]">商品概览</h2>
-        <dl class="mt-3 grid min-w-0 grid-cols-1 gap-x-4 gap-y-[10px] sm:grid-cols-2 xl:grid-cols-3">
-        <div class="min-h-[42px] min-w-0">
-          <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">货号</dt>
-          <dd class="truncate text-sm font-medium leading-[22px] text-[#25314d]">{{ formatText(product.itemNo) }}</dd>
-        </div>
-        <div class="min-h-[42px] min-w-0">
-          <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">SKU</dt>
-          <dd class="truncate text-sm font-medium leading-[22px] text-[#25314d]">{{ formatText(primarySku?.skuCode) }}</dd>
-        </div>
-        <div class="min-h-[42px] min-w-0">
-          <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">SPU</dt>
-          <dd class="truncate text-sm font-medium leading-[22px] text-[#25314d]">{{ formatText(product.productCode) }}</dd>
-        </div>
-        <div class="min-h-[42px] min-w-0">
-          <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">规格</dt>
-          <dd class="truncate text-sm font-medium leading-[22px] text-[#25314d]">{{ formatText(specification) }}</dd>
-        </div>
-        <div class="min-h-[42px] min-w-0">
-          <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">分类</dt>
-          <dd class="truncate text-sm font-medium leading-[22px] text-[#25314d]">{{ category }}</dd>
-        </div>
-        <div class="min-h-[42px] min-w-0">
-          <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">品牌</dt>
-          <dd data-testid="product-brand" class="truncate text-sm font-medium leading-[22px] text-[#25314d]">{{ formatText(product.brand) }}</dd>
-        </div>
-        <div class="min-h-[42px] min-w-0">
-          <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">供应商</dt>
-          <dd class="truncate text-sm font-medium leading-[22px] text-[#25314d]">{{ formatText(product.defaultSupplierName || defaultQuote?.supplierName) }}</dd>
-        </div>
-        <div class="min-h-[42px] min-w-0">
-          <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">渠道商</dt>
-          <dd class="truncate text-sm font-medium leading-[22px] text-[#25314d]">--</dd>
-        </div>
-        <div class="min-h-[42px] min-w-0">
-          <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">单价</dt>
-          <dd class="truncate text-sm font-medium leading-[22px] text-[#25314d]">{{ formatMoney(product.defaultSalePrice ?? primarySku?.defaultSalePrice) }}</dd>
-        </div>
-        <div class="min-h-[42px] min-w-0">
-          <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">库存</dt>
-          <dd class="truncate text-sm font-medium leading-[22px] text-[#25314d]">{{ formatText(product.totalStock) }}</dd>
-        </div>
-        <div class="min-h-[42px] min-w-0">
-          <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">安全库存</dt>
-          <dd class="truncate text-sm font-medium leading-[22px] text-[#25314d]">{{ formatText(product.totalSafetyStock) }}</dd>
-        </div>
-        <div class="min-h-[42px] min-w-0">
-          <dt class="text-xs font-normal leading-[18px] text-[#94a3b8]">单杯条码</dt>
-          <dd class="truncate text-sm font-medium leading-[22px] text-[#25314d]">{{ formatText(primarySku?.barcode) }}</dd>
-        </div>
-        </dl>
+    <div class="pd-overview-info">
+      <div class="pd-panel-heading"><h2>商品档案</h2><span>{{ formatProductType(product.productType) }} · {{ formatText(product.productCode) }}</span></div>
+      <dl class="pd-overview-fields">
+        <div><dt>所属分类</dt><dd>{{ formatText(product.categoryName) }}</dd></div>
+        <div><dt>品牌</dt><dd data-testid="product-brand">{{ formatText(product.brand) }}</dd></div>
+        <div><dt>销售单位</dt><dd>{{ formatText(selectedSku?.salesUnit) }}</dd></div>
+        <div><dt>当前 SKU 供应商</dt><dd>{{ formatText(defaultQuote?.supplierName) }}</dd></div>
+        <div><dt>当前规格 / 容量</dt><dd>{{ formatText(specification) }} · {{ formatWithUnit(selectedSku?.capacityMl, 'ml') }}<small data-testid="selected-sku-code">{{ formatText(selectedSku?.skuCode) }}</small></dd></div>
+        <div><dt>SKU 数量</dt><dd>{{ product.skus.length }} 个规格</dd></div>
+      </dl>
+      <div class="pd-metrics">
+        <div class="pd-metric"><span>当前规格售价</span><strong data-testid="selected-sku-sale-price">{{ formatMoney(selectedSku?.defaultSalePrice ?? product.defaultSalePrice) }}<small v-if="selectedSku?.salesUnit">/ {{ selectedSku.salesUnit }}</small></strong><p>销售单位价格</p></div>
+        <div class="pd-metric"><span>默认采购价</span><strong data-testid="selected-sku-purchase-price">{{ formatMoney(defaultQuote?.purchasePrice) }}<small v-if="defaultQuote && selectedSku?.salesUnit">/ {{ selectedSku.salesUnit }}</small></strong><p>标准成本 {{ formatMoney(selectedSku?.standardCost) }}<template v-if="defaultQuote"> · 起订 {{ formatProductNumber(defaultQuote.minPurchaseQuantity) }}</template></p></div>
+        <div class="pd-metric" :class="{ 'pd-stock-attention': lowStock }"><span>商品库存合计</span><strong data-testid="product-total-stock">{{ formatProductNumber(product.totalStock) }}</strong><p>安全库存 {{ formatProductNumber(product.totalSafetyStock) }}<template v-if="lowStock"> · 低于安全库存</template></p></div>
       </div>
     </div>
   </section>

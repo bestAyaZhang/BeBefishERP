@@ -1,6 +1,7 @@
 package com.bebefish.erp.product.application;
 
 import com.bebefish.erp.product.application.ProductCompletenessCalculator.ProductCompleteness;
+import com.bebefish.erp.product.domain.ProductRepository.ImageFile;
 import com.bebefish.erp.product.domain.SupplierQuote;
 import java.math.BigDecimal;
 import java.util.List;
@@ -14,11 +15,11 @@ public record ProductCatalogMetrics(
         String defaultSupplierName,
         ProductCompleteness completeness,
         Map<Long, SkuCatalogMetrics> skus,
-        Map<Long, String> imageUrls
+        Map<Long, ImageFile> imageFiles
 ) {
     public ProductCatalogMetrics {
         skus = Map.copyOf(skus);
-        imageUrls = Map.copyOf(imageUrls);
+        imageFiles = Map.copyOf(imageFiles);
     }
 
     public record SkuCatalogMetrics(

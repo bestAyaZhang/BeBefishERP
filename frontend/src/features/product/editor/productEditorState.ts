@@ -1,7 +1,10 @@
 import { toProductFormPayload } from '../productFormMapper';
+import { imagePackInput, initialImagePacks, mediaImageRef } from '../productMedia';
 import type {
   Product,
   ProductFormPayload,
+  ProductImagePack,
+  ProductMediaImage,
   ProductSpecification,
   ProductSupplierQuoteInput,
   ProductType,
@@ -28,6 +31,7 @@ export type PackagingForm = Pick<SkuForm,
   | 'innerPackageLengthCm'
   | 'innerPackageWidthCm'
   | 'innerPackageHeightCm'
+  | 'productMouthDiameterCm'
   | 'productLengthCm'
   | 'productWidthCm'
   | 'productHeightCm'
@@ -40,6 +44,7 @@ export type PackagingForm = Pick<SkuForm,
   | 'cartonQuantity'
   | 'packageImageFileId'
   | 'cartonImageFileId'
+  | 'productPhotoFileId'
 >;
 
 export interface ProductEditorImagePreviews {
@@ -47,6 +52,7 @@ export interface ProductEditorImagePreviews {
   sku: string[];
   package: string[];
   carton: string[];
+  product: string[];
 }
 
 export interface ProductEditorImagePreviewFileIds {
@@ -54,9 +60,15 @@ export interface ProductEditorImagePreviewFileIds {
   sku: Array<number | null>;
   package: Array<number | null>;
   carton: Array<number | null>;
+  product: Array<number | null>;
 }
 
-export type ProductEditorImageKind = 'main' | 'sku' | 'package' | 'carton';
+export const packagingImageFields = { product: 'productPhotoFileId', package: 'packageImageFileId', carton: 'cartonImageFileId' } as const;
+export type PackagingImageKind = keyof typeof packagingImageFields;
+export const PACKAGING_IMAGE_KINDS = Object.keys(packagingImageFields) as PackagingImageKind[];
+const skuImageFields = { ...packagingImageFields, sku: 'skuImageFileId' } as const;
+const skuImageKinds = ['sku', ...PACKAGING_IMAGE_KINDS] as const;
+export type ProductEditorImageKind = 'main' | typeof skuImageKinds[number];
 
 export interface ProductEditorValidationContext {
   validSupplierIds?: ReadonlySet<number>;
@@ -78,6 +90,8 @@ export interface ProductEditorState {
   unifiedPackaging: PackagingForm;
   imagePreviews: ProductEditorImagePreviews;
   imagePreviewFileIds: ProductEditorImagePreviewFileIds;
+  imagePacks: ProductImagePack[];
+  materialImages: ProductMediaImage[];
 }
 
 export function isValidCartonQuantity(value: number | null) {
@@ -97,6 +111,7 @@ const packagingFields: ReadonlyArray<keyof PackagingForm> = [
   'innerPackageLengthCm',
   'innerPackageWidthCm',
   'innerPackageHeightCm',
+  'productMouthDiameterCm',
   'productLengthCm',
   'productWidthCm',
   'productHeightCm',
@@ -108,7 +123,8 @@ const packagingFields: ReadonlyArray<keyof PackagingForm> = [
   'packagingMethod',
   'cartonQuantity',
   'packageImageFileId',
-  'cartonImageFileId'
+  'cartonImageFileId',
+  'productPhotoFileId'
 ];
 
 export function createBlankSku(): SkuForm {
@@ -128,6 +144,7 @@ export function createBlankSku(): SkuForm {
     innerPackageLengthCm: null,
     innerPackageWidthCm: null,
     innerPackageHeightCm: null,
+    productMouthDiameterCm: null,
     productLengthCm: null,
     productWidthCm: null,
     productHeightCm: null,
@@ -141,6 +158,7 @@ export function createBlankSku(): SkuForm {
     skuImageFileId: null,
     packageImageFileId: null,
     cartonImageFileId: null,
+    productPhotoFileId: null,
     supplierQuotes: [],
     defaultSku: false,
     status: 'enabled'
@@ -156,6 +174,7 @@ export function packagingFromSku(sku?: SkuForm): PackagingForm {
     innerPackageLengthCm: sku?.innerPackageLengthCm ?? null,
     innerPackageWidthCm: sku?.innerPackageWidthCm ?? null,
     innerPackageHeightCm: sku?.innerPackageHeightCm ?? null,
+    productMouthDiameterCm: sku?.productMouthDiameterCm ?? null,
     productLengthCm: sku?.productLengthCm ?? null,
     productWidthCm: sku?.productWidthCm ?? null,
     productHeightCm: sku?.productHeightCm ?? null,
@@ -167,7 +186,8 @@ export function packagingFromSku(sku?: SkuForm): PackagingForm {
     packagingMethod: sku?.packagingMethod ?? '',
     cartonQuantity: sku?.cartonQuantity ?? null,
     packageImageFileId: sku?.packageImageFileId ?? null,
-    cartonImageFileId: sku?.cartonImageFileId ?? null
+    cartonImageFileId: sku?.cartonImageFileId ?? null,
+    productPhotoFileId: sku?.productPhotoFileId ?? null
   };
 }
 
@@ -178,6 +198,8 @@ function cloneQuote(quote: ProductSupplierQuoteInput): ProductSupplierQuoteInput
 export function cloneSku(sku: SkuForm): SkuForm {
   return {
     ...sku,
+    productMouthDiameterCm: sku.productMouthDiameterCm ?? null,
+    productPhotoFileId: sku.productPhotoFileId ?? null,
     specificationValues: [...sku.specificationValues],
     supplierQuotes: sku.supplierQuotes?.map(cloneQuote)
   };
@@ -186,7 +208,11 @@ export function cloneSku(sku: SkuForm): SkuForm {
 export function detectPackagingMode(skus: SkuForm[]): PackagingMode {
   const first = skus[0];
   if (!first) return 'unified';
-  return skus.slice(1).some((sku) => packagingFields.some((field) => !Object.is(sku[field], first[field])))
+  return skus.slice(1).some((sku) => packagingFields.some((field) => (
+    field === 'productMouthDiameterCm' || field === 'productPhotoFileId'
+      ? !Object.is(sku[field] ?? null, first[field] ?? null)
+      : !Object.is(sku[field], first[field])
+  )))
     ? 'perSku'
     : 'unified';
 }
@@ -194,12 +220,14 @@ export function detectPackagingMode(skus: SkuForm[]): PackagingMode {
 export function applyUnifiedPackaging(skus: SkuForm[], packaging: PackagingForm): SkuForm[] {
   return skus.map((sku) => ({
     ...cloneSku(sku),
-    ...packaging
+    ...packaging,
+    productMouthDiameterCm: packaging.productMouthDiameterCm ?? null,
+    productPhotoFileId: packaging.productPhotoFileId ?? null
   }));
 }
 
 function ensureImageSlots(state: ProductEditorState) {
-  for (const field of ['sku', 'package', 'carton'] as const) {
+  for (const field of skuImageKinds) {
     while (state.imagePreviews[field].length < state.skus.length) state.imagePreviews[field].push('');
     while (state.imagePreviewFileIds[field].length < state.skus.length) state.imagePreviewFileIds[field].push(null);
     state.imagePreviews[field].length = state.skus.length;
@@ -209,7 +237,7 @@ function ensureImageSlots(state: ProductEditorState) {
 
 function matchingPreview(
   state: ProductEditorState,
-  kind: 'package' | 'carton',
+  kind: PackagingImageKind,
   index: number,
   fileId: number | null
 ) {
@@ -220,18 +248,19 @@ function matchingPreview(
 
 export function insertSku(state: ProductEditorState, sku: SkuForm) {
   ensureImageSlots(state);
-  const packagePreview = matchingPreview(state, 'package', 0, state.unifiedPackaging.packageImageFileId);
-  const cartonPreview = matchingPreview(state, 'carton', 0, state.unifiedPackaging.cartonImageFileId);
+  const previews = PACKAGING_IMAGE_KINDS.map((kind) =>
+    matchingPreview(state, kind, 0, state.unifiedPackaging[packagingImageFields[kind]] ?? null)
+  );
   const inserted = state.packagingMode === 'unified'
     ? { ...cloneSku(sku), ...state.unifiedPackaging }
     : cloneSku(sku);
   state.skus.push(inserted);
   state.imagePreviews.sku.push('');
   state.imagePreviewFileIds.sku.push(inserted.skuImageFileId);
-  state.imagePreviews.package.push(state.packagingMode === 'unified' ? packagePreview : '');
-  state.imagePreviewFileIds.package.push(inserted.packageImageFileId);
-  state.imagePreviews.carton.push(state.packagingMode === 'unified' ? cartonPreview : '');
-  state.imagePreviewFileIds.carton.push(inserted.cartonImageFileId);
+  PACKAGING_IMAGE_KINDS.forEach((kind, index) => {
+    state.imagePreviews[kind].push(state.packagingMode === 'unified' ? previews[index] : '');
+    state.imagePreviewFileIds[kind].push(inserted[packagingImageFields[kind]] ?? null);
+  });
   state.skus = reconcileSkuDefaults(state.skus, inserted.defaultSku ? state.skus.length - 1 : undefined);
 }
 
@@ -255,7 +284,7 @@ export function replaceSku(state: ProductEditorState, index: number, sku: SkuFor
 
 export function removeSku(state: ProductEditorState, index: number) {
   state.skus.splice(index, 1);
-  for (const field of ['sku', 'package', 'carton'] as const) {
+  for (const field of skuImageKinds) {
     state.imagePreviews[field].splice(index, 1);
     state.imagePreviewFileIds[field].splice(index, 1);
   }
@@ -282,12 +311,19 @@ export function reconcileSkuDefaults(skus: SkuForm[], preferredIndex?: number): 
 }
 
 export function updateUnifiedPackaging(state: ProductEditorState, packaging: PackagingForm) {
-  const packageImageChanged = state.unifiedPackaging.packageImageFileId !== packaging.packageImageFileId;
-  const cartonImageChanged = state.unifiedPackaging.cartonImageFileId !== packaging.cartonImageFileId;
-  state.unifiedPackaging = { ...packaging };
+  const previous = state.unifiedPackaging;
+  state.unifiedPackaging = {
+    ...packaging,
+    productMouthDiameterCm: packaging.productMouthDiameterCm ?? null,
+    productPhotoFileId: packaging.productPhotoFileId ?? null
+  };
   state.skus = applyUnifiedPackaging(state.skus, state.unifiedPackaging);
-  if (packageImageChanged) setEditorImageFileId(state, 'package', null, packaging.packageImageFileId);
-  if (cartonImageChanged) setEditorImageFileId(state, 'carton', null, packaging.cartonImageFileId);
+  for (const kind of PACKAGING_IMAGE_KINDS) {
+    const field = packagingImageFields[kind];
+    if ((previous[field] ?? null) !== (packaging[field] ?? null)) {
+      setEditorImageFileId(state, kind, null, packaging[field] ?? null);
+    }
+  }
 }
 
 export function setPackagingMode(state: ProductEditorState, mode: PackagingMode) {
@@ -295,14 +331,14 @@ export function setPackagingMode(state: ProductEditorState, mode: PackagingMode)
   ensureImageSlots(state);
   if (mode === 'unified') {
     const source = packagingFromSku(state.skus[0]);
-    const packagePreview = matchingPreview(state, 'package', 0, source.packageImageFileId);
-    const cartonPreview = matchingPreview(state, 'carton', 0, source.cartonImageFileId);
     state.unifiedPackaging = source;
     state.skus = applyUnifiedPackaging(state.skus, source);
-    state.imagePreviews.package = state.skus.map(() => packagePreview);
-    state.imagePreviewFileIds.package = state.skus.map(() => source.packageImageFileId);
-    state.imagePreviews.carton = state.skus.map(() => cartonPreview);
-    state.imagePreviewFileIds.carton = state.skus.map(() => source.cartonImageFileId);
+    for (const kind of PACKAGING_IMAGE_KINDS) {
+      const fileId = source[packagingImageFields[kind]] ?? null;
+      const preview = matchingPreview(state, kind, 0, fileId);
+      state.imagePreviews[kind] = state.skus.map(() => preview);
+      state.imagePreviewFileIds[kind] = state.skus.map(() => fileId);
+    }
   }
   state.packagingMode = mode;
 }
@@ -326,12 +362,9 @@ export function setEditorImageFileId(
     if (!sku) continue;
     if (state.imagePreviewFileIds[kind][skuIndex] !== fileId) state.imagePreviews[kind][skuIndex] = '';
     state.imagePreviewFileIds[kind][skuIndex] = fileId;
-    if (kind === 'sku') sku.skuImageFileId = fileId;
-    if (kind === 'package') sku.packageImageFileId = fileId;
-    if (kind === 'carton') sku.cartonImageFileId = fileId;
+    sku[skuImageFields[kind]] = fileId;
   }
-  if (index === null && kind === 'package') state.unifiedPackaging.packageImageFileId = fileId;
-  if (index === null && kind === 'carton') state.unifiedPackaging.cartonImageFileId = fileId;
+  if (index === null && kind !== 'sku') state.unifiedPackaging[packagingImageFields[kind]] = fileId;
 }
 
 export function setEditorImagePreview(
@@ -351,11 +384,7 @@ export function setEditorImagePreview(
     const sku = state.skus[skuIndex];
     if (!sku) continue;
     state.imagePreviews[kind][skuIndex] = preview;
-    state.imagePreviewFileIds[kind][skuIndex] = kind === 'sku'
-      ? sku.skuImageFileId
-      : kind === 'package'
-        ? sku.packageImageFileId
-        : sku.cartonImageFileId;
+    state.imagePreviewFileIds[kind][skuIndex] = sku[skuImageFields[kind]] ?? null;
   }
 }
 
@@ -399,19 +428,23 @@ export function createEditorState(product?: Product): ProductEditorState {
       values: [...specification.values]
     })) ?? [],
     skus,
+    imagePacks: initialImagePacks(product),
+    materialImages: product?.materialImages?.map((image) => ({ ...image })) ?? [],
     packagingMode,
     unifiedPackaging: packagingFromSku(skus[0]),
     imagePreviews: {
       main: product?.mainImageUrl ?? '',
       sku: product?.skus.map((sku) => sku.skuImageUrl ?? '') ?? [],
       package: product?.skus.map((sku) => sku.packageImageUrl ?? '') ?? [],
-      carton: product?.skus.map((sku) => sku.cartonImageUrl ?? '') ?? []
+      carton: product?.skus.map((sku) => sku.cartonImageUrl ?? '') ?? [],
+      product: product?.skus.map((sku) => sku.productPhotoUrl ?? '') ?? []
     },
     imagePreviewFileIds: {
       main: payload?.mainImageFileId ?? null,
       sku: skus.map((sku) => sku.skuImageFileId),
       package: skus.map((sku) => sku.packageImageFileId),
-      carton: skus.map((sku) => sku.cartonImageFileId)
+      carton: skus.map((sku) => sku.cartonImageFileId),
+      product: skus.map((sku) => sku.productPhotoFileId ?? null)
     }
   };
 }
@@ -525,6 +558,7 @@ export function validateStep(
       innerPackageLengthCm: '内盒长不能小于 0',
       innerPackageWidthCm: '内盒宽不能小于 0',
       innerPackageHeightCm: '内盒高不能小于 0',
+      productMouthDiameterCm: '口径不能小于 0',
       productLengthCm: '产品长不能小于 0',
       productWidthCm: '产品宽不能小于 0',
       productHeightCm: '产品高不能小于 0',
@@ -542,6 +576,7 @@ export function validateStep(
       innerPackageLengthCm: [9, 3, '内盒长最多允许 9 位整数和 3 位小数'],
       innerPackageWidthCm: [9, 3, '内盒宽最多允许 9 位整数和 3 位小数'],
       innerPackageHeightCm: [9, 3, '内盒高最多允许 9 位整数和 3 位小数'],
+      productMouthDiameterCm: [9, 3, '口径最多允许 9 位整数和 3 位小数'],
       productLengthCm: [9, 3, '产品长最多允许 9 位整数和 3 位小数'],
       productWidthCm: [9, 3, '产品宽最多允许 9 位整数和 3 位小数'],
       productHeightCm: [9, 3, '产品高最多允许 9 位整数和 3 位小数'],
@@ -591,6 +626,8 @@ export function toProductPayload(state: ProductEditorState): ProductFormPayload 
     productType: state.productType,
     status: state.status,
     mainImageFileId: state.mainImageFileId,
+    imagePacks: state.imagePacks.map(imagePackInput),
+    materialImages: state.materialImages.map(mediaImageRef),
     remark: state.remark,
     specifications: state.specifications.map((specification) => ({
       name: specification.name,

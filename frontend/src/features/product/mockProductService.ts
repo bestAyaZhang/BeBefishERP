@@ -1,9 +1,13 @@
 import type { PageResult, RecordStatus } from '../masterdata/types';
 import type { Category } from '../masterdata/types';
+import { copyImagePack } from './productMedia';
+import { PRODUCT_ALBUM_KINDS } from './types';
 import type {
   Product,
   ProductCatalogSupplierQuote,
   ProductFormPayload,
+  ProductImagePack,
+  ProductMediaImage,
   ProductQuery,
   ProductService,
   ProductSku,
@@ -58,6 +62,8 @@ function cloneSku(sku: ProductSku, supplierQuotes: ProductCatalogSupplierQuote[]
 function cloneProduct(product: Product): Product {
   return {
     ...product,
+    ...(product.imagePacks ? { imagePacks: product.imagePacks.map(copyImagePack) } : {}),
+    ...(product.materialImages ? { materialImages: product.materialImages.map((image) => ({ ...image })) } : {}),
     missingGroups: [...product.missingGroups],
     specifications: product.specifications.map((specification) => ({
       name: specification.name,
@@ -82,6 +88,26 @@ export function createMockProductService(seed: Product[] = defaultSeed, categori
   let nextProductId = maxId(products.map((product) => product.id), 99);
   let nextSkuId = maxId(products.flatMap((product) => product.skus.map((sku) => sku.id)), 999);
   let nextQuoteId = maxId(quotes.map((quote) => quote.id), 9999);
+  const images = new Map<number, ProductMediaImage>();
+  function rememberImage(fileId: number | null | undefined, url: string | null | undefined, name: string | null = null) {
+    if (fileId) images.set(fileId, { fileId, url: url ?? null, name });
+  }
+  for (const product of products) {
+    rememberImage(product.mainImageFileId, product.mainImageUrl);
+    for (const sku of product.skus) {
+      rememberImage(sku.skuImageFileId, sku.skuImageUrl, sku.skuCode);
+      rememberImage(sku.productPhotoFileId, sku.productPhotoUrl);
+      rememberImage(sku.packageImageFileId, sku.packageImageUrl);
+      rememberImage(sku.cartonImageFileId, sku.cartonImageUrl);
+    }
+    for (const pack of product.imagePacks ?? []) {
+      for (const kind of PRODUCT_ALBUM_KINDS) {
+        for (const image of pack[kind]) rememberImage(image.fileId, image.url, image.name);
+      }
+    }
+    for (const image of product.materialImages ?? []) rememberImage(image.fileId, image.url, image.name);
+  }
+  let nextImageId = maxId([...images.keys()], 299);
 
   products = products.map((product) => ({
     ...product,
@@ -108,7 +134,12 @@ export function createMockProductService(seed: Product[] = defaultSeed, categori
   }
 
   function imageUrl(fileId: number | null, previousFileId: number | null | undefined, previousUrl: string | null | undefined) {
-    return fileId !== null && fileId === previousFileId ? previousUrl ?? null : null;
+    if (fileId === null) return null;
+    return (fileId === previousFileId ? previousUrl : null) ?? images.get(fileId)?.url ?? null;
+  }
+
+  function mediaImage({ fileId }: { fileId: number }): ProductMediaImage {
+    return { ...(images.get(fileId) ?? { fileId, url: null, name: null }) };
   }
 
   function asProductSku(
@@ -119,6 +150,9 @@ export function createMockProductService(seed: Product[] = defaultSeed, categori
   ): ProductSku {
     const id = sku.id ?? nextSkuId++;
     const specificationValues = [...sku.specificationValues];
+    const productPhotoFileId = sku.productPhotoFileId === undefined
+      ? current?.productPhotoFileId ?? null
+      : sku.productPhotoFileId;
     return {
       id,
       skuCode: sku.skuCode || `PRD-${String(productId).padStart(6, '0')}-${String(index + 1).padStart(3, '0')}`,
@@ -141,6 +175,7 @@ export function createMockProductService(seed: Product[] = defaultSeed, categori
       productLengthCm: sku.productLengthCm,
       productWidthCm: sku.productWidthCm,
       productHeightCm: sku.productHeightCm,
+      productMouthDiameterCm: sku.productMouthDiameterCm ?? null,
       capacityMl: sku.capacityMl,
       netWeightKg: sku.netWeightKg,
       grossWeightKg: sku.grossWeightKg,
@@ -154,6 +189,8 @@ export function createMockProductService(seed: Product[] = defaultSeed, categori
       packageImageUrl: imageUrl(sku.packageImageFileId, current?.packageImageFileId, current?.packageImageUrl),
       cartonImageFileId: sku.cartonImageFileId,
       cartonImageUrl: imageUrl(sku.cartonImageFileId, current?.cartonImageFileId, current?.cartonImageUrl),
+      productPhotoFileId,
+      productPhotoUrl: imageUrl(productPhotoFileId, current?.productPhotoFileId, current?.productPhotoUrl),
       supplierQuotes: [],
       defaultSku: sku.defaultSku,
       status: sku.status
@@ -183,6 +220,14 @@ export function createMockProductService(seed: Product[] = defaultSeed, categori
       productType: payload.productType,
       mainImageFileId: payload.mainImageFileId,
       mainImageUrl: imageUrl(payload.mainImageFileId, current?.mainImageFileId, current?.mainImageUrl),
+      imagePacks: payload.imagePacks?.map((input): ProductImagePack => ({
+        name: input.name,
+        main: input.main.map(mediaImage),
+        sku: input.sku.map(mediaImage),
+        detail: input.detail.map(mediaImage),
+        long: input.long.map(mediaImage)
+      })) ?? current?.imagePacks ?? null,
+      materialImages: payload.materialImages?.map(mediaImage) ?? current?.materialImages ?? [],
       defaultSupplierName: current?.defaultSupplierName ?? null,
       totalStock: skus.reduce((total, sku) => total + sku.stockQuantity, 0),
       totalSafetyStock: skus.reduce((total, sku) => total + sku.safetyStockQuantity, 0),
@@ -340,11 +385,11 @@ export function createMockProductService(seed: Product[] = defaultSeed, categori
     deleteSupplierQuote: async (skuId, quoteId) => {
       quotes = quotes.filter((quote) => quote.skuId !== skuId || quote.id !== quoteId);
     },
-    uploadImage: async (file): Promise<UploadedImage> => ({
-      id: Date.now(),
-      url: URL.createObjectURL(file),
-      originalFileName: file.name
-    })
+    uploadImage: async (file): Promise<UploadedImage> => {
+      const image = { id: nextImageId++, url: URL.createObjectURL(file), originalFileName: file.name };
+      rememberImage(image.id, image.url, image.originalFileName);
+      return image;
+    }
   };
 }
 

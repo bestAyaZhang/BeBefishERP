@@ -61,6 +61,16 @@ describe('ProductImageUpload request ownership', () => {
     vi.unstubAllGlobals();
   });
 
+  it('ignores a file dropped while the product is saving', async () => {
+    const uploadImage = vi.fn();
+    const wrapper = mountUpload(uploadImage);
+    await wrapper.setProps({ disabled: true });
+    await wrapper.trigger('drop', { dataTransfer: { files: [new File(['image'], 'photo.png', { type: 'image/png' })] } });
+
+    expect(uploadImage).not.toHaveBeenCalled();
+    expect(wrapper.emitted('update:uploading')).toBeUndefined();
+  });
+
   it('keeps the newest selection when an older request finishes last', async () => {
     const first = deferred<UploadedImage>();
     const second = deferred<UploadedImage>();

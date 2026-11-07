@@ -127,7 +127,7 @@ function toggleCategory(categoryId: number) {
           v-model="searchKeyword"
           data-testid="category-search"
           type="search"
-          class="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/10"
+          class="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#0968b6] focus:ring-2 focus:ring-[#0968b6]/10"
           placeholder="搜索分类名称"
         />
       </label>
@@ -150,7 +150,7 @@ function toggleCategory(categoryId: number) {
       </button>
     </div>
 
-    <div class="min-h-[240px] flex-1 overflow-y-auto py-3 lg:min-h-0">
+    <div class="min-h-[160px] max-h-[min(340px,calc(100vh-360px))] flex-1 overflow-y-auto py-3">
       <div v-if="loading && categories.length === 0" class="space-y-2 px-2" aria-label="正在加载分类">
         <div v-for="index in 6" :key="index" class="h-8 animate-pulse rounded bg-slate-200/70"></div>
       </div>
@@ -159,11 +159,11 @@ function toggleCategory(categoryId: number) {
           data-testid="category-node-all"
           type="button"
           class="mb-0.5 flex h-9 w-full items-center gap-2 rounded-md pl-2 pr-1.5 text-left text-sm transition"
-          :class="selectedCategoryId === undefined ? 'bg-slate-50 font-medium text-[#536dff]' : 'text-[#25314d] hover:bg-slate-50'"
+          :class="selectedCategoryId === undefined ? 'bg-slate-50 font-medium text-[#0968b6]' : 'text-[#25314d] hover:bg-slate-50'"
           :aria-pressed="selectedCategoryId === undefined"
           @click="emit('select-category', undefined)"
         >
-          <span class="h-5 w-[3px] shrink-0 rounded-sm" :class="selectedCategoryId === undefined ? 'bg-[#536dff]' : 'bg-transparent'"></span>
+          <span class="h-5 w-[3px] shrink-0 rounded-sm" :class="selectedCategoryId === undefined ? 'bg-[#0968b6]' : 'bg-transparent'"></span>
           <span class="w-4 shrink-0"></span>
           <span class="min-w-0 flex-1 truncate" title="全部商品">全部商品</span>
           <span class="shrink-0 text-xs tabular-nums text-slate-400">{{ allProductTotal ?? '--' }}</span>
@@ -190,12 +190,12 @@ function toggleCategory(categoryId: number) {
             :data-testid="`category-node-${row.node.id}`"
             type="button"
             class="mb-0.5 flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md pr-1.5 text-left text-sm transition"
-            :class="selectedCategoryId === row.node.id ? 'bg-slate-50 font-medium text-[#536dff]' : 'text-[#25314d] hover:bg-slate-50'"
+            :class="selectedCategoryId === row.node.id ? 'bg-slate-50 font-medium text-[#0968b6]' : 'text-[#25314d] hover:bg-slate-50'"
             :style="{ paddingLeft: `${row.depth * 16 + 8}px` }"
             :aria-pressed="selectedCategoryId === row.node.id"
             @click="emit('select-category', row.node.id)"
           >
-            <span class="h-5 w-[3px] shrink-0 rounded-sm" :class="selectedCategoryId === row.node.id ? 'bg-[#536dff]' : 'bg-transparent'"></span>
+            <span class="h-5 w-[3px] shrink-0 rounded-sm" :class="selectedCategoryId === row.node.id ? 'bg-[#0968b6]' : 'bg-transparent'"></span>
             <span v-if="row.hasVisibleChildren" class="w-4 shrink-0"></span>
             <span v-else class="w-4 shrink-0"></span>
             <span class="min-w-0 flex-1 truncate" :title="row.node.categoryName">{{ row.node.categoryName }}</span>
@@ -207,7 +207,7 @@ function toggleCategory(categoryId: number) {
 
     <div class="shrink-0 border-t border-slate-100 pt-3 text-xs leading-5 text-slate-500">
       <p>{{ rootCategoryCount }} 个一级分类 · {{ childCategoryCount }} 个子分类</p>
-      <p>选择分类即可筛选右侧商品</p>
+      <p>选择分类即可筛选商品</p>
     </div>
   </aside>
 </template>

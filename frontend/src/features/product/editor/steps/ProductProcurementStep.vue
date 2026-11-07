@@ -66,11 +66,11 @@ function fieldError(skuIndex: number, quoteIndex: number, field: string) {
 </script>
 
 <template>
-  <div class="h-[490px] overflow-hidden">
+  <div>
     <section :data-testid="`procurement-sku-${primarySkuIndex}`">
       <span class="sr-only">{{ primarySku?.skuName }}</span>
       <h3 class="mb-3 text-sm font-medium text-[#25314d]">采购信息</h3>
-      <div class="grid grid-cols-3 gap-x-4 gap-y-3">
+      <div class="grid grid-cols-1 gap-x-4 gap-y-3 min-[420px]:grid-cols-2 xl:grid-cols-3">
         <label class="procurement-field">
           <span>默认供应商</span>
           <select v-if="primaryQuote" v-model.number="primaryQuote.supplierId">
@@ -92,23 +92,23 @@ function fieldError(skuIndex: number, quoteIndex: number, field: string) {
     <section>
       <div class="mb-3 flex h-10 items-center justify-between">
         <h3 class="text-sm font-medium text-[#25314d]">供应商报价</h3>
-        <button :data-testid="`add-quote-${primarySkuIndex}`" type="button" :disabled="!primarySku" class="inline-flex h-9 items-center gap-2 rounded-lg border border-[#b8c9e3] bg-white px-3 text-xs font-medium text-[#536dff] disabled:cursor-not-allowed disabled:opacity-50" @click="addQuote(primarySkuIndex)">
+        <button :data-testid="`add-quote-${primarySkuIndex}`" type="button" :disabled="!primarySku" class="product-editor-button" @click="addQuote(primarySkuIndex)">
           <Plus class="h-4 w-4" aria-hidden="true" />
           新增报价
         </button>
       </div>
 
-      <div class="overflow-hidden rounded-lg border border-[#dbe4f1]">
-        <table class="w-full table-fixed border-collapse text-left text-xs">
-          <thead class="h-11 bg-[#f6f8fc] font-medium text-[#64748b]"><tr><th class="w-[180px] px-3">供应商 / SKU</th><th class="w-[180px] px-3">供应商货号</th><th class="w-[150px] px-3">采购价</th><th class="w-[150px] px-3">最小采购量</th><th class="w-[140px] px-3">状态</th><th class="px-3">操作</th></tr></thead>
+      <div class="product-editor-table-frame" role="region" aria-label="供应商报价列表" tabindex="0">
+        <table class="w-full min-w-[710px] table-fixed border-collapse text-left text-xs">
+          <thead class="h-11 bg-[#f6f8fc] font-medium text-[#64748b]"><tr><th class="px-3">供应商 / SKU</th><th class="w-[128px] px-3">供应商货号</th><th class="w-[116px] px-3">采购价</th><th class="w-[120px] px-3">最小采购量</th><th class="w-[94px] px-3">状态</th><th class="w-[116px] px-3">操作</th></tr></thead>
           <tbody class="divide-y divide-[#edf1f6]">
-            <tr v-for="row in quoteRows" :key="row.quote.id ?? `${row.skuIndex}-${row.quoteIndex}`" class="h-[58px] odd:bg-white even:bg-[#fbfcfe]">
+            <tr v-for="row in quoteRows" :key="row.quote.id ?? `${row.skuIndex}-${row.quoteIndex}`" class="h-[58px]">
               <td class="px-3 align-middle">
                 <select :data-testid="`quote-supplier-${row.skuIndex}-${row.quoteIndex}`" v-model.number="row.quote.supplierId" class="h-9 w-full rounded-lg border bg-white px-2 text-xs outline-none" :class="fieldError(row.skuIndex, row.quoteIndex, 'supplierId') ? 'border-[#ef476f]' : 'border-[#dbe4f1]'">
                   <option :value="0" disabled>请选择供应商</option>
                   <option v-for="supplier in suppliers" :key="supplier.id" :value="supplier.id">{{ supplier.supplierName }}</option>
                 </select>
-                <p v-if="fieldError(row.skuIndex, row.quoteIndex, 'supplierId')" :data-testid="`quote-supplier-error-${row.skuIndex}-${row.quoteIndex}`" class="mt-0.5 truncate text-[11px] text-[#ef476f]">{{ fieldError(row.skuIndex, row.quoteIndex, 'supplierId') }}</p>
+                <p v-if="fieldError(row.skuIndex, row.quoteIndex, 'supplierId')" :data-testid="`quote-supplier-error-${row.skuIndex}-${row.quoteIndex}`" class="mt-0.5 break-words text-[11px] text-[#ef476f]">{{ fieldError(row.skuIndex, row.quoteIndex, 'supplierId') }}</p>
               </td>
               <td class="px-3"><input v-model="row.quote.supplierItemNo" maxlength="100" class="h-9 w-full rounded-lg border border-[#dbe4f1] px-2 outline-none" /></td>
               <td class="px-3"><span class="unit-input unit-input-compact"><input :data-testid="`quote-price-${row.skuIndex}-${row.quoteIndex}`" v-model.number="row.quote.purchasePrice" type="number" min="0" :max="MAX_SAFE_MONEY" step="0.0001" class="h-9 w-full rounded-lg border px-2 outline-none" :class="fieldError(row.skuIndex, row.quoteIndex, 'purchasePrice') ? 'border-[#ef476f]' : 'border-[#dbe4f1]'" /><span :data-testid="`quote-price-unit-${row.skuIndex}-${row.quoteIndex}`" class="unit-suffix">元</span></span></td>
@@ -143,5 +143,5 @@ function fieldError(skuIndex: number, quoteIndex: number, field: string) {
 .unit-suffix { position: absolute; right: 1px; top: 50%; display: flex; height: 22px; min-width: 38px; transform: translateY(-50%); align-items: center; justify-content: center; border-left: 1px solid #edf1f6; color: #8292ae; font-size: 11px; font-weight: 400; pointer-events: none; }
 .procurement-field > input:focus,
 .procurement-field > select:focus,
-.unit-input > input:focus { border-color: #536dff; box-shadow: 0 0 0 2px rgb(83 109 255 / 12%); }
+.unit-input > input:focus { border-color: #0968b6; box-shadow: 0 0 0 2px rgb(9 104 182 / 12%); }
 </style>

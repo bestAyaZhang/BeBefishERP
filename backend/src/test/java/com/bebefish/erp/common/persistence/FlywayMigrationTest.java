@@ -266,6 +266,24 @@ class FlywayMigrationTest {
     }
 
     @Test
+    void addsNullableMouthDiameterWithNonNegativeConstraint() {
+        var productId = insertProduct("P-MOUTH", "ITEM-MOUTH");
+        var skuId = insertSku(productId, "SKU-MOUTH");
+
+        assertThat(jdbc.queryForObject(
+                "select product_mouth_diameter_cm from product_sku where id = ?", BigDecimal.class, skuId
+        )).isNull();
+        jdbc.update("update product_sku set product_mouth_diameter_cm = ? where id = ?",
+                new BigDecimal("999999999.999"), skuId);
+        assertThat(jdbc.queryForObject(
+                "select product_mouth_diameter_cm from product_sku where id = ?", BigDecimal.class, skuId
+        )).isEqualByComparingTo("999999999.999");
+        assertThatThrownBy(() -> jdbc.update(
+                "update product_sku set product_mouth_diameter_cm = -0.001 where id = ?", skuId
+        )).isInstanceOf(DataAccessException.class);
+    }
+
+    @Test
     void addsProductPhysicalAttributeColumns() {
         var columns = jdbc.queryForList(
                 "select column_name from information_schema.columns "
@@ -428,7 +446,8 @@ class FlywayMigrationTest {
                 String.class
         )).isEqualTo("36");
         var product = jdbc.queryForMap(
-                "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
+                "select item_no, product_name, brand, product_type, status, remark, image_packs, material_images "
+                        + "from product_spu where id = ?",
                 productId
         );
         assertThat(product).containsEntry("item_no", "ITEM-V7-UPGRADE")
@@ -436,12 +455,15 @@ class FlywayMigrationTest {
                 .containsEntry("brand", "历史品牌")
                 .containsEntry("product_type", "variant")
                 .containsEntry("status", "disabled")
-                .containsEntry("remark", "保留备注");
+                .containsEntry("remark", "保留备注")
+                .containsEntry("image_packs", null)
+                .containsEntry("material_images", null);
         var sku = jdbc.queryForMap(
                 "select barcode, default_sale_price, standard_cost, package_length_cm, net_weight_kg, "
                         + "is_default, status, safety_stock_quantity, inner_package_length_cm, "
                         + "inner_package_width_cm, inner_package_height_cm, inner_package_weight_kg, "
-                        + "product_length_cm, product_width_cm, product_height_cm, capacity_ml "
+                        + "product_length_cm, product_width_cm, product_height_cm, product_mouth_diameter_cm, capacity_ml, "
+                        + "product_photo_file_id "
                         + "from product_sku where sku_code = 'SKU-V7-UPGRADE'"
         );
         assertThat((BigDecimal) sku.get("default_sale_price")).isEqualByComparingTo("19.9000");
@@ -459,7 +481,9 @@ class FlywayMigrationTest {
                 .containsEntry("product_length_cm", null)
                 .containsEntry("product_width_cm", null)
                 .containsEntry("product_height_cm", null)
-                .containsEntry("capacity_ml", null);
+                .containsEntry("product_mouth_diameter_cm", null)
+                .containsEntry("capacity_ml", null)
+                .containsEntry("product_photo_file_id", null);
 
         assertThatThrownBy(() -> jdbc.update(
                 "update product_sku set safety_stock_quantity = -0.0001 where sku_code = 'SKU-V7-UPGRADE'"
@@ -467,6 +491,9 @@ class FlywayMigrationTest {
         assertThatThrownBy(() -> jdbc.update(
                 "update product_sku set inner_package_weight_kg = -0.001 where sku_code = 'SKU-V7-UPGRADE'"
         )).isInstanceOf(DataAccessException.class);
+        assertThatThrownBy(() -> jdbc.update(
+                "update product_sku set product_photo_file_id = ? where sku_code = 'SKU-V7-UPGRADE'", Long.MAX_VALUE
+        )).isInstanceOf(DataIntegrityViolationException.class);
     }
 
     private void insertWarehouse(String number, boolean isDefault, String status) {

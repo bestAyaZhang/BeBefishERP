@@ -38,16 +38,23 @@ const ALL_COLUMN_IDS: ProductCatalogColumnId[] = [
   'packagingMethod',
   'grossWeight',
   'netWeight',
-  'gramWeight'
+  'gramWeight',
+  'specification',
+  'packaging',
+  'cartonMetrics',
+  'pricing',
+  'inventory',
+  'lifecycle'
 ];
 
 const DEFAULT_COLUMN_IDS: ProductCatalogColumnId[] = [
   'productInfo',
-  'category',
-  'brandSupplier',
-  'stock',
-  'price',
-  'completenessStatus'
+  'specification',
+  'packaging',
+  'cartonMetrics',
+  'pricing',
+  'inventory',
+  'lifecycle'
 ];
 
 function createMemoryStorage(entries: Record<string, string> = {}) {
@@ -123,7 +130,7 @@ describe('product catalog column registry', () => {
   it('defines configurable columns in canonical order without the fixed operation column', () => {
     expect(PRODUCT_CATALOG_COLUMNS.map(({ id }) => id)).toEqual(ALL_COLUMN_IDS);
     expect(PRODUCT_CATALOG_COLUMNS.map(({ label }) => label)).toEqual([
-      '商品信息',
+      '商品档案',
       '商品编码',
       '分类',
       '商品类型',
@@ -144,17 +151,23 @@ describe('product catalog column registry', () => {
       '内盒包装',
       '毛重',
       '净重',
-      '克重'
+      '克重',
+      '产品规格',
+      '包装信息',
+      '箱规 / 体积 / 重量',
+      '销售价 / 采购价',
+      '可用库存',
+      '状态 / 更新'
     ]);
     expect(PRODUCT_CATALOG_COLUMNS.every(({ width }) => width > 0)).toBe(true);
     expect(PRODUCT_CATALOG_COLUMNS.some(({ id }) => (id as string) === 'operation')).toBe(false);
   });
 
-  it('uses six configurable defaults for seven total columns with operation', () => {
+  it('uses seven grouped defaults and retains a six-column minimum', () => {
     expect(DEFAULT_PRODUCT_COLUMN_IDS).toEqual(DEFAULT_COLUMN_IDS);
     expect(MIN_CONFIGURABLE_PRODUCT_COLUMNS).toBe(6);
-    expect(DEFAULT_PRODUCT_COLUMN_IDS).toHaveLength(6);
-    expect(DEFAULT_PRODUCT_COLUMN_IDS.length + 1).toBe(7);
+    expect(DEFAULT_PRODUCT_COLUMN_IDS).toHaveLength(7);
+    expect(DEFAULT_PRODUCT_COLUMN_IDS.length + 1).toBe(8);
   });
 
   it('filters known identifiers while preserving the requested order', () => {
@@ -179,6 +192,14 @@ describe('product catalog column registry', () => {
     ]);
   });
 
+  it('migrates the retired supplier source column in place and deduplicates the replacement', () => {
+    expect(normalizeProductColumnIds([
+      'capacity', 'supplierSource', 'stock', 'productInfo', 'price', 'category', 'cartonMetrics'
+    ])).toEqual(['capacity', 'cartonMetrics', 'stock', 'productInfo', 'price', 'category']);
+    expect(PRODUCT_CATALOG_COLUMNS.some(({ id }) => (id as string) === 'supplierSource')).toBe(false);
+    expect(PRODUCT_CATALOG_COLUMNS.some(({ label }) => label === '采购来源')).toBe(false);
+  });
+
   it.each([
     null,
     'not-an-array',
@@ -191,6 +212,20 @@ describe('product catalog column registry', () => {
 });
 
 describe('product catalog column preference persistence', () => {
+  it('restores legacy supplier preferences as carton metrics without changing the other saved positions', () => {
+    const storage = createMemoryStorage({
+      [PRODUCT_CATALOG_STORAGE_KEY]: JSON.stringify([
+        'inventory', 'supplierSource', 'productInfo', 'specification', 'packaging', 'pricing', 'lifecycle'
+      ])
+    });
+    const restored = loadProductColumnIds(storage);
+    expect(restored).toEqual([
+      'inventory', 'cartonMetrics', 'productInfo', 'specification', 'packaging', 'pricing', 'lifecycle'
+    ]);
+    saveProductColumnIds(restored, storage);
+    expect(storage.getItem(PRODUCT_CATALOG_STORAGE_KEY)).not.toContain('supplierSource');
+    expect(loadProductColumnIds(storage)).toEqual(restored);
+  });
   it('uses the versioned storage key and saves the normalized user order', () => {
     const storage = createMemoryStorage();
 
@@ -278,6 +313,13 @@ describe('product catalog column preference persistence', () => {
 });
 
 describe('catalog SKU fallback and physical formatting', () => {
+  it('uses mouth diameter and height for cup dimensions before the rectangular dimensions', () => {
+    const product = productWithSkus([skuFixture(1, 'enabled', true, {
+      productMouthDiameterCm: 8.2, productHeightCm: 8.9,
+      productLengthCm: 12, productWidthCm: 13
+    } as Partial<ProductSku>)]);
+    expect(formatCatalogDimensions(product.skus[0])).toBe('口径 8.2 × 高 8.9 cm');
+  });
   it('prefers the enabled default SKU', () => {
     const product = productWithSkus([
       skuFixture(1, 'enabled', false),
@@ -337,5 +379,17 @@ describe('catalog SKU fallback and physical formatting', () => {
     expect(formatCatalogDimensions()).toBe('--');
     expect(formatCatalogUnit(null, 'ml')).toBe('--');
     expect(formatCatalogUnit(undefined, 'kg')).toBe('--');
+  });
+
+  it('preserves zero measurements and rejects nonfinite physical values', () => {
+    const product = productWithSkus([skuFixture(1, 'enabled', true, {
+      productLengthCm: 0, productWidthCm: 2, productHeightCm: 3
+    })]);
+    expect(formatCatalogDimensions(product.skus[0])).toBe('0 × 2 × 3 cm');
+    expect(formatCatalogUnit(0, 'ml')).toBe('0 ml');
+    expect(formatCatalogUnit(Number.NaN, 'kg')).toBe('--');
+    expect(formatCatalogUnit(Number.POSITIVE_INFINITY, 'ml')).toBe('--');
+    product.skus[0].productWidthCm = Number.POSITIVE_INFINITY;
+    expect(formatCatalogDimensions(product.skus[0])).toBe('--');
   });
 });

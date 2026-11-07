@@ -24,7 +24,7 @@ type PackagingField =
   | 'cartonImageFileId';
 
 export type PackagingComparableSku = Pick<ProductSku, PackagingField>
-  & Partial<Pick<ProductSku, 'packageImageUrl' | 'cartonImageUrl'>>;
+  & Partial<Pick<ProductSku, 'productMouthDiameterCm' | 'packageImageUrl' | 'cartonImageUrl'>>;
 
 const PACKAGING_FIELDS: readonly PackagingField[] = [
   'packageLengthCm',
@@ -52,6 +52,7 @@ export function getProductPackagingMode(skus: readonly PackagingComparableSku[])
   if (skus.length <= 1) return 'uniform';
   const first = skus[0];
   return skus.slice(1).every((sku) => (
-    PACKAGING_FIELDS.every((field) => sku[field] === first[field])
+    (sku.productMouthDiameterCm ?? null) === (first.productMouthDiameterCm ?? null)
+    && PACKAGING_FIELDS.every((field) => sku[field] === first[field])
   )) ? 'uniform' : 'per-sku';
 }

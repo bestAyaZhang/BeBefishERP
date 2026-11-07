@@ -86,6 +86,7 @@ function quote(overrides: Partial<ProductSupplierQuoteInput> = {}): ProductSuppl
 }
 
 const physicalFieldCases = [
+  ['productMouthDiameterCm', '口径'],
   ['productLengthCm', '产品长'],
   ['productWidthCm', '产品宽'],
   ['productHeightCm', '产品高'],
@@ -133,6 +134,81 @@ function loadedProductFixture(productType: Product['productType']): Product {
 }
 
 describe('product editor state', () => {
+  it('loads album references without sharing mutable data and saves only file IDs', () => {
+    const product = loadedProductFixture('simple');
+    product.imagePacks = [{
+      name: '渠道图片',
+      main: [{ fileId: 10, name: '正面.png', url: '/uploads/front.png' }],
+      sku: [], detail: [], long: []
+    }];
+    product.materialImages = [{ fileId: 11, name: '素材.png', url: '/uploads/raw.png' }];
+    const state = createEditorState(product);
+    state.imagePacks[0].name = '上架图片';
+    expect(product.imagePacks[0].name).toBe('渠道图片');
+    expect(toProductPayload(state)).toMatchObject({
+      imagePacks: [{ name: '上架图片', main: [{ fileId: 10 }], sku: [], detail: [], long: [] }],
+      materialImages: [{ fileId: 11 }]
+    });
+    expect(toProductPayload(state).imagePacks?.[0].main[0]).toEqual({ fileId: 10 });
+    state.imagePacks = [];
+    expect(toProductPayload(state).imagePacks).toEqual([]);
+  });
+
+  it('seeds a legacy album from linked pictures and preserves explicitly empty packs', () => {
+    const product = loadedProductFixture('simple');
+    product.mainImageFileId = 12;
+    product.mainImageUrl = '/uploads/main.png';
+    product.skus[0].skuImageFileId = 13;
+    product.skus[0].skuImageUrl = '/uploads/sku.png';
+    expect(createEditorState(product).imagePacks[0]).toMatchObject({
+      main: [{ fileId: 12, url: '/uploads/main.png' }],
+      sku: [{ fileId: 13, url: '/uploads/sku.png' }]
+    });
+    expect(createEditorState({ ...product, imagePacks: [] }).imagePacks).toEqual([]);
+  });
+
+  it('preserves product photos per SKU and synchronizes previews in unified mode', () => {
+    const state = createEditorState();
+    insertSku(state, sku());
+    insertSku(state, sku());
+    setEditorImageFileId(state, 'product', null, 51);
+    setEditorImagePreview(state, 'product', null, '/uploads/photo.png');
+    expect(state.unifiedPackaging.productPhotoFileId).toBe(51);
+    setPackagingMode(state, 'perSku');
+    setEditorImageFileId(state, 'product', 1, 52);
+    setEditorImagePreview(state, 'product', 1, '/uploads/photo-other.png');
+    expect(toProductPayload(state).skus.map((item) => item.productPhotoFileId)).toEqual([51, 52]);
+    expect(state.imagePreviews.product).toEqual(['/uploads/photo.png', '/uploads/photo-other.png']);
+    setPackagingMode(state, 'unified');
+    expect(toProductPayload(state).skus.map((item) => item.productPhotoFileId)).toEqual([51, 51]);
+    expect(state.imagePreviews.product).toEqual(['/uploads/photo.png', '/uploads/photo.png']);
+  });
+
+  it('preserves loaded mouth diameter through editing, SKU replacement and payload generation', () => {
+    const product = loadedProductFixture('simple');
+    product.skus[0].productMouthDiameterCm = 8.2;
+    product.skus[0].productHeightCm = 8.9;
+    const state = createEditorState(product);
+
+    expect(state.unifiedPackaging.productMouthDiameterCm).toBe(8.2);
+    updateUnifiedPackaging(state, { ...state.unifiedPackaging, productMouthDiameterCm: 8.225 });
+    insertSku(state, sku({ skuName: '新增款' }));
+    expect(state.skus.map((item) => item.productMouthDiameterCm)).toEqual([8.225, 8.225]);
+    setPackagingMode(state, 'perSku');
+    replaceSku(state, 1, { ...state.skus[1], productMouthDiameterCm: 9.125 });
+
+    expect(toProductPayload(state).skus.map((item) => item.productMouthDiameterCm)).toEqual([8.225, 9.125]);
+    setPackagingMode(state, 'unified');
+    expect(toProductPayload(state).skus.map((item) => item.productMouthDiameterCm)).toEqual([8.225, 8.225]);
+  });
+
+  it.each([1.0001, Number.NaN, Number.POSITIVE_INFINITY])('rejects invalid mouth diameter precision or finite range %s', (productMouthDiameterCm) => {
+    const state = createEditorState();
+    state.skus = [sku({ productMouthDiameterCm })];
+
+    expect(validateStep(state, 'packaging')['skus.0.productMouthDiameterCm']).toBe('口径最多允许 9 位整数和 3 位小数');
+  });
+
   it('copies unified packaging to every sku without sharing object references', () => {
     const result = applyUnifiedPackaging(twoSkus, unifiedPackaging);
 
@@ -426,7 +502,8 @@ describe('product editor state', () => {
       main: '/uploads/main.png',
       sku: ['/uploads/sku.png'],
       package: ['/uploads/package.png'],
-      carton: ['/uploads/carton.png']
+      carton: ['/uploads/carton.png'],
+      product: ['']
     });
   });
 
