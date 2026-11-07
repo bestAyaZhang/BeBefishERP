@@ -312,6 +312,21 @@ describe('masterdata views', () => {
     expect(payload.warehouseName).toBe('新仓库');
   });
 
+  it('saves an independently replenished warehouse when selected', async () => {
+    const fakeService = createFakeService();
+    const wrapper = mountWarehouseView(fakeService);
+    await flushPromises();
+
+    await wrapper.get('[data-testid="add-warehouse"]').trigger('click');
+    await wrapper.get('[data-testid="warehouse-name"]').setValue('独立仓');
+    await wrapper.get('[data-testid="warehouse-independent-replenishment"]').setValue(true);
+    await wrapper.get('[data-testid="save-warehouse"]').trigger('click');
+
+    expect(fakeService.createWarehouse).toHaveBeenCalledWith(
+      expect.objectContaining({ independentReplenishment: true })
+    );
+  });
+
   it('uses the same right-side drawer for category and supplier forms', async () => {
     const categoryWrapper = mount(CategoryView, { global: { provide: { masterdataService: createFakeService() } } });
     const supplierWrapper = mount(SupplierView, { global: { provide: { masterdataService: createFakeService() } } });

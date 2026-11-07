@@ -95,7 +95,7 @@ class FlywayMigrationTest {
                 "product_spu", "product_sku", "product_spec", "product_spec_value",
                 "product_sku_spec_value", "sku_supplier_quote", "supplier_quote_allowed_state",
                 "file_asset", "business_code_sequence",
-                "inventory_balance", "inventory_ledger", "stock_adjustment", "stock_adjustment_item",
+                "inventory_balance", "inventory_ledger", "inventory_replenishment_policy", "stock_adjustment", "stock_adjustment_item",
                 "warehouse_layout", "inventory_location_balance", "inventory_stocktake_task", "inventory_stocktake_item",
                 "shipment", "shipment_logistics_order", "shipment_freight_selection", "sales_platform", "platform_shop",
                 "logistics_company", "logistics_account", "logistics_account_version", "logistics_template", "logistics_template_version", "logistics_quote", "logistics_audit",
@@ -364,7 +364,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForList(
                 "select version from flyway_schema_history where success = true "
                         + "and cast(version as unsigned) > 27 order by installed_rank", String.class
-        )).containsExactly("28", "29", "30", "31", "32", "33");
+        )).containsExactly("28", "29", "30", "31", "32", "33", "34", "35", "36");
         assertThat(jdbc.queryForMap(
                 "select remark, creator_employee_id, yimi_options from shipment where id = ?", shipmentId
         )).containsEntry("remark", "保留备注")
@@ -426,7 +426,7 @@ class FlywayMigrationTest {
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history where success = true order by installed_rank desc limit 1",
                 String.class
-        )).isEqualTo("33");
+        )).isEqualTo("36");
         var product = jdbc.queryForMap(
                 "select item_no, product_name, brand, product_type, status, remark from product_spu where id = ?",
                 productId

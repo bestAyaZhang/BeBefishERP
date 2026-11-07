@@ -29,7 +29,7 @@ public class WarehouseService {
         ensureUnique(number, value.name(), null);
         if (value.isDefault()) repository.clearDefault();
         return repository.save(new Warehouse(null, number, value.name(), value.address(),
-                value.isDefault(), "enabled", value.remark()));
+                value.isDefault(), "enabled", value.remark(), Boolean.TRUE.equals(value.independentReplenishment())));
     }
 
     @Transactional
@@ -42,8 +42,10 @@ public class WarehouseService {
             throw new BusinessException("DEFAULT_WAREHOUSE_REQUIRED", HttpStatus.CONFLICT, "请先指定另一个默认仓库");
         }
         if (value.isDefault()) repository.clearDefault();
+        var independentReplenishment = value.independentReplenishment() == null
+                ? existing.independentReplenishment() : value.independentReplenishment();
         return repository.save(new Warehouse(id, number, value.name(), value.address(),
-                value.isDefault(), existing.status(), value.remark()));
+                value.isDefault(), existing.status(), value.remark(), independentReplenishment));
     }
 
     @Transactional
@@ -54,7 +56,7 @@ public class WarehouseService {
         }
         repository.clearDefault();
         return repository.save(new Warehouse(target.id(), target.number(), target.name(), target.address(),
-                true, target.status(), target.remark()));
+                true, target.status(), target.remark(), target.independentReplenishment()));
     }
 
     @Transactional
@@ -65,7 +67,7 @@ public class WarehouseService {
             throw new BusinessException("DEFAULT_WAREHOUSE_REQUIRED", HttpStatus.CONFLICT, "请先指定另一个默认仓库");
         }
         return repository.save(new Warehouse(existing.id(), existing.number(), existing.name(), existing.address(),
-                existing.isDefault(), normalized, existing.remark()));
+                existing.isDefault(), normalized, existing.remark(), existing.independentReplenishment()));
     }
 
     @Transactional(readOnly = true)
@@ -90,7 +92,7 @@ public class WarehouseService {
         if (command == null) throw validation("仓库信息不能为空");
         return new SaveWarehouseCommand(optional(command.number()),
                 required(command.name(), "仓库名称不能为空"), optional(command.address()),
-                command.isDefault(), optional(command.remark()));
+                command.isDefault(), optional(command.remark()), command.independentReplenishment());
     }
     private String generateWarehouseNumber() {
         String candidate;

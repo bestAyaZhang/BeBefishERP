@@ -30,8 +30,8 @@ let suppliers: Supplier[] = [
   { id: 7, supplierNo: 'SUP-SH-001', supplierName: '上海包装材料厂', contactPerson: '王经理', mobile: '', telephone: '021-66668888', address: '上海市嘉定区', status: 'enabled', remark: '' }
 ];
 let warehouses: Warehouse[] = [
-  { id: 8, warehouseNo: 'WH-HZ-MAIN', warehouseName: '杭州主仓', address: '浙江省杭州市余杭区', defaultWarehouse: true, status: 'enabled', remark: '' },
-  { id: 9, warehouseNo: 'WH-YW-SPARE', warehouseName: '义乌备货仓', address: '浙江省义乌市', defaultWarehouse: false, status: 'enabled', remark: '' }
+  { id: 8, warehouseNo: 'WH-HZ-MAIN', warehouseName: '杭州主仓', address: '浙江省杭州市余杭区', defaultWarehouse: true, independentReplenishment: false, status: 'enabled', remark: '' },
+  { id: 9, warehouseNo: 'WH-YW-SPARE', warehouseName: '义乌备货仓', address: '浙江省义乌市', defaultWarehouse: false, independentReplenishment: false, status: 'enabled', remark: '' }
 ];
 
 function page<T extends Record<string, unknown>>(records: T[], query: ListQuery, searchable: string[]): PageResult<T> {
@@ -97,7 +97,10 @@ export const mockMasterdataService: MasterdataService = {
   changeSupplierStatus: (id, status) => Promise.resolve(updateStatus(suppliers, id, status)),
   listWarehouses: (query) => Promise.resolve(page(warehouses, query, ['warehouseNo', 'warehouseName'])),
   createWarehouse: (payload: SaveWarehousePayload) => {
-    const value: Warehouse = { id: nextId++, warehouseNo: generateWarehouseNumber(), ...payload, status: 'enabled' };
+    const value: Warehouse = {
+      id: nextId++, warehouseNo: generateWarehouseNumber(), ...payload,
+      independentReplenishment: payload.independentReplenishment ?? false, status: 'enabled'
+    };
     if (value.defaultWarehouse) warehouses.forEach((record) => (record.defaultWarehouse = false));
     warehouses = [...warehouses, value];
     return Promise.resolve(value);
@@ -106,7 +109,8 @@ export const mockMasterdataService: MasterdataService = {
     const record = warehouses.find((candidate) => candidate.id === id);
     if (!record) return Promise.reject(new Error('仓库不存在'));
     if (payload.defaultWarehouse) warehouses.forEach((candidate) => (candidate.defaultWarehouse = false));
-    Object.assign(record, payload);
+    const independentReplenishment = payload.independentReplenishment ?? record.independentReplenishment ?? false;
+    Object.assign(record, payload, { independentReplenishment });
     return Promise.resolve(record);
   },
   changeWarehouseStatus: (id, status) => Promise.resolve(updateStatus(warehouses, id, status)),

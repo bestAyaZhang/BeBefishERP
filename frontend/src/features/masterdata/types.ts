@@ -89,6 +89,7 @@ export interface Warehouse extends MasterdataRow {
   warehouseName: string;
   address: string;
   defaultWarehouse: boolean;
+  independentReplenishment?: boolean;
   status: RecordStatus;
   remark: string;
 }
@@ -97,6 +98,7 @@ export interface SaveWarehousePayload {
   warehouseName: string;
   address: string;
   defaultWarehouse: boolean;
+  independentReplenishment?: boolean | null;
   remark: string;
 }
 

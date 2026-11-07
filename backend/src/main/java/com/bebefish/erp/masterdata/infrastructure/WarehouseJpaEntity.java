@@ -30,6 +30,9 @@ public class WarehouseJpaEntity {
     @Column(name = "is_default", nullable = false)
     private boolean defaultWarehouse;
 
+    @Column(name = "independent_replenishment", nullable = false)
+    private boolean independentReplenishment;
+
     @Column(nullable = false, length = 20)
     private String status;
 
@@ -60,6 +63,7 @@ public class WarehouseJpaEntity {
         warehouseName = warehouse.name();
         address = warehouse.address();
         defaultWarehouse = warehouse.isDefault();
+        independentReplenishment = warehouse.independentReplenishment();
         status = warehouse.status();
         remark = warehouse.remark();
     }
@@ -67,7 +71,7 @@ public class WarehouseJpaEntity {
     Warehouse toDomain() {
         return new Warehouse(
                 id, warehouseNo, warehouseName, address,
-                defaultWarehouse, status, remark
+                defaultWarehouse, status, remark, independentReplenishment
         );
     }
 

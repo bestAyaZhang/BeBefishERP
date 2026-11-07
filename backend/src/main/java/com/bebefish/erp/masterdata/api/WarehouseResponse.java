@@ -9,12 +9,13 @@ public record WarehouseResponse(
         String address,
         boolean defaultWarehouse,
         String status,
-        String remark
+        String remark,
+        boolean independentReplenishment
 ) {
     static WarehouseResponse from(Warehouse warehouse) {
         return new WarehouseResponse(
                 warehouse.id(), warehouse.number(), warehouse.name(), warehouse.address(),
-                warehouse.isDefault(), warehouse.status(), warehouse.remark()
+                warehouse.isDefault(), warehouse.status(), warehouse.remark(), warehouse.independentReplenishment()
         );
     }
 }

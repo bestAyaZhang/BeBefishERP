@@ -9,11 +9,12 @@ public record SaveWarehouseRequest(
         @NotBlank @Size(max = 100) String warehouseName,
         @Size(max = 500) String address,
         boolean defaultWarehouse,
-        @Size(max = 500) String remark
+        @Size(max = 500) String remark,
+        Boolean independentReplenishment
 ) {
     SaveWarehouseCommand toCommand() {
         return new SaveWarehouseCommand(
-                warehouseNo, warehouseName, address, defaultWarehouse, remark
+                warehouseNo, warehouseName, address, defaultWarehouse, remark, independentReplenishment
         );
     }
 }

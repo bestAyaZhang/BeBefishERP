@@ -66,6 +66,31 @@ class WarehouseServiceTest {
     }
 
     @Test
+    void creatingWarehouseWithoutReplenishmentChoiceUsesSharedInventory() {
+        var created = service.create(new SaveWarehouseCommand("WH03", "共用仓", "杭州", false, null));
+
+        assertThat(created.independentReplenishment()).isFalse();
+    }
+
+    @Test
+    void keepsIndependentReplenishmentWhenAnOldClientOmitsTheSetting() {
+        var created = service.create(new SaveWarehouseCommand("WH03", "独立仓", "杭州", false, null, true));
+
+        var updated = service.update(created.id(), new SaveWarehouseCommand(null, "更新后的仓库", "义乌", false, null));
+
+        assertThat(updated.independentReplenishment()).isTrue();
+    }
+
+    @Test
+    void explicitlyDisablingIndependentReplenishmentReturnsWarehouseToSharedInventory() {
+        var created = service.create(new SaveWarehouseCommand("WH03", "独立仓", "杭州", false, null, true));
+
+        var updated = service.update(created.id(), new SaveWarehouseCommand(null, "独立仓", "杭州", false, null, false));
+
+        assertThat(updated.independentReplenishment()).isFalse();
+    }
+
+    @Test
     void defaultWarehouseCannotBeDisabledBeforeAnotherIsSelected() {
         var warehouse = repository.save(warehouse(null, "WH01", true, "enabled"));
 
@@ -109,7 +134,7 @@ class WarehouseServiceTest {
         public Warehouse save(Warehouse warehouse) {
             var id = warehouse.id() == null ? sequence.incrementAndGet() : warehouse.id();
             var saved = new Warehouse(id, warehouse.number(), warehouse.name(), warehouse.address(),
-                    warehouse.isDefault(), warehouse.status(), warehouse.remark());
+                    warehouse.isDefault(), warehouse.status(), warehouse.remark(), warehouse.independentReplenishment());
             values.put(id, saved);
             return saved;
         }
@@ -127,7 +152,7 @@ class WarehouseServiceTest {
         @Override
         public void clearDefault() {
             values.replaceAll((id, value) -> new Warehouse(id, value.number(), value.name(), value.address(),
-                    false, value.status(), value.remark()));
+                    false, value.status(), value.remark(), value.independentReplenishment()));
         }
 
         @Override
