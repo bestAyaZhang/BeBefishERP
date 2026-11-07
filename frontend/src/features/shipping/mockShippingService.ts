@@ -19,7 +19,10 @@ export function createMockShippingService(): ShippingService {
     async placeLogisticsOrder() { throw new Error('演示数据不能提交真实物流订单'); },
     async cancelLogisticsOrder() { throw new Error('演示数据不能取消真实物流订单'); },
     async formOptions() { const catalog = mockCatalogOptions(); return { ...catalog, shopNames: catalog.shops.map(s => s.name), preparers: [] }; },
-    async getFilterOptions() { return mockCatalogOptions(false); },
+    async getFilterOptions() {
+      return { ...mockCatalogOptions(false), logisticsCompanies: [...new Set(read()
+        .map(row => (row.content.logisticsCompany ?? '').trim()).filter(Boolean))].sort() };
+    },
     async summary(date) {
       const rows = read().filter(row => row.content.shipmentDate === date);
       const count = (status: ShipmentStatus) => rows.filter(row => row.content.status === status).length;
@@ -35,6 +38,7 @@ export function createMockShippingService(): ShippingService {
           && (!query.status || c.status === query.status)
           && (!query.incompleteOnly || c.status !== 'completed')
           && (!query.platform?.trim() || c.platform === query.platform.trim())
+          && (!query.logisticsCompany?.trim() || (c.logisticsCompany ?? '').trim() === query.logisticsCompany.trim())
           && (!query.platformId || c.platformId === query.platformId)
           && (!query.shopId || c.shopId === query.shopId)
           && (!query.unlinkedOnly || c.shopId == null)

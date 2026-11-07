@@ -50,6 +50,29 @@ beforeEach(() => {
 });
 
 describe('ShipmentListView', () => {
+  it('filters by company options from the full ledger, preserves the scope across pages and resets', async () => {
+    service.getFilterOptions.mockResolvedValueOnce({ platforms: [], shops: [], logisticsCompanies: ['安能物流', '壹米滴答-汇森速运', '历史停用物流'] });
+    service.list.mockResolvedValue({ records: [record()], page: 1, pageSize: 20, total: 45 });
+    const { wrapper } = await render();
+    const company = wrapper.get('[aria-label="物流公司筛选"]');
+    expect(company.isVisible()).toBe(true);
+    expect(company.text()).toContain('历史停用物流');
+    expect(company.text()).toContain('全部物流公司');
+    await wrapper.get('[data-testid="shipment-next-page"]').trigger('click'); await flushPromises();
+    await company.setValue('壹米滴答-汇森速运'); await flushPromises();
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, logisticsCompany: '壹米滴答-汇森速运', status: 'unfinished' }));
+    expect(wrapper.get('.list-caption').text()).toContain('壹米滴答-汇森速运');
+    await wrapper.get('[data-testid="shipment-next-page"]').trigger('click'); await flushPromises();
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, logisticsCompany: '壹米滴答-汇森速运' }));
+    await wrapper.get('[data-testid="shipment-scope-incomplete"]').trigger('click'); await flushPromises();
+    await company.setValue('历史停用物流'); await flushPromises();
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, logisticsCompany: '历史停用物流', incompleteOnly: true }));
+    await wrapper.get('[data-testid="shipment-reset"]').trigger('click'); await flushPromises();
+    expect(company.element).toHaveProperty('value', '');
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, logisticsCompany: '', status: 'unfinished' }));
+    expect(wrapper.get('.list-caption').text()).not.toContain('历史停用物流');
+  });
+
   it('keeps content ownership after a phone change and never grants it to the next holder of the old phone', async () => {
     service.list.mockResolvedValue({ records: [{ ...record(), createdBy: '13800000000', creatorEmployeeId: 1 }], page: 1, pageSize: 20, total: 1 });
     const { wrapper } = await render(['shipping:view']);

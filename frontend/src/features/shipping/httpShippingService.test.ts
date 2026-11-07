@@ -9,6 +9,21 @@ function ok(data: unknown) {
 }
 
 describe('shipping HTTP contract', () => {
+  it('sends the exact logistics company with combined filters and omits an empty company', async () => {
+    const fetcher = vi.fn().mockImplementation(async () => ok({ records: [], total: 0 })); vi.stubGlobal('fetch', fetcher);
+    await httpShippingService.list({ page: 2, size: 20, logisticsCompany: ' 壹米滴答-汇森速运 ', status: 'unfinished',
+      dateFrom: '2026-11-01', platformId: 1, shopId: 2 });
+    const params = new URL(fetcher.mock.calls[0][0], 'http://localhost').searchParams;
+    expect(params.get('logisticsCompany')).toBe('壹米滴答-汇森速运');
+    expect(params.get('page')).toBe('2');
+    expect(params.get('status')).toBe('unfinished');
+    expect(params.get('dateFrom')).toBe('2026-11-01');
+    expect(params.get('platformId')).toBe('1');
+    expect(params.get('shopId')).toBe('2');
+    await httpShippingService.list({ page: 1, size: 20, logisticsCompany: '   ' });
+    expect(new URL(fetcher.mock.calls[1][0], 'http://localhost').searchParams.has('logisticsCompany')).toBe(false);
+  });
+
   it('reads logistics trace through the dedicated GET route',async()=>{
     const trace={status:'empty',message:'无轨迹信息',events:[]};
     const fetcher=vi.fn().mockResolvedValue(ok(trace));vi.stubGlobal('fetch',fetcher);

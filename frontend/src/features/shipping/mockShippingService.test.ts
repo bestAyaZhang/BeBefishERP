@@ -10,6 +10,26 @@ function login(employeeId = 42) {
 beforeEach(() => { localStorage.clear(); login(); });
 afterEach(clearCurrentUser);
 describe('mock shipment preparation content', () => {
+  it('filters exact logistics names before paging and offers all historical company names', async () => {
+    const service = createMockShippingService();
+    const original = await service.create({ ...emptyShipmentForm(), preparationContent: '待发物品' });
+    const records = [
+      { ...original, id: 1, logisticsOrderState: null, content: { ...original.content, logisticsCompany: ' A物流 ' } },
+      { ...original, id: 2, logisticsOrderState: 'cancelled', content: { ...original.content, logisticsCompany: 'A物流', status: 'completed' } },
+      { ...original, id: 3, content: { ...original.content, logisticsCompany: 'B历史物流' } },
+      { ...original, id: 4, content: { ...original.content, logisticsCompany: '' } }
+    ];
+    localStorage.setItem('bebefish_mock_shipments_v2', JSON.stringify(records));
+    const first = await service.list({ page: 1, size: 1, logisticsCompany: 'A物流' });
+    expect(first.total).toBe(2);
+    expect(first.records.map(row => row.id)).toEqual([2]);
+    expect((await service.list({ page: 2, size: 1, logisticsCompany: 'A物流' })).records.map(row => row.id)).toEqual([1]);
+    expect((await service.list({ page: 1, size: 20, logisticsCompany: 'A' })).total).toBe(0);
+    expect((await service.list({ page: 1, size: 20, logisticsCompany: 'A物流', incompleteOnly: true })).records.map(row => row.id)).toEqual([1]);
+    expect((await service.getFilterOptions()).logisticsCompanies).toEqual(['A物流', 'B历史物流']);
+    expect((await service.list({ page: 1, size: 20, logisticsCompany: '' })).total).toBe(4);
+  });
+
   it('reports trace as unsupported without writing the shipment ledger',async()=>{
     const service=createMockShippingService();const previous=await service.create({...emptyShipmentForm(),preparationContent:'原物品'});
     const before=JSON.stringify(localStorage);

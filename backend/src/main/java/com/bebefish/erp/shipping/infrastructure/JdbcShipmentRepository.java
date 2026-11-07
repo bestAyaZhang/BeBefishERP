@@ -138,6 +138,10 @@ public class JdbcShipmentRepository implements ShipmentRepository {
         if(query.platformId()!=null) { where.append(" and s.platform_id=:platformId"); params.addValue("platformId",query.platformId()); }
         if(query.shopId()!=null) { where.append(" and s.shop_id=:shopId"); params.addValue("shopId",query.shopId()); }
         if(query.unlinkedOnly()) where.append(" and s.shop_id is null");
+        if (query.logisticsCompany() != null && !query.logisticsCompany().isBlank()) {
+            where.append(" and trim(s.logistics_company)=:logisticsCompany");
+            params.addValue("logisticsCompany", query.logisticsCompany().strip());
+        }
         Long total = jdbc.queryForObject("select count(*) from shipment s" + where, params, Long.class);
         params.addValue("limit", pageable.getPageSize()).addValue("offset", pageable.getOffset());
         var records = jdbc.query(SHIPMENT_SELECT + where

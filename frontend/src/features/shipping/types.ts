@@ -92,6 +92,7 @@ export interface ShipmentQuery {
   dateFrom?: string;
   dateTo?: string;
   platform?: string;
+  logisticsCompany?: string;
   incompleteOnly?: boolean;
 }
 
@@ -112,6 +113,7 @@ export interface ShippingFormOptions {
 export interface ShippingFilterOptions {
   platforms: { id: number; name: string; status: string }[];
   shops: { id: number; platformId: number; name: string; optionLabel?: string; status: string; platformStatus: string }[];
+  logisticsCompanies?: string[];
 }
 export interface SenderInfo {
   name: string;

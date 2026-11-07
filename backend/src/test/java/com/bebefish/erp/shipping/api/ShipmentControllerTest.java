@@ -355,6 +355,53 @@ class ShipmentControllerTest {
     }
 
     @Test
+    void viewPermissionPassesTheLogisticsCompanyFilterWithoutRequiringLogisticsPermissions() throws Exception {
+        login("发货查看人", "shipping:view");
+        when(repository.findAll(any(), any())).thenReturn(org.springframework.data.domain.Page.empty());
+
+        mvc.perform(get("/api/shipments").param("logisticsCompany", " 历史物流公司 ").param("page", "2"))
+                .andExpect(status().isOk());
+
+        var query = org.mockito.ArgumentCaptor.forClass(ShipmentQuery.class);
+        verify(repository).findAll(query.capture(), eq(org.springframework.data.domain.PageRequest.of(1, 20)));
+        org.assertj.core.api.Assertions.assertThat(mapper.valueToTree(query.getValue()).path("logisticsCompany").asText())
+                .isEqualTo(" 历史物流公司 ");
+    }
+
+    @Test
+    void rejectsLogisticsCompanyFiltersLongerThanTheStoredNameBeforeQuerying() throws Exception {
+        login("发货查看人", "shipping:view");
+        when(repository.findAll(any(), any())).thenReturn(org.springframework.data.domain.Page.empty());
+
+        mvc.perform(get("/api/shipments").param("logisticsCompany", "物".repeat(101)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        verify(repository, never()).findAll(any(), any());
+    }
+
+    @Test
+    void filterOptionsExposeLogisticsCompaniesWithOnlyShippingViewPermission() throws Exception {
+        login("发货查看人", "shipping:view");
+        when(optionsService.filterOptions()).thenReturn(new ShippingFormOptionsService.FilterOptions(List.of(), List.of()));
+
+        mvc.perform(get("/api/shipments/filter-options"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.logisticsCompanies").isArray())
+                .andExpect(jsonPath("$.data.logisticsCompanies").isEmpty());
+    }
+
+    @Test
+    void logisticsPermissionsCannotReplaceShippingViewForShipmentFilters() throws Exception {
+        login("物流查看人", "logistics:view");
+
+        mvc.perform(get("/api/shipments").param("logisticsCompany", "安能物流"))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/shipments/filter-options"))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(repository, optionsService);
+    }
+
+    @Test
     void viewPermissionCanLoadSummaryAndNarrowFormOptions() throws Exception {
         login("查看人", "shipping:view");
         when(repository.summary(LocalDate.of(2026, 9, 24)))

@@ -176,6 +176,7 @@ public class ShipmentService {
             throw invalid("开始日期不能晚于结束日期");
         if (query.keyword() != null && query.keyword().length() > 200) throw invalid("搜索关键词不能超过200字");
         if (query.platform() != null && query.platform().length() > 100) throw invalid("平台名称不能超过100字");
+        if (query.logisticsCompany() != null && query.logisticsCompany().length() > 100) throw invalid("物流公司名称不能超过100字");
         if(query.platformId()!=null && query.platform()!=null && !query.platform().isBlank()) throw invalid("平台ID与历史平台名称不能同时筛选");
         if(query.unlinkedOnly() && query.shopId()!=null) throw invalid("历史未关联筛选不能指定店铺");
         sources.validateFilter(query.platformId(),query.shopId());

@@ -22,10 +22,13 @@ public class ShippingFormOptionsService {
     }
     public record FilterPlatform(long id,String name,String status) {}
     public record FilterShop(long id,long platformId,String name,String optionLabel,String status,String platformStatus) {}
-    public record FilterOptions(List<FilterPlatform> platforms,List<FilterShop> shops) {}
+    public record FilterOptions(List<FilterPlatform> platforms,List<FilterShop> shops,List<String> logisticsCompanies) {
+        public FilterOptions(List<FilterPlatform> platforms,List<FilterShop> shops) { this(platforms,shops,List.of()); }
+    }
     public FilterOptions filterOptions() {
         return new FilterOptions(catalog.allPlatforms(false).stream().map(p->new FilterPlatform(p.id(),p.name(),p.status())).toList(),
             catalog.allShops(false).stream().map(s->new FilterShop(s.id(),s.platformId(),s.name(),
-                s.optionLabel()==null || s.optionLabel().isBlank()?s.name():s.optionLabel(),s.status(),s.platformStatus())).toList());
+                s.optionLabel()==null || s.optionLabel().isBlank()?s.name():s.optionLabel(),s.status(),s.platformStatus())).toList(),
+            repository.findLogisticsCompanyNames());
     }
 }

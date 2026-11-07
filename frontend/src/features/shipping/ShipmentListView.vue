@@ -13,7 +13,7 @@ import { freightText, logisticsOrderStatus, recipientFullAddress, shipmentStatus
 
 const router = useRouter();
 const records = ref<Shipment[]>([]);
-const filterOptions = ref<import('./types').ShippingFilterOptions>({ platforms: [], shops: [] });
+const filterOptions = ref<import('./types').ShippingFilterOptions>({ platforms: [], shops: [], logisticsCompanies: [] });
 const filterError = ref('');
 async function loadFilterOptions() {
   try { filterOptions.value = await shippingService.getFilterOptions(); filterError.value = ''; }
@@ -24,7 +24,7 @@ const loading = ref(false);
 const error = ref('');
 const summaryError = ref('');
 const summary = ref<ShipmentSummary>({ todayCount: 0, unfinishedCount: 0, completedCount: 0, outOfStockCount: 0, partiallyShippedCount: 0 });
-const query = reactive<ShipmentQuery>({ page: 1, size: 20, keyword: '', status: 'unfinished', dateFrom: '', dateTo: '', platform: '', incompleteOnly: false });
+const query = reactive<ShipmentQuery>({ page: 1, size: 20, keyword: '', status: 'unfinished', dateFrom: '', dateTo: '', platform: '', logisticsCompany: '', incompleteOnly: false });
 const advancedOpen = ref(false);
 const appliedQuery = ref<ShipmentQuery>({ ...query });
 const summaryLoaded = ref(false);
@@ -35,7 +35,7 @@ const scopeText = computed(() => {
     ? filter.dateFrom
     : filter.dateFrom || filter.dateTo ? `${filter.dateFrom || '不限'} 至 ${filter.dateTo || '不限'}` : '不限日期';
   const status = filter.incompleteOnly ? '全部备货未完成' : filter.status ? shipmentStatus(filter.status).label : '全部备货状态';
-  return `${dates} · ${status}`;
+  return `${dates} · ${status}${filter.logisticsCompany ? ` · ${filter.logisticsCompany}` : ''}`;
 });
 const recordRange = computed(() => !total.value ? '0 条' : `${(appliedQuery.value.page - 1) * appliedQuery.value.size + 1}–${Math.min(appliedQuery.value.page * appliedQuery.value.size, total.value)} 条`);
 const canCreate = computed(() => currentUser.value?.permissions.includes('shipping:create'));
@@ -76,9 +76,10 @@ async function load() {
 
 function search() { query.page = 1; query.incompleteOnly = false; void load(); }
 function filterStatus(status: ShipmentQuery['status']) { query.status = status; search(); }
+function filterLogisticsCompany() { query.page = 1; void load(); }
 function showToday() { Object.assign(query, { page: 1, dateFrom: todayDate(), dateTo: todayDate(), incompleteOnly: false }); void load(); }
 function showIncomplete() { Object.assign(query, { page: 1, dateFrom: '', dateTo: '', status: '', incompleteOnly: true }); void load(); }
-function reset() { Object.assign(query, { page: 1, keyword: '', status: 'unfinished', dateFrom: '', dateTo: '', platform: '', platformId: undefined, shopId: undefined, unlinkedOnly: false, incompleteOnly: false }); void load(); }
+function reset() { Object.assign(query, { page: 1, keyword: '', status: 'unfinished', dateFrom: '', dateTo: '', platform: '', logisticsCompany: '', platformId: undefined, shopId: undefined, unlinkedOnly: false, incompleteOnly: false }); void load(); }
 function pageTo(page: number) { query.page = page; void load(); }
 function maskPhone(value: string) { return /^\d{11}$/.test(value) ? `${value.slice(0, 3)}****${value.slice(-4)}` : value; }
 function compactShipmentNo(value: string) { return value.length > 18 ? `${value.slice(0, 17)}…` : value; }
@@ -116,6 +117,7 @@ onBeforeUnmount(() => { listRequest++; summaryRequest++; });
         <div class="filter-toolbar">
           <label class="search-field"><span class="sr-only">关键词</span><Search :size="16" aria-hidden="true" /><input v-model="query.keyword" data-testid="shipment-search" maxlength="200" placeholder="搜索姓名、电话、单号或备货内容" /></label>
           <button type="submit" class="secondary-button search-button">查询</button>
+          <label class="carrier-filter"><span class="sr-only">物流公司</span><select v-model="query.logisticsCompany" aria-label="物流公司筛选" class="filter-input" @change="filterLogisticsCompany"><option value="">全部物流公司</option><option v-for="company in filterOptions.logisticsCompanies ?? []" :key="company" :value="company">{{ company }}</option></select></label>
           <div class="quick-filters">
             <button data-testid="shipment-scope-today" type="button" class="text-button" @click="showToday">今天</button>
             <span class="filter-separator" aria-hidden="true"></span>
@@ -202,6 +204,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .search-field input { width: 100%; min-width: 0; background: transparent; outline: none; color: var(--ink); font-size: 13px; }
 .search-field input:focus-visible { outline: none; }
 .search-field input::placeholder, .filter-input::placeholder { color: #657181; opacity: 1; }
+.carrier-filter { flex: none; width: 166px; }
 .quick-filters { display: flex; align-items: center; gap: 10px; margin-right: auto; }
 .filter-separator { height: 12px; width: 1px; background: #dfe4eb; }
 .active-shortcut { color: var(--blue); font-weight: 500; }
@@ -314,6 +317,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .search-field { grid-column: 1 / 3; width: auto; height: 44px; padding: 0 9px; gap: 6px; }
   .search-field input { font-size: 12px; }
   .search-button { grid-column: 3; height: 44px; }
+  .carrier-filter { grid-column: 1 / -1; grid-row: 2; width: 100%; }
   .quick-filters { grid-column: 1; gap: 8px; margin-right: 0; }
   .quick-filters .text-button { font-size: 12px; min-height: 44px; }
   .filter-separator { display: none; }

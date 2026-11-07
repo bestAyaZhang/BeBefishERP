@@ -38,8 +38,9 @@ public class ShipmentController {
             @RequestParam(required = false) LocalDate dateFrom, @RequestParam(required = false) LocalDate dateTo,
             @RequestParam(required = false) String platform, @RequestParam(defaultValue = "false") boolean incompleteOnly,
             @RequestParam(required=false) Long platformId, @RequestParam(required=false) Long shopId,
-            @RequestParam(defaultValue="false") boolean unlinkedOnly) {
-        return ApiResponse.success(PageResponse.from(service.list(new ShipmentQuery(keyword, status, dateFrom, dateTo, platform, incompleteOnly, platformId, shopId, unlinkedOnly), page, size)));
+            @RequestParam(defaultValue="false") boolean unlinkedOnly,
+            @RequestParam(required=false) String logisticsCompany) {
+        return ApiResponse.success(PageResponse.from(service.list(new ShipmentQuery(keyword, status, dateFrom, dateTo, platform, incompleteOnly, platformId, shopId, unlinkedOnly, logisticsCompany), page, size)));
     }
 
     @GetMapping("/summary")

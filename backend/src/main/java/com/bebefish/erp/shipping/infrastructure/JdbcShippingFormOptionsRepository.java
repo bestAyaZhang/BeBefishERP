@@ -17,4 +17,11 @@ public class JdbcShippingFormOptionsRepository {
         return jdbc.query("select id, name from employee where status='active' order by id",
                 (rs, row) -> new ShippingFormOptions.PreparerOption(rs.getLong("id"), rs.getString("name")));
     }
+
+    public List<String> findLogisticsCompanyNames() {
+        return jdbc.queryForList("""
+                select distinct trim(logistics_company) as company_name
+                from shipment where trim(logistics_company) <> '' order by company_name
+                """, String.class);
+    }
 }

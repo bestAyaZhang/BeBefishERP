@@ -5,7 +5,7 @@ import type { Shipment, ShippingService, LogisticsAvailability, LogisticsOrder, 
 export const httpShippingService: ShippingService = {
   list(query) {
     const params = new URLSearchParams({ page: String(query.page), size: String(query.size) });
-    for (const key of ['keyword', 'status', 'dateFrom', 'dateTo', 'platform'] as const) {
+    for (const key of ['keyword', 'status', 'dateFrom', 'dateTo', 'platform', 'logisticsCompany'] as const) {
       if (query[key]?.trim()) params.set(key, query[key]!.trim());
     }
     if (query.incompleteOnly) params.set('incompleteOnly', 'true');
