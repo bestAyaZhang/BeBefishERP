@@ -235,7 +235,57 @@ describe('ShipmentDetailView', () => {
     wrapper.unmount();
   });
 
-  it('requires cancel permission even when the user can place orders', async () => {
+  it.each(['ANE', 'YIMI'])('lets the shipment creator cancel their own %s order without a separate cancel permission', async provider => {
+    const ownShipment = { ...shipment, createdBy: '13800000000', creatorEmployeeId: 42,
+      content: { ...shipment.content, status: 'completed' } };
+    service.get.mockResolvedValue(ownShipment);
+    service.getLogisticsOrder.mockResolvedValue({ shipmentId: 8, provider, orderNo: 'BF008', state: 'succeeded',
+      trackingNo: 'ANE001', testEnvironment: false });
+    saveCurrentUser({ accessToken: 'test', employeeId: 42, mobile: '13900000000', displayName: '下单人', roles: [],
+      permissions: ['shipping:view'], loginMethod: 'feishu' });
+    const { wrapper } = await render();
+    await wrapper.get('[data-testid="shipment-cancel-order"]').trigger('click');
+    expect(wrapper.get('[role="dialog"]').text()).toContain('ANE001');
+    expect(service.cancelLogisticsOrder).not.toHaveBeenCalled();
+    const cancelled = { shipmentId: 8, provider, orderNo: 'BF008', state: 'cancelled', trackingNo: 'ANE001',
+      message: '订单已取消', testEnvironment: false };
+    service.cancelLogisticsOrder.mockResolvedValue(cancelled);
+    service.getLogisticsOrder.mockResolvedValue(cancelled);
+    service.get.mockResolvedValue({ ...ownShipment, version: 4, content: { ...ownShipment.content, trackingNo: '' } });
+    await wrapper.get('[data-testid="cancel-order-confirm"]').trigger('click'); await flushPromises();
+    expect(service.cancelLogisticsOrder).toHaveBeenCalledWith(8, { version: 3 });
+    expect(wrapper.get('[data-testid="shipment-detail-logistics-status"]').text()).toContain('已取消');
+    expect(wrapper.get('[data-testid="shipment-real-tracking"]').text()).toContain('已作废');
+    expect(wrapper.get('[data-testid="shipment-detail-preparation-status"]').text()).toContain('已完成');
+    expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(false);
+  });
+
+  it.each([
+    { creatorEmployeeId: null, createdBy: 'employee:42', employeeId: 42, permissions: ['shipping:view'], allowed: true },
+    { creatorEmployeeId: 43, createdBy: 'employee:42', employeeId: 42, permissions: ['shipping:view', 'shipping:order'], allowed: false },
+    { creatorEmployeeId: 43, createdBy: '13800000000', employeeId: 42, permissions: ['shipping:view'], allowed: false },
+    { creatorEmployeeId: null, createdBy: '13800000000', employeeId: 42, permissions: ['shipping:view'], allowed: false },
+    { creatorEmployeeId: null, createdBy: 'employee:042', employeeId: 42, permissions: ['shipping:view'], allowed: false },
+    { creatorEmployeeId: 0, createdBy: 'employee:0', employeeId: 0, permissions: ['shipping:view'], allowed: false },
+    { creatorEmployeeId: 42, createdBy: 'employee:42', employeeId: 42, permissions: ['shipping:cancel'], allowed: false }
+  ])('uses stable shipment ownership and view access for cancellation: $createdBy / $creatorEmployeeId / $allowed', async scenario => {
+    service.get.mockResolvedValue({ ...shipment, creatorEmployeeId: scenario.creatorEmployeeId, createdBy: scenario.createdBy });
+    saveCurrentUser({ accessToken: 'test', employeeId: scenario.employeeId, mobile: '13800000000', displayName: '李主管', roles: [],
+      permissions: scenario.permissions, loginMethod: 'password' });
+    const { wrapper } = await render();
+    expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(scenario.allowed);
+    expect(service.cancelLogisticsOrder).not.toHaveBeenCalled();
+  });
+
+  it('still blocks the creator when the logistics account needs confirmation', async () => {
+    service.get.mockResolvedValue({ ...shipment, creatorEmployeeId: 42 });
+    service.getLogisticsAccountBinding.mockResolvedValue({ linked: false, requiresConfirmation: true });
+    saveCurrentUser({ accessToken: 'test', employeeId: 42, mobile: null, roles: [], permissions: ['shipping:view'], loginMethod: 'feishu' });
+    const { wrapper } = await render();
+    expect(wrapper.find('[data-testid="shipment-cancel-order"]').exists()).toBe(false);
+  });
+
+  it('requires cancel permission for non-creators even when they can place orders', async () => {
     saveCurrentUser({ accessToken: 'test', mobile: null, displayName: '测试用户', roles: [],
       permissions: ['shipping:view', 'shipping:order'], loginMethod: 'feishu' });
     const { wrapper } = await render();

@@ -12,7 +12,7 @@ import { logisticsService } from '../logistics/logisticsService';
 import type { Quote } from '../logistics/types';
 import type { LogisticsAccountBinding, LogisticsTrace } from './types';
 
-import { canConfirmCreator, canEditPreparationContent, canUpdatePreparation } from './preparationAccess';
+import { canCancelShipmentLogistics, canConfirmCreator, canEditPreparationContent, canUpdatePreparation } from './preparationAccess';
 import { freightText, logisticsStateLabel, recipientFullAddress, shipmentSenderFullAddress, shipmentStatus,
   type LogisticsOrder, type Shipment } from './types';
 
@@ -73,7 +73,8 @@ function preparationSaved(updated: Shipment) {
   message.success('备货状态与实际重量已保存');
 }
 const canEdit = computed(() => currentUser.value?.permissions.includes('shipping:edit') || (!!shipment.value && canEditPreparationContent(shipment.value, currentUser.value)));
-const canCancel = computed(() => orderVerified.value && accountVerified.value && !accountBinding.value?.requiresConfirmation && currentUser.value?.permissions.includes('shipping:cancel')
+const canCancel = computed(() => orderVerified.value && accountVerified.value && !accountBinding.value?.requiresConfirmation
+  && !!shipment.value && canCancelShipmentLogistics(shipment.value, currentUser.value)
   && !!order.value && ['succeeded', 'cancel_rejected'].includes(order.value.state));
 const editLabel = computed(() => !currentUser.value?.permissions.includes('shipping:edit') || (order.value && order.value.state !== 'rejected') ? '编辑发货单' : '编辑并下单');
 let generation = 0;

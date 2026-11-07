@@ -417,8 +417,9 @@ class ShipmentControllerTest {
     }
 
     @Test
-    void cancellationRequiresSeparatePermissionAndValidatedVersion() throws Exception {
+    void nonCreatorRequiresSeparateCancellationPermissionAndValidatedVersion() throws Exception {
         String path = "/api/shipments/17/logistics-order/cancel";
+        when(repository.findById(17)).thenReturn(java.util.Optional.of(contentRecord("employee:43", "unfinished")));
         for (String[] permissions : new String[][] { {"shipping:view", "shipping:order"}, {"shipping:cancel"} }) {
             login("操作人", permissions);
             mvc.perform(post(path).contentType(APPLICATION_JSON).content("{\"version\":3}"))
@@ -434,10 +435,92 @@ class ShipmentControllerTest {
         verify(logistics).cancel(17, new CancelAneOrderRequest(3L), "employee:42");
     }
 
+    @Test
+    void shipmentCreatorCanCancelWithViewPermissionAfterChangingPhoneEvenWhenPreparationIsCompleted() throws Exception {
+        var old = contentRecord("13800000000", "completed");
+        var previous = new Shipment(old.id(), old.shipmentNo(), old.content(), old.version(), old.createdBy(), old.updatedBy(),
+                old.createdAt(), old.updatedAt(), old.logisticsOrderState(), old.preparerEmployeeIds(), old.preparation(), 42L);
+        when(repository.findById(17)).thenReturn(java.util.Optional.of(previous));
+        login(new ErpPrincipal(42, "13900000000", "原下单人", List.of(), List.of("shipping:view")));
+
+        mvc.perform(post("/api/shipments/17/logistics-order/cancel").contentType(APPLICATION_JSON).content("{\"version\":3}"))
+                .andExpect(status().isOk());
+
+        verify(context.getBean(AneOrderService.class)).cancel(17, new CancelAneOrderRequest(3L), "13900000000");
+        verify(repository, never()).update(any(), anyLong());
+    }
+
+    @Test
+    void historicalEmployeeIdentifierAllowsOnlyItsCreatorToCancel() throws Exception {
+        when(repository.findById(17)).thenReturn(java.util.Optional.of(contentRecord("employee:42", "unfinished")));
+        login("历史下单人", "shipping:view");
+
+        mvc.perform(post("/api/shipments/17/logistics-order/cancel").contentType(APPLICATION_JSON).content("{\"version\":3}"))
+                .andExpect(status().isOk());
+
+        verify(context.getBean(AneOrderService.class)).cancel(17, new CancelAneOrderRequest(3L), "employee:42");
+    }
+
+    @Test
+    void anotherEmployeeCannotCancelByMatchingTheCreatorNameOrReusingTheirPhone() throws Exception {
+        var old = contentRecord("13800000000", "unfinished");
+        var previous = new Shipment(old.id(), old.shipmentNo(), old.content(), old.version(), old.createdBy(), old.updatedBy(),
+                old.createdAt(), old.updatedAt(), old.logisticsOrderState(), old.preparerEmployeeIds(), old.preparation(), 42L);
+        when(repository.findById(17)).thenReturn(java.util.Optional.of(previous));
+        login(new ErpPrincipal(43, "13800000000", old.content().orderer(), List.of(), List.of("shipping:view", "shipping:order")));
+
+        mvc.perform(post("/api/shipments/17/logistics-order/cancel").contentType(APPLICATION_JSON).content("{\"version\":3}"))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(context.getBean(AneOrderService.class));
+    }
+
+    @Test
+    void confirmedCreatorTakesPrecedenceOverTheHistoricalAuditEmployeeIdentifier() throws Exception {
+        var old = contentRecord("employee:42", "unfinished");
+        var previous = new Shipment(old.id(), old.shipmentNo(), old.content(), old.version(), old.createdBy(), old.updatedBy(),
+                old.createdAt(), old.updatedAt(), old.logisticsOrderState(), old.preparerEmployeeIds(), old.preparation(), 43L);
+        when(repository.findById(17)).thenReturn(java.util.Optional.of(previous));
+        login("原审计账号", "shipping:view");
+
+        mvc.perform(post("/api/shipments/17/logistics-order/cancel").contentType(APPLICATION_JSON).content("{\"version\":3}"))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(context.getBean(AneOrderService.class));
+    }
+
+    @Test
+    void unresolvedHistoricalCreatorsDoNotGainCancellationAccessFromNamesOrPhones() throws Exception {
+        login(new ErpPrincipal(42, "13800000000", "原下单人", List.of(), List.of("shipping:view")));
+        for (String audit : List.of("13800000000", "原下单人", "employee:042", "employee:0", "employee:9223372036854775808")) {
+            when(repository.findById(17)).thenReturn(java.util.Optional.of(contentRecord(audit, "unfinished")));
+
+            mvc.perform(post("/api/shipments/17/logistics-order/cancel").contentType(APPLICATION_JSON).content("{\"version\":3}"))
+                    .andExpect(status().isForbidden());
+        }
+
+        verifyNoInteractions(context.getBean(AneOrderService.class));
+    }
+
+    @Test
+    void creatorAndGlobalCancellationPermissionStillRequireViewPermission() throws Exception {
+        when(repository.findById(17)).thenReturn(java.util.Optional.of(contentRecord("employee:42", "unfinished")));
+        login("下单人", "shipping:cancel");
+
+        mvc.perform(post("/api/shipments/17/logistics-order/cancel").contentType(APPLICATION_JSON).content("{\"version\":3}"))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(context.getBean(AneOrderService.class));
+        verify(repository, never()).findById(anyLong());
+    }
+
     private void login(String displayName, String... permissions) {
-        var principal = new ErpPrincipal(42, null, displayName, List.of(), List.of(permissions));
+        login(new ErpPrincipal(42, null, displayName, List.of(), List.of(permissions)));
+    }
+
+    private void login(ErpPrincipal principal) {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal, null,
-                java.util.Arrays.stream(permissions).map(SimpleGrantedAuthority::new).toList()));
+                principal.permissions().stream().map(SimpleGrantedAuthority::new).toList()));
     }
 
     private Map<String, Object> validForm(String recipient) {

@@ -139,13 +139,20 @@ public class ShipmentService {
                 new BusinessException("SHIPMENT_NOT_FOUND", HttpStatus.NOT_FOUND, "发货单不存在"));
     }
 
+    @Transactional(readOnly = true)
+    public void requireLogisticsCancellationAccess(long id, ErpPrincipal operator) {
+        if (!operator.permissions().contains("shipping:view"))
+            throw new BusinessException("LOGISTICS_CANCEL_FORBIDDEN", HttpStatus.FORBIDDEN, "缺少查看发货权限");
+        if (operator.permissions().contains("shipping:cancel")) return;
+        if (!isCreator(get(id), operator))
+            throw new BusinessException("LOGISTICS_CANCEL_FORBIDDEN", HttpStatus.FORBIDDEN, "只有本单下单人或有取消物流权限的人员可以取消物流订单");
+    }
+
     @Transactional
     public Shipment updatePreparationContent(long id, String preparationContent, String remark, long version, ErpPrincipal operator) {
         var previous = repository.findByIdForUpdate(id).orElseThrow(() ->
                 new BusinessException("SHIPMENT_NOT_FOUND", HttpStatus.NOT_FOUND, "发货单不存在"));
-        Long creatorId = previous.creatorEmployeeId() == null ? legacyEmployeeId(previous.createdBy()) : previous.creatorEmployeeId();
-        boolean creator = creatorId != null && creatorId == operator.employeeId();
-        if (!creator) throw new BusinessException("SHIPMENT_CONTENT_FORBIDDEN", HttpStatus.FORBIDDEN, "只有本单下单人可以修改备货物品和备注");
+        if (!isCreator(previous, operator)) throw new BusinessException("SHIPMENT_CONTENT_FORBIDDEN", HttpStatus.FORBIDDEN, "只有本单下单人可以修改备货物品和备注");
         if (version < 0 || previous.version() != version) throw conflict();
         if ("completed".equals(previous.content().status()))
             throw new BusinessException("SHIPMENT_PREPARATION_COMPLETED", HttpStatus.CONFLICT, "备货已完成，不能修改备货物品和备注");
@@ -206,6 +213,10 @@ public class ShipmentService {
                 previous.createdAt(), LocalDateTime.now(clock), previous.logisticsOrderState(), previous.preparerEmployeeIds(), previous.preparation(), employeeId);
         if (!repository.update(next, version)) throw conflict();
         return next;
+    }
+    private static boolean isCreator(Shipment shipment, ErpPrincipal operator) {
+        Long creatorId = shipment.creatorEmployeeId() == null ? legacyEmployeeId(shipment.createdBy()) : shipment.creatorEmployeeId();
+        return operator.employeeId() > 0 && creatorId != null && creatorId == operator.employeeId();
     }
     private static Long legacyEmployeeId(String identifier) {
         if (identifier == null || !identifier.matches("employee:[1-9][0-9]{0,18}")) return null;
