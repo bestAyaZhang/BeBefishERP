@@ -157,6 +157,33 @@ class ProductServiceTest {
     }
 
     @Test
+    void acceptsNullableMouthDiameterAndValidatesItsNumericBoundsForDirectCommands() {
+        var base = packaging("42", "31", "28", null, "8.5", "9.2");
+        var invalidValues = Map.of(
+                "-0.001", "产品口径不能小于 0",
+                "8.1251", "产品口径最多允许 9 位整数和 3 位小数",
+                "1000000000", "产品口径最多允许 9 位整数和 3 位小数"
+        );
+        for (var invalid : invalidValues.entrySet()) {
+            var command = simpleProduct("IGNORED", "EW-MOUTH-INVALID", withMouthDiameter(base, invalid.getKey()));
+
+            assertThatThrownBy(() -> service.createProduct(command))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage(invalid.getValue());
+        }
+        var maximum = service.createProduct(simpleProduct(
+                "IGNORED", "EW-MOUTH-MAX", withMouthDiameter(base, "999999999.999")
+        ));
+        var zero = service.createProduct(simpleProduct("IGNORED", "EW-MOUTH-ZERO", withMouthDiameter(base, "0")));
+        var omitted = service.createProduct(simpleProduct("IGNORED", "EW-MOUTH-NULL", base));
+
+        assertThat(maximum.skus().getFirst().packaging().productMouthDiameterCm())
+                .isEqualByComparingTo("999999999.999");
+        assertThat(zero.skus().getFirst().packaging().productMouthDiameterCm()).isZero();
+        assertThat(omitted.skus().getFirst().packaging().productMouthDiameterCm()).isNull();
+    }
+
+    @Test
     void acceptsMaximumSchemaDecimalValues() {
         var packaging = new PackagingCommand(
                 decimal("999999999.999"), decimal("999999999.999"), decimal("999999999.999"),
@@ -579,6 +606,17 @@ class ProductServiceTest {
 
     private BigDecimal decimal(String value) {
         return value == null ? null : new BigDecimal(value);
+    }
+
+    private PackagingCommand withMouthDiameter(PackagingCommand packaging, String diameter) {
+        return new PackagingCommand(
+                packaging.lengthCm(), packaging.widthCm(), packaging.heightCm(), packaging.volumeCm3(),
+                packaging.innerLengthCm(), packaging.innerWidthCm(), packaging.innerHeightCm(),
+                packaging.productLengthCm(), packaging.productWidthCm(), packaging.productHeightCm(), packaging.capacityMl(),
+                packaging.netWeightKg(), packaging.grossWeightKg(), packaging.gramWeightG(), packaging.innerWeightKg(),
+                packaging.method(), packaging.cartonQuantity(), packaging.packageImageFileId(), packaging.cartonImageFileId(),
+                decimal(diameter)
+        );
     }
 
     private ProductSupplierQuoteCommand quote(

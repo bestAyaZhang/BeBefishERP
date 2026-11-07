@@ -3,6 +3,7 @@ package com.bebefish.erp.product.application;
 import com.bebefish.erp.common.api.BusinessException;
 import com.bebefish.erp.product.domain.Packaging;
 import com.bebefish.erp.product.domain.Product;
+import com.bebefish.erp.product.domain.ProductImagePack;
 import com.bebefish.erp.product.domain.ProductRepository;
 import com.bebefish.erp.product.domain.ProductType;
 import com.bebefish.erp.product.domain.Sku;
@@ -15,7 +16,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -52,7 +56,7 @@ public class ProductService {
 
     @Transactional
     public Product updateProduct(long id, SaveProductCommand command) {
-        var existing = getProduct(id);
+        var existing = requireProduct(repository.findByIdForUpdate(id));
         var product = toProduct(id, command, existing, existing.code());
         deleteRemovedSkuQuotes(existing, product);
         return saveProductWithSupplierQuotes(product, command.skus());
@@ -60,7 +64,11 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public Product getProduct(long id) {
-        return repository.findById(id).orElseThrow(() -> new BusinessException(
+        return requireProduct(repository.findById(id));
+    }
+
+    private Product requireProduct(Optional<Product> product) {
+        return product.orElseThrow(() -> new BusinessException(
                 "PRODUCT_NOT_FOUND", HttpStatus.NOT_FOUND, "产品不存在"
         ));
     }
@@ -92,7 +100,8 @@ public class ProductService {
 
     @Transactional
     public Product changeStatus(long id, String status) {
-        return repository.save(getProduct(id).withStatus(normalizeProductStatus(status)));
+        var existing = requireProduct(repository.findByIdForUpdate(id));
+        return repository.save(existing.withStatus(normalizeProductStatus(status)));
     }
 
     private Product saveProductWithSupplierQuotes(Product product, List<SaveSkuCommand> skuCommands) {
@@ -148,12 +157,34 @@ public class ProductService {
                 : variantSkus(code, name, command, existing, explicitSkuControls);
         var skus = normalizeSkuDefaults(rawSkus, explicitSkuControls, existing);
         ensureUniqueSkus(skus, id);
-        return new Product(
+        var product = new Product(
                 id, code, itemNo, name, command.categoryId(), optional(command.brand()), command.type(),
                 command.mainImageFileId(), productStatus(command.status(), existing), optional(command.remark()),
                 command.specifications(), skus,
-                existing == null ? null : existing.createdAt(), existing == null ? null : existing.updatedAt()
+                existing == null ? null : existing.createdAt(), existing == null ? null : existing.updatedAt(),
+                command.imagePacks() == null && existing != null ? existing.imagePacks() : command.imagePacks(),
+                command.materialImages() == null && existing != null ? existing.materialImages() : command.materialImages()
         );
+        validateImageReferences(command, existing, product);
+        return product;
+    }
+
+    private void validateImageReferences(SaveProductCommand command, Product existing, Product product) {
+        var fileIds = product.imageFileIds().collect(Collectors.toSet());
+        if (existing != null) {
+            existing.imageFileIds().forEach(fileIds::remove);
+        }
+        if (command.imagePacks() != null) {
+            command.imagePacks().stream().flatMap(ProductImagePack::fileIds).forEach(fileIds::add);
+        }
+        if (command.materialImages() != null) {
+            fileIds.addAll(command.materialImages());
+        }
+        command.skus().stream().map(SaveSkuCommand::productPhoto).filter(Objects::nonNull)
+                .map(SaveSkuCommand.ProductPhotoChange::fileId).filter(Objects::nonNull).forEach(fileIds::add);
+        if (!fileIds.isEmpty() && !repository.findEnabledImageFileIds(fileIds).containsAll(fileIds)) {
+            throw validation("引用的图片文件不存在、已停用或格式无效");
+        }
     }
 
     private List<Sku> simpleSkus(
@@ -301,7 +332,10 @@ public class ProductService {
                         : existing == null ? legacyDefault : existing.isDefault(),
                 explicitSkuControls
                         ? normalizeStatus(command.status())
-                        : existing == null ? "enabled" : existing.status()
+                        : existing == null ? "enabled" : existing.status(),
+                command.productPhoto() == null
+                        ? (existing == null ? null : existing.productPhotoFileId())
+                        : command.productPhoto().fileId()
         );
     }
 
@@ -319,6 +353,7 @@ public class ProductService {
         var productLength = decimal(nonNegativeOrNull(command.productLengthCm(), "产品长不能小于 0"), 9, 3, "产品长");
         var productWidth = decimal(nonNegativeOrNull(command.productWidthCm(), "产品宽不能小于 0"), 9, 3, "产品宽");
         var productHeight = decimal(nonNegativeOrNull(command.productHeightCm(), "产品高不能小于 0"), 9, 3, "产品高");
+        var productMouthDiameter = decimal(nonNegativeOrNull(command.productMouthDiameterCm(), "产品口径不能小于 0"), 9, 3, "产品口径");
         var capacity = decimal(nonNegativeOrNull(command.capacityMl(), "容量不能小于 0"), 9, 3, "容量");
         var netWeight = decimal(nonNegativeOrNull(command.netWeightKg(), "净重不能小于 0"), 9, 3, "净重");
         var grossWeight = decimal(nonNegativeOrNull(command.grossWeightKg(), "毛重不能小于 0"), 9, 3, "毛重");
@@ -338,7 +373,7 @@ public class ProductService {
                 productLength, productWidth, productHeight, capacity,
                 netWeight, grossWeight, gramWeight, innerWeight,
                 optional(command.method()), command.cartonQuantity(),
-                command.packageImageFileId(), command.cartonImageFileId()
+                command.packageImageFileId(), command.cartonImageFileId(), productMouthDiameter
         );
     }
 

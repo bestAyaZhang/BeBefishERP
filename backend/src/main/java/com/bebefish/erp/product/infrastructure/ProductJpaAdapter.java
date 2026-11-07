@@ -3,11 +3,15 @@ package com.bebefish.erp.product.infrastructure;
 import com.bebefish.erp.common.api.BusinessException;
 import com.bebefish.erp.product.domain.Packaging;
 import com.bebefish.erp.product.domain.Product;
+import com.bebefish.erp.product.domain.ProductImagePack;
 import com.bebefish.erp.product.domain.ProductRepository;
 import com.bebefish.erp.product.domain.ProductType;
 import com.bebefish.erp.product.domain.Sku;
 import com.bebefish.erp.product.domain.Specification;
 import com.bebefish.erp.product.domain.SupplierQuote;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -36,7 +40,10 @@ import org.springframework.stereotype.Repository;
 public class ProductJpaAdapter implements ProductRepository {
     private static final Set<String> PRODUCT_DIMENSION_NAMES = Set.of("口径", "高度", "容量", "重量");
     private static final String PRODUCT_COLUMNS = "id, product_code, item_no, product_name, category_id, "
-            + "brand, product_type, main_image_file_id, status, remark, created_at, updated_at";
+            + "brand, product_type, main_image_file_id, status, remark, created_at, updated_at, image_packs, material_images";
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final TypeReference<List<ProductImagePack>> IMAGE_PACKS_TYPE = new TypeReference<>() {};
+    private static final TypeReference<List<Long>> MATERIAL_IMAGES_TYPE = new TypeReference<>() {};
     private final JdbcTemplate jdbc;
 
     public ProductJpaAdapter(JdbcTemplate jdbc) {
@@ -102,8 +109,17 @@ public class ProductJpaAdapter implements ProductRepository {
 
     @Override
     public Optional<Product> findById(long id) {
+        return findById(id, "");
+    }
+
+    @Override
+    public Optional<Product> findByIdForUpdate(long id) {
+        return findById(id, " for update");
+    }
+
+    private Optional<Product> findById(long id, String lockClause) {
         var products = jdbc.query(
-                "select " + PRODUCT_COLUMNS + " from product_spu where id = ?",
+                "select " + PRODUCT_COLUMNS + " from product_spu where id = ?" + lockClause,
                 (resultSet, rowNumber) -> productRow(resultSet), id
         );
         if (products.isEmpty()) {
@@ -115,7 +131,7 @@ public class ProductJpaAdapter implements ProductRepository {
         return Optional.of(new Product(
                 row.id(), row.code(), row.itemNo(), row.name(), row.categoryId(), row.brand(),
                 row.type(), row.mainImageFileId(), row.status(), row.remark(), specifications, skus,
-                row.createdAt(), row.updatedAt()
+                row.createdAt(), row.updatedAt(), row.imagePacks(), row.materialImages()
         ));
     }
 
@@ -256,7 +272,19 @@ public class ProductJpaAdapter implements ProductRepository {
     }
 
     @Override
-    public ProductCatalogData loadCatalogData(Collection<Long> productIds) {
+    public Set<Long> findEnabledImageFileIds(Collection<Long> fileIds) {
+        if (fileIds.isEmpty()) {
+            return Set.of();
+        }
+        return Set.copyOf(jdbc.queryForList(
+                "select id from file_asset where id in (" + placeholders(fileIds.size()) + ") "
+                        + "and status = 'enabled' and content_type like 'image/%' for share",
+                Long.class, fileIds.toArray()
+        ));
+    }
+
+    @Override
+    public ProductCatalogData loadCatalogData(Collection<Long> productIds, Collection<Long> imageFileIds) {
         var ids = productIds.stream().filter(Objects::nonNull).distinct().toList();
         if (ids.isEmpty()) {
             return ProductCatalogData.empty();
@@ -270,7 +298,7 @@ public class ProductJpaAdapter implements ProductRepository {
                 findDefaultSalePrices(ids, placeholders),
                 findDefaultSupplierNames(ids, placeholders),
                 findCategoryNames(ids, placeholders),
-                findImageUrls(ids, placeholders)
+                findImageFiles(imageFileIds)
         );
     }
 
@@ -396,27 +424,21 @@ public class ProductJpaAdapter implements ProductRepository {
         return names;
     }
 
-    private Map<Long, String> findImageUrls(List<Long> productIds, String placeholders) {
-        var urls = new HashMap<Long, String>();
-        var parameters = new ArrayList<Object>();
-        for (var ignored = 0; ignored < 4; ignored++) {
-            parameters.addAll(productIds);
+    private Map<Long, ImageFile> findImageFiles(Collection<Long> fileIds) {
+        if (fileIds.isEmpty()) {
+            return Map.of();
         }
+        var images = new HashMap<Long, ImageFile>();
         jdbc.query(
-                "select file.id, file.access_url from file_asset file "
-                        + "join ("
-                        + "select main_image_file_id as file_id from product_spu where id in (" + placeholders + ") "
-                        + "union select sku_image_file_id from product_sku where product_id in (" + placeholders + ") "
-                        + "union select package_image_file_id from product_sku where product_id in (" + placeholders + ") "
-                        + "union select carton_image_file_id from product_sku where product_id in (" + placeholders + ")"
-                        + ") image_ref on image_ref.file_id = file.id "
-                        + "where file.status = 'enabled'",
-                (RowCallbackHandler) resultSet -> urls.put(
-                        resultSet.getLong("id"), resultSet.getString("access_url")
+                "select id, access_url, original_name from file_asset where status = 'enabled' "
+                        + "and id in (" + placeholders(fileIds.size()) + ")",
+                (RowCallbackHandler) resultSet -> images.put(
+                        resultSet.getLong("id"),
+                        new ImageFile(resultSet.getString("access_url"), resultSet.getString("original_name"))
                 ),
-                parameters.toArray()
+                fileIds.toArray()
         );
-        return urls;
+        return images;
     }
 
     private boolean exists(String sql, String value, Long excludedProductId) {
@@ -432,19 +454,22 @@ public class ProductJpaAdapter implements ProductRepository {
     private long insertProduct(Product product) {
         return insertAndReturnId(
                 "insert into product_spu (product_code, item_no, product_name, category_id, brand, product_type, "
-                        + "main_image_file_id, status, remark, created_at, updated_at) "
-                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, now(3), now(3))",
+                        + "main_image_file_id, status, remark, image_packs, material_images, created_at, updated_at) "
+                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(3), now(3))",
                 product.code(), product.itemNo(), product.name(), product.categoryId(), product.brand(),
-                typeValue(product.type()), product.mainImageFileId(), product.status(), product.remark()
+                typeValue(product.type()), product.mainImageFileId(), product.status(), product.remark(),
+                writeJson(product.imagePacks()), writeJson(product.materialImages())
         );
     }
 
     private long updateProduct(Product product) {
         var updated = jdbc.update(
                 "update product_spu set product_code=?, item_no=?, product_name=?, category_id=?, brand=?, "
-                        + "product_type=?, main_image_file_id=?, status=?, remark=?, updated_at=now(3) where id=?",
+                        + "product_type=?, main_image_file_id=?, status=?, remark=?, image_packs=?, material_images=?, "
+                        + "updated_at=now(3) where id=?",
                 product.code(), product.itemNo(), product.name(), product.categoryId(), product.brand(),
-                typeValue(product.type()), product.mainImageFileId(), product.status(), product.remark(), product.id()
+                typeValue(product.type()), product.mainImageFileId(), product.status(), product.remark(),
+                writeJson(product.imagePacks()), writeJson(product.materialImages()), product.id()
         );
         if (updated != 1) {
             throw notFound();
@@ -472,11 +497,12 @@ public class ProductJpaAdapter implements ProductRepository {
                     "insert into product_sku (product_id, sku_code, barcode, sku_name, spec_text, sales_unit, "
                             + "default_sale_price, standard_cost, safety_stock_quantity, package_length_cm, package_width_cm, "
                             + "package_height_cm, package_volume_cm3, inner_package_length_cm, inner_package_width_cm, "
-                            + "inner_package_height_cm, product_length_cm, product_width_cm, product_height_cm, capacity_ml, "
+                            + "inner_package_height_cm, product_length_cm, product_width_cm, product_height_cm, product_mouth_diameter_cm, capacity_ml, "
                             + "net_weight_kg, gross_weight_kg, gram_weight_g, inner_package_weight_kg, "
                             + "packaging_method, carton_quantity, sku_image_file_id, package_image_file_id, carton_image_file_id, "
-                            + "is_default, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                            + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(3), now(3))",
+                            + "product_photo_file_id, is_default, status, created_at, updated_at) values ("
+                            + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                            + "now(3), now(3))",
                     skuParameters(productId, sku, packaging)
             );
             return sku.withId(id);
@@ -491,10 +517,10 @@ public class ProductJpaAdapter implements ProductRepository {
                 "update product_sku set product_id=?, sku_code=?, barcode=?, sku_name=?, spec_text=?, sales_unit=?, "
                         + "default_sale_price=?, standard_cost=?, safety_stock_quantity=?, package_length_cm=?, package_width_cm=?, "
                         + "package_height_cm=?, package_volume_cm3=?, inner_package_length_cm=?, inner_package_width_cm=?, "
-                        + "inner_package_height_cm=?, product_length_cm=?, product_width_cm=?, product_height_cm=?, capacity_ml=?, "
+                        + "inner_package_height_cm=?, product_length_cm=?, product_width_cm=?, product_height_cm=?, product_mouth_diameter_cm=?, capacity_ml=?, "
                         + "net_weight_kg=?, gross_weight_kg=?, gram_weight_g=?, inner_package_weight_kg=?, "
                         + "packaging_method=?, carton_quantity=?, sku_image_file_id=?, package_image_file_id=?, carton_image_file_id=?, "
-                        + "is_default=?, status=?, updated_at=now(3) where id=? and product_id=?",
+                        + "product_photo_file_id=?, is_default=?, status=?, updated_at=now(3) where id=? and product_id=?",
                 parameters.toArray()
         );
         if (updated != 1) {
@@ -517,6 +543,7 @@ public class ProductJpaAdapter implements ProductRepository {
                 packaging == null ? null : packaging.productLengthCm(),
                 packaging == null ? null : packaging.productWidthCm(),
                 packaging == null ? null : packaging.productHeightCm(),
+                packaging == null ? null : packaging.productMouthDiameterCm(),
                 packaging == null ? null : packaging.capacityMl(),
                 packaging == null ? null : packaging.netWeightKg(),
                 packaging == null ? null : packaging.grossWeightKg(),
@@ -527,6 +554,7 @@ public class ProductJpaAdapter implements ProductRepository {
                 sku.skuImageFileId(),
                 packaging == null ? null : packaging.packageImageFileId(),
                 packaging == null ? null : packaging.cartonImageFileId(),
+                sku.productPhotoFileId(),
                 sku.isDefault(), sku.status()
         };
     }
@@ -640,7 +668,7 @@ public class ProductJpaAdapter implements ProductRepository {
                     row.type(), row.mainImageFileId(), row.status(), row.remark(),
                     specificationsByProductId.getOrDefault(productId, List.of()),
                     skusByProductId.getOrDefault(productId, List.of()),
-                    row.createdAt(), row.updatedAt()
+                    row.createdAt(), row.updatedAt(), row.imagePacks(), row.materialImages()
             ));
         }
         return products;
@@ -692,9 +720,9 @@ public class ProductJpaAdapter implements ProductRepository {
                 "select product_id, id, sku_code, barcode, sku_name, spec_text, sales_unit, default_sale_price, "
                         + "standard_cost, safety_stock_quantity, package_length_cm, package_width_cm, package_height_cm, "
                         + "package_volume_cm3, inner_package_length_cm, inner_package_width_cm, inner_package_height_cm, "
-                        + "product_length_cm, product_width_cm, product_height_cm, capacity_ml, "
+                        + "product_length_cm, product_width_cm, product_height_cm, product_mouth_diameter_cm, capacity_ml, "
                         + "net_weight_kg, gross_weight_kg, gram_weight_g, inner_package_weight_kg, packaging_method, "
-                        + "carton_quantity, sku_image_file_id, package_image_file_id, carton_image_file_id, "
+                        + "carton_quantity, sku_image_file_id, package_image_file_id, carton_image_file_id, product_photo_file_id, "
                         + "is_default, status from product_sku where product_id in (" + placeholders + ") "
                         + "order by product_id, is_default desc, id asc",
                 (RowCallbackHandler) resultSet -> skusByProductId.computeIfAbsent(
@@ -721,9 +749,9 @@ public class ProductJpaAdapter implements ProductRepository {
                 "select id, sku_code, barcode, sku_name, spec_text, sales_unit, default_sale_price, standard_cost, "
                         + "safety_stock_quantity, package_length_cm, package_width_cm, package_height_cm, package_volume_cm3, "
                         + "inner_package_length_cm, inner_package_width_cm, inner_package_height_cm, "
-                        + "product_length_cm, product_width_cm, product_height_cm, capacity_ml, net_weight_kg, "
+                        + "product_length_cm, product_width_cm, product_height_cm, product_mouth_diameter_cm, capacity_ml, net_weight_kg, "
                         + "gross_weight_kg, gram_weight_g, inner_package_weight_kg, packaging_method, carton_quantity, sku_image_file_id, "
-                        + "package_image_file_id, carton_image_file_id, is_default, status from product_sku "
+                        + "package_image_file_id, carton_image_file_id, product_photo_file_id, is_default, status from product_sku "
                         + "where product_id = ? order by is_default desc, id asc",
                 (resultSet, rowNumber) -> skuRow(resultSet, specValuesBySku), productId
         );
@@ -762,11 +790,13 @@ public class ProductJpaAdapter implements ProductRepository {
                         resultSet.getString("packaging_method"),
                         getNullableInteger(resultSet, "carton_quantity"),
                         getNullableLong(resultSet, "package_image_file_id"),
-                        getNullableLong(resultSet, "carton_image_file_id")
+                        getNullableLong(resultSet, "carton_image_file_id"),
+                        resultSet.getBigDecimal("product_mouth_diameter_cm")
                 ),
                 getNullableLong(resultSet, "sku_image_file_id"),
                 resultSet.getBoolean("is_default"),
-                resultSet.getString("status")
+                resultSet.getString("status"),
+                getNullableLong(resultSet, "product_photo_file_id")
         );
     }
 
@@ -783,8 +813,32 @@ public class ProductJpaAdapter implements ProductRepository {
                 resultSet.getString("status"),
                 resultSet.getString("remark"),
                 resultSet.getTimestamp("created_at").toLocalDateTime(),
-                resultSet.getTimestamp("updated_at").toLocalDateTime()
+                resultSet.getTimestamp("updated_at").toLocalDateTime(),
+                readJson(resultSet.getString("image_packs"), IMAGE_PACKS_TYPE),
+                readJson(resultSet.getString("material_images"), MATERIAL_IMAGES_TYPE)
         );
+    }
+
+    private String writeJson(List<?> values) {
+        if (values == null) {
+            return null;
+        }
+        try {
+            return JSON.writeValueAsString(values);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("保存产品图片数据失败", exception);
+        }
+    }
+
+    private <T> T readJson(String value, TypeReference<T> type) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return JSON.readValue(value, type);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("读取产品图片数据失败", exception);
+        }
     }
 
     private long insertAndReturnId(String sql, Object... parameters) {
@@ -837,7 +891,9 @@ public class ProductJpaAdapter implements ProductRepository {
             String status,
             String remark,
             java.time.LocalDateTime createdAt,
-            java.time.LocalDateTime updatedAt
+            java.time.LocalDateTime updatedAt,
+            List<ProductImagePack> imagePacks,
+            List<Long> materialImages
     ) {
     }
 

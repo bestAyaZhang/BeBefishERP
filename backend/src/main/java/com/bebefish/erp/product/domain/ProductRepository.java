@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -23,6 +24,10 @@ public interface ProductRepository {
     String nextProductCode();
 
     Optional<Product> findById(long id);
+
+    default Optional<Product> findByIdForUpdate(long id) {
+        return findById(id);
+    }
 
     Optional<Sku> findSku(long id);
 
@@ -52,7 +57,11 @@ public interface ProductRepository {
         return Optional.empty();
     }
 
-    default ProductCatalogData loadCatalogData(Collection<Long> productIds) {
+    default Set<Long> findEnabledImageFileIds(Collection<Long> fileIds) {
+        return Set.of();
+    }
+
+    default ProductCatalogData loadCatalogData(Collection<Long> productIds, Collection<Long> imageFileIds) {
         return ProductCatalogData.empty();
     }
 
@@ -67,7 +76,7 @@ public interface ProductRepository {
             Map<Long, BigDecimal> defaultSalePriceByProductId,
             Map<Long, String> defaultSupplierNameByProductId,
             Map<Long, String> categoryNameByProductId,
-            Map<Long, String> imageUrlByFileId
+            Map<Long, ImageFile> imageByFileId
     ) {
         public ProductCatalogData {
             stockQuantityBySkuId = Map.copyOf(stockQuantityBySkuId);
@@ -78,7 +87,7 @@ public interface ProductRepository {
             defaultSalePriceByProductId = Map.copyOf(defaultSalePriceByProductId);
             defaultSupplierNameByProductId = Map.copyOf(defaultSupplierNameByProductId);
             categoryNameByProductId = Map.copyOf(categoryNameByProductId);
-            imageUrlByFileId = Map.copyOf(imageUrlByFileId);
+            imageByFileId = Map.copyOf(imageByFileId);
         }
 
         public static ProductCatalogData empty() {
@@ -86,5 +95,8 @@ public interface ProductRepository {
                     Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of()
             );
         }
+    }
+
+    record ImageFile(String url, String name) {
     }
 }

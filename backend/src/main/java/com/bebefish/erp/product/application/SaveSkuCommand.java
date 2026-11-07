@@ -17,11 +17,25 @@ public record SaveSkuCommand(
         Long skuImageFileId,
         Boolean defaultSku,
         String status,
-        List<ProductSupplierQuoteCommand> supplierQuotes
+        List<ProductSupplierQuoteCommand> supplierQuotes,
+        ProductPhotoChange productPhoto
 ) {
     public SaveSkuCommand {
         specificationValues = specificationValues == null ? List.of() : List.copyOf(specificationValues);
         supplierQuotes = supplierQuotes == null ? null : List.copyOf(supplierQuotes);
+    }
+
+    public SaveSkuCommand(
+            Long id, String skuCode, String barcode, String skuName, List<String> specificationValues,
+            String salesUnit, BigDecimal defaultSalePrice, BigDecimal standardCost, BigDecimal safetyStockQuantity,
+            PackagingCommand packaging, Long skuImageFileId, Boolean defaultSku, String status,
+            List<ProductSupplierQuoteCommand> supplierQuotes
+    ) {
+        this(id, skuCode, barcode, skuName, specificationValues, salesUnit, defaultSalePrice, standardCost,
+                safetyStockQuantity, packaging, skuImageFileId, defaultSku, status, supplierQuotes, null);
+    }
+
+    public record ProductPhotoChange(Long fileId) {
     }
 
     public SaveSkuCommand(

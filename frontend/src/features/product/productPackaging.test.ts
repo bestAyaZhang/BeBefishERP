@@ -66,6 +66,20 @@ describe('getProductPackagingMode', () => {
     ])).toBe('per-sku');
   });
 
+  it('switches to per-sku when mouth diameters differ', () => {
+    expect(getProductPackagingMode([
+      { ...basePackaging, productMouthDiameterCm: 8.2 },
+      { ...basePackaging, productMouthDiameterCm: 8.3 }
+    ])).toBe('per-sku');
+  });
+
+  it('treats legacy missing mouth diameters and explicit null values as the same empty value', () => {
+    expect(getProductPackagingMode([
+      basePackaging,
+      { ...basePackaging, productMouthDiameterCm: null }
+    ])).toBe('uniform');
+  });
+
   it('switches to per-sku when an image file id differs', () => {
     expect(getProductPackagingMode([
       basePackaging,

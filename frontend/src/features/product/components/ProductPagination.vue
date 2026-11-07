@@ -54,7 +54,7 @@ function changeSize(event: Event) {
         <select
           data-testid="product-page-size"
           :value="size"
-          class="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/10"
+          class="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-[#0968b6] focus:ring-2 focus:ring-[#0968b6]/10"
           aria-label="每页条数"
           @change="changeSize"
         >
@@ -99,7 +99,7 @@ function changeSize(event: Event) {
       <button
         data-testid="product-page-prev"
         type="button"
-        class="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition enabled:hover:border-[#536dff] enabled:hover:text-[#536dff] disabled:cursor-not-allowed disabled:opacity-45"
+        class="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition enabled:hover:border-[#0968b6] enabled:hover:text-[#0968b6] disabled:cursor-not-allowed disabled:opacity-45"
         :disabled="page <= 1"
         aria-label="上一页"
         @click="emit('change-page', page - 1)"
@@ -121,7 +121,7 @@ function changeSize(event: Event) {
           :data-testid="`product-page-${item}`"
           type="button"
           class="flex h-8 min-w-8 items-center justify-center rounded-md border px-2 text-sm transition"
-          :class="item === page ? 'border-[#536dff] bg-[#536dff] text-white' : 'border-slate-200 text-[#25314d] hover:border-[#536dff] hover:text-[#536dff]'"
+          :class="item === page ? 'border-[#0968b6] bg-[#0968b6] text-white' : 'border-slate-200 text-[#25314d] hover:border-[#0968b6] hover:text-[#0968b6]'"
           :aria-current="item === page ? 'page' : undefined"
           @click="emit('change-page', item)"
         >
@@ -132,7 +132,7 @@ function changeSize(event: Event) {
       <button
         data-testid="product-page-next"
         type="button"
-        class="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition enabled:hover:border-[#536dff] enabled:hover:text-[#536dff] disabled:cursor-not-allowed disabled:opacity-45"
+        class="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition enabled:hover:border-[#0968b6] enabled:hover:text-[#0968b6] disabled:cursor-not-allowed disabled:opacity-45"
         :disabled="page >= pageCount"
         aria-label="下一页"
         @click="emit('change-page', page + 1)"
@@ -149,7 +149,7 @@ function changeSize(event: Event) {
       <select
         data-testid="product-page-size-desktop"
         :value="size"
-        class="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm text-[#25314d] outline-none focus:border-[#536dff] focus:ring-2 focus:ring-[#536dff]/10"
+        class="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm text-[#25314d] outline-none focus:border-[#0968b6] focus:ring-2 focus:ring-[#0968b6]/10"
         aria-label="每页条数"
         @change="changeSize"
       >

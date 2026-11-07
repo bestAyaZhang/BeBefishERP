@@ -3,8 +3,11 @@ package com.bebefish.erp.product.api;
 import com.bebefish.erp.product.application.ProductCatalogMetrics;
 import com.bebefish.erp.product.domain.Packaging;
 import com.bebefish.erp.product.domain.Product;
+import com.bebefish.erp.product.domain.ProductImagePack;
+import com.bebefish.erp.product.domain.ProductRepository.ImageFile;
 import com.bebefish.erp.product.domain.Sku;
 import com.bebefish.erp.product.domain.Specification;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -33,8 +36,23 @@ public record ProductResponse(
         List<SpecificationResponse> specifications,
         List<SkuResponse> skus,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        List<ImagePackResponse> imagePacks,
+        List<ImageResponse> materialImages
 ) {
+    public ProductResponse(
+            Long id, String productCode, String itemNo, String productName, Long categoryId, String categoryName,
+            String brand, String productType, Long mainImageFileId, String mainImageUrl, String defaultSupplierName,
+            BigDecimal totalStock, BigDecimal totalSafetyStock, BigDecimal defaultSalePrice, int completenessPercent,
+            String completenessStatus, List<String> missingGroups, String status, String remark,
+            List<SpecificationResponse> specifications, List<SkuResponse> skus,
+            LocalDateTime createdAt, LocalDateTime updatedAt
+    ) {
+        this(id, productCode, itemNo, productName, categoryId, categoryName, brand, productType, mainImageFileId,
+                mainImageUrl, defaultSupplierName, totalStock, totalSafetyStock, defaultSalePrice, completenessPercent,
+                completenessStatus, missingGroups, status, remark, specifications, skus, createdAt, updatedAt, null, List.of());
+    }
+
     static ProductResponse from(
             Product product,
             ProductCatalogMetrics metrics,
@@ -51,8 +69,37 @@ public record ProductResponse(
                 product.skus().stream().map(sku -> SkuResponse.from(
                         sku, metrics.skus().get(sku.id()), resolvedImageUrls
                 )).toList(),
-                product.createdAt(), product.updatedAt()
+                product.createdAt(), product.updatedAt(),
+                product.imagePacks() == null ? null : product.imagePacks().stream()
+                        .map(pack -> ImagePackResponse.from(pack, resolvedImageUrls, metrics.imageFiles())).toList(),
+                images(product.materialImages(), resolvedImageUrls, metrics.imageFiles())
         );
+    }
+
+    private static List<ImageResponse> images(List<Long> fileIds, Map<Long, String> urls, Map<Long, ImageFile> files) {
+        if (fileIds == null) {
+            return List.of();
+        }
+        return fileIds.stream().map(fileId -> {
+            var file = files.get(fileId);
+            return new ImageResponse(fileId, urls.get(fileId), file == null ? null : file.name());
+        }).toList();
+    }
+
+    public record ImageResponse(Long fileId, String url, String name) {
+    }
+
+    public record ImagePackResponse(
+            String name,
+            List<ImageResponse> main,
+            List<ImageResponse> sku,
+            List<ImageResponse> detail,
+            @JsonProperty("long") List<ImageResponse> longImages
+    ) {
+        static ImagePackResponse from(ProductImagePack pack, Map<Long, String> urls, Map<Long, ImageFile> files) {
+            return new ImagePackResponse(pack.name(), images(pack.main(), urls, files), images(pack.sku(), urls, files),
+                    images(pack.detail(), urls, files), images(pack.longImages(), urls, files));
+        }
     }
 
     public record SpecificationResponse(String name, List<String> values) {
@@ -98,8 +145,82 @@ public record ProductResponse(
             String cartonImageUrl,
             List<CatalogSupplierQuoteResponse> supplierQuotes,
             boolean defaultSku,
-            String status
+            String status,
+            BigDecimal productMouthDiameterCm,
+            Long productPhotoFileId,
+            String productPhotoUrl
     ) {
+        public SkuResponse(
+                Long id,
+                String skuCode,
+                String barcode,
+                String skuName,
+                String specText,
+                List<String> specificationValues,
+                String salesUnit,
+                BigDecimal defaultSalePrice,
+                BigDecimal standardCost,
+                BigDecimal safetyStockQuantity,
+                BigDecimal stockQuantity,
+                BigDecimal packageLengthCm,
+                BigDecimal packageWidthCm,
+                BigDecimal packageHeightCm,
+                BigDecimal packageVolumeCm3,
+                BigDecimal innerPackageLengthCm,
+                BigDecimal innerPackageWidthCm,
+                BigDecimal innerPackageHeightCm,
+                BigDecimal productLengthCm,
+                BigDecimal productWidthCm,
+                BigDecimal productHeightCm,
+                BigDecimal capacityMl,
+                BigDecimal netWeightKg,
+                BigDecimal grossWeightKg,
+                BigDecimal gramWeightG,
+                BigDecimal innerPackageWeightKg,
+                String packagingMethod,
+                Integer cartonQuantity,
+                Long skuImageFileId,
+                String skuImageUrl,
+                Long packageImageFileId,
+                String packageImageUrl,
+                Long cartonImageFileId,
+                String cartonImageUrl,
+                List<CatalogSupplierQuoteResponse> supplierQuotes,
+                boolean defaultSku,
+                String status
+        ) {
+            this(
+                    id, skuCode, barcode, skuName, specText,
+                    specificationValues, salesUnit, defaultSalePrice, standardCost, safetyStockQuantity,
+                    stockQuantity, packageLengthCm, packageWidthCm, packageHeightCm, packageVolumeCm3,
+                    innerPackageLengthCm, innerPackageWidthCm, innerPackageHeightCm, productLengthCm, productWidthCm,
+                    productHeightCm, capacityMl, netWeightKg, grossWeightKg, gramWeightG,
+                    innerPackageWeightKg, packagingMethod, cartonQuantity, skuImageFileId, skuImageUrl,
+                    packageImageFileId, packageImageUrl, cartonImageFileId, cartonImageUrl, supplierQuotes,
+                    defaultSku, status, null, null, null
+            );
+        }
+
+        public SkuResponse(
+                Long id, String skuCode, String barcode, String skuName, String specText, List<String> specificationValues,
+                String salesUnit, BigDecimal defaultSalePrice, BigDecimal standardCost, BigDecimal safetyStockQuantity,
+                BigDecimal stockQuantity, BigDecimal packageLengthCm, BigDecimal packageWidthCm, BigDecimal packageHeightCm,
+                BigDecimal packageVolumeCm3, BigDecimal innerPackageLengthCm, BigDecimal innerPackageWidthCm,
+                BigDecimal innerPackageHeightCm, BigDecimal productLengthCm, BigDecimal productWidthCm,
+                BigDecimal productHeightCm, BigDecimal capacityMl, BigDecimal netWeightKg, BigDecimal grossWeightKg,
+                BigDecimal gramWeightG, BigDecimal innerPackageWeightKg, String packagingMethod, Integer cartonQuantity,
+                Long skuImageFileId, String skuImageUrl, Long packageImageFileId, String packageImageUrl,
+                Long cartonImageFileId, String cartonImageUrl, List<CatalogSupplierQuoteResponse> supplierQuotes,
+                boolean defaultSku, String status, BigDecimal productMouthDiameterCm
+        ) {
+            this(id, skuCode, barcode, skuName, specText, specificationValues, salesUnit, defaultSalePrice, standardCost,
+                    safetyStockQuantity, stockQuantity, packageLengthCm, packageWidthCm, packageHeightCm, packageVolumeCm3,
+                    innerPackageLengthCm, innerPackageWidthCm, innerPackageHeightCm, productLengthCm, productWidthCm,
+                    productHeightCm, capacityMl, netWeightKg, grossWeightKg, gramWeightG, innerPackageWeightKg,
+                    packagingMethod, cartonQuantity, skuImageFileId, skuImageUrl, packageImageFileId, packageImageUrl,
+                    cartonImageFileId, cartonImageUrl, supplierQuotes, defaultSku, status, productMouthDiameterCm, null, null);
+        }
+
         static SkuResponse from(
                 Sku sku,
                 ProductCatalogMetrics.SkuCatalogMetrics metrics,
@@ -134,7 +255,9 @@ public record ProductResponse(
                     packaging == null ? null : packaging.cartonImageFileId(),
                     packaging == null ? null : imageUrls.get(packaging.cartonImageFileId()),
                     metrics.supplierQuotes().stream().map(CatalogSupplierQuoteResponse::from).toList(),
-                    sku.isDefault(), sku.status()
+                    sku.isDefault(), sku.status(),
+                    packaging == null ? null : packaging.productMouthDiameterCm(),
+                    sku.productPhotoFileId(), imageUrls.get(sku.productPhotoFileId())
             );
         }
     }

@@ -396,6 +396,62 @@ class ProductControllerTest {
     }
 
     @Test
+    void persistsNullableProductMouthDiameterAcrossCreateReadListAndUpdate() throws Exception {
+        var request = requestBody(null, "EW432-MOUTH", "口径参数产品", null);
+        skuInput(request).put("productMouthDiameterCm", "8.125");
+        var created = responseData(post("/api/products"), request);
+        var productId = created.path("id").asLong();
+        var skuId = created.path("skus").get(0).path("id").asLong();
+
+        assertThat(created.path("skus").get(0).path("productMouthDiameterCm").decimalValue())
+                .isEqualByComparingTo("8.125");
+        assertThat(jdbc.queryForObject(
+                "select product_mouth_diameter_cm from product_sku where id = ?", BigDecimal.class, skuId
+        )).isEqualByComparingTo("8.125");
+        mvc.perform(get("/api/products/{id}", productId).header("Authorization", bearer(viewToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.skus[0].productMouthDiameterCm").value(8.125));
+        mvc.perform(get("/api/products").header("Authorization", bearer(viewToken))
+                        .param("keyword", "EW432-MOUTH"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records[0].skus[0].productMouthDiameterCm").value(8.125));
+
+        var update = requestBody(null, "EW432-MOUTH", "口径参数产品", skuId);
+        skuInput(update).put("productMouthDiameterCm", "999999999.999");
+        var updated = responseData(put("/api/products/{id}", productId), update);
+        assertThat(updated.path("skus").get(0).path("productMouthDiameterCm").decimalValue())
+                .isEqualByComparingTo("999999999.999");
+
+        // Older clients can continue to omit the optional mouth diameter.
+        var withoutMouth = requestBody(null, "EW432-MOUTH", "口径参数产品", skuId);
+        var cleared = responseData(put("/api/products/{id}", productId), withoutMouth);
+        assertThat(cleared.path("skus").get(0).path("productMouthDiameterCm").isNull()).isTrue();
+        assertThat(jdbc.queryForObject(
+                "select product_mouth_diameter_cm from product_sku where id = ?", BigDecimal.class, skuId
+        )).isNull();
+    }
+
+    @Test
+    void rejectsInvalidProductMouthDiameterWithFieldSpecificMessages() throws Exception {
+        var invalidValues = Map.of(
+                "-0.001", "产品口径不能小于 0",
+                "8.1251", "产品口径最多允许 9 位整数和 3 位小数",
+                "1000000000", "产品口径最多允许 9 位整数和 3 位小数"
+        );
+        for (var invalid : invalidValues.entrySet()) {
+            var request = requestBody(null, "EW432-MOUTH-INVALID", "无效口径参数", null);
+            skuInput(request).put("productMouthDiameterCm", invalid.getKey());
+            mvc.perform(post("/api/products")
+                            .header("Authorization", bearer(editToken))
+                            .contentType(APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                    .andExpect(jsonPath("$.message").value(invalid.getValue()));
+        }
+    }
+
+    @Test
     void rejectsInvalidProductPhysicalValues() throws Exception {
         for (var value : List.of("-0.001", "1.0001")) {
             var request = requestBody(null, "INVALID-PHYSICAL-" + value, "无效物理数据", null);
@@ -732,6 +788,126 @@ class ProductControllerTest {
         assertThat(secondSupplierQuote.get("supplier_item_no")).isEqualTo("SUP-SWAPPED-2");
         assertThat(secondSupplierQuote.get("purchase_price").toString()).startsWith("8.80");
         assertThat(secondSupplierQuote.get("is_default")).isEqualTo(false);
+    }
+
+    @Test
+    void roundTripsOrderedProductMediaAndPreservesOmittedFieldsUntilExplicitlyCleared() throws Exception {
+        jdbc.update("insert into file_asset (original_name, storage_name, storage_path, access_url, content_type, "
+                + "size_bytes, status, created_at, updated_at) values ('Detail.jpg', 'T7-detail.jpg', "
+                + "'uploads/T7-detail.jpg', '/uploads/T7-detail.jpg', 'image/jpeg', 1, 'enabled', now(3), now(3))");
+        long detailId = jdbc.queryForObject("select id from file_asset where storage_name = 'T7-detail.jpg'", Long.class);
+        var firstImage = Map.of("fileId", imageId);
+        var secondImage = Map.of("fileId", detailId);
+        var request = requestBody(null, "EW432-MEDIA", "Media product", null);
+        var create = mvc.perform(post("/api/products")
+                        .header("Authorization", "Bearer " + editToken)
+                        .contentType(APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode created = objectMapper.readTree(create.getResponse().getContentAsByteArray()).get("data");
+        long productId = created.get("id").asLong();
+        assertThat(created.path("imagePacks").isNull()).isTrue();
+
+        skuInput(request).put("id", created.get("skus").get(0).get("id").asLong());
+        skuInput(request).put("productPhotoFileId", detailId);
+        request.put("imagePacks", List.of(
+                Map.of("name", "Retail", "main", List.of(secondImage, firstImage), "sku", List.of(firstImage),
+                        "detail", List.of(secondImage), "long", List.of(firstImage)),
+                Map.of("name", "Wholesale", "main", List.of(), "sku", List.of(), "detail", List.of(), "long", List.of())
+        ));
+        request.put("materialImages", List.of(firstImage, secondImage));
+        mvc.perform(put("/api/products/{id}", productId)
+                        .header("Authorization", "Bearer " + editToken)
+                        .contentType(APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imagePacks[0].main[0].name").value("Detail.jpg"))
+                .andExpect(jsonPath("$.data.skus[0].productPhotoUrl").value("/uploads/T7-detail.jpg"));
+
+        request.put("imagePacks", null);
+        request.remove("materialImages");
+        skuInput(request).remove("productPhotoFileId");
+        mvc.perform(put("/api/products/{id}", productId)
+                        .header("Authorization", "Bearer " + editToken)
+                        .contentType(APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/products/{id}", productId).header("Authorization", "Bearer " + viewToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imagePacks[0].name").value("Retail"))
+                .andExpect(jsonPath("$.data.imagePacks[1].name").value("Wholesale"))
+                .andExpect(jsonPath("$.data.imagePacks[0].main[0].fileId").value(detailId))
+                .andExpect(jsonPath("$.data.imagePacks[0].main[1].fileId").value(imageId))
+                .andExpect(jsonPath("$.data.imagePacks[0].sku[0].url").value("/uploads/T7-image.png"))
+                .andExpect(jsonPath("$.data.imagePacks[0].detail[0].url").value("/uploads/T7-detail.jpg"))
+                .andExpect(jsonPath("$.data.imagePacks[0].long[0].fileId").value(imageId))
+                .andExpect(jsonPath("$.data.materialImages[0].name").value("T7.png"))
+                .andExpect(jsonPath("$.data.materialImages[1].fileId").value(detailId))
+                .andExpect(jsonPath("$.data.skus[0].productPhotoFileId").value(detailId))
+                .andExpect(jsonPath("$.data.skus[0].packageImageFileId").value(imageId))
+                .andExpect(jsonPath("$.data.skus[0].cartonImageFileId").value(imageId));
+
+        mvc.perform(get("/api/products").param("keyword", "EW432-MEDIA").header("Authorization", bearer(viewToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records[0].imagePacks[0].main[0].name").value("Detail.jpg"))
+                .andExpect(jsonPath("$.data.records[0].skus[0].productPhotoUrl").value("/uploads/T7-detail.jpg"));
+
+        skuInput(request).put("productPhotoFileId", null);
+        mvc.perform(put("/api/products/{id}", productId)
+                        .header("Authorization", "Bearer " + editToken)
+                        .contentType(APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.skus[0].productPhotoFileId").isEmpty())
+                .andExpect(jsonPath("$.data.imagePacks[0].name").value("Retail"));
+
+        request.put("imagePacks", List.of());
+        request.put("materialImages", List.of());
+        mvc.perform(put("/api/products/{id}", productId)
+                        .header("Authorization", "Bearer " + editToken)
+                        .contentType(APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/products/{id}", productId).header("Authorization", "Bearer " + viewToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imagePacks").isArray())
+                .andExpect(jsonPath("$.data.imagePacks").isEmpty())
+                .andExpect(jsonPath("$.data.materialImages").isArray())
+                .andExpect(jsonPath("$.data.materialImages").isEmpty());
+        assertThat(jdbc.queryForObject("select count(*) from file_asset where id in (?, ?)", Integer.class,
+                imageId, detailId)).isEqualTo(2);
+    }
+
+    @Test
+    void rejectsInvalidMediaReferencesWithoutChangingTheProduct() throws Exception {
+        var request = requestBody(null, "EW432-MEDIA-INVALID", "Original product", null);
+        var create = mvc.perform(post("/api/products")
+                        .header("Authorization", "Bearer " + editToken)
+                        .contentType(APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode created = objectMapper.readTree(create.getResponse().getContentAsByteArray()).get("data");
+        long productId = created.get("id").asLong();
+        skuInput(request).put("id", created.get("skus").get(0).get("id").asLong());
+
+        request.put("productName", "Changed product");
+        request.put("materialImages", List.of(Map.of("fileId", Long.MAX_VALUE)));
+        mvc.perform(put("/api/products/{id}", productId)
+                        .header("Authorization", "Bearer " + editToken)
+                        .contentType(APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        request.remove("materialImages");
+        jdbc.update("update file_asset set content_type = 'application/pdf' where id = ?", imageId);
+        skuInput(request).put("productPhotoFileId", imageId);
+        mvc.perform(put("/api/products/{id}", productId)
+                        .header("Authorization", "Bearer " + editToken)
+                        .contentType(APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        mvc.perform(get("/api/products/{id}", productId).header("Authorization", "Bearer " + viewToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.productName").value("Original product"))
+                .andExpect(jsonPath("$.data.skus[0].productPhotoFileId").isEmpty());
     }
 
     @Test

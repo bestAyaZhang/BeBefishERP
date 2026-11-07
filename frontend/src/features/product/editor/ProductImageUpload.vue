@@ -12,6 +12,7 @@ const props = defineProps<{
   preview: string;
   label: string;
   testId: string;
+  disabled?: boolean;
   variant?: 'default' | 'wizard-main' | 'wizard-tile' | 'dialog-sku' | 'dialog-packaging';
 }>();
 
@@ -63,7 +64,18 @@ function invalidatePendingRequest() {
 async function upload(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
+  input.value = '';
   if (!file) return;
+  await uploadFile(file);
+}
+
+function dropImage(event: DragEvent) {
+  const file = event.dataTransfer?.files[0];
+  if (file) void uploadFile(file);
+}
+
+async function uploadFile(file: File) {
+  if (props.disabled) return;
   invalidatePendingRequest();
   revokeOwned(previewUrl.value);
   const generation = requestGeneration;
@@ -99,11 +111,11 @@ async function upload(event: Event) {
   } finally {
     if (mounted && generation === requestGeneration) setUploading(false);
     if (generation !== requestGeneration) revokeOwned(localPreview);
-    input.value = '';
   }
 }
 
 function remove() {
+  if (props.disabled) return;
   invalidatePendingRequest();
   revokeOwned(previewUrl.value);
   previewUrl.value = '';
@@ -155,7 +167,7 @@ onBeforeUnmount(() => {
       <strong class="mt-2 text-sm font-medium leading-5 text-[#25314d]">{{ previewUrl ? `替换${label}` : variant === 'wizard-main' ? '点击上传商品主图' : variant === 'dialog-sku' ? '上传 SKU 图片' : '点击或拖拽上传' }}</strong>
       <small class="mt-2 text-xs font-normal leading-[18px] text-[#8292ae]">{{ variant === 'dialog-sku' ? 'PNG / JPG，建议 1:1' : `JPG / PNG，${variant === 'wizard-main' ? '单张' : ''}不超过 5 MB` }}</small>
     </label>
-    <input :id="inputId" :data-testid="testId" class="sr-only" type="file" accept="image/*" @change="upload" />
+    <input :id="inputId" :data-testid="testId" :disabled="disabled" class="sr-only" type="file" accept="image/*" @change="upload" />
     <button v-if="previewUrl" :data-testid="`${testId}-remove`" type="button" class="absolute right-3 top-3 z-20 inline-flex h-8 items-center gap-1 rounded-lg border border-[#dbe4f1] bg-white px-2 text-xs font-medium text-[#ef476f] shadow-sm" :aria-label="`删除${label}`" @click="remove">
       <Trash2 class="h-4 w-4" aria-hidden="true" />
       删除
@@ -180,7 +192,7 @@ onBeforeUnmount(() => {
       </div>
       <p class="mt-2 text-xs text-[#8292ae]">PNG / JPG，建议 1:1</p>
       <div class="mt-2 flex items-center gap-2">
-        <input :id="inputId" :data-testid="testId" class="sr-only" type="file" accept="image/*" @change="upload" />
+        <input :id="inputId" :data-testid="testId" :disabled="disabled" class="sr-only" type="file" accept="image/*" @change="upload" />
         <label :for="inputId" class="inline-flex h-8 cursor-pointer items-center rounded-lg border border-[#dbe4f1] bg-white px-3 text-xs font-medium text-[#536dff]">{{ previewUrl ? '更换图片' : '上传图片' }}</label>
         <button v-if="previewUrl" :data-testid="`${testId}-remove`" type="button" class="text-xs font-medium text-[#ef476f]" :aria-label="`删除${label}`" @click="remove">删除</button>
       </div>
@@ -188,21 +200,21 @@ onBeforeUnmount(() => {
     </div>
   </div>
 
-  <div v-else class="min-w-0 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3">
-    <div class="flex min-h-20 items-center gap-3">
+  <div v-else class="min-w-0 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3" @dragover.prevent @drop.prevent="dropImage">
+    <div class="flex min-h-12 items-center gap-2">
       <img
         v-if="previewUrl"
         :data-testid="`${testId}-preview`"
         :src="previewUrl"
         :alt="`${label}预览`"
-        class="h-16 w-16 shrink-0 rounded-lg border border-slate-200 bg-white object-cover"
+        class="h-12 w-12 shrink-0 rounded-md border border-slate-200 bg-white object-contain"
         @error="markPreviewError"
       />
-      <span v-else class="grid h-16 w-16 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-400">
-        <ImageOff class="h-5 w-5" aria-hidden="true" />
+      <span v-else class="grid h-12 w-12 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-500">
+        <ImageOff class="h-4 w-4" aria-hidden="true" />
       </span>
       <div class="min-w-0 flex-1">
-        <p class="truncate text-sm font-black text-[#25314d]">{{ label }}</p>
+        <p class="break-words text-[13px] font-semibold text-[#25314d]">{{ label }}</p>
         <p :data-testid="`${testId}-status`" class="mt-1 text-xs font-bold" :class="status === 'error' ? 'text-rose-600' : status === 'uploaded' ? 'text-emerald-600' : 'text-slate-500'">{{ statusLabel() }}</p>
         <div v-if="status === 'uploading'" :data-testid="`${testId}-progress`" class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-label="图片上传进度" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="progress">
           <span class="block h-full rounded-full bg-[#536dff] transition-[width]" :style="{ width: `${progress}%` }" />
@@ -210,9 +222,9 @@ onBeforeUnmount(() => {
         <p v-if="error" class="mt-1 break-words text-xs font-semibold text-rose-600">{{ error }}</p>
       </div>
     </div>
-    <div class="mt-3 flex items-center gap-2">
-      <input :id="inputId" :data-testid="testId" class="sr-only" type="file" accept="image/*" @change="upload" />
-      <label :for="inputId" class="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-600 hover:border-[#536dff] hover:text-[#536dff]">
+    <div class="mt-2 flex flex-wrap items-center gap-2">
+      <input :id="inputId" :data-testid="testId" :aria-label="`选择${label}`" :disabled="disabled" class="peer sr-only" type="file" accept="image/*" @change="upload" />
+      <label :for="inputId" class="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-700 hover:border-[#0968b6] hover:text-[#0968b6] peer-focus-visible:ring-2 peer-focus-visible:ring-[#0968b6]">
         <Upload class="h-4 w-4" aria-hidden="true" />
         选择图片
       </label>

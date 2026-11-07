@@ -1,4 +1,5 @@
 import type { Product, ProductSku } from './types';
+import { formatProductDimensions } from './productDetailFormatting';
 
 export type ProductCatalogColumnId =
   | 'productInfo'
@@ -22,7 +23,14 @@ export type ProductCatalogColumnId =
   | 'packagingMethod'
   | 'grossWeight'
   | 'netWeight'
-  | 'gramWeight';
+  | 'gramWeight'
+  | 'specification'
+  | 'packaging'
+  | 'cartonMetrics'
+  | 'supplierSource'
+  | 'pricing'
+  | 'inventory'
+  | 'lifecycle';
 
 export interface ProductCatalogColumnDefinition {
   id: ProductCatalogColumnId;
@@ -35,15 +43,16 @@ export const PRODUCT_CATALOG_STORAGE_KEY = 'bebefish.product.catalog.columns.v1'
 export const MIN_CONFIGURABLE_PRODUCT_COLUMNS = 6;
 export const DEFAULT_PRODUCT_COLUMN_IDS: ProductCatalogColumnId[] = [
   'productInfo',
-  'category',
-  'brandSupplier',
-  'stock',
-  'price',
-  'completenessStatus'
+  'specification',
+  'packaging',
+  'cartonMetrics',
+  'pricing',
+  'inventory',
+  'lifecycle'
 ];
 
 export const PRODUCT_CATALOG_COLUMNS = [
-  { id: 'productInfo', label: '商品信息', width: 272, align: 'left' },
+  { id: 'productInfo', label: '商品档案', width: 232, align: 'left' },
   { id: 'productCode', label: '商品编码', width: 140, align: 'left' },
   { id: 'category', label: '分类', width: 100, align: 'left' },
   { id: 'productType', label: '商品类型', width: 96, align: 'center' },
@@ -64,7 +73,13 @@ export const PRODUCT_CATALOG_COLUMNS = [
   { id: 'packagingMethod', label: '内盒包装', width: 120, align: 'left' },
   { id: 'grossWeight', label: '毛重', width: 100, align: 'right' },
   { id: 'netWeight', label: '净重', width: 100, align: 'right' },
-  { id: 'gramWeight', label: '克重', width: 100, align: 'right' }
+  { id: 'gramWeight', label: '克重', width: 100, align: 'right' },
+  { id: 'specification', label: '产品规格', width: 180, align: 'left' },
+  { id: 'packaging', label: '包装信息', width: 118, align: 'left' },
+  { id: 'cartonMetrics', label: '箱规 / 体积 / 重量', width: 176, align: 'left' },
+  { id: 'pricing', label: '销售价 / 采购价', width: 134, align: 'right' },
+  { id: 'inventory', label: '可用库存', width: 100, align: 'right' },
+  { id: 'lifecycle', label: '状态 / 更新', width: 96, align: 'right' }
 ] satisfies readonly ProductCatalogColumnDefinition[];
 
 export type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -83,7 +98,7 @@ export function normalizeProductColumnIds(ids: unknown): ProductCatalogColumnId[
   const normalized: ProductCatalogColumnId[] = [];
   const seen = new Set<ProductCatalogColumnId>();
   for (const value of ids) {
-    const id = value as ProductCatalogColumnId;
+    const id = (value === 'supplierSource' ? 'cartonMetrics' : value) as ProductCatalogColumnId;
     if (!knownIds.has(id) || seen.has(id)) continue;
     seen.add(id);
     normalized.push(id);
@@ -127,16 +142,12 @@ export function resolveCatalogSku(product: Product): ProductSku | undefined {
 }
 
 export function formatCatalogDimensions(sku?: ProductSku): string {
-  if (!sku || [sku.productLengthCm, sku.productWidthCm, sku.productHeightCm]
-    .some((value) => value == null)) {
-    return '--';
-  }
-  return `${sku.productLengthCm} × ${sku.productWidthCm} × ${sku.productHeightCm} cm`;
+  return formatProductDimensions(sku);
 }
 
 export function formatCatalogUnit(
   value: number | null | undefined,
   unit: string
 ): string {
-  return value == null ? '--' : `${value} ${unit}`;
+  return value == null || !Number.isFinite(value) ? '--' : `${value} ${unit}`;
 }

@@ -67,6 +67,30 @@ class ProductCompletenessCalculatorTest {
     }
 
     @Test
+    void mouthDiameterAndHeightCompleteRoundProductDimensionsWithoutLengthOrWidth() {
+        var packaging = withProductDimensions(
+                completePackaging(), null, null, new BigDecimal("20"), new BigDecimal("8.125")
+        );
+
+        var result = calculator.calculate(withPackaging(packaging, "enabled"), completeQuotes());
+
+        assertThat(result.percent()).isEqualTo(100);
+        assertThat(result.missingGroups()).isEmpty();
+    }
+
+    @Test
+    void mouthDiameterStillRequiresHeightForCompleteness() {
+        var packaging = withProductDimensions(
+                completePackaging(), null, null, null, new BigDecimal("8.125")
+        );
+
+        var result = calculator.calculate(withPackaging(packaging, "enabled"), completeQuotes());
+
+        assertThat(result.percent()).isEqualTo(80);
+        assertThat(result.missingGroups()).containsExactly("产品尺寸");
+    }
+
+    @Test
     void productLengthIsRequiredForCompleteness() {
         var packaging = completePackaging();
         var withoutLength = withProductDimensions(
@@ -237,13 +261,23 @@ class ProductCompletenessCalculatorTest {
             BigDecimal productWidthCm,
             BigDecimal productHeightCm
     ) {
+        return withProductDimensions(packaging, productLengthCm, productWidthCm, productHeightCm, null);
+    }
+
+    private Packaging withProductDimensions(
+            Packaging packaging,
+            BigDecimal productLengthCm,
+            BigDecimal productWidthCm,
+            BigDecimal productHeightCm,
+            BigDecimal productMouthDiameterCm
+    ) {
         return new Packaging(
                 packaging.lengthCm(), packaging.widthCm(), packaging.heightCm(), packaging.volumeCm3(),
                 packaging.innerLengthCm(), packaging.innerWidthCm(), packaging.innerHeightCm(),
                 productLengthCm, productWidthCm, productHeightCm, packaging.capacityMl(),
                 packaging.netWeightKg(), packaging.grossWeightKg(), packaging.gramWeightG(),
                 packaging.innerWeightKg(), packaging.method(), packaging.cartonQuantity(),
-                packaging.packageImageFileId(), packaging.cartonImageFileId()
+                packaging.packageImageFileId(), packaging.cartonImageFileId(), productMouthDiameterCm
         );
     }
 

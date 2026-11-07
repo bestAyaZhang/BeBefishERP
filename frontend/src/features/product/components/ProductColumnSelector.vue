@@ -133,18 +133,18 @@ onBeforeUnmount(removeDocumentListeners);
       type="button"
       :aria-expanded="open"
       aria-controls="product-column-panel"
-      class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-[#25314d] transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536dff]"
+      class="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-[#25314d] transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0968b6]"
       @click="open = !open"
     >
       <Columns3 class="h-4 w-4 text-slate-500" aria-hidden="true" />
-      显示字段
+      列设置
     </button>
 
     <div
       v-if="open"
       id="product-column-panel"
       data-testid="product-column-panel"
-      class="absolute right-0 top-[calc(100%+8px)] z-30 w-[520px] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl"
+      class="absolute right-0 top-[calc(100%+8px)] z-40 w-[520px] max-w-[calc(100vw-64px)] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl"
     >
       <div class="flex h-14 items-center justify-between border-b border-slate-200 px-4">
         <div>
@@ -156,7 +156,7 @@ onBeforeUnmount(removeDocumentListeners);
         <button
           data-testid="product-column-reset"
           type="button"
-          class="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-[#536dff] transition hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536dff]"
+          class="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-[#0968b6] transition hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0968b6]"
           @click="emit('reset')"
         >
           <RotateCcw class="h-3.5 w-3.5" aria-hidden="true" />
@@ -177,7 +177,7 @@ onBeforeUnmount(removeDocumentListeners);
             class="flex h-10 min-w-0 items-center gap-2 rounded-md border bg-white px-2 text-sm text-slate-700 transition hover:border-slate-300"
             :class="[
               isLocked(column.id) ? 'text-slate-400' : '',
-              dragOverId === column.id ? 'border-[#536dff] bg-[#f5f7ff]' : 'border-slate-200'
+              dragOverId === column.id ? 'border-[#0968b6] bg-[#f3f8fc]' : 'border-slate-200'
             ]"
             @dragover="onDragOver(column.id, $event)"
             @drop="onDrop(column.id, $event)"
@@ -200,7 +200,7 @@ onBeforeUnmount(removeDocumentListeners);
                 :id="`product-column-${column.id}`"
                 :data-testid="`product-column-checkbox-${column.id}`"
                 type="checkbox"
-                class="h-4 w-4 shrink-0 rounded border-slate-300 accent-[#536dff] focus:ring-[#536dff]"
+                class="h-4 w-4 shrink-0 rounded border-slate-300 accent-[#0968b6] focus:ring-[#0968b6]"
                 :checked="true"
                 :disabled="isLocked(column.id)"
                 @change="updateColumn(column.id)"
@@ -245,7 +245,7 @@ onBeforeUnmount(removeDocumentListeners);
                 :id="`product-column-${column.id}`"
                 :data-testid="`product-column-checkbox-${column.id}`"
                 type="checkbox"
-                class="h-4 w-4 shrink-0 rounded border-slate-300 accent-[#536dff] focus:ring-[#536dff]"
+                class="h-4 w-4 shrink-0 rounded border-slate-300 accent-[#0968b6] focus:ring-[#0968b6]"
                 :checked="false"
                 @change="updateColumn(column.id)"
               />

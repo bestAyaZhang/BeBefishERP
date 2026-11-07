@@ -107,9 +107,9 @@ public class ProductController {
             com.bebefish.erp.product.domain.Product product,
             ProductCatalogMetrics metrics
     ) {
-        var imageUrls = metrics.imageUrls().entrySet().stream()
+        var imageUrls = metrics.imageFiles().entrySet().stream()
                 .collect(java.util.stream.Collectors.toMap(
-                        Map.Entry::getKey, entry -> urlResolver.resolve(entry.getValue())
+                        Map.Entry::getKey, entry -> urlResolver.resolve(entry.getValue().url())
                 ));
         return ProductResponse.from(product, metrics, imageUrls);
     }

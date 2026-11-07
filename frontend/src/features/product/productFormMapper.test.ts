@@ -136,4 +136,17 @@ describe('product form mapper', () => {
       expect(payload).not.toHaveProperty(field);
     }
   });
+
+  it.each([null, 0, 8.225])('preserves an explicit mouth diameter %s when opening the editor', (productMouthDiameterCm) => {
+    const payload = toProductFormPayload({
+      ...backendProduct,
+      skus: [{ ...backendProduct.skus[0], productMouthDiameterCm }]
+    });
+
+    expect(payload.skus[0].productMouthDiameterCm).toBe(productMouthDiameterCm);
+  });
+
+  it('normalizes legacy missing mouth diameter to null', () => {
+    expect(toProductFormPayload(backendProduct).skus[0].productMouthDiameterCm).toBeNull();
+  });
 });

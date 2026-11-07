@@ -1,4 +1,4 @@
-import type { ProductType } from './types';
+import type { ProductSku, ProductType } from './types';
 
 export const EMPTY_VALUE = '--';
 
@@ -75,6 +75,41 @@ export function formatDimensions(
     || width === null || width === undefined || !Number.isFinite(width)
     || height === null || height === undefined || !Number.isFinite(height)) return EMPTY_VALUE;
   return `${length} × ${width} × ${height} cm`;
+}
+
+export function formatProductDimensions(sku?: ProductSku | null): string {
+  const mouth = sku?.productMouthDiameterCm;
+  const height = sku?.productHeightCm;
+  if (typeof mouth === 'number' && Number.isFinite(mouth)
+    && typeof height === 'number' && Number.isFinite(height)) {
+    return `口径 ${mouth} × 高 ${height} cm`;
+  }
+  return formatDimensions(sku?.productLengthCm, sku?.productWidthCm, height);
+}
+
+export function formatSkuParameters(sku: ProductSku): string {
+  const fields: Array<[label: string, value: string]> = [
+    ['SKU 货号', formatText(sku.skuCode)],
+    ['SKU 名称', formatText(sku.skuName)],
+    ['规格', formatText(sku.specText?.trim() || sku.specificationValues.join(' / '))],
+    ['条码', formatText(sku.barcode)],
+    ['销售单位', formatText(sku.salesUnit)],
+    ['产品尺寸', formatProductDimensions(sku)],
+    ['容量', formatWithUnit(sku.capacityMl, 'ml')],
+    ['克重', formatWithUnit(sku.gramWeightG, 'g')],
+    ['包装方式', formatText(sku.packagingMethod)],
+    ['外箱尺寸', formatDimensions(sku.packageLengthCm, sku.packageWidthCm, sku.packageHeightCm)],
+    ['装箱数量', formatWithUnit(sku.cartonQuantity, `${sku.salesUnit?.trim() || ''}/箱`)],
+    ['箱规体积', formatWithUnit(sku.packageVolumeCm3, 'cm³')],
+    ['内盒尺寸', formatDimensions(sku.innerPackageLengthCm, sku.innerPackageWidthCm, sku.innerPackageHeightCm)],
+    ['内盒重量', formatWithUnit(sku.innerPackageWeightKg, 'kg')],
+    ['净重', formatWithUnit(sku.netWeightKg, 'kg')],
+    ['毛重', formatWithUnit(sku.grossWeightKg, 'kg')]
+  ];
+  return fields
+    .filter(([, value]) => value !== EMPTY_VALUE)
+    .map(([label, value]) => `${label}：${value.replace(/\s*[\r\n]+\s*/g, ' ')}`)
+    .join('\n');
 }
 
 export function formatDate(value: string | null | undefined): string {

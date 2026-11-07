@@ -3,6 +3,21 @@ import { createMockProductService } from './mockProductService';
 import type { Category } from '../masterdata/types';
 import type { Product, ProductFormPayload, ProductSupplierQuoteInput } from './types';
 
+describe('mock product mouth diameter persistence', () => {
+  it('preserves a distinct mouth diameter when creating, editing and reading a SKU', async () => {
+    const service = createMockProductService();
+    const payload = updatePayload();
+    payload.itemNo = 'MOUTH-ROUNDTRIP';
+    payload.skus[0].productMouthDiameterCm = 8.2;
+    const created = await service.createProduct(payload);
+    expect(created.skus[0].productMouthDiameterCm).toBe(8.2);
+    payload.skus[0].productMouthDiameterCm = 7.65;
+    const edited = await service.updateProduct(created.id, payload);
+    expect(edited.skus[0].productMouthDiameterCm).toBe(7.65);
+    expect((await service.getProduct(created.id)).skus[0].productMouthDiameterCm).toBe(7.65);
+  });
+});
+
 function seedProduct(): Product {
   return {
     id: 1,
