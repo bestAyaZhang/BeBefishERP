@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearCurrentUser, saveCurrentUser } from '../../services/authSession';
 import { clearMessages, messages } from '../../components/feedback/message';
 import ShipmentListView from './ShipmentListView.vue';
-import type { Shipment } from './types';
+import { downloadShipmentCsv } from './shipmentCsv';
+import { todayDate, type Shipment } from './types';
 
-const service = vi.hoisted(() => ({ list: vi.fn(), summary: vi.fn(), get: vi.fn(), updatePreparation: vi.fn(), getFilterOptions: vi.fn().mockResolvedValue({ platforms: [], shops: [] }) }));
+const service = vi.hoisted(() => ({ list: vi.fn(), listForExport: vi.fn(), summary: vi.fn(), get: vi.fn(), updatePreparation: vi.fn(), getFilterOptions: vi.fn().mockResolvedValue({ platforms: [], shops: [] }) }));
 enableAutoUnmount(afterEach);
 afterEach(clearMessages);
 vi.mock('./shippingService', () => ({ shippingService: service }));
+vi.mock('./shipmentCsv', () => ({ downloadShipmentCsv: vi.fn() }));
 
 function record(id = 8): Shipment {
   return {
@@ -47,6 +49,8 @@ beforeEach(() => {
   clearCurrentUser();
   service.summary.mockReset().mockResolvedValue({ todayCount: 7, unfinishedCount: 3, completedCount: 2, outOfStockCount: 1, partiallyShippedCount: 1 });
   service.list.mockReset().mockResolvedValue({ records: [record()], page: 1, pageSize: 20, total: 1 });
+  service.listForExport.mockReset();
+  vi.mocked(downloadShipmentCsv).mockClear();
 });
 
 describe('ShipmentListView', () => {
@@ -71,6 +75,51 @@ describe('ShipmentListView', () => {
     expect(company.element).toHaveProperty('value', '');
     expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, logisticsCompany: '', status: 'unfinished' }));
     expect(wrapper.get('.list-caption').text()).not.toContain('历史停用物流');
+  });
+
+  it('exports all matches using the applied filters even on another page with unsubmitted edits', async () => {
+    const exported = Array.from({ length: 21 }, (_, index) => record(index + 1));
+    service.getFilterOptions.mockResolvedValueOnce({ platforms: [], shops: [], logisticsCompanies: ['安能物流'] });
+    service.list.mockImplementation(async ({ page, size }) => ({
+      records: exported.slice((page - 1) * size, page * size), page, pageSize: size, total: exported.length
+    }));
+    service.listForExport.mockResolvedValueOnce(exported);
+    const { wrapper } = await render(['shipping:view']);
+    await wrapper.get('[aria-label="物流公司筛选"]').setValue('安能物流');
+    await wrapper.get('[data-testid="shipment-search"]').setValue('水族箱');
+    await wrapper.get('[data-testid="shipment-filter-form"]').trigger('submit');
+    await flushPromises();
+    await wrapper.get('[data-testid="shipment-next-page"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="shipment-search"]').setValue('尚未查询');
+    await wrapper.get('[data-testid="shipment-export"]').trigger('click');
+    await flushPromises();
+    expect(service.listForExport).toHaveBeenCalledWith({ keyword: '水族箱', logisticsCompany: '安能物流',
+      dateFrom: '', dateTo: '', platform: '', status: 'unfinished', incompleteOnly: false });
+    expect(downloadShipmentCsv).toHaveBeenCalledWith(exported, `发货列表-${todayDate()}.csv`);
+    expect(wrapper.get('.pagination').text()).toContain('2');
+    expect(messages.value).toContainEqual(expect.objectContaining({ type: 'success', text: '已导出 21 条发货记录' }));
+  });
+
+  it('blocks repeated exports while a request is pending and allows retry after an error', async () => {
+    let fail!: (reason: Error) => void;
+    service.listForExport.mockReturnValueOnce(new Promise((_resolve, reject) => { fail = reject; }));
+    const { wrapper } = await render();
+    const button = wrapper.get<HTMLButtonElement>('[data-testid="shipment-export"]');
+    await button.trigger('click');
+    expect(button.element.disabled).toBe(true);
+    expect(button.text()).toContain('导出中');
+    await button.trigger('click');
+    expect(service.listForExport).toHaveBeenCalledTimes(1);
+    fail(new Error('服务暂时不可用'));
+    await flushPromises();
+    expect(downloadShipmentCsv).not.toHaveBeenCalled();
+    expect(button.element.disabled).toBe(false);
+    expect(messages.value).toContainEqual(expect.objectContaining({ type: 'error', text: '导出失败：服务暂时不可用' }));
+    service.listForExport.mockResolvedValueOnce([record()]);
+    await button.trigger('click');
+    await flushPromises();
+    expect(downloadShipmentCsv).toHaveBeenCalledTimes(1);
   });
 
   it('keeps content ownership after a phone change and never grants it to the next holder of the old phone', async () => {

@@ -1,18 +1,30 @@
 import { request } from '../../services/http';
 import type { PageResult } from '../masterdata/types';
-import type { Shipment, ShippingService, LogisticsAvailability, LogisticsOrder, ShipmentSummary, ShippingFormOptions } from './types';
+import type { Shipment, ShipmentFilters, ShippingService, LogisticsAvailability, LogisticsOrder, ShipmentSummary, ShippingFormOptions } from './types';
+
+function shipmentFilterParams(filters: ShipmentFilters) {
+  const params = new URLSearchParams();
+  for (const key of ['keyword', 'status', 'dateFrom', 'dateTo', 'platform', 'logisticsCompany'] as const) {
+    const value = filters[key]?.trim();
+    if (value) params.set(key, value);
+  }
+  if (filters.incompleteOnly) params.set('incompleteOnly', 'true');
+  if (filters.platformId != null) params.set('platformId', String(filters.platformId));
+  if (filters.shopId != null) params.set('shopId', String(filters.shopId));
+  if (filters.unlinkedOnly) params.set('unlinkedOnly', 'true');
+  return params;
+}
 
 export const httpShippingService: ShippingService = {
   list(query) {
-    const params = new URLSearchParams({ page: String(query.page), size: String(query.size) });
-    for (const key of ['keyword', 'status', 'dateFrom', 'dateTo', 'platform', 'logisticsCompany'] as const) {
-      if (query[key]?.trim()) params.set(key, query[key]!.trim());
-    }
-    if (query.incompleteOnly) params.set('incompleteOnly', 'true');
-    if (query.platformId != null) params.set('platformId', String(query.platformId));
-    if (query.shopId != null) params.set('shopId', String(query.shopId));
-    if (query.unlinkedOnly) params.set('unlinkedOnly', 'true');
+    const params = shipmentFilterParams(query);
+    params.set('page', String(query.page));
+    params.set('size', String(query.size));
     return request<PageResult<Shipment>>(`/api/shipments?${params}`);
+  },
+  listForExport(filters) {
+    const params = shipmentFilterParams(filters).toString();
+    return request<Shipment[]>(params ? `/api/shipments/export?${params}` : '/api/shipments/export');
   },
   summary: date => request<ShipmentSummary>(`/api/shipments/summary?date=${encodeURIComponent(date)}`),
   formOptions: () => request<ShippingFormOptions>('/api/shipments/form-options'),

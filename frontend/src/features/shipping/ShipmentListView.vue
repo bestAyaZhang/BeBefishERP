@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { ArrowUpRight, Boxes, ChevronDown, ChevronLeft, ChevronRight, Plus, RotateCcw, Search, SlidersHorizontal } from 'lucide-vue-next';
+import { ArrowUpRight, Boxes, ChevronDown, ChevronLeft, ChevronRight, Download, Plus, RotateCcw, Search, SlidersHorizontal } from 'lucide-vue-next';
 import { currentUser } from '../../services/authSession';
 import { message } from '../../components/feedback/message';
 import { shippingService } from './shippingService';
+import { downloadShipmentCsv } from './shipmentCsv';
 import ShipmentPreparationDialog from './ShipmentPreparationDialog.vue';
 
 import { canEditPreparationContent, canUpdatePreparation } from './preparationAccess';
@@ -21,6 +22,7 @@ async function loadFilterOptions() {
 }
 const total = ref(0);
 const loading = ref(false);
+const exporting = ref(false);
 const error = ref('');
 const summaryError = ref('');
 const summary = ref<ShipmentSummary>({ todayCount: 0, unfinishedCount: 0, completedCount: 0, outOfStockCount: 0, partiallyShippedCount: 0 });
@@ -50,6 +52,7 @@ async function preparationSaved() {
 const pages = computed(() => Math.max(1, Math.ceil(total.value / query.size)));
 let listRequest = 0;
 let summaryRequest = 0;
+let disposed = false;
 
 async function loadSummary() {
   const request = ++summaryRequest;
@@ -74,6 +77,26 @@ async function load() {
   finally { if (request === listRequest) loading.value = false; }
 }
 
+async function exportShipments() {
+  if (exporting.value || loading.value || error.value || !total.value) return;
+  const { page, size, ...filters } = appliedQuery.value;
+  exporting.value = true;
+  try {
+    const rows = await shippingService.listForExport(filters);
+    if (disposed) return;
+    if (!rows.length) {
+      message.warning('当前筛选条件下暂无可导出的发货记录');
+      return;
+    }
+    downloadShipmentCsv(rows, `发货列表-${todayDate()}.csv`);
+    message.success(`已导出 ${rows.length} 条发货记录`);
+  } catch (cause) {
+    if (!disposed) message.error(cause instanceof Error ? `导出失败：${cause.message}` : '发货记录导出失败');
+  } finally {
+    exporting.value = false;
+  }
+}
+
 function search() { query.page = 1; query.incompleteOnly = false; void load(); }
 function filterStatus(status: ShipmentQuery['status']) { query.status = status; search(); }
 function filterLogisticsCompany() { query.page = 1; void load(); }
@@ -88,14 +111,20 @@ function openEdit(id: number) { return router.push({ name: 'shipping-edit', para
 function openCreate() { return router.push({ name: 'shipping-new' }); }
 
 onMounted(() => { void loadSummary(); void load(); void loadFilterOptions(); });
-onBeforeUnmount(() => { listRequest++; summaryRequest++; });
+onBeforeUnmount(() => { disposed = true; listRequest++; summaryRequest++; });
 </script>
 
 <template>
   <section data-testid="shipment-list-page" class="shipment-page">
     <header class="page-heading">
       <h1>发货列表</h1>
-      <button v-if="canCreate" data-testid="shipment-add" type="button" class="primary-button" @click="openCreate"><Plus :size="16" aria-hidden="true" />新建发货单</button>
+      <div class="heading-actions">
+        <button data-testid="shipment-export" type="button" class="secondary-button export-button"
+          :disabled="loading || !!error || !total || exporting" title="导出当前筛选条件下的全部发货记录" @click="exportShipments">
+          <Download :size="16" aria-hidden="true" />{{ exporting ? '导出中…' : '导出数据' }}
+        </button>
+        <button v-if="canCreate" data-testid="shipment-add" type="button" class="primary-button" @click="openCreate"><Plus :size="16" aria-hidden="true" />新建发货单</button>
+      </div>
     </header>
 
     <section class="today-summary" aria-label="今日概览">
@@ -172,13 +201,15 @@ onBeforeUnmount(() => { listRequest++; summaryRequest++; });
 /* Fluid sheet: available width = viewport - 244px navigation - 48px gutters.
    Table columns: 24 + 25 + 16 + 12 + 13 + 10 = 100%. */
 .shipment-page { --ink: #25314d; --muted: #5f6b7a; --line: #e8ebef; --blue: #2459b8; width: 100%; min-width: 0; padding: 28px 24px 32px; color: var(--ink); font-size: 14px; }
-.page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+.page-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
 .page-heading h1 { font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -.025em; }
+.heading-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .primary-button, .secondary-button, .prepare-button, .page-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 6px; font-weight: 500; white-space: nowrap; }
 .primary-button { min-height: 36px; padding: 0 14px; background: var(--blue); color: white; font-size: 13px; }
 .primary-button:hover { background: #1d4896; }
 .secondary-button { height: 36px; padding: 0 12px; border: 1px solid #d1d7df; background: white; color: var(--ink); font-size: 13px; }
 .secondary-button:hover, .page-button:not(:disabled):hover { background: #f3f5f8; border-color: #a9b4c3; }
+.export-button:disabled { border-color: var(--line); background: #f7f8fa; color: #697586; cursor: not-allowed; }
 .search-button { border-color: #c8daf5; color: var(--blue); }
 .search-button:hover { border-color: #aac7ef; background: #eff6ff; }
 .text-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; white-space: nowrap; font-size: 12px; color: var(--muted); }
@@ -300,6 +331,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .page-heading { margin-bottom: 20px; gap: 8px; }
   .page-heading h1 { font-size: 22px; }
   .primary-button { min-height: 44px; padding: 0 10px; font-size: 12px; }
+  .export-button { height: 44px; padding: 0 10px; font-size: 12px; }
   .today-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 13px; margin-bottom: 20px; }
   .summary-scope { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; }
   .summary-item { padding-left: 12px; gap: 3px; }

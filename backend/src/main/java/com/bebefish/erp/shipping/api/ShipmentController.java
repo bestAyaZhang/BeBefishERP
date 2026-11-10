@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.bebefish.erp.shipping.domain.*;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -34,13 +35,23 @@ public class ShipmentController {
     @PreAuthorize("hasAuthority('shipping:view')")
     public ApiResponse<PageResponse<Shipment>> list(
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String keyword, @RequestParam(required = false) String status,
-            @RequestParam(required = false) LocalDate dateFrom, @RequestParam(required = false) LocalDate dateTo,
-            @RequestParam(required = false) String platform, @RequestParam(defaultValue = "false") boolean incompleteOnly,
-            @RequestParam(required=false) Long platformId, @RequestParam(required=false) Long shopId,
-            @RequestParam(defaultValue="false") boolean unlinkedOnly,
-            @RequestParam(required=false) String logisticsCompany) {
-        return ApiResponse.success(PageResponse.from(service.list(new ShipmentQuery(keyword, status, dateFrom, dateTo, platform, incompleteOnly, platformId, shopId, unlinkedOnly, logisticsCompany), page, size)));
+            @ModelAttribute ShipmentFilters filters) {
+        return ApiResponse.success(PageResponse.from(service.list(filters.toQuery(), page, size)));
+    }
+
+    @GetMapping("/export")
+    @PreAuthorize("hasAuthority('shipping:view')")
+    public ApiResponse<List<Shipment>> export(@ModelAttribute ShipmentFilters filters) {
+        return ApiResponse.success(service.export(filters.toQuery()));
+    }
+
+    public record ShipmentFilters(String keyword, String status, LocalDate dateFrom, LocalDate dateTo,
+                                  String platform, Boolean incompleteOnly, Long platformId, Long shopId,
+                                  Boolean unlinkedOnly, String logisticsCompany) {
+        ShipmentQuery toQuery() {
+            return new ShipmentQuery(keyword, status, dateFrom, dateTo, platform, Boolean.TRUE.equals(incompleteOnly),
+                    platformId, shopId, Boolean.TRUE.equals(unlinkedOnly), logisticsCompany);
+        }
     }
 
     @GetMapping("/summary")

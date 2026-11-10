@@ -24,6 +24,7 @@ describe('mock shipment preparation content', () => {
     expect(first.total).toBe(2);
     expect(first.records.map(row => row.id)).toEqual([2]);
     expect((await service.list({ page: 2, size: 1, logisticsCompany: 'A物流' })).records.map(row => row.id)).toEqual([1]);
+    expect((await service.listForExport({ logisticsCompany: 'A物流' })).map(row => row.id)).toEqual([2, 1]);
     expect((await service.list({ page: 1, size: 20, logisticsCompany: 'A' })).total).toBe(0);
     expect((await service.list({ page: 1, size: 20, logisticsCompany: 'A物流', incompleteOnly: true })).records.map(row => row.id)).toEqual([1]);
     expect((await service.getFilterOptions()).logisticsCompanies).toEqual(['A物流', 'B历史物流']);

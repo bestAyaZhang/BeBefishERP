@@ -4,6 +4,7 @@ import com.bebefish.erp.auth.domain.TokenIssuer;
 import com.bebefish.erp.support.TestAuthTokens;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -57,6 +58,38 @@ class ShipmentLogisticsFilterIntegrationTest {
                         .param("keyword", group).param("logisticsCompany", company).param("status", "completed"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.records[0].id").value(legacyOrdered));
+    }
+
+    @Test
+    void exportIncludesEveryMatchingShipmentBeyondThePageLimitInListOrder() throws Exception {
+        String group = group(), company = "导出物流%_", token = token();
+        var matchingIds = new ArrayList<Long>();
+        for (int index = 1; index <= 101; index++) {
+            matchingIds.add(shipment(group, index, " " + company + " ", "unfinished", null));
+        }
+        shipment(group, 102, company + "分部", "unfinished", null);
+        shipment(group, 103, company, "completed", null);
+        shipment(group(), 1, company, "unfinished", null);
+
+        var list = mvc.perform(get("/api/shipments").header("Authorization", "Bearer " + token)
+                        .param("keyword", group).param("logisticsCompany", company).param("status", "unfinished")
+                        .param("size", "100"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(101))
+                .andExpect(jsonPath("$.data.records.length()").value(100))
+                .andReturn().getResponse().getContentAsByteArray();
+        var export = mvc.perform(get("/api/shipments/export").header("Authorization", "Bearer " + token)
+                        .param("keyword", group).param("logisticsCompany", company).param("status", "unfinished"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(101))
+                .andReturn().getResponse().getContentAsByteArray();
+
+        var listRows = mapper.readTree(list).at("/data/records");
+        var exportedRows = mapper.readTree(export).at("/data");
+        var exportedIds = new ArrayList<Long>();
+        exportedRows.forEach(row -> exportedIds.add(row.get("id").asLong()));
+        assertThat(exportedIds).containsExactlyElementsOf(matchingIds.reversed());
+        for (int index = 0; index < listRows.size(); index++) {
+            assertThat(exportedRows.get(index)).isEqualTo(listRows.get(index));
+        }
     }
 
     @Test

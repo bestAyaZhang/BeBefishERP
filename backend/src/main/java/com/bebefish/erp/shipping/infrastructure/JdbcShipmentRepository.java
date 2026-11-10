@@ -142,10 +142,11 @@ public class JdbcShipmentRepository implements ShipmentRepository {
             where.append(" and trim(s.logistics_company)=:logisticsCompany");
             params.addValue("logisticsCompany", query.logisticsCompany().strip());
         }
+        String select = SHIPMENT_SELECT + where + " order by s.shipment_date desc, s.id desc";
+        if (pageable.isUnpaged()) return new PageImpl<>(jdbc.query(select, params, this::map));
         Long total = jdbc.queryForObject("select count(*) from shipment s" + where, params, Long.class);
         params.addValue("limit", pageable.getPageSize()).addValue("offset", pageable.getOffset());
-        var records = jdbc.query(SHIPMENT_SELECT + where
-                + " order by s.shipment_date desc, s.id desc limit :limit offset :offset", params, this::map);
+        var records = jdbc.query(select + " limit :limit offset :offset", params, this::map);
         return new PageImpl<>(records, pageable, total == null ? 0 : total);
     }
 

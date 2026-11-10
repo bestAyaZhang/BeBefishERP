@@ -1,3 +1,4 @@
+import { downloadCsv, escapeCsvCell, type CsvValue } from '../../services/csvDownload';
 import type { Product, ProductCatalogSupplierQuote, ProductSku } from './types';
 import {
   EMPTY_VALUE,
@@ -29,8 +30,6 @@ export function formatProductPriceRange(product: Product): string {
 export function formatProductNumber(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? EMPTY_VALUE : numberFormatter.format(value);
 }
-
-type CsvValue = string | number | null | undefined;
 
 interface CsvRow {
   product: Product;
@@ -93,37 +92,18 @@ const csvColumns: { label: string; value: (row: CsvRow) => CsvValue }[] = [
   { label: '更新时间', value: ({ product }) => product.updatedAt }
 ];
 
-function escapeCsvCell(value: CsvValue): string {
-  if (value == null || (typeof value === 'number' && !Number.isFinite(value))) return EMPTY_VALUE;
-  if (typeof value === 'string' && !value.trim()) return EMPTY_VALUE;
-  // Prefix before any whitespace so spreadsheet import cannot expose a formula after trimming.
-  const text = typeof value === 'string' && /^\s*[=+\-@]/u.test(value) ? `'${value}` : String(value);
-  return /[",\r\n]/u.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
-
 export function buildProductCsv(products: Product[]): string {
-  const rows = [csvColumns.map(({ label }) => escapeCsvCell(label)).join(',')];
+  const rows = [csvColumns.map(({ label }) => escapeCsvCell(label, EMPTY_VALUE)).join(',')];
   for (const product of products) {
     const skus: (ProductSku | undefined)[] = product.skus.length ? product.skus : [undefined];
     for (const sku of skus) {
       const row: CsvRow = { product, sku, quote: getDefaultSupplierQuote(sku) };
-      rows.push(csvColumns.map(({ value }) => escapeCsvCell(value(row))).join(','));
+      rows.push(csvColumns.map(({ value }) => escapeCsvCell(value(row), EMPTY_VALUE)).join(','));
     }
   }
   return `\uFEFF${rows.join('\r\n')}\r\n`;
 }
 
 export function downloadProductCsv(products: Product[], filename: string): void {
-  const blob = new Blob([buildProductCsv(products)], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.append(anchor);
-  try {
-    anchor.click();
-  } finally {
-    anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
+  downloadCsv(buildProductCsv(products), filename);
 }

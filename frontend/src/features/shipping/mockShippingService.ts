@@ -1,5 +1,5 @@
 import { currentUser } from '../../services/authSession';
-import type { Shipment, ShippingService, ShipmentStatus } from './types';
+import type { Shipment, ShipmentFilters, ShippingService, ShipmentStatus } from './types';
 import { todayDate } from './types';
 import { mockCatalogOptions } from '../platform/mockPlatformService';
 import { canConfirmCreator, canEditPreparationContent, canUpdatePreparation, shipmentOperatorIdentifier } from './preparationAccess';
@@ -10,6 +10,24 @@ export function createMockShippingService(): ShippingService {
   const read = (): Shipment[] => JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
   const write = (records: Shipment[]) => localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
   const operator = () => currentUser.value?.displayName ?? currentUser.value?.mobile ?? '演示用户';
+  function filterRecords(query: ShipmentFilters) {
+    const keyword = query.keyword?.trim().toLocaleLowerCase() ?? '';
+    return read().filter(row => {
+      const c = row.content;
+      return (!query.dateFrom || c.shipmentDate >= query.dateFrom)
+        && (!query.dateTo || c.shipmentDate <= query.dateTo)
+        && (!query.status || c.status === query.status)
+        && (!query.incompleteOnly || c.status !== 'completed')
+        && (!query.platform?.trim() || c.platform === query.platform.trim())
+        && (!query.logisticsCompany?.trim() || (c.logisticsCompany ?? '').trim() === query.logisticsCompany.trim())
+        && (!query.platformId || c.platformId === query.platformId)
+        && (!query.shopId || c.shopId === query.shopId)
+        && (!query.unlinkedOnly || c.shopId == null)
+        && (!keyword || [row.shipmentNo, c.recipientName, c.recipientPhone, c.trackingNo,
+          c.preparationContent, c.preparers.join('、'), c.orderer, c.shopName]
+          .some(value => value.toLocaleLowerCase().includes(keyword)));
+    }).sort((a, b) => b.content.shipmentDate.localeCompare(a.content.shipmentDate) || b.id - a.id);
+  }
   return {
     async logisticsAvailability() { return { available: false, testEnvironment: true,
       message: '演示数据不提交真实物流订单', sender: null }; },
@@ -30,25 +48,11 @@ export function createMockShippingService(): ShippingService {
         outOfStockCount: count('out_of_stock'), partiallyShippedCount: count('partially_shipped') };
     },
     async list(query) {
-      const keyword = query.keyword?.trim().toLocaleLowerCase() ?? '';
-      const records = read().filter(row => {
-        const c = row.content;
-        return (!query.dateFrom || c.shipmentDate >= query.dateFrom)
-          && (!query.dateTo || c.shipmentDate <= query.dateTo)
-          && (!query.status || c.status === query.status)
-          && (!query.incompleteOnly || c.status !== 'completed')
-          && (!query.platform?.trim() || c.platform === query.platform.trim())
-          && (!query.logisticsCompany?.trim() || (c.logisticsCompany ?? '').trim() === query.logisticsCompany.trim())
-          && (!query.platformId || c.platformId === query.platformId)
-          && (!query.shopId || c.shopId === query.shopId)
-          && (!query.unlinkedOnly || c.shopId == null)
-          && (!keyword || [row.shipmentNo, c.recipientName, c.recipientPhone, c.trackingNo,
-            c.preparationContent, c.preparers.join('、'), c.orderer, c.shopName]
-            .some(value => value.toLocaleLowerCase().includes(keyword)));
-      }).sort((a, b) => b.content.shipmentDate.localeCompare(a.content.shipmentDate) || b.id - a.id);
+      const records = filterRecords(query);
       return { records: records.slice((query.page - 1) * query.size, query.page * query.size),
         page: query.page, pageSize: query.size, total: records.length };
     },
+    async listForExport(filters) { return filterRecords(filters); },
     async get(id) {
       const record = read().find(row => row.id === id);
       if (!record) throw new Error('发货单不存在');

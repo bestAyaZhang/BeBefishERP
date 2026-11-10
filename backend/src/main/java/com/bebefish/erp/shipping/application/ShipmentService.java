@@ -16,6 +16,7 @@ import java.util.HashSet;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -171,6 +172,17 @@ public class ShipmentService {
     @Transactional(readOnly = true)
     public Page<Shipment> list(ShipmentQuery query, int page, int size) {
         if (page < 1 || size < 1 || size > 100) throw invalid("分页参数无效");
+        validateFilters(query);
+        return repository.findAll(query, PageRequest.of(page - 1, size));
+    }
+
+    @Transactional(readOnly = true)
+    public List<Shipment> export(ShipmentQuery query) {
+        validateFilters(query);
+        return repository.findAll(query, Pageable.unpaged()).getContent();
+    }
+
+    private void validateFilters(ShipmentQuery query) {
         if (query.status() != null && !query.status().isBlank()) validateStatus(query.status());
         if (query.dateFrom() != null && query.dateTo() != null && query.dateFrom().isAfter(query.dateTo()))
             throw invalid("开始日期不能晚于结束日期");
@@ -180,7 +192,6 @@ public class ShipmentService {
         if(query.platformId()!=null && query.platform()!=null && !query.platform().isBlank()) throw invalid("平台ID与历史平台名称不能同时筛选");
         if(query.unlinkedOnly() && query.shopId()!=null) throw invalid("历史未关联筛选不能指定店铺");
         sources.validateFilter(query.platformId(),query.shopId());
-        return repository.findAll(query, PageRequest.of(page - 1, size));
     }
 
     @Transactional(readOnly = true)

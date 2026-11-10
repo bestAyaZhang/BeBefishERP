@@ -81,12 +81,10 @@ export interface Shipment {
   preparation?: { actualWeight: number | null; updatedBy: string | null; employeeId?: number | null; updatedAt: string | null };
 }
 
-export interface ShipmentQuery {
+export interface ShipmentFilters {
   platformId?: number;
   shopId?: number;
   unlinkedOnly?: boolean;
-  page: number;
-  size: number;
   keyword?: string;
   status?: ShipmentStatus | '';
   dateFrom?: string;
@@ -94,6 +92,11 @@ export interface ShipmentQuery {
   platform?: string;
   logisticsCompany?: string;
   incompleteOnly?: boolean;
+}
+
+export interface ShipmentQuery extends ShipmentFilters {
+  page: number;
+  size: number;
 }
 
 export interface ShipmentSummary {
@@ -147,6 +150,7 @@ export interface LogisticsTrace { status:'available'|'empty'|'unavailable'|'not_
 
 export interface ShippingService {
   list(query: ShipmentQuery): Promise<PageResult<Shipment>>;
+  listForExport(filters: ShipmentFilters): Promise<Shipment[]>;
   summary(date: string): Promise<ShipmentSummary>;
   formOptions(): Promise<ShippingFormOptions>;
   getFilterOptions(): Promise<ShippingFilterOptions>;

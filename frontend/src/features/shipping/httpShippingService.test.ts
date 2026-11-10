@@ -24,6 +24,18 @@ describe('shipping HTTP contract', () => {
     expect(new URL(fetcher.mock.calls[1][0], 'http://localhost').searchParams.has('logisticsCompany')).toBe(false);
   });
 
+  it('requests every export record using the same filters without pagination', async () => {
+    const fetcher = vi.fn().mockResolvedValue(ok([{ id: 41 }]));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(httpShippingService.listForExport({ keyword: ' 水族箱 ', logisticsCompany: ' 安能物流 ',
+      dateFrom: '2026-11-01', dateTo: '2026-11-10', platformId: 2, shopId: 4, incompleteOnly: true }))
+      .resolves.toEqual([{ id: 41 }]);
+    const url = new URL(fetcher.mock.calls[0][0], 'http://localhost');
+    expect(url.pathname).toBe('/api/shipments/export');
+    expect(Object.fromEntries(url.searchParams)).toEqual({ keyword: '水族箱', logisticsCompany: '安能物流',
+      dateFrom: '2026-11-01', dateTo: '2026-11-10', platformId: '2', shopId: '4', incompleteOnly: 'true' });
+  });
+
   it('reads logistics trace through the dedicated GET route',async()=>{
     const trace={status:'empty',message:'无轨迹信息',events:[]};
     const fetcher=vi.fn().mockResolvedValue(ok(trace));vi.stubGlobal('fetch',fetcher);

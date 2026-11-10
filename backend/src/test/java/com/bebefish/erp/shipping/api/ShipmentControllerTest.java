@@ -402,6 +402,55 @@ class ShipmentControllerTest {
     }
 
     @Test
+    void shipmentExportAppliesTheListFiltersAndReturnsAnUnpagedArray() throws Exception {
+        login("发货查看人", "shipping:view");
+        var query = new ShipmentQuery("收件人", "unfinished", LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30),
+                null, true, 1L, 1L, false, "安能物流");
+        var unpaged = org.springframework.data.domain.Pageable.unpaged();
+        when(repository.findAll(query, unpaged)).thenReturn(new org.springframework.data.domain.PageImpl<>(
+                List.of(contentRecord("employee:42", "unfinished"))));
+
+        mvc.perform(get("/api/shipments/export").param("keyword", "收件人").param("status", "unfinished")
+                        .param("dateFrom", "2026-09-01").param("dateTo", "2026-09-30")
+                        .param("platformId", "1").param("shopId", "1").param("incompleteOnly", "true")
+                        .param("logisticsCompany", "安能物流"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].id").value(17));
+
+        verify(repository).findAll(query, unpaged);
+    }
+
+    @Test
+    void shipmentExportRequiresShippingViewPermission() throws Exception {
+        login("物流查看人", "logistics:view", "shipping:order");
+
+        mvc.perform(get("/api/shipments/export")).andExpect(status().isForbidden());
+
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void shipmentExportRejectsInvalidFilterCombinationsBeforeQuerying() throws Exception {
+        login("发货查看人", "shipping:view");
+
+        mvc.perform(get("/api/shipments/export").param("shopId", "1").param("unlinkedOnly", "true"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void malformedFilterDatesReturnBadRequestForListAndExport() throws Exception {
+        login("发货查看人", "shipping:view");
+
+        for (String path : List.of("/api/shipments", "/api/shipments/export")) {
+            mvc.perform(get(path).param("dateFrom", "not-a-date"))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        }
+
+        verifyNoInteractions(repository);
+    }
+
+    @Test
     void viewPermissionCanLoadSummaryAndNarrowFormOptions() throws Exception {
         login("查看人", "shipping:view");
         when(repository.summary(LocalDate.of(2026, 9, 24)))
