@@ -81,6 +81,46 @@ class QiniuImagePreviewServiceTest {
     }
 
     @Test
+    void unsupportedWebpDoesNotReadStorageBeforeRedirecting() {
+        var reads = new AtomicInteger();
+        var service = service(key -> { reads.incrementAndGet(); return new QiniuImage(new byte[]{1, 2, 3}, "image/webp"); }, "");
+        for (int i = 0; i < 3; i++) assertThat(service.preview("glass.webp", "thumb").getStatusCode()).isEqualTo(HttpStatus.FOUND);
+        assertThat(reads).hasValue(0);
+    }
+
+    @Test
+    void cachesUnsupportedContentsEvenWhenTheFilenameIsNotWebp() {
+        var reads = new AtomicInteger();
+        QiniuImageReader source = key -> { reads.incrementAndGet(); return new QiniuImage(new byte[]{1, 2, 3}, "image/webp"); };
+        for (int i = 0; i < 3; i++) assertThat(service(source, "").preview("renamed.png", "thumb").getStatusCode()).isEqualTo(HttpStatus.FOUND);
+        assertThat(reads).hasValue(1);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"1,40,20,false", "2,40,20,true", "3,40,20,true", "4,40,20,false",
+            "5,20,40,false", "6,20,40,false", "7,20,40,true", "8,20,40,true"})
+    void honorsPhonePhotoRotationAndMirroring(int orientation, int width, int height, boolean topLeftBlue) throws Exception {
+        var jpeg = orientedJpeg(orientation);
+        var response = service(key -> new QiniuImage(jpeg, "image/jpeg"), "").preview("phone.jpg", "thumb");
+        var rendered = ImageIO.read(new ByteArrayInputStream((byte[]) response.getBody()));
+        assertThat(rendered.getWidth()).isEqualTo(width); assertThat(rendered.getHeight()).isEqualTo(height);
+        var corner = new Color(rendered.getRGB(2, 2));
+        assertThat(corner.getRed() < 80 && corner.getBlue() > 150).isEqualTo(topLeftBlue);
+    }
+
+    @Test
+    void evictsOldDiskPreviewsWhenCacheReachesItsCapacity() throws Exception {
+        var old = directory.resolve("preview-v1-old-thumb.jpg");
+        try (var file = java.nio.channels.FileChannel.open(old, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE)) {
+            file.position(256L * 1024 * 1024 - 1); file.write(java.nio.ByteBuffer.wrap(new byte[]{0}));
+        }
+        java.nio.file.Files.setLastModifiedTime(old, java.nio.file.attribute.FileTime.fromMillis(1));
+        var service = service(key -> image(100, 50, false), "");
+        service.preview("new.png", "thumb");
+        assertThat(java.nio.file.Files.exists(old)).isFalse();
+    }
+
+    @Test
     void signsCdnProcessingUrlAndKeepsRedirectLifetimeShorterThanSignature() throws Exception {
         var reads = new AtomicInteger();
         var response = service(key -> { reads.incrementAndGet(); return image(10, 10, false); }, "https://img.example.com/")
@@ -113,5 +153,14 @@ class QiniuImagePreviewServiceTest {
             var output = new ByteArrayOutputStream(); ImageIO.write(image, "png", output);
             return new QiniuImage(output.toByteArray(), "image/png");
         } catch (Exception exception) { throw new AssertionError(exception); }
+    }
+
+    private static byte[] orientedJpeg(int orientation) throws Exception {
+        var bitmap = ImageIO.read(new ByteArrayInputStream(image(40, 20, false).content()));
+        var jpeg = new ByteArrayOutputStream(); ImageIO.write(bitmap, "jpeg", jpeg);
+        var raw = jpeg.toByteArray();
+        var output = new ByteArrayOutputStream(); output.write(raw, 0, 2);
+        output.write(new byte[]{(byte) 0xff,(byte) 0xe1,0,34,'E','x','i','f',0,0,'I','I',42,0,8,0,0,0,1,0,18,1,3,0,1,0,0,0,(byte) orientation,0,0,0,0,0,0,0});
+        output.write(raw, 2, raw.length - 2); return output.toByteArray();
     }
 }

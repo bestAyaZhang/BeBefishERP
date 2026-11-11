@@ -1,7 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { imagePreviewUrl } from './imageUrls';
 
 describe('managed image preview URLs', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it('retains same-origin proxy support when an external development API base is configured', () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com');
+    expect(imagePreviewUrl('/api/files/content/glass.png', 'thumb')).toBe('/api/files/content/glass.png?variant=thumb');
+    expect(imagePreviewUrl('https://api.example.com/api/files/content/glass.png', 'thumb')).toBe('https://api.example.com/api/files/content/glass.png?variant=thumb');
+  });
   it('adds a bounded display variant while retaining other query parameters and fragments', () => {
     expect(imagePreviewUrl('/api/files/content/glass.png?version=2#image', 'thumb'))
       .toBe('/api/files/content/glass.png?version=2&variant=thumb#image');

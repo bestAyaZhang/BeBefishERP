@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
 final class QiniuImagePreviewService {
     private static final Pattern KEY = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,254}");
     private static final long MAX_CACHE_BYTES = 256L * 1024 * 1024;
+    private static final Rendered ORIGINAL = new Rendered(new byte[]{0}, "");
     private final QiniuImageReader source;
     private final Path directory;
     private final String cdnDomain;
@@ -64,13 +65,18 @@ final class QiniuImagePreviewService {
                     .location(URI.create(auth.privateDownloadUrlWithDeadline(url, deadline)))
                     .cacheControl(CacheControl.maxAge(Duration.ofMinutes(5)).cachePublic()).build();
         }
+        if (key.toLowerCase(java.util.Locale.ROOT).endsWith(".webp") && !ImageIO.getImageReadersByFormatName("webp").hasNext())
+            return originalRedirect(key);
         var rendered = cachedPreview(key, variant, dimension);
-        if (rendered == null) return ResponseEntity.status(HttpStatus.FOUND)
-                .location(URI.create("/api/files/content/" + key))
-                .cacheControl(CacheControl.maxAge(Duration.ofMinutes(5))).build();
+        if (rendered == ORIGINAL) return originalRedirect(key);
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(rendered.contentType()))
                 .cacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable())
                 .body(rendered.bytes());
+    }
+
+    private ResponseEntity<?> originalRedirect(String key) {
+        return ResponseEntity.status(HttpStatus.FOUND).location(URI.create("/api/files/content/" + key))
+                .cacheControl(CacheControl.maxAge(Duration.ofMinutes(5))).build();
     }
 
     private Rendered cachedPreview(String key, String variant, int dimension) {
@@ -88,7 +94,7 @@ final class QiniuImagePreviewService {
             Rendered rendered;
             try { rendered = render(source.read(key), dimension); }
             finally { decoding.release(); }
-            if (rendered != null) writeCache(name, rendered);
+            writeCache(name, rendered);
             pending.complete(rendered); return rendered;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -101,16 +107,18 @@ final class QiniuImagePreviewService {
     private Rendered render(QiniuImage original, int dimension) {
         try (var input = ImageIO.createImageInputStream(new ByteArrayInputStream(original.content()))) {
             var readers = ImageIO.getImageReaders(input);
-            if (!readers.hasNext()) return null;
+            if (!readers.hasNext()) return ORIGINAL;
             var reader = readers.next();
             try {
                 reader.setInput(input, true, true);
                 int width = reader.getWidth(0), height = reader.getHeight(0);
-                if (width <= 0 || height <= 0 || (long) width * height > 80_000_000L) return null;
+                if (width <= 0 || height <= 0 || (long) width * height > 80_000_000L) return ORIGINAL;
                 var parameters = reader.getDefaultReadParam();
                 int sample = Math.max(1, Math.max(width, height) / dimension);
                 parameters.setSourceSubsampling(sample, sample, 0, 0);
-                var decoded = reader.read(0, parameters);
+                int orientation = JpegOrientation.read(original.content());
+                var decoded = JpegOrientation.apply(reader.read(0, parameters), orientation);
+                if (orientation >= 5) { int previousWidth = width; width = height; height = previousWidth; }
                 double ratio = Math.min(1d, (double) dimension / Math.max(width, height));
                 int targetWidth = Math.max(1, (int) Math.round(width * ratio));
                 int targetHeight = Math.max(1, (int) Math.round(height * ratio));
@@ -129,10 +137,11 @@ final class QiniuImagePreviewService {
     }
 
     private Rendered readCache(String name) {
-        for (String extension : new String[]{".png", ".jpg"}) {
+        for (String extension : new String[]{".png", ".jpg", ".original"}) {
             Path file = directory.resolve(name + extension);
             try {
-                if (Files.isRegularFile(file)) return new Rendered(Files.readAllBytes(file), extension.equals(".png") ? "image/png" : "image/jpeg");
+                if (Files.isRegularFile(file)) return extension.equals(".original") ? ORIGINAL
+                        : new Rendered(Files.readAllBytes(file), extension.equals(".png") ? "image/png" : "image/jpeg");
             } catch (java.nio.file.NoSuchFileException ignored) { /* A concurrent cache cleanup can evict this entry. */ }
             catch (IOException exception) { throw new FileStorageException("图片预览缓存读取失败", exception); }
         }
@@ -144,7 +153,7 @@ final class QiniuImagePreviewService {
         try {
             temporary = Files.createTempFile(directory, "preview-", ".tmp");
             Files.write(temporary, image.bytes());
-            Files.move(temporary, directory.resolve(name + (image.contentType().equals("image/png") ? ".png" : ".jpg")),
+            Files.move(temporary, directory.resolve(name + (image == ORIGINAL ? ".original" : image.contentType().equals("image/png") ? ".png" : ".jpg")),
                     StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             synchronized (this) {
                 cacheBytes += image.bytes().length;
@@ -168,7 +177,7 @@ final class QiniuImagePreviewService {
 
     private boolean isCacheFile(Path file) {
         String name = file.getFileName().toString();
-        return Files.isRegularFile(file) && name.startsWith("preview-v1-") && (name.endsWith(".jpg") || name.endsWith(".png"));
+        return Files.isRegularFile(file) && name.startsWith("preview-v1-") && (name.endsWith(".jpg") || name.endsWith(".png") || name.endsWith(".original"));
     }
     private long size(Path file) { try { return Files.size(file); } catch (IOException ignored) { return 0L; } }
     private static Rendered join(CompletableFuture<Rendered> result) {
