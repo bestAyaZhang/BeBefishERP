@@ -38,9 +38,9 @@
 
 ### Task 2: Frontend sized images
 
-**Files:** create productImageUrls.ts and test; modify ProductDetailImage.vue, ProductOverviewSection.vue, ProductTable.vue, ProductImageAlbum.vue and related tests.
+**Files:** create components/media/imageUrls.ts and test; modify ProductDetailImage.vue, ProductOverviewSection.vue, ProductTable.vue, ProductImageAlbum.vue and related tests.
 
-**Interfaces:** `productImagePreviewUrl(url, variant)` accepts original URL and returns display-only URL for managed image paths; all originals remain unchanged.
+**Interfaces:** `imagePreviewUrl(url, variant)` accepts original URL and returns display-only URL for managed image paths; all originals remain unchanged.
 
 - [x] Write tests asserting resized managed URLs, untouched external URLs, original zoom URL, eager hero and lazy thumbnails.
 - [x] Run focused tests and observe expected failures.
@@ -52,7 +52,7 @@
 - [x] Review full diff against spec and resolve material findings.
 - [x] Verify backend tests, frontend tests and release artifacts.
 - [x] Confirm production version and backup current binaries/config before release.
-- [ ] Configure verified CDN if access permits; otherwise keep cache previews active and report exact remaining domain setup.
+- [x] Configure verified HTTPS CDN and activate signed sized-image delivery.
 - [x] Publish artifacts, check service health, measure same original vs preview, inspect list/detail/zoom in browser.
 - [x] Push reviewed code and record measurements, release version and rollback files.
 
@@ -69,11 +69,15 @@
 - Fresh review: two P2 findings (EXIF orientation; repeated unsupported image reads) reproduced with failing tests and fixed. Focused follow-up review found no material remaining issue. Added all eight EXIF orientations, unsupported outcome persistence, cache eviction and catalog/album wiring coverage.
 - Ruling: original same-origin downloads remain unchanged; only display previews can redirect to CDN, preserving ZIP download behavior without cross-origin policy changes.
 - Local real-image measurement: original 1,282,306 bytes; thumb 3,054 bytes (160x160), preview 31,151 bytes (800x800); cached service read 0.4ms/0.2ms. These are local measurements, not production network results.
-- Initial Qiniu sign-in handoff resolved. Preview rollout completed; CDN DNS/HTTPS activation remains pending as recorded below.
+- Preview rollout and final CDN DNS/HTTPS activation are complete as recorded below.
 
 - Production release 94db1d6 installed and verified. Frontend list requests 160px lazy previews; detail hero requests 800px eager/high-priority previews; zoom still loads original bytes. No schema migration introduced.
 - Public same-photo measurements: original 1,282,306 bytes / 2,580ms; thumb 3,054 bytes / 220ms then 51ms; preview 31,151 bytes / 466ms then 44ms. Original bytes matched the source exactly. These are observed samples, not a universal performance guarantee.
 - Browser initially reused old entry HTML; confirmed refresh retrieved the new bundle. Added `expires -1` to exact index locations in the three static-root server blocks. Nginx syntax check/reload passed; public HTML GET/HEAD now has no-cache. Preview GET retains public, immutable, one-year caching. Existing HTTP redirect blocks were preserved.
 - Main fast-forwarded to the reviewed production code and pushed. Server keeps old backend, frontend and site configuration backups; local ignored release artifacts keep deployment receipts, checksums, measurements and screenshots.
-- Qiniu custom image domain created; ownership verified through a public verification file. DNS and HTTPS are not active; QINIU_CDN_DOMAIN remains unset, so cached previews currently serve production.
-- Current required input: Aliyun DNS account sign-in. TaskSpace 9 handed off with p3 at the Aliyun login page; p1 holds Qiniu domain details, p2 holds the server file manager with terminal closed. Do not operate Pages until user confirms.
+- Qiniu custom image domain `img.bebefish.com` created and ownership verified. Aliyun `img` CNAME points to `img-bebefish-com-idvs9rl.qiniudns.com`; public DNS verified. Root/www A records remain intact. Image processing and private-bucket origin authentication remain enabled; unsigned image GET returns 403.
+- Free TrustAsia ECC certificate issued after DNS ownership verification. HTTPS, forced HTTPS, HTTP/2, and TLS 1.2/1.3 are enabled. Certificate expires 2027-02-09 16:59:59 (Asia/Shanghai); renewal is required before expiry.
+- Server-only HTTPS preflight passed: original bytes matched SHA-256, thumb WebP 160x160 / 1,432 bytes, preview WebP 800x800 / 15,834 bytes. Long-term Qiniu keys stayed on the server.
+- Backed up the actual systemd environment file to `/www/backups/erp-image-20261111/before/app.env.before-cdn`, then added only `QINIU_CDN_DOMAIN=https://img.bebefish.com` in `/etc/bebefish-erp/app.env`. Restart, health checks, signed redirect/WebP validation and original-content check all passed. Server-only guarded rollout retains automatic rollback; activation receipt is `/www/backups/erp-image-20261111/cdn-activation-receipt.json`.
+- Public end-to-end sample: thumb 302 to HTTPS CDN then 200 image/webp, 1,432 bytes / 515ms including redirect; preview 302 then 200 image/webp, 15,834 bytes / 333ms. Redirect cache is public/max-age=300. Public service health is SUCCESS/200, HTML remains no-cache. These are observed samples, not a general latency guarantee.
+- Browser verified list images at 160px, eager/high-priority detail main image at 800px, lazy thumbnails, and original same-origin zoom without a variant parameter. No visible image failures. Browser verification completed and TaskSpace 9 finished; user-owned Aliyun tab preserved. Catalog header remains 147 products (146 published plus 1 draft).
