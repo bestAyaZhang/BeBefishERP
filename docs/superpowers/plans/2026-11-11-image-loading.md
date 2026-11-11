@@ -51,10 +51,10 @@
 
 - [x] Review full diff against spec and resolve material findings.
 - [x] Verify backend tests, frontend tests and release artifacts.
-- [ ] Confirm production version and backup current binaries/config before release.
+- [x] Confirm production version and backup current binaries/config before release.
 - [ ] Configure verified CDN if access permits; otherwise keep cache previews active and report exact remaining domain setup.
-- [ ] Publish artifacts, check service health, measure same original vs preview, inspect list/detail/zoom in browser.
-- [ ] Push reviewed code and record measurements, release version and rollback files.
+- [x] Publish artifacts, check service health, measure same original vs preview, inspect list/detail/zoom in browser.
+- [x] Push reviewed code and record measurements, release version and rollback files.
 
 ## Execution ledger
 
@@ -69,4 +69,11 @@
 - Fresh review: two P2 findings (EXIF orientation; repeated unsupported image reads) reproduced with failing tests and fixed. Focused follow-up review found no material remaining issue. Added all eight EXIF orientations, unsupported outcome persistence, cache eviction and catalog/album wiring coverage.
 - Ruling: original same-origin downloads remain unchanged; only display previews can redirect to CDN, preserving ZIP download behavior without cross-origin policy changes.
 - Local real-image measurement: original 1,282,306 bytes; thumb 3,054 bytes (160x160), preview 31,151 bytes (800x800); cached service read 0.4ms/0.2ms. These are local measurements, not production network results.
-- External work pending: TaskSpace 9 is handed to the user at the Qiniu sign-in page. Do not operate until user confirms. Production rollout and CDN/DNS/HTTPS validation are incomplete.
+- Initial Qiniu sign-in handoff resolved. Preview rollout completed; CDN DNS/HTTPS activation remains pending as recorded below.
+
+- Production release 94db1d6 installed and verified. Frontend list requests 160px lazy previews; detail hero requests 800px eager/high-priority previews; zoom still loads original bytes. No schema migration introduced.
+- Public same-photo measurements: original 1,282,306 bytes / 2,580ms; thumb 3,054 bytes / 220ms then 51ms; preview 31,151 bytes / 466ms then 44ms. Original bytes matched the source exactly. These are observed samples, not a universal performance guarantee.
+- Browser initially reused old entry HTML; confirmed refresh retrieved the new bundle. Added `expires -1` to exact index locations in the three static-root server blocks. Nginx syntax check/reload passed; public HTML GET/HEAD now has no-cache. Preview GET retains public, immutable, one-year caching. Existing HTTP redirect blocks were preserved.
+- Main fast-forwarded to the reviewed production code and pushed. Server keeps old backend, frontend and site configuration backups; local ignored release artifacts keep deployment receipts, checksums, measurements and screenshots.
+- Qiniu custom image domain created; ownership verified through a public verification file. DNS and HTTPS are not active; QINIU_CDN_DOMAIN remains unset, so cached previews currently serve production.
+- Current required input: Aliyun DNS account sign-in. TaskSpace 9 handed off with p3 at the Aliyun login page; p1 holds Qiniu domain details, p2 holds the server file manager with terminal closed. Do not operate Pages until user confirms.
