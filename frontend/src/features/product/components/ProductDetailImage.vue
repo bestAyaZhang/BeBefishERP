@@ -2,6 +2,7 @@
 import { ImageOff } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 import AccessibleDialog from '../../../components/AccessibleDialog.vue';
+import { imagePreviewUrl } from '../../../components/media/imageUrls';
 
 const props = withDefaults(defineProps<{
   src?: string | null;
@@ -15,6 +16,8 @@ const props = withDefaults(defineProps<{
 
 const failed = ref(false);
 const previewOpen = ref(false);
+const originalFallback = ref(false);
+const displaySrc = computed(() => originalFallback.value ? props.src : imagePreviewUrl(props.src, props.size === 'large' ? 'preview' : 'thumb'));
 const sizeClass = computed(() => ({
   small: 'h-10 w-10',
   medium: 'h-24 w-24',
@@ -25,9 +28,14 @@ const sizeClass = computed(() => ({
 watch(() => props.src, () => {
   failed.value = false;
   previewOpen.value = false;
+  originalFallback.value = false;
 });
 
 function handleError() {
+  if (!originalFallback.value && displaySrc.value !== props.src) {
+    originalFallback.value = true;
+    return;
+  }
   failed.value = true;
   previewOpen.value = false;
 }
@@ -45,8 +53,11 @@ function handleError() {
   >
     <img
       :data-testid="testId"
-      :src="src"
+      :src="displaySrc ?? undefined"
       :alt="alt"
+      :loading="size === 'large' ? 'eager' : 'lazy'"
+      :fetchpriority="size === 'large' ? 'high' : 'auto'"
+      decoding="async"
       class="h-full w-full object-contain"
       @error="handleError"
     />

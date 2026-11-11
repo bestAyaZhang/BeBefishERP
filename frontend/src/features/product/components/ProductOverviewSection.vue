@@ -5,6 +5,7 @@ import { formatMoney, formatProductType, formatText, formatWithUnit } from '../p
 import { formatProductNumber, getDefaultSupplierQuote } from '../productPresentation';
 import type { Product, ProductSku } from '../types';
 import ProductDetailImage from './ProductDetailImage.vue';
+import { imagePreviewUrl } from '../../../components/media/imageUrls';
 
 const props = defineProps<{ product: Product; selectedSku: ProductSku | null }>();
 defineEmits<{ 'select-sku': [id: number] }>();
@@ -35,7 +36,7 @@ const lowStock = computed(() => Number.isFinite(props.product.totalStock)
           :aria-label="`选择 ${sku.skuName || sku.skuCode}`" :title="sku.specText || sku.skuName || sku.skuCode"
           @click="$emit('select-sku', sku.id)"
         >
-          <img v-if="sku.skuImageUrl && failedThumbnails[sku.id] !== sku.skuImageUrl" :src="sku.skuImageUrl" :alt="sku.skuName || sku.skuCode" @error="failedThumbnails[sku.id] = sku.skuImageUrl" />
+          <img v-if="sku.skuImageUrl && failedThumbnails[sku.id] !== sku.skuImageUrl" :src="imagePreviewUrl(sku.skuImageUrl, 'thumb') ?? undefined" :alt="sku.skuName || sku.skuCode" loading="lazy" decoding="async" width="160" height="160" @error="failedThumbnails[sku.id] = sku.skuImageUrl" />
           <ImageOff v-else aria-hidden="true" />
         </button>
       </div>

@@ -11,6 +11,7 @@ import type { ProductCatalogColumnDefinition, ProductCatalogColumnId } from '../
 import { formatProductNumber, formatProductPriceRange, getDefaultSupplierQuote } from '../productPresentation';
 import { formatDimensions } from '../productDetailFormatting';
 import ProductDetailImage from './ProductDetailImage.vue';
+import { imagePreviewUrl } from '../../../components/media/imageUrls';
 
 const numericColumns = new Set<ProductCatalogColumnId>([
   'stock', 'safetyStock', 'price', 'skuCount', 'completenessPercent', 'productDimensions',
@@ -174,7 +175,7 @@ function openProduct(product: Product) { emit('open-product', product); }
             <td v-for="column in activeColumns" :key="column.id" :data-testid="cellTestId(column.id, product)" :data-label="column.label" class="catalog-cell overflow-hidden px-3 align-middle" :class="[alignmentClass(column), { 'product-info-cell': column.id === 'productInfo' }]" :style="{ width: `${column.width}px`, maxWidth: `${column.width}px` }">
               <div v-if="column.id === 'productInfo'" class="flex min-w-0 items-center gap-2.5 text-left">
                 <div :data-testid="`product-thumb-${product.id}`" class="product-thumb flex h-14 w-[52px] shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-50 text-slate-400">
-                  <img v-if="hasProductImage(product)" :data-testid="`product-image-${product.id}`" :src="product.mainImageUrl ?? undefined" :alt="product.productName" class="h-full w-full object-contain" @error="markImageFailed(product)" />
+                  <img v-if="hasProductImage(product)" :data-testid="`product-image-${product.id}`" :src="imagePreviewUrl(product.mainImageUrl, 'thumb') ?? undefined" :alt="product.productName" loading="lazy" decoding="async" width="160" height="160" class="h-full w-full object-contain" @error="markImageFailed(product)" />
                   <Package v-else :data-testid="`product-image-placeholder-${product.id}`" class="h-5 w-5 stroke-[1.5]" aria-hidden="true" />
                 </div>
                 <div class="min-w-0 flex-1">

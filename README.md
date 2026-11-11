@@ -45,6 +45,10 @@
 
 ## 本地开发
 
+商品图片预览支持 `?variant=thumb`（最长边 160px）和 `?variant=preview`（最长边 800px），等比缩放、不裁剪。原始地址继续用于原图预览、下载及素材包。
+
+七牛存储可配置 `QINIU_CDN_DOMAIN=https://img.example.com`，仅在正式域名的 DNS、HTTPS、私有资源访问及图片处理验证成功后启用。预览将重定向到带图片处理参数的短期签名 CDN 地址，图片字节由 CDN 直接发送。未配置时使用服务器磁盘缓存预览；`ERP_IMAGE_CACHE_DIR` 可指定缓存目录，默认系统临时目录下 `bebefish-image-cache`，容量上限 256MB、同时最多解码 2 张图片。缓存可删除后自动重建，原图不会改写。
+
 后端需要 JDK 21 和 Maven：
 
 ```powershell

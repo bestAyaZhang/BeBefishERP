@@ -4,6 +4,34 @@ import { nextTick } from 'vue';
 import ProductDetailImage from './components/ProductDetailImage.vue';
 
 describe('ProductDetailImage', () => {
+  it('loads a small preview lazily and requests the original only when opened', async () => {
+    const wrapper = mount(ProductDetailImage, { props: {
+      src: '/api/files/content/glass.png', alt: '玻璃杯', testId: 'sized-image', size: 'small'
+    } });
+    expect(wrapper.get('[data-testid="sized-image"]').attributes()).toMatchObject({
+      src: '/api/files/content/glass.png?variant=thumb', loading: 'lazy', decoding: 'async'
+    });
+    expect(wrapper.find('[data-testid="sized-image-preview"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="sized-image-preview-trigger"]').trigger('click');
+    expect(wrapper.get('[data-testid="sized-image-preview"]').attributes('src')).toBe('/api/files/content/glass.png');
+    wrapper.unmount();
+  });
+
+  it('prioritizes the hero image and retries its original if preview delivery fails', async () => {
+    const wrapper = mount(ProductDetailImage, { props: {
+      src: '/api/files/content/hero.png', alt: '商品主图', testId: 'hero', size: 'large'
+    } });
+    const image = wrapper.get('[data-testid="hero"]');
+    expect(image.attributes()).toMatchObject({
+      src: '/api/files/content/hero.png?variant=preview', loading: 'eager', fetchpriority: 'high'
+    });
+    await image.trigger('error');
+    expect(wrapper.get('[data-testid="hero"]').attributes('src')).toBe('/api/files/content/hero.png');
+    await wrapper.get('[data-testid="hero"]').trigger('error');
+    expect(wrapper.find('[data-testid="hero-fallback"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   it('opens the full image preview from an available detail image', async () => {
     const wrapper = mount(ProductDetailImage, {
       attachTo: document.body,

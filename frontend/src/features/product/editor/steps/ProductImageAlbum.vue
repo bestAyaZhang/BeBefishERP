@@ -3,6 +3,7 @@ import { ImageOff, Plus } from 'lucide-vue-next';
 import { onBeforeUnmount, reactive, ref } from 'vue';
 import type { ProductMediaImage, ProductService } from '../../types';
 import { albumImageName, albumImageUrl } from './productImageAlbums';
+import { imagePreviewUrl } from '../../../../components/media/imageUrls';
 
 const props = defineProps<{
   label: string;
@@ -162,7 +163,7 @@ onBeforeUnmount(() => {
           :disabled="!imageSource(image)"
           @click="emit('preview', index)"
         >
-          <img v-if="imageSource(image)" :src="imageSource(image)" alt="" loading="lazy" @error="markImageError(image)" />
+          <img v-if="imageSource(image)" :src="imagePreviewUrl(imageSource(image), 'thumb') ?? undefined" alt="" loading="lazy" decoding="async" width="160" height="160" @error="markImageError(image)" />
           <ImageOff v-else aria-label="图片无法显示" />
         </button>
         <figcaption class="album-name" :title="albumImageName(image)">{{ albumImageName(image) }}</figcaption>
